@@ -1124,28 +1124,17 @@ function rewriteNativeInvocations(
   rewriteClaudeNativePermissions(outRoot, m);
   rewriteCursorNativePermissions(outRoot, m);
   if (m.tierFlavor === "codex") {
-    const { emitDefaultRules, emitTrustSeed } = require(
+    const { emitDefaultRules, emitTrustSeed, copyChannelToolScripts } = require(
       join(HARNESS_ROOT, m.name, "emit.ts"),
-    ) as {
-      emitDefaultRules: (
-        harnessDir: string,
-        invoke: string,
-        trustedNamespace: string,
-      ) => string;
-      emitTrustSeed: (
-        harnessDir: string,
-        harnessName: string,
-        invoke: string,
-        trustedNamespace: string,
-      ) => string;
-    };
+    ) as typeof import("../harness/codex/emit.ts");
+    const binding = { harnessDir: m.harnessDir, harnessName: m.name, invoke: "aidlc", trustedNamespace: TRUSTED_ROUTE_NAMESPACE };
     writeFileSync(
       join(outRoot, m.harnessDir, "rules", "default.rules"),
-      emitDefaultRules(m.harnessDir, "aidlc", TRUSTED_ROUTE_NAMESPACE),
+      emitDefaultRules({ binding, toolScripts: copyChannelToolScripts() }),
     );
     writeFileSync(
       join(outRoot, m.harnessDir, "trust-seed.toml"),
-      emitTrustSeed(m.harnessDir, m.name, "aidlc", TRUSTED_ROUTE_NAMESPACE),
+      emitTrustSeed({ binding }),
     );
   }
   // Before the copy's hashes are recorded below, so a part that changed here
@@ -1451,27 +1440,15 @@ if (argv[0] === "codex" && argv[1] === "trust") {
     }
   }
   const resolvedProject = project ?? failTrustArgs("--project is required");
-  const { trustEntries } = require(join(HARNESS_ROOT, "codex", "emit.ts")) as {
-    trustEntries: (
-      project: string,
-      hooksJson: string | undefined,
-      harnessDir: string,
-      harnessName: string,
-      invoke: string,
-      trustedNamespace: string,
-    ) => string;
-  };
+  const { trustEntries } = require(join(HARNESS_ROOT, "codex", "emit.ts")) as typeof import("../harness/codex/settings.ts");
   // The checkout's dist/codex runs its hooks as `bun .codex/tools/aidlc.ts ...`,
   // so hash those commands: a native `aidlc ...` hash trusts none of them.
   console.log(
-    trustEntries(
-      resolvedProject,
-      hooksJson ?? undefined,
-      ".codex",
-      "codex",
-      substituteInvocationTokens({ source: "{{INVOKE}}", binding: invocationTextBinding({ harnessDir: ".codex" }) }),
-      TRUSTED_ROUTE_NAMESPACE,
-    ),
+    trustEntries({
+      projectDir: resolvedProject,
+      ...(hooksJson === null ? {} : { hooksJsonPath: hooksJson }),
+      binding: { harnessDir: ".codex", harnessName: "codex", invoke: substituteInvocationTokens({ source: "{{INVOKE}}", binding: invocationTextBinding({ harnessDir: ".codex" }) }), trustedNamespace: TRUSTED_ROUTE_NAMESPACE },
+    }),
   );
   process.exit(0);
 }

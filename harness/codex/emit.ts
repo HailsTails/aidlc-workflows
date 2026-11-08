@@ -30,7 +30,10 @@ import {
 } from "../../core/tools/aidlc-model-policy.ts";
 
 export { emitDefaultRules, emitTrustSeed, trustEntries } from "./settings.ts";
-import { emitHooksJson, emitConfigToml, emitDefaultRules, emitTrustSeed } from "./settings.ts";
+import { emitConfigToml, emitDefaultRules, emitTrustSeed } from "./settings.ts";
+import { emitHooksJson, resolveCodexHookPlan } from "./hook-plan.ts";
+import { copyChannelToolScripts } from "../../core/tools/aidlc.ts";
+export { copyChannelToolScripts };
 
 // --- Agent transposition: persona .md → .codex/agents/*.toml ----------------
 // The model map is DERIVED from the tier projection module. Codex reads
@@ -179,13 +182,15 @@ export default function emit(ctx: EmitContext): void {
 
   const onboarding = readFileSync(join(CODEX_ROOT, "onboarding.md"), "utf-8")
     .replaceAll(`${harnessDir}/skills/`, ".agents/skills/");
+  const binding = { harnessDir, harnessName, invoke, trustedNamespace: trustedRouteNamespace };
+  const hookPlan = resolveCodexHookPlan({ binding });
   const emissions: Array<{ path: string; content: () => string }> = [];
 
   // codex-only config + wiring + trust + native onboarding skills paths
   emissions.push({
     path: join(CODEX_ROOT, "hooks.json"),
     content: () =>
-      emitHooksJson(substituteToken, harnessName, trustedRouteNamespace),
+      emitHooksJson(hookPlan),
   });
   emissions.push({
     path: join(CODEX_ROOT, "config.toml"),
@@ -194,12 +199,12 @@ export default function emit(ctx: EmitContext): void {
   emissions.push({
     path: join(CODEX_ROOT, "rules", "default.rules"),
     content: () =>
-      emitDefaultRules(harnessDir, invoke, trustedRouteNamespace),
+      emitDefaultRules({ binding, toolScripts: copyChannelToolScripts() }),
   });
   emissions.push({
     path: join(CODEX_ROOT, "trust-seed.toml"),
     content: () =>
-      emitTrustSeed(harnessDir, harnessName, invoke, trustedRouteNamespace),
+      emitTrustSeed({ binding, plan: hookPlan }),
   });
   emissions.push({
     path: join(CODEX_ROOT, "onboarding.md"),

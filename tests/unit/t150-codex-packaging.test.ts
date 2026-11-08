@@ -79,30 +79,14 @@ function parseTrustDocument(source: string): TrustDocument {
 }
 
 function trustEntries(): TrustEntries {
-  const emitter = require(join(REPO_ROOT, "harness", "codex", "emit.ts")) as {
-    trustEntries: (...args: [
-      string,
-      string | undefined,
-      string,
-      string,
-      string,
-      string,
-    ]) => string;
-  };
+  const emitter = require(join(REPO_ROOT, "harness", "codex", "emit.ts")) as typeof import("../../harness/codex/settings.ts");
   return (
     project,
     hooksJson,
     harnessDir = ".codex",
     harnessName = "codex",
     invoke = "aidlc",
-  ) => emitter.trustEntries(
-    project,
-    hooksJson,
-    harnessDir,
-    harnessName,
-    invoke,
-    TRUSTED_ROUTE_NAMESPACE,
-  );
+  ) => emitter.trustEntries({ projectDir: project, hooksJsonPath: hooksJson, binding: { harnessDir, harnessName, invoke, trustedNamespace: TRUSTED_ROUTE_NAMESPACE } });
 }
 
 function expectedTrustKeys(hooksJsonPath: string): string[] {
@@ -378,7 +362,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     // identity emit.ts hashes. Guard that by calling the REAL exported
     // trustEntries() (not an inlined copy of the recipe) and asserting it
     // reproduces the shipped body verbatim for the <PROJECT_DIR> template. If
-    // trustHash's recipe, HOOK_WIRING, or the adapter command ever drifts, the
+    // the canonical trust hash, resolved hook plan, or adapter command ever drifts, the
     // shipped hashes go stale and Codex silently rejects every hook — this fails
     // then, where --check cannot (a buggy emit regenerates the same wrong bytes).
     const emitTrustEntries = trustEntries();

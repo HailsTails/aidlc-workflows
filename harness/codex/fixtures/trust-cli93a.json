@@ -1,0 +1,272 @@
+[
+  {
+    "label": "0",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/home/a project"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"/home/a project/.codex/hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"/home/a project/.codex/hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "1",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"/.codex/hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"/.codex/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"/.codex/hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"/.codex/hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"/.codex/hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"/.codex/hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"/.codex/hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"/.codex/hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"/.codex/hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"/.codex/hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"/.codex/hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "2",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "C:\\"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"C:\\\\.codex\\\\hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"C:\\\\.codex\\\\hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "3",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "C:\\work\\a project"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"C:\\\\work\\\\a project\\\\.codex\\\\hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "4",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "\\\\server\\share\\project"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "5",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "//server/share/project"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"\\\\\\\\server\\\\share\\\\project\\\\.codex\\\\hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "6",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/home/a\"project"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"/home/a\\\"project/.codex/hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"/home/a\\\"project/.codex/hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "7",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/home/a'project"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"/home/a'project/.codex/hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"/home/a'project/.codex/hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "8",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/home/a\\project"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"/home/a\\\\project/.codex/hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"/home/a\\\\project/.codex/hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "9",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/unused",
+      "--hooks-json",
+      "//literal/share\\untouched/\"hooks.json"
+    ],
+    "status": 0,
+    "stdout": "[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:84bad3f3385b1e7c4357f672b083ac1b1e0955978bcd707f6b90dd5a99536561\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:b1ea78813660ef5ca5039c39fa0c7c6b0a67d9cf1f88cdb3a73f789eab1884ae\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"sha256:be0c56720c4b424c703e985d511aa1ed09ac28689553f5fcffcd8f187b8b16f7\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:8dd7a62e584a42ab0fd850f5428cf4d64edf9115f48d3b0038acd2f94a8c5f24\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"sha256:af60031a47f36a9e68c54438c554189c99e9b77f5429b0800687f2e69450dd83\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"sha256:189df48cafe08c35d51ca83fe90cda6dde63b65183677ac92d7d92f9d5327283\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"sha256:5f9a79604c580af77ffe63c58e0b76871e229f051df824b8add818dfbd44c388\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"sha256:1965c4c5378853346d0205b096de9e7faa73f0bc943485c88e6e9d333c10ca7a\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"sha256:68e1b2124cb3467129addfe1a1d19e1cc39a4c50287a58ee6cfb3c75fa64ffc6\"\n\n[hooks.state.\"//literal/share\\\\untouched/\\\"hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:e1447f72e3b8556c2f1cea30996d631b5b9fb452506206e2e341c4f2e698e23f\"\n\n",
+    "stderr": ""
+  },
+  {
+    "label": "10",
+    "args": [
+      "codex",
+      "trust"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project is required\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "11",
+    "args": [
+      "codex",
+      "trust",
+      "--project"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project requires an absolute path\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "12",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "--hooks-json"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project requires an absolute path\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "13",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "relative"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project must be a fully qualified absolute path\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "14",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "C:relative"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project must be a fully qualified absolute path\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "15",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "\\rooted"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project must be a fully qualified absolute path\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "16",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "//server"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project must be a fully qualified absolute path\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "17",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/one",
+      "--project",
+      "/two"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project may be specified only once\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "18",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/one",
+      "--hooks-json",
+      "/a",
+      "--hooks-json",
+      "/b"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --hooks-json may be specified only once\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "19",
+    "args": [
+      "codex",
+      "trust",
+      "--unknown",
+      "/project"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: unknown argument \"--unknown\"\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "20",
+    "args": [
+      "codex",
+      "trust",
+      "--project",
+      "/project",
+      "trailing"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: unknown argument \"trailing\"\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  },
+  {
+    "label": "21",
+    "args": [
+      "codex",
+      "trust",
+      "--hooks-json",
+      "/hooks.json"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "codex trust: --project is required\nusage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]\n"
+  }
+]
