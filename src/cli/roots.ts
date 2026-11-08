@@ -1,6 +1,9 @@
-import type { HostConversationSource } from "../execution/application/boundary-ports.ts";
+import type {
+  HostConversationSource,
+  HumanTurnHistory,
+} from "../execution/application/boundary-ports.ts";
 import type { HostShell } from "../installation/application/boundary-ports.ts";
-import type { DistributionId } from "../kernel/values.ts";
+import type { HostIdentity } from "../kernel/host.ts";
 import type { DistributionLayout } from "../packaging/domain/payload.ts";
 import type { Harness } from "../projection/application/ports.ts";
 import type {
@@ -10,11 +13,12 @@ import type {
 } from "./application/ports.ts";
 
 export type HostBundle = {
-  readonly distribution: DistributionId;
+  readonly host: HostIdentity;
   readonly harness: Harness;
   readonly layout: DistributionLayout;
   readonly shell: HostShell;
   readonly conversation: HostConversationSource;
+  readonly humanTurns: HumanTurnHistory;
   readonly decoder: HostEventDecoder;
   readonly encoder: HostResponseEncoder;
 };

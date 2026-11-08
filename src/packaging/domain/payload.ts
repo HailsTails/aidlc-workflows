@@ -1,7 +1,7 @@
 import type { FileContent } from "../../kernel/file-content.ts";
+import type { HostIdentity } from "../../kernel/host.ts";
 import type {
   ContentHash,
-  DistributionId,
   FrameworkVersion,
   ProjectPath,
   SourcePath,
@@ -35,13 +35,12 @@ export type PayloadFile = {
 };
 
 export type DistributionLayout = {
-  readonly distribution: DistributionId;
-  readonly harnessDirectory: ProjectPath;
   readonly rootIntegrations: readonly RootIntegration[];
   readonly managedDirectories: readonly ManagedDirectory[];
 };
 
 export type DistributionDescriptor = {
+  readonly host: HostIdentity;
   readonly layout: DistributionLayout;
   readonly history: ReleaseHistory;
 };

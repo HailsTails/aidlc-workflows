@@ -5,7 +5,7 @@ import type { HumanEvidence } from "../domain/gate.ts";
 import type { SessionId } from "../domain/identities.ts";
 import type { ExecutionRefusal } from "../domain/refusals.ts";
 
-export interface HostEvents {
+export interface HumanTurnHistory {
   humanTurnsSince(request: {
     readonly session: SessionId;
     readonly from: Timestamp;

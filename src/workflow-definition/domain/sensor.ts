@@ -1,4 +1,5 @@
 import type { Owner, SensorId } from "./identities.ts";
+import type { MethodSourcePath } from "./method-source.ts";
 
 export type SensorSeverity = "advisory" | "blocking";
 
@@ -12,6 +13,7 @@ export type SensorFieldShapes = Readonly<Record<string, SensorFieldShape>>;
 
 export type SensorDeclaration = {
   readonly id: SensorId;
+  readonly source: MethodSourcePath;
   readonly owner: Owner;
   readonly description: string;
   readonly category: string | null;

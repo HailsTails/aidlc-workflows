@@ -24,43 +24,43 @@ export type GuardDeclaration = {
 
 export type GuardInventory = readonly GuardDeclaration[];
 
-const core = (id: string, protects: string, lift: GuardLift): GuardDeclaration => ({
-  id: id as GuardId,
-  protects,
-  lift,
-});
+const core = (declared: {
+  readonly id: string;
+  readonly protects: string;
+  readonly lift: GuardLift;
+}): GuardDeclaration => ({ ...declared, id: declared.id as GuardId });
 
 export const CORE_GUARDS = {
-  planApproval: core(
-    "plan-approval",
-    "Code generation follows the plan the person approved.",
-    { kind: "switch" },
-  ),
-  reviewFreeze: core(
-    "review-freeze",
-    "A reviewed artifact stays as it was reviewed.",
-    { kind: "switch" },
-  ),
-  stateTransition: core(
-    "state-transition",
-    "Stations advance only through the engine.",
-    { kind: "switch" },
-  ),
-  reviewerScope: core(
-    "reviewer-scope",
-    "A reviewer reads only what it reviews.",
-    { kind: "switch" },
-  ),
-  humanPresence: core(
-    "human-presence",
-    "A gate hears the person's own words.",
-    { kind: "override-once" },
-  ),
-  blockingCheck: core(
-    "blocking-check",
-    "A blocking check passes before its gate.",
-    { kind: "override-once" },
-  ),
+  planApproval: core({
+    id: "plan-approval",
+    protects: "Code generation follows the plan the person approved.",
+    lift: { kind: "switch" },
+  }),
+  reviewFreeze: core({
+    id: "review-freeze",
+    protects: "A reviewed artifact stays as it was reviewed.",
+    lift: { kind: "switch" },
+  }),
+  stateTransition: core({
+    id: "state-transition",
+    protects: "Stations advance only through the engine.",
+    lift: { kind: "switch" },
+  }),
+  reviewerScope: core({
+    id: "reviewer-scope",
+    protects: "A reviewer reads only what it reviews.",
+    lift: { kind: "switch" },
+  }),
+  humanPresence: core({
+    id: "human-presence",
+    protects: "A gate hears the person's own words.",
+    lift: { kind: "override-once" },
+  }),
+  blockingCheck: core({
+    id: "blocking-check",
+    protects: "A blocking check passes before its gate.",
+    lift: { kind: "override-once" },
+  }),
 } as const satisfies Readonly<Record<string, GuardDeclaration>>;
 
 export type GuardRefusal = {

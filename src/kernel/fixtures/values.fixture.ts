@@ -12,6 +12,7 @@ import {
   type SourcePath,
   type Timestamp,
 } from "../values.ts";
+import type { HostIdentity } from "../host.ts";
 import { accept } from "./accept.ts";
 
 export const path = (raw: string): ProjectPath => accept(projectPath(raw));
@@ -25,3 +26,8 @@ export const hash = (raw: string): ContentHash => accept(contentHash(raw));
 export const version = (raw: string): FrameworkVersion => accept(frameworkVersion(raw));
 
 export const at = (raw: string): Timestamp => accept(timestamp(raw));
+
+export const host = (raw: { readonly name: string; readonly directory: string }): HostIdentity => ({
+  distribution: distribution(raw.name),
+  directory: path(raw.directory),
+});

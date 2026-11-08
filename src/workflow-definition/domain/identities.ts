@@ -44,25 +44,31 @@ const RULE = /^[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*$/;
 const CORE_NAMESPACE = "aidlc-";
 
 const identity =
-  <Identity extends string>(kind: IdentityRefusal["identity"], pattern: RegExp) =>
+  <Identity extends string>({
+    identity,
+    pattern,
+  }: {
+    readonly identity: IdentityRefusal["identity"];
+    readonly pattern: RegExp;
+  }) =>
   (raw: string): Result<Identity, IdentityRefusal> =>
     pattern.test(raw)
       ? accepted(raw as Identity)
-      : refused({ kind: "invalid-identity", identity: kind, raw });
+      : refused({ kind: "invalid-identity", identity, raw });
 
-export const stageSlug = identity<StageSlug>("stage", KEBAB);
+export const stageSlug = identity<StageSlug>({ identity: "stage", pattern: KEBAB });
 
-export const scopeName = identity<ScopeName>("scope", SCOPE);
+export const scopeName = identity<ScopeName>({ identity: "scope", pattern: SCOPE });
 
-export const agentSlug = identity<AgentSlug>("agent", KEBAB);
+export const agentSlug = identity<AgentSlug>({ identity: "agent", pattern: KEBAB });
 
-export const artifactName = identity<ArtifactName>("artifact", KEBAB);
+export const artifactName = identity<ArtifactName>({ identity: "artifact", pattern: KEBAB });
 
-export const sensorId = identity<SensorId>("sensor", KEBAB);
+export const sensorId = identity<SensorId>({ identity: "sensor", pattern: KEBAB });
 
-export const ruleId = identity<RuleId>("rule", RULE);
+export const ruleId = identity<RuleId>({ identity: "rule", pattern: RULE });
 
-export const hookName = identity<HookName>("hook", KEBAB);
+export const hookName = identity<HookName>({ identity: "hook", pattern: KEBAB });
 
 export const pluginId = (raw: string): Result<PluginId, IdentityRefusal> =>
   KEBAB.test(raw) && !raw.startsWith(CORE_NAMESPACE)

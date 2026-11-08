@@ -4,16 +4,11 @@ import type { ContentHash, DistributionId } from "../../kernel/values.ts";
 import type { ArchiveFormat, PackagingRefusal, ReleaseArtifact } from "../domain/artifact.ts";
 import type {
   Channel,
-  DistributionLayout,
   Payload,
   PayloadFile,
   RuntimeEntryPoint,
 } from "../domain/payload.ts";
 import type { ReleaseHistory } from "../domain/release-history.ts";
-
-export interface DistributionLayouts {
-  layout(distribution: DistributionId): Result<DistributionLayout, PackagingRefusal>;
-}
 
 export interface ReleaseHistorySource {
   history(distribution: DistributionId): Promise<Result<ReleaseHistory, PackagingRefusal>>;

@@ -2,9 +2,8 @@ import type { FileContent } from "../../kernel/file-content.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import {
   methodSourcePath,
-  methodSourceRoot,
+  type MethodSourceKind,
   type MethodSourcePath,
-  type MethodSourceRoot,
 } from "../../workflow-definition/domain/method-source.ts";
 
 export const text = (lines: readonly string[]): FileContent => ({
@@ -12,6 +11,7 @@ export const text = (lines: readonly string[]): FileContent => ({
   text: `${lines.join("\n")}\n`,
 });
 
-export const methodPath = (raw: string): MethodSourcePath => accept(methodSourcePath(raw));
-
-export const root = (raw: string): MethodSourceRoot => accept(methodSourceRoot(raw));
+export const methodPath = (location: {
+  readonly kind: MethodSourceKind;
+  readonly within: string;
+}): MethodSourcePath => accept(methodSourcePath(location));

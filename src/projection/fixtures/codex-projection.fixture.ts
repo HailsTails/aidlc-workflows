@@ -1,10 +1,9 @@
-import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
+import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import type { Projection } from "../domain/projection.ts";
-import { root, text } from "./values.fixture.ts";
+import { text } from "./values.fixture.ts";
 
 export const codexProjectionFixture: Projection = {
-  harness: distribution("codex"),
-  methodSourceRoot: root(".codex"),
+  host: host({ name: "codex", directory: ".codex" }),
   files: [
     {
       path: path(".codex/agents/aidlc-developer-agent.toml"),

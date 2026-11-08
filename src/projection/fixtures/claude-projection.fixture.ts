@@ -1,10 +1,9 @@
-import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
+import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import type { Projection } from "../domain/projection.ts";
-import { methodPath, root, text } from "./values.fixture.ts";
+import { methodPath, text } from "./values.fixture.ts";
 
 export const claudeProjectionFixture: Projection = {
-  harness: distribution("claude"),
-  methodSourceRoot: root(".claude"),
+  host: host({ name: "claude", directory: ".claude" }),
   files: [
     {
       path: path(".claude/agents/aidlc-developer-agent.md"),
@@ -37,7 +36,7 @@ export const claudeProjectionFixture: Projection = {
       executable: false,
       origin: {
         kind: "method-source",
-        path: methodPath("aidlc-common/agents/aidlc-developer-agent.md"),
+        path: methodPath({ kind: "agent", within: "aidlc-developer-agent.md" }),
       },
       availability: "always",
     },
@@ -73,7 +72,7 @@ export const claudeProjectionFixture: Projection = {
       executable: false,
       origin: {
         kind: "method-source",
-        path: methodPath("aidlc-common/stages/construction/code-generation.md"),
+        path: methodPath({ kind: "stage", within: "construction/code-generation.md" }),
       },
       availability: "always",
     },
@@ -83,7 +82,10 @@ export const claudeProjectionFixture: Projection = {
       executable: false,
       origin: {
         kind: "method-source",
-        path: methodPath("knowledge/aidlc-developer-agent/code-generation-guide.md"),
+        path: methodPath({
+          kind: "knowledge",
+          within: "aidlc-developer-agent/code-generation-guide.md",
+        }),
       },
       availability: "always",
     },
