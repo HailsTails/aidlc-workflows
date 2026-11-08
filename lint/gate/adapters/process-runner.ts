@@ -6,7 +6,7 @@ export const processRunner = (root: string): CommandRunner => ({
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
-      env: process.env,
+      env: command.env ?? process.env,
     });
     return {
       exitCode: result.exitCode,
@@ -19,6 +19,6 @@ export const processRunner = (root: string): CommandRunner => ({
       stdout: "inherit",
       stderr: "inherit",
       stdin: "inherit",
-      env: process.env,
+      env: command.env ?? process.env,
     }).exitCode,
 });

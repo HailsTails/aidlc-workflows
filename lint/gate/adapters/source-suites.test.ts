@@ -28,6 +28,8 @@ const check = testsCheck({
   },
   suites: SOURCE_SUITES,
   looseTests: [],
+  capabilities: { probe: () => ({ available: true, evidence: "present" }) },
+  exclusions: [],
   testCommand: (files) => {
     ranFiles.push([...files]);
     return { label: "bun test", argv: ["test", ...files] };

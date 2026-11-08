@@ -1,4 +1,5 @@
 import type { Arrivals } from "../domain/arrival.ts";
+import type { CapabilityId, ProbeResult } from "../domain/capability-exclusion.ts";
 import type { BaseRevision, ChangedFile } from "../domain/change.ts";
 import type { ModuleShape } from "../domain/deletion.ts";
 import type { DisciplineException } from "../domain/zone-rules.ts";
@@ -62,6 +63,7 @@ export type Linter = {
 };
 
 export type Command = {
+  readonly env?: Readonly<Record<string, string>>;
   readonly label: string;
   readonly argv: readonly string[];
 };
@@ -190,4 +192,8 @@ export type LifecycleFixtures = {
   readonly harnesses: () => readonly string[];
   readonly read: (harness: string) => LifecycleRecord | undefined;
   readonly write: (record: LifecycleRecord) => void;
+};
+
+export type Capabilities = {
+  readonly probe: (id: CapabilityId) => ProbeResult;
 };

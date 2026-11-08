@@ -34,6 +34,9 @@ import {
   MONOLITH_TEST,
   RECORD_LOCATIONS,
 } from "../lint/gate/adapters/record-locations.ts";
+import { capabilityProbes } from "../lint/gate/adapters/capability-probes.ts";
+import { environmentExclusions } from "../lint/gate/adapters/environment-exclusions.ts";
+import { legacyEnvironment, legacySuites } from "../lint/gate/adapters/legacy-suites.ts";
 import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
 import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
@@ -118,6 +121,7 @@ const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
 
 const TEST_SUITES: readonly TestSuite[] = [
   ...SOURCE_SUITES,
+  ...legacySuites({ bun: BUN, environment: legacyEnvironment(process.env) }),
   {
     name: "lint",
     triggers: ["lint/**", "scripts/gate.ts", "eslint.config.ts", "eslint.config.test.ts"],
@@ -160,6 +164,8 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     workspace,
     suites: TEST_SUITES,
     looseTests: LOOSE_TESTS,
+    capabilities: capabilityProbes(),
+    exclusions: environmentExclusions(workspace),
     testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
   }),
   goldensCheck(goldens),

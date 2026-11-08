@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "exclusions": [
+    {
+      "capability": "symlinks",
+      "cases": [
+        "t243 archive and transaction safety > rollback restores file mode and symlink target and rejects a dangling symlink parent",
+        "t243 archive and transaction safety > transaction rejects symlink traversal and restores every committed byte on fault",
+        "t243 project initialization > a symlinked AGENTS.md is a root-integration conflict",
+        "t243 project initialization > init treats dangling managed symlinks as conflicts and cleans failed refresh staging",
+        "t248 deterministic steering delivery > many optional-context failures aggregate without overflowing run-stage",
+        "t248 deterministic steering delivery > unreadable optional knowledge warns and is omitted without blocking",
+        "t265b hook lifecycle > a selected restart continues in its source-install spelling too",
+        "t265b hook lifecycle > planning through the Bun entry point requires a real installed file",
+        "t265b hook lifecycle > record-directory symlink and junction aliases cannot exempt workspace writes",
+        "t265b hook lifecycle > what the plan never governs runs in every Code Generation state (Guard Policy off (from scope poc))",
+        "t265b hook lifecycle > what the plan never governs runs in every Code Generation state (Guard Policy strict (set by you))",
+        "t265b the stage diary during a per-Unit plan wait > a write to the stage diary passes while a Unit's plan waits (Guard Policy off (from scope poc))",
+        "t265b the stage diary during a per-Unit plan wait > a write to the stage diary passes while a Unit's plan waits (Guard Policy strict (set by you))",
+        "t278 engine-emitted wave contract > mixed-kind entries are independently resolved and the parent keeps the diary of the Unit it names",
+        "t278 engine-emitted wave contract > unit-end finish-revision reopens the final gate stage"
+      ]
+    },
+    {
+      "capability": "short-names",
+      "cases": [
+        "t265b hook lifecycle > a Windows short-name spelling of the project runs AI-DLC's own tools and authorizes nothing else",
+        "t265b hook lifecycle > a write through a Windows short-name spelling of the project waits for the plan as one through its own spelling does"
+      ]
+    },
+    {
+      "capability": "unattributed",
+      "cases": [
+        "t230 dispatcher dev and compiled in-process modes > compiled main discovers an OpenCode project from shipped harness metadata",
+        "t230 dispatcher dev and compiled in-process modes > compiled main run by Codex in a project that also holds Claude Code reads the Codex install",
+        "t243 release lifecycle > launcher ownership does not depend on the spelling of the machine roots"
+      ]
+    }
+  ]
+}
