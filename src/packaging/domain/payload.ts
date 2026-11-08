@@ -1,21 +1,23 @@
+import type { FileContent } from "../../kernel/file-content.ts";
 import type {
   ContentHash,
   DistributionId,
   FrameworkVersion,
-  RelativePath,
+  ProjectPath,
+  SourcePath,
 } from "../../kernel/values.ts";
-import type { HarnessProfile } from "../../projection/domain/harness-profile.ts";
-import type { ManagedDirectory } from "../../projection/domain/managed-directory.ts";
-import type { FileContent, ProjectionOrigin } from "../../projection/domain/projected-file.ts";
-import type { RootIntegration } from "../../projection/domain/root-integration.ts";
+import type { ProjectionOrigin } from "../../projection/domain/projected-file.ts";
+import type { ManagedDirectory } from "./managed-directory.ts";
+import type { ReleaseHistory } from "./release-history.ts";
+import type { RootIntegration } from "./root-integration.ts";
 
-export const LAYOUTS = ["copy", "native"] as const;
+export const CHANNELS = ["copy", "native"] as const;
 
-export type Layout = (typeof LAYOUTS)[number];
+export type Channel = (typeof CHANNELS)[number];
 
 export type RuntimeEntryPoint = {
   readonly name: string;
-  readonly compositionRoot: RelativePath;
+  readonly compositionRoot: SourcePath;
 };
 
 export type PayloadFileOrigin =
@@ -25,35 +27,28 @@ export type PayloadFileOrigin =
   | { readonly kind: "distribution-descriptor" };
 
 export type PayloadFile = {
-  readonly path: RelativePath;
+  readonly path: ProjectPath;
   readonly hash: ContentHash;
   readonly content: FileContent;
   readonly executable: boolean;
   readonly origin: PayloadFileOrigin;
 };
 
-export type VersionStamp = {
-  readonly frameworkVersion: FrameworkVersion;
+export type DistributionLayout = {
   readonly distribution: DistributionId;
-  readonly harnessDirectory: RelativePath;
-};
-
-export type RetiredFile = {
-  readonly path: RelativePath;
-  readonly shippedHashes: readonly ContentHash[];
+  readonly harnessDirectory: ProjectPath;
+  readonly rootIntegrations: readonly RootIntegration[];
+  readonly managedDirectories: readonly ManagedDirectory[];
 };
 
 export type DistributionDescriptor = {
-  readonly profile: HarnessProfile;
-  readonly rootIntegrations: readonly RootIntegration[];
-  readonly managedDirectories: readonly ManagedDirectory[];
-  readonly retiredFiles: readonly RetiredFile[];
+  readonly layout: DistributionLayout;
+  readonly history: ReleaseHistory;
 };
 
 export type Payload = {
-  readonly distribution: DistributionId;
-  readonly layout: Layout;
-  readonly stamp: VersionStamp;
+  readonly version: FrameworkVersion;
+  readonly channel: Channel;
   readonly descriptor: DistributionDescriptor;
   readonly files: readonly PayloadFile[];
 };

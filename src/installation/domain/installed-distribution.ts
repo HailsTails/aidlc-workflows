@@ -1,15 +1,10 @@
-import type { DistributionId, RelativePath } from "../../kernel/values.ts";
-import type { VersionStamp } from "../../packaging/domain/payload.ts";
-import type { HarnessProfile } from "../../projection/domain/harness-profile.ts";
+import type { FrameworkVersion } from "../../kernel/values.ts";
+import type { DistributionDescriptor } from "../../packaging/domain/payload.ts";
 
 export type InstalledDistribution = {
-  readonly distribution: DistributionId;
-  readonly harnessDirectory: RelativePath;
-  readonly stamp: VersionStamp;
-  readonly profile: HarnessProfile;
+  readonly version: FrameworkVersion;
+  readonly descriptor: DistributionDescriptor;
 };
-
-export type EnvironmentSnapshot = Readonly<Record<string, string | undefined>>;
 
 export type CallingHarness =
   | { readonly kind: "sole"; readonly installed: InstalledDistribution }

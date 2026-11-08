@@ -13,18 +13,34 @@ export type SensorId = Brand<string, "SensorId">;
 
 export type PluginId = Brand<string, "PluginId">;
 
+export type RuleId = Brand<string, "RuleId">;
+
+export type HookName = Brand<string, "HookName">;
+
 export type Owner =
   | { readonly kind: "core" }
-  | { readonly kind: "plugin"; readonly plugin: PluginId };
+  | { readonly kind: "plugin"; readonly plugin: PluginId }
+  | { readonly kind: "project" };
+
+export type DefinitionIdentity =
+  | "stage"
+  | "scope"
+  | "agent"
+  | "artifact"
+  | "sensor"
+  | "plugin"
+  | "rule"
+  | "hook";
 
 export type IdentityRefusal = {
   readonly kind: "invalid-identity";
-  readonly identity: "stage" | "scope" | "agent" | "artifact" | "sensor" | "plugin";
+  readonly identity: DefinitionIdentity;
   readonly raw: string;
 };
 
 const KEBAB = /^[a-z][a-z0-9-]*$/;
 const SCOPE = /^[A-Za-z0-9][A-Za-z0-9._+@-]*$/;
+const RULE = /^[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*$/;
 const CORE_NAMESPACE = "aidlc-";
 
 const identity =
@@ -43,6 +59,10 @@ export const agentSlug = identity<AgentSlug>("agent", KEBAB);
 export const artifactName = identity<ArtifactName>("artifact", KEBAB);
 
 export const sensorId = identity<SensorId>("sensor", KEBAB);
+
+export const ruleId = identity<RuleId>("rule", RULE);
+
+export const hookName = identity<HookName>("hook", KEBAB);
 
 export const pluginId = (raw: string): Result<PluginId, IdentityRefusal> =>
   KEBAB.test(raw) && !raw.startsWith(CORE_NAMESPACE)

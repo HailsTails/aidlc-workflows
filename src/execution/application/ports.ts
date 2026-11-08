@@ -1,9 +1,12 @@
 import type { Result } from "../../kernel/result.ts";
 import type { Timestamp } from "../../kernel/values.ts";
-import type { Method } from "../../workflow-definition/domain/method.ts";
-import type { AuditEvent } from "../domain/audit.ts";
-import type { HumanEvidence } from "../domain/gate.ts";
-import type { IntentId, RecordVersion, SessionId, UnitName } from "../domain/identities.ts";
+import type { AuditEntry, AuditEvent } from "../domain/audit.ts";
+import type {
+  AuditSequence,
+  IntentId,
+  RecordVersion,
+  UnitName,
+} from "../domain/identities.ts";
 import type { ExecutionRefusal } from "../domain/refusals.ts";
 import type { Session } from "../domain/session.ts";
 import type { UnitHolder } from "../domain/unit.ts";
@@ -18,22 +21,15 @@ export interface RecordStore {
 }
 
 export interface AuditLog {
-  append(event: AuditEvent): Promise<void>;
+  append(entry: AuditEntry): Promise<AuditEvent>;
   since(request: {
     readonly intent: IntentId;
-    readonly from: Timestamp;
+    readonly after: AuditSequence | null;
   }): Promise<readonly AuditEvent[]>;
 }
 
 export interface Clock {
   now(): Timestamp;
-}
-
-export interface HostEvents {
-  humanTurnsSince(request: {
-    readonly session: SessionId;
-    readonly from: Timestamp;
-  }): Promise<readonly HumanEvidence[]>;
 }
 
 export interface Sessions {
@@ -46,20 +42,4 @@ export interface UnitClaims {
     readonly intent: IntentId;
     readonly unit: UnitName;
   }): Promise<Result<UnitHolder, ExecutionRefusal>>;
-}
-
-export interface MethodProvider {
-  current(): Promise<Result<Method, ExecutionRefusal>>;
-}
-
-export type HostConversation = {
-  readonly missedReply: string | null;
-  readonly agentStep: string | null;
-  readonly newChatStep: string | null;
-  readonly directiveMaxBytes: number;
-  readonly questionOptions: number;
-};
-
-export interface HostConversationSource {
-  conversation(): HostConversation;
 }

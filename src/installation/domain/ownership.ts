@@ -1,45 +1,49 @@
-import type { ContentHash, RelativePath } from "../../kernel/values.ts";
-import type { VersionStamp } from "../../packaging/domain/payload.ts";
+import type {
+  ContentHash,
+  DistributionId,
+  FrameworkVersion,
+  ProjectPath,
+} from "../../kernel/values.ts";
 
 export type InstalledFile = {
-  readonly path: RelativePath;
+  readonly path: ProjectPath;
   readonly writtenHash: ContentHash;
 };
 
 export type EntryHashes = Readonly<Record<string, ContentHash>>;
 
-export type RootContribution =
+export type WrittenShare =
+  | { readonly kind: "block"; readonly marker: string; readonly hash: ContentHash }
+  | { readonly kind: "file"; readonly hash: ContentHash }
   | {
-      readonly policy: "managed-block";
-      readonly path: RelativePath;
-      readonly marker: string;
-      readonly blockHash: ContentHash;
-    }
-  | { readonly policy: "whole-file"; readonly path: RelativePath; readonly fileHash: ContentHash }
-  | {
-      readonly policy: "json-map" | "json-array";
-      readonly path: RelativePath;
-      readonly key: string;
+      readonly kind: "entries";
+      readonly key: string | null;
       readonly entries: EntryHashes;
-    }
-  | {
-      readonly policy: "jsonc-settings";
-      readonly path: RelativePath;
-      readonly entries: EntryHashes;
-      readonly createdFile: boolean;
-    }
-  | {
-      readonly policy: "json-entries";
-      readonly path: RelativePath;
-      readonly entries: EntryHashes;
+      readonly addedKeys: readonly string[];
       readonly createdFile: boolean;
     };
 
+export type RootContribution = {
+  readonly integration: ProjectPath;
+  readonly written: WrittenShare;
+};
+
 export type McpChoice = "defaults" | "none";
 
+export type RecordCoverage = "shipped-files-only" | "may-include-project-files";
+
+export type FileEntries = {
+  readonly path: ProjectPath;
+  readonly entries: EntryHashes;
+};
+
 export type OwnershipRecord = {
-  readonly stamp: VersionStamp;
+  readonly version: FrameworkVersion;
+  readonly distribution: DistributionId;
   readonly mcp: McpChoice;
+  readonly coverage: RecordCoverage;
   readonly files: readonly InstalledFile[];
+  readonly fileEntries: readonly FileEntries[];
   readonly rootContributions: readonly RootContribution[];
+  readonly statusLineKept: boolean;
 };

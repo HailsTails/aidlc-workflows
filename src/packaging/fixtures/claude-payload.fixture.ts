@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { path, hash, version } from "../../kernel/fixtures/values.fixture.ts";
+import type { FileContent } from "../../kernel/file-content.ts";
+import { hash, path, source, version } from "../../kernel/fixtures/values.fixture.ts";
 import type { ContentHash } from "../../kernel/values.ts";
+import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
 import { claudeProjectionFixture } from "../../projection/fixtures/claude-projection.fixture.ts";
-import type { FileContent, ProjectedFile } from "../../projection/domain/projected-file.ts";
-import type { Payload, PayloadFile, RuntimeEntryPoint, VersionStamp } from "../domain/payload.ts";
+import type { Payload, PayloadFile, RuntimeEntryPoint } from "../domain/payload.ts";
+import { claudeLayoutFixture, claudePriorIntegrationsFixture } from "./claude-layout.fixture.ts";
 
 export const hashOf = (content: FileContent): ContentHash => {
   const digest = createHash("sha256");
@@ -26,13 +28,7 @@ const textFile = (lines: readonly string[]): FileContent => ({
 
 const cliEntry: RuntimeEntryPoint = {
   name: "aidlc",
-  compositionRoot: path("src/cli/main.ts"),
-};
-
-const stamp: VersionStamp = {
-  frameworkVersion: version("2.12.0"),
-  distribution: claudeProjectionFixture.harness,
-  harnessDirectory: claudeProjectionFixture.profile.harnessDirectory,
+  compositionRoot: source("src/cli/main.ts"),
 };
 
 const runtimeContent = textFile(["#!/usr/bin/env bun", "export {};"]);
@@ -45,21 +41,21 @@ const stampContent = textFile([
 const descriptorContent = textFile(['{ "schemaVersion": 2, "frameworkVersion": "2.12.0" }']);
 
 export const claudeCopyPayloadFixture: Payload = {
-  distribution: claudeProjectionFixture.harness,
-  layout: "copy",
-  stamp,
+  version: version("2.12.0"),
+  channel: "copy",
   descriptor: {
-    profile: claudeProjectionFixture.profile,
-    rootIntegrations: claudeProjectionFixture.rootIntegrations,
-    managedDirectories: claudeProjectionFixture.managedDirectories,
-    retiredFiles: [
-      {
-        path: path(".claude/skills/aidlc-legacy-runner/SKILL.md"),
-        shippedHashes: [
-          hash("sha256:1d51ae4ca4f74f842336dce75bc66bb4bbf55ce2de7c802ab059504cca99fd7b"),
-        ],
-      },
-    ],
+    layout: claudeLayoutFixture,
+    history: {
+      retiredFiles: [
+        {
+          path: path(".claude/skills/aidlc-legacy-runner/SKILL.md"),
+          shippedHashes: [
+            hash("sha256:1d51ae4ca4f74f842336dce75bc66bb4bbf55ce2de7c802ab059504cca99fd7b"),
+          ],
+        },
+      ],
+      priorIntegrations: claudePriorIntegrationsFixture,
+    },
   },
   files: [
     ...claudeProjectionFixture.files.map(fromProjection),

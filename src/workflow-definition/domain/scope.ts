@@ -11,10 +11,24 @@ export type Scope = {
   readonly runner: boolean;
   readonly skeleton: boolean;
   readonly existingCode: boolean;
-  readonly freeformDefault: boolean;
   readonly guardPolicy: GuardPolicy;
   readonly ceremony: CeremonyDefaults;
   readonly reviewCap: ReviewClass | null;
-  readonly includedStages: readonly StageSlug[];
   readonly guidance: string;
+};
+
+export type ScopeMembership = {
+  readonly scope: ScopeName;
+  readonly stage: StageSlug;
+  readonly declaredBy: Owner;
+};
+
+export type FreeformDefaultClaim = {
+  readonly scope: ScopeName;
+  readonly declaredBy: Owner;
+};
+
+export type SavedScope = {
+  readonly scope: Scope;
+  readonly memberships: readonly ScopeMembership[];
 };

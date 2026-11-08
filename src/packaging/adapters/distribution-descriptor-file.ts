@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { HarnessProfileFileSchema } from "../../projection/adapters/harness-profile-file.ts";
+import { CHANNELS } from "../domain/payload.ts";
 
 const hash = z.string().regex(/^sha256:[0-9a-f]{64}$/);
 
@@ -35,8 +35,9 @@ const rootIntegration = z.discriminatedUnion("policy", [
 export const DistributionDescriptorFileSchema = z.strictObject({
   schemaVersion: z.literal(2),
   frameworkVersion: z.string(),
-  layout: z.enum(["copy", "native"]),
-  profile: HarnessProfileFileSchema,
+  layout: z.enum(CHANNELS),
+  distribution: z.string().regex(/^[a-z][a-z0-9-]*$/),
+  harnessDir: z.string().min(1),
   rootIntegrations: z.array(rootIntegration),
   managedDirectories: z.array(
     z.strictObject({

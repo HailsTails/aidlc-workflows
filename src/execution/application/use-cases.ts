@@ -1,8 +1,8 @@
 import type { Result } from "../../kernel/result.ts";
 import type { Directive } from "../domain/directive.ts";
-import type { Gate, GateDecision, HumanEvidence } from "../domain/gate.ts";
+import type { Gate, GateDecision } from "../domain/gate.ts";
 import type { HostEvent, HostEventVerdict } from "../domain/host-event.ts";
-import type { IntentId } from "../domain/identities.ts";
+import type { IntentId, SessionId } from "../domain/identities.ts";
 import type { ExecutionRefusal } from "../domain/refusals.ts";
 import type { WorkflowRecord } from "../domain/workflow-record.ts";
 
@@ -15,7 +15,7 @@ export interface DecideAtGate {
     readonly intent: IntentId;
     readonly gate: Gate;
     readonly decision: GateDecision;
-    readonly evidence: HumanEvidence;
+    readonly session: SessionId;
   }): Promise<Result<WorkflowRecord, ExecutionRefusal>>;
 }
 
@@ -26,6 +26,6 @@ export interface ObserveHostEvent {
 export interface ReopenWorkflow {
   reopen(request: {
     readonly intent: IntentId;
-    readonly evidence: HumanEvidence;
+    readonly session: SessionId;
   }): Promise<Result<WorkflowRecord, ExecutionRefusal>>;
 }

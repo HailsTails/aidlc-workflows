@@ -1,15 +1,20 @@
+import type { FileContent } from "../../kernel/file-content.ts";
 import { hash, path, version } from "../../kernel/fixtures/values.fixture.ts";
-import type { RelativePath } from "../../kernel/values.ts";
+import type { ProjectPath } from "../../kernel/values.ts";
+import type { PayloadFile } from "../../packaging/domain/payload.ts";
+import type { RootIntegration } from "../../packaging/domain/root-integration.ts";
 import {
   claudeCopyPayloadFixture,
   hashOf,
 } from "../../packaging/fixtures/claude-payload.fixture.ts";
-import type { PayloadFile } from "../../packaging/domain/payload.ts";
-import type { FileContent } from "../../projection/domain/projected-file.ts";
-import type { RootIntegration } from "../../projection/domain/root-integration.ts";
-import type { ExpectedState, FileOperation } from "../domain/file-operation.ts";
-import type { InstallPlan } from "../domain/install-plan.ts";
-import type { InstalledFile, OwnershipRecord, RootContribution } from "../domain/ownership.ts";
+import type { PlannedContent } from "../domain/file-operation.ts";
+import type {
+  BlockedInstallPlan,
+  ManagedFileDecision,
+  ReadyInstallPlan,
+  RootIntegrationDecision,
+} from "../domain/install-plan.ts";
+import type { RootContribution } from "../domain/ownership.ts";
 
 const payload = claudeCopyPayloadFixture;
 
@@ -22,30 +27,39 @@ const shipped = (raw: string): PayloadFile => {
 };
 
 const integration = (raw: string): RootIntegration => {
-  const found = payload.descriptor.rootIntegrations.find((entry) => entry.path === raw);
+  const found = payload.descriptor.layout.rootIntegrations.find((entry) => entry.path === raw);
   if (found === undefined) {
     throw new Error(`Payload fixture integrates no ${raw}`);
   }
   return found;
 };
 
-const recordOf = (file: PayloadFile): InstalledFile => ({
-  path: file.path,
-  writtenHash: file.hash,
-});
+const planned = (text: string): PlannedContent => {
+  const content: FileContent = { kind: "text", text };
+  return { content, hash: hashOf(content) };
+};
 
 const agentFile = shipped(".claude/agents/aidlc-developer-agent.md");
 const stageCommand = shipped(".claude/skills/aidlc-code-generation/SKILL.md");
 const knowledgeFile = shipped(".claude/knowledge/aidlc-developer-agent/code-generation-guide.md");
 const settingsFile = shipped(".claude/settings.json");
 const onboardingFile = shipped(".claude/CLAUDE.md");
-const retiredRunner: RelativePath = path(".claude/skills/aidlc-legacy-runner/SKILL.md");
+const retiredRunner: ProjectPath = path(".claude/skills/aidlc-legacy-runner/SKILL.md");
+
+const gitignoreBefore = planned(
+  "node_modules/\n# >>> aidlc gitignore\n.aidlc-*\n# <<< aidlc gitignore\n",
+);
+const gitignoreAfter = planned(
+  "node_modules/\n# >>> aidlc gitignore\naidlc/**/.aidlc-*\n# <<< aidlc gitignore\n",
+);
 
 const gitignoreBlock: RootContribution = {
-  policy: "managed-block",
-  path: path(".gitignore"),
-  marker: "gitignore",
-  blockHash: hashOf({ kind: "text", text: "aidlc/**/.aidlc-*\n" }),
+  integration: path(".gitignore"),
+  written: {
+    kind: "block",
+    marker: "gitignore",
+    hash: hashOf({ kind: "text", text: "aidlc/**/.aidlc-*\n" }),
+  },
 };
 
 const previousAgentHash = hash(
@@ -60,103 +74,62 @@ const editedCommandHash = hash(
 const editedOnboardingHash = hash(
   "sha256:3cc1cbd212d2ca0dbf1e525eb9a40d4694a585eb7864d8b877f8fe8bd99122dc",
 );
-
 const retiredRunnerHash = hash(
   "sha256:1d51ae4ca4f74f842336dce75bc66bb4bbf55ce2de7c802ab059504cca99fd7b",
 );
-
-const bytesOf = (content: FileContent): Uint8Array =>
-  content.kind === "text" ? new TextEncoder().encode(content.text) : content.bytes;
-
-const textFile = (text: string): FileContent => ({ kind: "text", text });
-
-const writeOf = (request: {
-  readonly path: RelativePath;
-  readonly content: FileContent;
-  readonly expected: ExpectedState;
-}): FileOperation => ({
-  kind: "write",
-  path: request.path,
-  bytes: bytesOf(request.content),
-  hash: hashOf(request.content),
-  executable: false,
-  expected: request.expected,
-});
-
-const gitignoreBefore = textFile(
-  "node_modules/\n# >>> aidlc gitignore\n.aidlc-*\n# <<< aidlc gitignore\n",
-);
-const gitignoreAfter = textFile(
-  "node_modules/\n# >>> aidlc gitignore\naidlc/**/.aidlc-*\n# <<< aidlc gitignore\n",
+const recordBeforeHash = hash(
+  "sha256:5b1f0e2b7d1c4f8a9e3d6c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a29",
 );
 
-const recordPath = path(".claude/tools/data/aidlc-manifest.json");
-const recordBefore = textFile('{ "schemaVersion": 1, "frameworkVersion": "2.11.1" }\n');
-const recordAfter = textFile('{ "schemaVersion": 1, "frameworkVersion": "2.12.0" }\n');
-
-const ownershipAfter: OwnershipRecord = {
-  stamp: payload.stamp,
-  mcp: "defaults",
-  files: [agentFile, knowledgeFile, settingsFile].map(recordOf).concat([
-    { path: stageCommand.path, writtenHash: previousCommandHash },
-    { path: onboardingFile.path, writtenHash: onboardingFile.hash },
-  ]),
-  rootContributions: [gitignoreBlock],
-};
-
-const operations: readonly FileOperation[] = [
-  writeOf({
-    path: agentFile.path,
-    content: agentFile.content,
-    expected: { kind: "hash", hash: previousAgentHash },
-  }),
-  writeOf({
-    path: knowledgeFile.path,
-    content: knowledgeFile.content,
-    expected: { kind: "absent" },
-  }),
-  { kind: "remove", path: retiredRunner, expected: { kind: "hash", hash: retiredRunnerHash } },
-  writeOf({
-    path: path(".gitignore"),
-    content: gitignoreAfter,
-    expected: { kind: "hash", hash: hashOf(gitignoreBefore) },
-  }),
-  writeOf({
-    path: recordPath,
-    content: recordAfter,
-    expected: { kind: "hash", hash: hashOf(recordBefore) },
-  }),
+const filesBesideStageCommand: readonly ManagedFileDecision[] = [
+  { kind: "update", file: agentFile, replaces: previousAgentHash, change: "content" },
+  { kind: "create", file: knowledgeFile },
+  { kind: "unchanged", path: settingsFile.path },
+  { kind: "preserve", path: onboardingFile.path, projectHash: editedOnboardingHash },
+  { kind: "retire", path: retiredRunner, expected: retiredRunnerHash },
 ];
 
-export const claudeRefreshPlanFixture: InstallPlan = {
+const refreshRootIntegrations: readonly RootIntegrationDecision[] = [
+  {
+    kind: "merge",
+    integration: integration(".gitignore"),
+    before: { kind: "hash", hash: gitignoreBefore.hash },
+    next: gitignoreAfter,
+    contribution: gitignoreBlock,
+  },
+  { kind: "unchanged", integration: integration(".mcp.json") },
+];
+
+export const claudeRefreshPlanFixture: ReadyInstallPlan = {
+  kind: "ready",
   payload,
   mode: { kind: "refresh", force: false },
   installedVersion: version("2.11.1"),
-  files: [
-    { kind: "update", file: agentFile, replaces: previousAgentHash, change: "content" },
-    {
-      kind: "conflict",
-      file: stageCommand,
-      recorded: previousCommandHash,
-      current: editedCommandHash,
-    },
-    { kind: "create", file: knowledgeFile },
-    { kind: "unchanged", path: settingsFile.path },
-    { kind: "preserve", path: onboardingFile.path, projectHash: editedOnboardingHash },
-    { kind: "retire", path: retiredRunner, expected: retiredRunnerHash },
-  ],
-  rootIntegrations: [
-    { kind: "merge", integration: integration(".gitignore"), contribution: gitignoreBlock },
-    { kind: "unchanged", integration: integration(".mcp.json") },
-  ],
-  ownershipAfter,
-  operations,
-  notes: [
+  mcp: "defaults",
+  files: [{ kind: "unchanged", path: stageCommand.path }, ...filesBesideStageCommand],
+  rootIntegrations: refreshRootIntegrations,
+  recordBefore: { kind: "hash", hash: recordBeforeHash },
+  notes: [],
+};
+
+export const claudeBlockedRefreshPlanFixture: BlockedInstallPlan = {
+  kind: "blocked",
+  payload,
+  mode: { kind: "refresh", force: false },
+  installedVersion: version("2.11.1"),
+  mcp: "defaults",
+  files: filesBesideStageCommand,
+  rootIntegrations: refreshRootIntegrations,
+  conflicts: [
     {
       path: stageCommand.path,
-      line:
-        "Kept your edit to .claude/skills/aidlc-code-generation/SKILL.md; run " +
-        "`aidlc config --force` to take this release's copy instead.",
+      cause: {
+        kind: "edited",
+        recorded: previousCommandHash,
+        current: editedCommandHash,
+        retiring: false,
+      },
     },
   ],
+  notes: [],
 };

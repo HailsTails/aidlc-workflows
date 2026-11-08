@@ -1,16 +1,10 @@
-import type { ContentHash, RelativePath } from "../../kernel/values.ts";
+import type { ProjectPath } from "../../kernel/values.ts";
 
 export type Sharing = "exclusive" | "union" | "identical";
 
-export type LegacySignatures = {
-  readonly wholeFileHashes: readonly ContentHash[];
-  readonly jsonEntryHashes: Readonly<Record<string, readonly ContentHash[]>>;
-};
-
 type IntegrationBase = {
-  readonly path: RelativePath;
+  readonly path: ProjectPath;
   readonly optional: boolean;
-  readonly legacy: LegacySignatures;
 };
 
 export type RootIntegration =

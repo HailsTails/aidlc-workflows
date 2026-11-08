@@ -1,6 +1,6 @@
 import type { Result } from "../../kernel/result.ts";
 import type { Payload } from "../../packaging/domain/payload.ts";
-import type { InstallMode, InstallPlan } from "../domain/install-plan.ts";
+import type { InstallMode, InstallPlan, ReadyInstallPlan } from "../domain/install-plan.ts";
 import type { CallingHarness } from "../domain/installed-distribution.ts";
 import type { InstallRefusal } from "../domain/refusals.ts";
 
@@ -14,7 +14,7 @@ export interface PlanInstall {
 }
 
 export interface ApplyInstallPlan {
-  apply(plan: InstallPlan): Promise<Result<InstallPlan, InstallRefusal>>;
+  apply(plan: ReadyInstallPlan): Promise<Result<ReadyInstallPlan, InstallRefusal>>;
 }
 
 export interface ResolveCallingHarness {

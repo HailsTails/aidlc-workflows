@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "contextMap": "lint/context-map.ts",
   "glossary": "src/glossary.json",
   "hotFiles": [
@@ -14,6 +14,9 @@
     "harness/*/manifest.ts"
   ],
   "hotFileRule": "A lane edits a hot file only to delete the declarations listed under its monolithDeletions, or within the JSON key paths its hotFileGrants lists for that file (\"*\" grants the whole file). A lane whose owns lists a hot file's exact path writes that file freely. Any other hot-file edit goes through the integration lane.",
+  "ownershipRule": "A lane owns its owns globs plus every legacy file LEGACY_TERRITORY in lint/context-map.ts assigns to a context in its territory. contractFiles are the exception: only lane 0 writes them.",
+  "callerMoveGrant": "A lane that deletes a declaration from a legacy file may edit any file outside src/ only to repoint imports and call sites of that declaration to its new owner, in the same slice as the deletion.",
+  "contractRule": "Lane 0 owns only what crosses an arrow: the published domain types and boundary ports in contractFiles. Each lane owns the rest of its context, including its own application layer and adapters. A lane that needs a cross-arrow change asks lane 0 for it, naming the design move it needs.",
   "lanes": {
     "0": {
       "name": "Contracts",
@@ -21,30 +24,26 @@
       "owns": [
         "src/glossary.json",
         "src/tsconfig.json",
+        "src/README.md",
         "src/kernel/**",
         "src/*/fixtures/**",
         "lint/context-map.ts",
         "lanes.json"
       ],
       "contractFiles": [
-        "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,method,stage-graph,refusals}.ts",
-        "src/workflow-definition/application/{ports,use-cases}.ts",
-        "src/workflow-definition/adapters/{stage-file,scope-file,agent-file,sensor-file,rule-file,plugin-files}.ts",
-        "src/projection/domain/{harness-profile,root-integration,projected-file,neutral-surface,managed-directory,projection}.ts",
-        "src/projection/application/{ports,use-cases}.ts",
-        "src/projection/adapters/harness-profile-file.ts",
-        "src/packaging/domain/{payload,artifact}.ts",
-        "src/packaging/application/{ports,use-cases}.ts",
-        "src/packaging/adapters/distribution-descriptor-file.ts",
-        "src/installation/domain/{ownership,file-operation,install-plan,installed-distribution,refusals}.ts",
-        "src/installation/application/{ports,use-cases}.ts",
-        "src/installation/adapters/ownership-record-file.ts",
-        "src/execution/domain/{identities,unit,gate,review,guard,workflow-record,transition,session,audit,host-event,directive,refusals}.ts",
-        "src/execution/application/{ports,use-cases}.ts",
-        "src/execution/adapters/{intent-registry-file,session-binding-file}.ts",
-        "src/cli/application/ports.ts"
+        "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}.ts",
+        "src/workflow-definition/application/use-cases.ts",
+        "src/projection/domain/{projected-file,neutral-surface,projection}.ts",
+        "src/projection/application/ports.ts",
+        "src/packaging/domain/{payload,root-integration,managed-directory,release-history}.ts",
+        "src/installation/domain/{ownership,file-operation,installed-distribution,sibling-block,refusals}.ts",
+        "src/installation/application/boundary-ports.ts",
+        "src/execution/domain/{identities,unit,gate,review,guard,workflow-record,transition,session,audit,host-event,refusals}.ts",
+        "src/execution/application/boundary-ports.ts",
+        "src/cli/application/ports.ts",
+        "src/cli/roots.ts"
       ],
-      "contractRule": "Contract files are written only by lane 0. A lane that needs a change asks lane 0, which updates contract, fixture and glossary together and posts a one-line decision.",
+      "territory": [],
       "monolithDeletions": {}
     },
     "G": {
@@ -61,6 +60,7 @@
         "biome.json"
       ],
       "notOwned": ["lint/context-map.ts"],
+      "territory": [],
       "hotFileGrants": {
         "package.json": ["devDependencies", "scripts.lint", "scripts.gate"],
         "bun.lock": ["*"]
@@ -70,7 +70,8 @@
     "A": {
       "name": "Workflow Definition",
       "agent": "codex",
-      "owns": ["src/workflow-definition/**"],
+      "owns": ["src/workflow-definition/**", "src/cli/adapters/routes/workflow-definition/**"],
+      "territory": ["workflow-definition"],
       "consumes": ["src/kernel/**"],
       "monolithDeletions": {
         "core/tools/aidlc-lib.ts": [
@@ -116,7 +117,13 @@
     "B": {
       "name": "Projection + Harness port",
       "agent": "codex",
-      "owns": ["src/projection/**", "harness/*/**"],
+      "owns": [
+        "src/projection/**",
+        "src/hosts/*/projection/**",
+        "src/cli/adapters/routes/projection/**",
+        "harness/*/**"
+      ],
+      "territory": ["projection"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
       "monolithDeletions": {
         "scripts/package.ts": ["writeHarnessData", "buildTree", "loadManifest", "writeHarness"],
@@ -132,12 +139,14 @@
     "C": {
       "name": "Packaging + Installation",
       "agent": "codex",
-      "owns": ["src/packaging/**", "src/installation/**"],
-      "consumes": [
-        "src/kernel/**",
-        "src/projection/domain/**",
-        "src/projection/adapters/harness-profile-file.ts"
+      "owns": [
+        "src/packaging/**",
+        "src/installation/**",
+        "src/hosts/*/{packaging,installation}/**",
+        "src/cli/adapters/routes/{packaging,installation}/**"
       ],
+      "territory": ["packaging", "installation"],
+      "consumes": ["src/kernel/**", "src/projection/domain/**", "src/packaging/domain/**"],
       "monolithDeletions": {
         "core/tools/aidlc-init.ts": ["RootContribution", "Baseline", "PreparedRefreshSource", "PlannedAction"],
         "core/tools/aidlc-distribution.ts": ["ProjectionStamp", "RootIntegration", "ProjectionDescriptor", "JsonEntriesOwnership", "JsonEntriesResult"],
@@ -151,7 +160,14 @@
       "name": "Workflow Execution",
       "agent": "codex",
       "startsAfter": ["A", "B", "C"],
-      "owns": ["src/execution/**", "src/cli/**", "core/hooks/**"],
+      "owns": [
+        "src/execution/**",
+        "src/cli/**",
+        "src/hosts/*/{cli,execution}/**",
+        "src/hosts/*/bundle.ts",
+        "core/hooks/**"
+      ],
+      "territory": ["execution", "cli"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
       "monolithDeletions": {
         "core/tools/aidlc-lib.ts": ["CHECKBOX_REVERSE", "resolveReviewClass", "UnitCheckpoint", "GateReply", "UnitGateRhythm"],

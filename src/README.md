@@ -1,11 +1,14 @@
 # src: AI-DLC by bounded context
 
-- One folder per context: `workflow-definition`, `projection`, `packaging`, `installation`, `execution`, `cli`, plus `kernel` for shared identity values.
-- Each context has `domain/` (pure types and rules), `application/` (ports and use cases), `adapters/` (IO, Zod at every file and JSON edge), `fixtures/` (test support only) and one `main.ts` composition root.
+- One folder per context: `workflow-definition`, `projection`, `packaging`, `installation`, `execution`, `cli`, plus `kernel` for shared identity values and paths.
+- Each context has `domain/` (pure types and rules), `application/` (ports and use cases), `adapters/` (IO, Zod at every file and JSON edge) and `fixtures/` (test support only).
 - Arrows: Workflow Definition → Projection → Packaging → Installation; Workflow Definition → Execution; the CLI composes the roots. They are data in `lint/context-map.ts` and enforced by `eslint.config.ts`.
-- A context imports another context's `domain/` only; an adapter may also import an upstream `adapters/*-file.ts` file format where the map allows.
+- A context imports another context's `domain/` only; an adapter may also import an upstream `adapters/*-file.ts` file format where the map allows. A port another context or a host implements lives in its context's `application/boundary-ports.ts` (Projection's in `application/ports.ts`), and only the composition roots import it.
+- Host knowledge has one home per harness: `src/hosts/<harness>/` implements each context's host port (Projection's `Harness`, Packaging's `DistributionLayout`, Installation's `HostShell`, Execution's `HostConversationSource` and `HostEvents`, the CLI's decoder and encoder), and only the composition roots import it.
+- Composition roots: `src/cli/roots.ts` declares the build root and the runtime root and the `HostBundle` each takes; the CLI's entry points implement them.
+- Method sources are read once by Workflow Definition, authored or installed under a harness's `MethodSourceRoot`; Projection places them with token substitution only and renders native files from the compiled `Method`.
 - Every exported domain or application type is one line in `glossary.json`, under its one owning context; ESLint refuses a second declaration anywhere.
-- Contract files are lane 0's (`lanes.json`); ask lane 0 to change one.
+- Types and ports that cross an arrow are listed as `contractFiles` in `lanes.json`; a change to one is a change to every context that reads it, so it lands with the glossary and fixtures in one slice.
 - Fixtures are shape fixtures: real identities and frontmatter values, abridged prose and file bodies, references that may point outside the slice. Never shape production output to match fixture bytes; exact outputs come from Lane G's goldens, and compile inputs come from real `core/`.
 - `src/` sits beside `core/` and `scripts/`: `core/` is projected content, `scripts/` is build-only, and runtime contexts ship through Packaging's `ToolBundler`.
 - Typecheck: `bunx tsc --noEmit -p src/tsconfig.json`. Lint: `bun --bun ./node_modules/.bin/eslint src lint`.

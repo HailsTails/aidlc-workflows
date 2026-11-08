@@ -1,7 +1,9 @@
 import type { Brand } from "./brand.ts";
 import { accepted, refused, type Result } from "./result.ts";
 
-export type RelativePath = Brand<string, "RelativePath">;
+export type ProjectPath = Brand<string, "ProjectPath">;
+
+export type SourcePath = Brand<string, "SourcePath">;
 
 export type ContentHash = Brand<string, "ContentHash">;
 
@@ -13,32 +15,43 @@ export type Timestamp = Brand<string, "Timestamp">;
 
 export type NonEmptyArray<Item> = readonly [Item, ...Item[]];
 
+export type PathBase = "project" | "source";
+
 export type KernelRefusal =
-  | { readonly kind: "invalid-relative-path"; readonly raw: string }
+  | { readonly kind: "invalid-path"; readonly base: PathBase; readonly raw: string }
   | { readonly kind: "invalid-content-hash"; readonly raw: string }
   | { readonly kind: "invalid-framework-version"; readonly raw: string }
   | { readonly kind: "invalid-distribution-id"; readonly raw: string }
   | { readonly kind: "invalid-timestamp"; readonly raw: string };
 
-const ABSOLUTE_OR_DRIVE = /^(?:\/|[A-Za-z]:)/;
+const UNPORTABLE_CHARACTER = /[\\:*?"<>|\u0000-\u001f]/;
+const TRAILING_DOT_OR_SPACE = /[. ]$/;
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 const CONTENT_HASH = /^sha256:[0-9a-f]{64}$/;
 const DISTRIBUTION_ID = /^[a-z][a-z0-9-]*$/;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const FRAMEWORK_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-preview\.\d{8}\.[1-9]\d*)?$/;
 
-const isEscapingSegment = (segment: string): boolean => segment === ".." || segment === "";
+const isPortableSegment = (segment: string): boolean =>
+  segment !== "" &&
+  segment !== "." &&
+  segment !== ".." &&
+  !UNPORTABLE_CHARACTER.test(segment) &&
+  !TRAILING_DOT_OR_SPACE.test(segment) &&
+  !WINDOWS_DEVICE_NAME.test(segment);
 
-const isRelativePath = (raw: string): boolean =>
-  raw.length > 0 &&
-  !raw.includes("\\") &&
-  !ABSOLUTE_OR_DRIVE.test(raw) &&
-  !raw.split("/").some(isEscapingSegment);
+const isRelativePath = (raw: string): boolean => raw.split("/").every(isPortableSegment);
 
-export const relativePath = (raw: string): Result<RelativePath, KernelRefusal> =>
+export const projectPath = (raw: string): Result<ProjectPath, KernelRefusal> =>
   isRelativePath(raw)
-    ? accepted(raw as RelativePath)
-    : refused({ kind: "invalid-relative-path", raw });
+    ? accepted(raw as ProjectPath)
+    : refused({ kind: "invalid-path", base: "project", raw });
+
+export const sourcePath = (raw: string): Result<SourcePath, KernelRefusal> =>
+  isRelativePath(raw)
+    ? accepted(raw as SourcePath)
+    : refused({ kind: "invalid-path", base: "source", raw });
 
 export const contentHash = (raw: string): Result<ContentHash, KernelRefusal> =>
   CONTENT_HASH.test(raw)
