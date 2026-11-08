@@ -42,3 +42,5 @@ export const projectCoreCommands = (request: Parameters<typeof prepareLegacyRunn
 export { loadAuthoredPluginBuild as loadPluginBuildCatalog,
   type AuthoredPluginBuild as PluginBuildCatalog, type PluginBuildTarget }
   from "../workflow-definition/core-root.ts";
+
+export { pluginId as pluginBuildName } from "../workflow-definition/domain/identities.ts";
