@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { sourcePath } from "../../kernel/values.ts";
+import { accepted, refused, type Result } from "../../kernel/result.ts";
+import type { MethodRefusal } from "../domain/refusals.ts";
 import { RULE_LEVELS } from "../domain/contribution.ts";
 
 const kebab = z.string().regex(/^[a-z][a-z0-9-]*$/);
@@ -6,7 +9,8 @@ const kebab = z.string().regex(/^[a-z][a-z0-9-]*$/);
 const canonical = <Path extends string>(path: Path) => z.literal(path).optional();
 
 const PluginCommandSchema = z.strictObject({
-  script: z.string().regex(/^tools\/[^/]+\.ts$/),
+  script: z.string().regex(/^tools\/[^/]+\.ts$/).refine((raw) => sourcePath(raw).ok,
+    { message: "Command script must be a portable source path." }),
   description: z.string().min(1),
 });
 
@@ -61,3 +65,16 @@ export const OverlayFileSchema = z.strictObject({
 });
 
 export type OverlayFile = z.infer<typeof OverlayFileSchema>;
+
+export const readPluginManifest = (request: { readonly plugin: string; readonly raw: string }):
+  Result<PluginManifestFile, readonly MethodRefusal[]> => {
+  const location = { kind: "plugin-manifest" as const, plugin: request.plugin };
+  try {
+    const decoded = PluginManifestFileSchema.safeParse(JSON.parse(request.raw));
+    return decoded.success ? accepted(decoded.data) : refused([{ kind: "invalid-file", location,
+      issues: decoded.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`) }]);
+  } catch {
+    return refused([{ kind: "invalid-file", location,
+      issues: ["Plugin manifest must contain valid JSON."] }]);
+  }
+};
