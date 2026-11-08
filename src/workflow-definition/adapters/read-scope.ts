@@ -30,7 +30,7 @@ const scopeOf = (request: { readonly file: ScopeFile; readonly guidance: string;
   return {
     source: source.path, name: authoredValue(scopeName(file.name)),
     owner: file.plugin ? { kind: "plugin", plugin: authoredValue(pluginId(file.plugin)) }
-      : { kind: "core" },
+      : source.owner,
     description: file.description, keywords: file.keywords, depth: depthOf(file.depth),
     testStrategy: file.testStrategy ?? null, runner: file.runner === "true" ? "generated" : "none",
     skeleton: file.skeleton === "on" ? "walking-skeleton" : "none",

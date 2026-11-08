@@ -9,3 +9,9 @@ export type CapturedSourceFile = {
 export interface SourceFiles {
   read(directory: SourcePath): Promise<readonly CapturedSourceFile[]>;
 }
+
+export type CapturedPluginFiles = {
+  readonly directory: string;
+  readonly manifest: CapturedSourceFile;
+  readonly files: readonly CapturedSourceFile[];
+};

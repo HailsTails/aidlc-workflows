@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { OverlayFileSchema, PluginManifestFileSchema } from "./plugin-files.ts";
+import { OverlayFileSchema, PluginManifestFileSchema, readPluginManifest } from "./plugin-files.ts";
 
 const TEST_PRO_MANIFEST = `{
   "name": "test-pro", "version": "0.1.1",
@@ -158,5 +158,19 @@ describe("OverlayFileSchema", () => {
       success: false,
       error: { issues },
     });
+  });
+});
+
+describe("readPluginManifest", () => {
+  test("decodes the captured manifest through the published schema", () => {
+    expect(readPluginManifest({ plugin: "test-pro", raw: TEST_PRO_MANIFEST }))
+      .toEqual({ ok: true, value: JSON.parse(TEST_PRO_MANIFEST) });
+  });
+
+  test("invalid JSON is refusal data at the actual plugin", () => {
+    expect(readPluginManifest({ plugin: "broken-plugin", raw: "{" })).toEqual({ ok: false,
+      refusal: [{ kind: "invalid-file", location: {
+        kind: "plugin-manifest", plugin: "broken-plugin" },
+      issues: ["Plugin manifest must contain valid JSON."] }] });
   });
 });

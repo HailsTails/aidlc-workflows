@@ -19,7 +19,7 @@ export const loadCoreBuild = async (request: {
 }): Promise<Result<CoreBuild, readonly MethodRefusal[]>> => {
   const loaded = await loadAuthoredCoreMethod(request);
   if (!loaded.ok) return loaded;
-  const { method, sources } = loaded.value;
+  const { method } = loaded.value;
   const project = (target: CoreBuildTarget): Result<CompiledMethodFiles, KernelRefusal> => {
     const distribution = distributionId(target.name);
     if (!distribution.ok) return distribution;
@@ -31,10 +31,14 @@ export const loadCoreBuild = async (request: {
       host: { distribution: distribution.value, directory: directory.value },
       memoryRoot: memoryRoot.value }));
   };
-  return accepted({ method, sources, project });
+  return accepted({ ...loaded.value, project });
 };
 
 export const projectCoreCommands = (request: Parameters<typeof prepareLegacyRunners>[0] & {
   readonly place: CommandPlacement;
 }): Rendering => projectMethodCommands({ method: request.method,
   harness: createCommandRenderers({ source: prepareLegacyRunners(request), place: request.place }) });
+
+export { loadAuthoredPluginBuild as loadPluginBuildCatalog, pluginNamespaceIssues,
+  type AuthoredPluginBuild as PluginBuildCatalog, type PluginBuildTarget }
+  from "../workflow-definition/core-root.ts";
