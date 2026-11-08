@@ -216,7 +216,6 @@ HookActivation
 HookHeartbeatStamp
 HookLiveness
 HookOutput
-HostHookCall
 HostTurnTemplate
 HumanTurnState
 INSTRUCTION_KINDS
@@ -530,7 +529,6 @@ UnitSourceManifest
 UnitSourceManifestWrite
 UnitSourceSnapshot
 UnitsRepoChange
-UnmetPlanInput
 UnsavedReason
 VERIFICATION_COMMAND_CHECKPOINT
 VerificationCommand
@@ -592,7 +590,6 @@ aidlcRootIntegrations
 aidlcRootSettingsExcluded
 allowMainCheckoutChangeCommand
 ambiguousWorkspaceRecordDirs
-annotateSubagentInflight
 answerModeFromReply
 answerModeStageStartedFields
 answeredBeforeShownStep
@@ -708,7 +705,6 @@ codekbAnalysed
 codekbDir
 codekbFingerprintExcludes
 codekbRepoName
-codekbScopeChangedFiles
 codekbScopeFingerprint
 codekbSourceFingerprint
 codekbSourceRoot
@@ -786,7 +782,6 @@ defaultScopeResolution
 deriveHarnessDir
 developerHandoffPaths
 dictatedReviewNotice
-discardSubagentInflight
 discoverSiblingRepos
 dispatchStep
 docsDir
@@ -847,7 +842,6 @@ findIntentByUuid
 findPlanApprovalLegacyOwner
 findStageByNumber
 findStageBySlug
-findSubagentInflight
 finishUnitStepRemedy
 finishedBeforeSummaryOn
 finishedWork
@@ -893,7 +887,6 @@ gitSourceClaimHeadAndTree
 gitSourceClaimIgnored
 gitSourceClaimRepoCache
 gitSourceClaimRepoKey
-gitSubmoduleNames
 gitTreeLeafEntries
 governedChangeControl
 governedGuardPolicy
@@ -941,9 +934,7 @@ hasDurableSourceBindingEvidence
 hasModernSourceBindingEvidence
 hasPendingDecision
 hasRunnerGenMarker
-hasSubagentInflight
 hasUnsafeSingleLineCharacter
-heartbeatAt
 holdsAnyFile
 holdsDotnetProject
 hookActivation
@@ -963,7 +954,6 @@ hooksNeverRanHere
 hooksOffAgentStep
 hostChatStartFolder
 hostEnvelopeTurnText
-hostHookCallsDir
 hostLine
 hostRecordsAgentFinishes
 hostTemplateOrigin
@@ -1368,10 +1358,8 @@ readCurrentSessionId
 readGateWords
 readGuardRefusalRecord
 readHeartbeats
-readHostHookCall
 readIssuedDirectiveMarker
 readKiroIdeLegacyPlanApprovalHost
-readListedIntents
 readNextLine
 readNextTokens
 readOrchestratorLauncherOptions
@@ -1423,7 +1411,6 @@ recordGuardRefusal
 recordGuardStoodAside
 recordHookDrop
 recordHookTrace
-recordHostHookCall
 recordIntentKey
 recordPreWorkflowHeartbeat
 recordRelativeFileName
@@ -1480,7 +1467,6 @@ repoBaselineAdditionField
 repoChangeWords
 repoCwdOrThrow
 repoDir
-repoIsWorkspace
 repoScopeAsked
 repoScopePassedOver
 reportResult
@@ -1493,7 +1479,6 @@ requireLiveClaimForTeamUnit
 requireProtectedResponse
 resetStateWrites
 resolveActiveDirectiveTarget
-resolveAuthoredBoltDag
 resolveBoltDag
 resolveBoltIdentity
 resolveCeremony
@@ -1558,7 +1543,6 @@ reviewedSourceRefPrefix
 reviewerCompletionAfter
 reviewerDispatchPath
 reviewerGateGuardDisabled
-rootCarriesWorkspaceShell
 rotatePlanApprovalLegacyOwner
 rowsAfterMark
 rulesSubdir
@@ -1590,11 +1574,9 @@ scopeCostSummary
 scopeDefinitionGuardPolicy
 scopeGridOnProject
 scopeGridPath
-scopeGridStages
 scopeGuardPolicyDefault
 scopeMappingPath
 scopePathCovered
-scopePlanGrid
 scopeSettingsOffList
 scopedReviewCopyName
 scopesDir
@@ -1811,7 +1793,6 @@ unitChangeCommand
 unitCompletedReceipts
 unitDependencyPath
 unitGateStatus
-unitIntegratingReceipts
 unitLifecycleReceiptsInUse
 unitLifecycleRunFloorForProject
 unitLifecycleSnapshot
@@ -1834,7 +1815,6 @@ unitSourceFingerprint
 unitStageRecordRelPath
 unitStepInProgress
 unitStepRedoClears
-unitTeams
 unitsBlockRepair
 unitsRepoChange
 unitsRepoChangeAcceptance
@@ -1844,7 +1824,6 @@ unitsReposAskPassedOver
 unknownRuntimeSessionWarning
 unlistedRecordForQuestion
 unmergedRootSettingsNotices
-unmetProducerInPlan
 unrecordedKiroCliSteers
 unresolvedTeamGateRemedy
 unsavedOutputsMessage

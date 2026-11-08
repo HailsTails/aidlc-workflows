@@ -18,10 +18,11 @@ export type LintDependencies = {
   readonly ruleInputs: readonly string[];
 };
 
-const targetsOf = (scope: GateScope, ruleInputs: readonly string[]): LintTargets =>
-  scope.everything || touches(scope, ruleInputs)
-    ? { kind: "all" }
-    : { kind: "files", files: presentPaths(scope.changes) };
+const targetsOf = (scope: GateScope): LintTargets =>
+  scope.everything ? { kind: "all" } : { kind: "files", files: presentPaths(scope.changes) };
+
+const RULES_CHANGED =
+  "; lint rules changed, so only --full re-measures every file against the baseline";
 
 const removedFiles = (request: {
   readonly scope: GateScope;
@@ -54,7 +55,7 @@ const noteFor = (recorded: CountsByFile, measurement: LintMeasurement): string =
 export const lintCheck = (dependencies: LintDependencies): GateCheck => ({
   id: "lint",
   run: async (scope) => {
-    const targets = targetsOf(scope, dependencies.ruleInputs);
+    const targets = targetsOf(scope);
     if (targets.kind === "files" && targets.files.length === 0) {
       return skipped("lint", "no changed files to lint");
     }
@@ -67,6 +68,8 @@ export const lintCheck = (dependencies: LintDependencies): GateCheck => ({
     if (scope.record) {
       record({ scope, targets, recorded, measurement, records: dependencies.records });
     }
-    return judged({ id: "lint", findings, note: noteFor(recorded, measurement) });
+    const partial = !scope.everything && touches(scope, dependencies.ruleInputs);
+    const note = `${noteFor(recorded, measurement)}${partial ? RULES_CHANGED : ""}`;
+    return judged({ id: "lint", findings, note });
   },
 });

@@ -25,13 +25,15 @@ export const MESSAGE_CATEGORY_RULES: readonly string[] = [
 
 const PARSE_FAILURE = "parse-error";
 
+const CATEGORY_LABEL = /(?:^|\. )([A-Z][a-z]+(?: [a-z]+)*): /;
+
 export const categoryOf = (lintMessage: LintMessage): string => {
   const { ruleId, message } = lintMessage;
   if (ruleId === null) {
     return PARSE_FAILURE;
   }
-  const prefix = message.split(":", 1)[0] ?? ruleId;
-  return MESSAGE_CATEGORY_RULES.includes(ruleId) && prefix !== message ? prefix : ruleId;
+  const label = CATEGORY_LABEL.exec(message)?.[1];
+  return MESSAGE_CATEGORY_RULES.includes(ruleId) && label !== undefined ? label : ruleId;
 };
 
 export const countCategories = (messages: readonly LintMessage[]): CategoryCounts =>

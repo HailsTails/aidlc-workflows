@@ -20,7 +20,12 @@ import {
 import { jsonReader } from "../lint/gate/adapters/json-reader.ts";
 import { lanesFile } from "../lint/gate/adapters/lanes-file.ts";
 import { processRunner } from "../lint/gate/adapters/process-runner.ts";
-import { ratchetRecords, type MonolithRecordFiles } from "../lint/gate/adapters/ratchet-records.ts";
+import { ratchetRecords } from "../lint/gate/adapters/ratchet-records.ts";
+import {
+  LIB_DECLARATIONS,
+  MONOLITH_TEST,
+  RECORD_LOCATIONS,
+} from "../lint/gate/adapters/record-locations.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
 import type { GateCheck } from "../lint/gate/application/gate-check.ts";
 import { goldensCheck, type GoldensDependencies } from "../lint/gate/application/goldens-check.ts";
@@ -36,36 +41,16 @@ import type { LanePlan } from "../lint/gate/domain/lane-plan.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/[\\/]$/, "");
 const BUN = process.execPath;
-const UPSTREAM_PIN = "66d08a909";
 const DEFAULT_BASE = "origin/claude/aidlc-contracts-2db5c9";
 
 const RULE_INPUTS = ["eslint.config.ts", "lint/*.ts", "src/glossary.json", "bun.lock"];
 const LINT_ROOTS = ["core", "harness", "scripts", "plugins", "src", "lint", "tests"];
 const LOOSE_TESTS = ["tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts"];
-const MONOLITH_TEST = "tests/unit/t-aidlc-lib-only-shrinks.test.ts";
-const LIB_DECLARATIONS = "tests/fixtures/aidlc-lib-declarations.txt";
 
 const workspace = fileWorkspace(ROOT);
 const repository = gitRepository(ROOT);
 const runner = processRunner(ROOT);
-
-const declarationsRecordOf = (file: string): MonolithRecordFiles => ({
-  file,
-  declarations: file.endsWith("aidlc-lib.ts")
-    ? LIB_DECLARATIONS
-    : `tests/ratchets/${file.split("/").at(-1)?.replace(/\.ts$/, "")}-declarations.txt`,
-});
-
-const records = ratchetRecords({
-  repository,
-  workspace,
-  locations: {
-    boundary: "lint/boundary-baseline.json",
-    monolithLines: "tests/ratchets/monolith-lines.json",
-    monoliths: MONOLITH_FILES.map(declarationsRecordOf),
-    upstream: UPSTREAM_PIN,
-  },
-});
+const records = ratchetRecords({ repository, workspace, locations: RECORD_LOCATIONS });
 
 const harnesses = (): readonly string[] =>
   workspace

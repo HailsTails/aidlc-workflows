@@ -1,7 +1,10 @@
 import { builtinModules } from "node:module";
 import type { Rule } from "eslint";
 
-const BUILTINS = new Set(builtinModules.filter((name) => !name.startsWith("_")));
+const isNodeBuiltin = (name: string): boolean =>
+  !name.startsWith("_") && !name.includes(":") && name !== "bun";
+
+const BUILTINS = new Set(builtinModules.filter(isNodeBuiltin));
 
 const isBareBuiltin = (source: unknown): source is string =>
   typeof source === "string" && BUILTINS.has(source.split("/")[0] ?? source);
