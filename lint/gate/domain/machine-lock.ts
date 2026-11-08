@@ -25,8 +25,7 @@ export const isStale = (observation: LockObservation): boolean => {
   if (owner === undefined) {
     return ageMs > UNREADABLE_OWNER_GRACE_MS;
   }
-  const deadOnThisHost = owner.host === observation.host && !observation.ownerAlive;
-  return deadOnThisHost || ageMs > LOCK_MAX_AGE_MS;
+  return owner.host === observation.host ? !observation.ownerAlive : ageMs > LOCK_MAX_AGE_MS;
 };
 
 export const describeOwner = (owner: LockOwner | undefined): string =>

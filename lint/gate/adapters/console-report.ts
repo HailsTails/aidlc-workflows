@@ -1,6 +1,6 @@
 import { distinctFixes, type CheckOutcome } from "../domain/outcome.ts";
 import type { Progress } from "../application/ports.ts";
-import type { GateReport } from "../application/run-gate.ts";
+import type { GateProblem, GateReport } from "../application/run-gate.ts";
 
 export const SUMMARY_PREFIX = "AIDLC_GATE";
 
@@ -48,8 +48,14 @@ export const summaryLine = (report: GateReport): string => {
     result: report.verdict,
     checks,
     ...(report.problem === undefined ? {} : { problem: report.problem }),
+    ...(report.exitCode === undefined ? {} : { exitCode: report.exitCode }),
   };
   return `${SUMMARY_PREFIX} ${JSON.stringify(summary)}`;
+};
+
+export const usageSummaryLine = (problem: GateProblem): string => {
+  const summary = { schema: 1, mode: "usage", lane: null, base: null, result: "error", checks: [] };
+  return `${SUMMARY_PREFIX} ${JSON.stringify({ ...summary, problem })}`;
 };
 
 export const printProblem = (report: GateReport): void => {

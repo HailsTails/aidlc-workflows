@@ -17,8 +17,12 @@ export const USAGE = [
   "bun scripts/gate.ts --locked [--wait <seconds> | --no-wait] -- <command> [args...]",
   "",
   `--only <id>[,<id>...] limits --scope or --full to checks: ${CHECK_IDS.join(", ")}.`,
-  "Run from the lane worktree root. One stdout line: AIDLC_GATE {json}.",
+  "Run from the lane worktree root. Every run, usage errors included, ends with one",
+  "stdout line: AIDLC_GATE {json}. --help prints this text only.",
   "Exit: 0 green, 1 red, 2 usage or environment error, 3 machine lock busy.",
+  "--locked streams the command's own output and exits with its exit code; its",
+  "summary line carries that code as exitCode (green on 0, red otherwise).",
+  "The lock is never broken while its owner process is alive on the same host.",
   "Env: AIDLC_GATE_BASE (default base ref), AIDLC_GATE_LOCK_DIR (lock folder; default",
   "     .aidlc-gate in the folder that holds the main checkout).",
 ].join("\n");
@@ -63,7 +67,7 @@ type Raw = z.infer<typeof RawSchema>;
 const usageError = (problem: string): Loaded<never> => ({
   ok: false,
   problem,
-  fix: `Use one mode:\n${USAGE}`,
+  fix: "Run bun scripts/gate.ts --help and pass one of its modes.",
 });
 
 const waitMs = (raw: Raw, defaults: ArgumentDefaults): number =>

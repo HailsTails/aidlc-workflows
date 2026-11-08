@@ -102,8 +102,10 @@ describe("machine lock staleness", () => {
     startedAt: 0,
   };
 
-  test("a live holder on this host keeps the lock", () => {
+  test("a live holder on this host keeps the lock however long it runs", () => {
     expect(isStale({ owner, ageMs: 1000, ownerAlive: true, host: "rin" })).toBe(false);
+    const longRun = { owner, ageMs: LOCK_MAX_AGE_MS * 3, ownerAlive: true, host: "rin" };
+    expect(isStale(longRun)).toBe(false);
   });
 
   test("a dead holder on this host is stale at once", () => {

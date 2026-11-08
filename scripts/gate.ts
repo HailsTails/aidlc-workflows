@@ -5,6 +5,7 @@ import {
   consoleProgress,
   printProblem,
   summaryLine,
+  usageSummaryLine,
 } from "../lint/gate/adapters/console-report.ts";
 import {
   directoryLock,
@@ -153,6 +154,7 @@ const main = async (): Promise<number> => {
   const request = gateRequestFrom(Bun.argv.slice(2), defaults);
   if (!request.ok) {
     process.stderr.write(`gate · error: ${request.problem}\n${request.fix}\n`);
+    process.stdout.write(`${usageSummaryLine({ problem: request.problem, fix: request.fix })}\n`);
     return EXIT_CODES.error;
   }
   if (request.value.kind === "help") {
