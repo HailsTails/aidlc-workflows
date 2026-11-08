@@ -11,8 +11,8 @@ import { validateStage } from "../domain/stage-invariants.ts";
 import { decodeMarkdown, translated, authoredValue } from "./authored-markdown.ts";
 import { STAGE_RESERVED_KEYS, StageFileSchema, type StageFile } from "./stage-file.ts";
 
-const ownerOf = (file: StageFile): Owner => {
-  if (!file.plugin) return { kind: "core" };
+const ownerOf = (file: StageFile, source: MethodSourceLocation): Owner => {
+  if (!file.plugin) return source.owner;
   return { kind: "plugin", plugin: authoredValue(pluginId(file.plugin)) };
 };
 
@@ -80,7 +80,7 @@ const stageOf = (request: { readonly file: StageFile; readonly body: AuthoredBod
     word.charAt(0).toUpperCase() + word.slice(1)).join(" "),
   phase: file.phase,
   orderingHint: file.number ? Number(file.number.split(".")[1]) : null,
-  owner: ownerOf(file),
+  owner: ownerOf(file, source),
   execution: { trigger: file.execution === "ALWAYS" ? "always" : "conditional",
     condition: file.condition },
   participation: participationOf(file),

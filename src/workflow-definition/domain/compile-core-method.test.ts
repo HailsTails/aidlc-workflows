@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { methodSource } from "../fixtures/method-source.fixture.ts";
+import { pluginId } from "./identities.ts";
 import { artifact, scope, stage } from "../fixtures/identities.fixture.ts";
 
 import { compileCoreMethod, numberStage } from "./compile-core-method.ts";
@@ -81,4 +82,12 @@ test("compilation returns an unattributed membership without inventing a source"
     ok: false, refusal: [{ kind: "unattributed-membership", scope: scope("missing-scope"),
       stage: stage("missing-stage"), declaredBy: { kind: "core" } }],
   });
+});
+
+test("core admission still rejects a plugin-owned definition before minting a Method", () => {
+  const claimed = { kind: "plugin" as const, plugin: accept(pluginId("extension")) };
+  expect(compileCoreMethod({ ...core, stages: [{ ...requirements, owner: claimed }] }))
+    .toEqual({ ok: false, refusal: [{ kind: "invalid-file", location: {
+      kind: "method-source", owner: { kind: "core" }, path: requirements.source },
+    issues: ["An authored core definition may not claim non-core ownership"] }] });
 });

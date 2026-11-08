@@ -61,7 +61,8 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { loadCoreBuild, projectCoreCommands } from "../src/cli/core-build-root.ts";
+import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName, projectCoreCommands,
+  type PluginBuildCatalog, type PluginBuildTarget } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import {
   runnerProducer, orchestratorSkillLocation, type HarnessManifest,
@@ -1943,25 +1944,6 @@ if (argv[0] === "codex" && argv[1] === "trust") {
 
 const PLUGINS_ROOT = join(REPO_ROOT, "plugins");
 
-function discoverPluginNames(): string[] {
-  if (!existsSync(PLUGINS_ROOT)) return [];
-  const names = readdirSync(PLUGINS_ROOT)
-    .filter((n) => existsSync(join(PLUGINS_ROOT, n, ".aidlc-plugin", "plugin.json")))
-    .sort();
-  // `aidlc` and `aidlc-*` are core's namespace: `aidlc` is the implicit core
-  // plugin in selection, and an `aidlc-<x>` plugin's runner dirs land on core
-  // runner paths (runner-gen uses the bare slug for plugin stages but
-  // `aidlc-<slug>` for core), silently clobbering them.
-  for (const n of names) {
-    if (n === "aidlc" || n.startsWith("aidlc-")) {
-      throw new Error(
-        `plugins/${n}: plugin names must not be "aidlc" or start with "aidlc-" (reserved for core; an aidlc-<x> plugin collides with core runner paths). Rename the plugin directory.`
-      );
-    }
-  }
-  return names;
-}
-
 // Per-harness plugin projection descriptors are derived from manifests once,
 // consumed directly by the checkout emitter, and emitted into every tools/data
 // bundle for the standalone builder. Manifests remain the single source.
@@ -2012,7 +1994,7 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
 }
 
 function buildRepositoryPluginProjection(
-  pluginName: string,
+  plugin: PluginBuildTarget,
   harnessName: string,
   outDir: string,
   outputBoundary = REPO_ROOT,
@@ -2024,7 +2006,7 @@ function buildRepositoryPluginProjection(
     );
   }
   emitPluginProjection({
-    pluginRoot: join(PLUGINS_ROOT, pluginName),
+    pluginRoot: join(PLUGINS_ROOT, plugin.directory),
     target,
     outDir,
     outputBoundary,
@@ -2041,27 +2023,25 @@ function pluginHarnessesFor(harnesses: string[]): string[] {
   return harnesses.filter((h) => pluginTargetFor(h) !== null);
 }
 
-function emitPlugins(
-  harnesses: string[],
-  distRoot = join(REPO_ROOT, "dist"),
-  log = true,
-): void {
-  for (const pluginName of discoverPluginNames()) {
+function emitPlugins(request: { harnesses: string[]; plugins: PluginBuildCatalog;
+  distRoot?: string; output?: "verbose" | "silent" }): void {
+  const { harnesses, plugins, distRoot = join(REPO_ROOT, "dist"), output = "verbose" } = request;
+  for (const plugin of plugins.plugins) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
       buildRepositoryPluginProjection(
-        pluginName,
+        plugin,
         harnessName,
-        join(distRoot, "plugins", pluginName, harnessName),
+        join(distRoot, "plugins", plugin.directory, harnessName),
         distRoot,
       );
-      if (log) {
-        console.log(`[plugin:${pluginName}] emitted dist/plugins/${pluginName}/${harnessName}/`);
+      if (output === "verbose") {
+        console.log(`[plugin:${plugin.directory}] emitted dist/plugins/${plugin.directory}/${harnessName}/`);
       }
     }
   }
   const built = pluginHarnessesFor(harnesses).map((name) => pluginTargetFor(name) as PluginTarget);
   for (const file of writeFirstPartyCatalogues(join(distRoot, "plugins"), built)) {
-    if (log) console.log(`[plugins] emitted dist/plugins/${file}`);
+    if (output === "verbose") console.log(`[plugins] emitted dist/plugins/${file}`);
   }
 }
 
@@ -2077,10 +2057,12 @@ function removeUnexpectedGeneratedEntries(
   }
 }
 
-function cleanWriteOutputs(harnesses: string[], fullBuild: boolean): void {
+function cleanWriteOutputs(request: { harnesses: string[]; kind: "full" | "named";
+  plugins: PluginBuildCatalog }): void {
+  const { harnesses, kind, plugins } = request;
   const distRoot = join(REPO_ROOT, "dist");
   const releaseRoot = join(REPO_ROOT, "dist-release");
-  if (fullBuild) {
+  if (kind === "full") {
     removeUnexpectedGeneratedEntries(
       distRoot,
       new Set([...harnesses, "plugins"]),
@@ -2090,10 +2072,10 @@ function cleanWriteOutputs(harnesses: string[], fullBuild: boolean): void {
     return;
   }
 
-  for (const pluginName of discoverPluginNames()) {
+  for (const plugin of plugins.plugins) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
       rmSync(
-        join(distRoot, "plugins", pluginName, harnessName),
+        join(distRoot, "plugins", plugin.directory, harnessName),
         { recursive: true, force: true },
       );
     }
@@ -2117,7 +2099,8 @@ function assertIdenticalRootIntegrations(root: string, harnesses: string[]): voi
   }
 }
 
-function buildCheckPass(root: string, harnesses: string[]): void {
+function buildCheckPass(request: { root: string; harnesses: string[]; plugins: PluginBuildCatalog }): void {
+  const { root, harnesses, plugins } = request;
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
   for (const name of harnesses) {
@@ -2130,15 +2113,15 @@ function buildCheckPass(root: string, harnesses: string[]): void {
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
   assertIdenticalRootIntegrations(releaseRoot, harnesses);
-  emitPlugins(harnesses, distRoot, false);
+  emitPlugins({ harnesses, plugins, distRoot, output: "silent" });
 }
 
-function checkPackageDeterminism(harnesses: string[]): string[] {
+function checkPackageDeterminism(harnesses: string[], plugins: PluginBuildCatalog): string[] {
   const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
   const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
   try {
-    buildCheckPass(first, harnesses);
-    buildCheckPass(second, harnesses);
+    buildCheckPass({ root: first, harnesses, plugins });
+    buildCheckPass({ root: second, harnesses, plugins });
     return [
       ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
       ...diffTrees(
@@ -2170,15 +2153,28 @@ if (argv[0] === "plugin" && argv[1] === "build") {
     console.error("usage: package.ts plugin build <plugin> <harness> <outDir>");
     process.exit(1);
   }
-  // Proper usage errors, never a raw ENOENT/rmSync stack.
-  // Reserved-name check FIRST so the error names the real problem even when
-  // the directory doesn't exist yet (same rule discoverPluginNames enforces).
-  if (pluginName === "aidlc" || pluginName.startsWith("aidlc-")) {
-    console.error(`plugin name "${pluginName}" is reserved: names must not be "aidlc" or start with "aidlc-" (an aidlc-<x> plugin collides with core runner paths). Rename the plugin.`);
+  const identity = pluginBuildName(pluginName);
+  if (!identity.ok) {
+    console.error(identity.refusal.kind === "reserved-plugin-name"
+      ? `plugin name "${identity.refusal.raw}" is reserved; choose a non-reserved plugin name.`
+      : `invalid plugin name "${identity.refusal.raw}"; use a lowercase kebab-case name.`);
     process.exit(1);
   }
-  if (!discoverPluginNames().includes(pluginName)) {
-    console.error(`unknown plugin "${pluginName}" (have: ${discoverPluginNames().join(", ") || "none"})`);
+  const core = await loadCoreBuild({ coreRoot: CORE_ROOT, markdownBlocks });
+  if (!core.ok) {
+    console.error(JSON.stringify(core.refusal));
+    process.exit(1);
+  }
+  const catalog = await loadPluginBuildCatalog({ core: core.value, pluginsRoot: PLUGINS_ROOT,
+    markdownBlocks });
+  if (!catalog.ok) {
+    console.error(JSON.stringify(catalog.refusal));
+    process.exit(1);
+  }
+  const plugin = catalog.value.plugins.find((entry) => entry.directory === pluginName);
+  if (!plugin) {
+    console.error(`unknown plugin "${pluginName}" (have: ${catalog.value.plugins
+      .map((entry) => entry.directory).join(", ") || "none"})`);
     process.exit(1);
   }
   const target = pluginTargetFor(harnessName);
@@ -2190,7 +2186,7 @@ if (argv[0] === "plugin" && argv[1] === "build") {
   const resolvedOut = isAbsolute(outArg) ? outArg : join(process.cwd(), outArg);
   try {
     buildRepositoryPluginProjection(
-      pluginName,
+      plugin,
       harnessName,
       resolvedOut,
       resolvedOut,
@@ -2221,8 +2217,14 @@ if (!loadedBuild.ok) {
   throw new Error(`Cannot load the fresh Method: ${JSON.stringify(loadedBuild.refusal)}`);
 }
 const coreBuild = loadedBuild.value;
+const loadedPlugins = await loadPluginBuildCatalog({ core: coreBuild, pluginsRoot: PLUGINS_ROOT,
+  markdownBlocks });
+if (!loadedPlugins.ok) {
+  throw new Error(`Cannot load the plugin Method: ${JSON.stringify(loadedPlugins.refusal)}`);
+}
+const pluginBuilds = loadedPlugins.value;
 if (check) {
-  const problems = checkPackageDeterminism(targets);
+  const problems = checkPackageDeterminism(targets, pluginBuilds);
   if (problems.length > 0) {
     console.error(`\npackage --check FAILED (${problems.length} problem(s)):`);
     for (const p of problems.slice(0, 40)) console.error("  " + p);
@@ -2237,14 +2239,15 @@ if (check) {
   );
 } else {
   forgetPackagedSources(REPO_ROOT, targets);
-  cleanWriteOutputs(targets, named === undefined);
+  cleanWriteOutputs({ harnesses: targets, kind: named === undefined ? "full" : "named",
+    plugins: pluginBuilds });
   for (const n of targets) {
     writeHarness(n);
     writeReleaseHarness(n);
   }
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);
-  emitPlugins(targets);
+  emitPlugins({ harnesses: targets, plugins: pluginBuilds });
   // Last, so only a finished build from unchanged sources is recorded as current.
   if (!recordPackagedSources(REPO_ROOT, targets, builtFrom)) {
     console.error(
