@@ -41,7 +41,6 @@
         "src/installation/application/boundary-ports{,.test}.ts",
         "src/execution/domain/{identities,unit,gate,guard,host-event,refusals}{,.test}.ts",
         "src/execution/application/boundary-ports{,.test}.ts",
-        "src/cli/application/ports{,.test}.ts",
         "src/cli/roots{,.test}.ts"
       ],
       "contractFiles": [
@@ -55,11 +54,12 @@
         "src/installation/application/boundary-ports.ts",
         "src/execution/domain/{identities,unit,gate,guard,host-event,refusals}.ts",
         "src/execution/application/boundary-ports.ts",
-        "src/cli/application/ports.ts",
         "src/cli/roots.ts"
       ],
       "territory": [],
-      "monolithDeletions": {}
+      "monolithDeletions": {
+        "src/cli/application/ports.ts": ["*"]
+      }
     },
     "G": {
       "name": "Guardrails",
