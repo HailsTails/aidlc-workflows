@@ -1,19 +1,8 @@
 // harness/codex/emit.ts — the Codex CLI per-shell emission plugin.
 //
-// The unified packager copies core/ -> dist/codex/.codex/ (rules prose ->
-// aidlc-rules) and runs graph compile, then calls this emit() for everything
-// that is CODE, not declarative data: the Codex config, hook wiring, trust
-// pre-seed, the onboarding skills-path rewrite, per-agent TOML transpositions,
-// and .agents/skills/ tree (orchestrator + generated runners + session
-// skills + openai.yaml guards).
-//
 // The harness-dir token / anchored-prefix transform is exposed via
 // ctx.substituteToken, plus a local aidlc-rules rename mirroring the
 // packager's (rewriteProse).
-//
-// emit() also owns the codex skills layout: skills do NOT ship in
-// .codex/skills/ (Codex discovers skills at <project>/.agents/skills/), so the
-// manifest sets skipRunnerGen and emit composes the runners here.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, win32 } from "node:path";
