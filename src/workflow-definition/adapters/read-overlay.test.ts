@@ -9,7 +9,7 @@ import { readOverlay } from "./read-overlay.ts";
 const owner = { kind: "plugin" as const, plugin: accept(pluginId("test-pro")) };
 const source = { owner, path: methodSource({ kind: "overlay",
   within: "agents/aidlc-quality-agent.md" }) };
-const body = authoredBody([
+const instructions = authoredBody([
   { level: 2, title: "fragment: after-preflight", prose: "\nFirst instruction.\n\n" },
   { level: 2, title: "fragment: in:Collaboration", prose: "\nCollaborate with metrics.\n" },
 ]);
@@ -22,10 +22,10 @@ fragments:
   - anchor: in:Collaboration
     order: 100
 ---
-${body.text}`;
+${instructions.text}`;
 const outliner = { outline: (text: string) => {
-  expect(text).toBe(body.text);
-  return body;
+  expect(text).toBe(instructions.text);
+  return instructions;
 } };
 
 test("a persona overlay retains both native anchor meanings and exact fragment text", () => {
@@ -39,7 +39,7 @@ test("a persona overlay retains both native anchor meanings and exact fragment t
 });
 
 test("a missing declared fragment refuses at its actual overlay source", () => {
-  const missing = { outline: () => ({ text: body.text, headings: [] }) };
+  const missing = { outline: () => ({ text: instructions.text, headings: [] }) };
   expect(readOverlay({ source, raw, outliner: missing })).toEqual({ ok: false, refusal: [
     { kind: "invalid-file", location: { kind: "method-source", ...source },
       issues: ["Declared fragment after-preflight occurrence 1 has no body."] },

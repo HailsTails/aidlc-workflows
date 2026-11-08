@@ -9,7 +9,7 @@ import type { CoreContent } from "./method.ts";
 import type { Stage } from "./stage.ts";
 import { compileAuthoredMethod } from "./compile-authored-method.ts";
 
-const body = authoredBody([{ level: 2, title: "Steps", prose: "\n" },
+const instructions = authoredBody([{ level: 2, title: "Steps", prose: "\n" },
   { level: 3, title: "Step 1: Prepare", prose: "\nDo the work.\n" }]);
 const coreStage: Stage = { slug: stage("prepare"),
   source: methodSource({ kind: "stage", within: "construction/prepare.md" }),
@@ -20,7 +20,7 @@ const coreStage: Stage = { slug: stage("prepare"),
     artifact: artifact("prepared"), obligation: "required", unitKinds: "all" }],
   consumes: [], requires: [], sensors: [], review: null, summaryConfirmation: "none",
   activation: { kind: "always" }, composerPrior: null, requiredSections: [],
-  briefing: { inputs: "Request", outputs: "Prepared work", instructions: body } };
+  briefing: { inputs: "Request", outputs: "Prepared work", instructions } };
 const core: CoreContent = { stages: [coreStage], agents: [], scopes: [], memberships: [],
   freeformDefaults: [], sensors: [], rules: [], knowledge: [], hooks: [] };
 const plugin = accept(pluginId("extension"));
@@ -41,10 +41,7 @@ test("core and contributed stages use the same fresh numbering pipeline", () => 
   const compiled = accept(compileAuthoredMethod({ core, contributions: [contribution],
     selection: { kind: "every-installed" } }, outline));
   expect(compiled.installedPlugins).toEqual([plugin]);
-  expect(compiled.graph.nodes.map((node) => ({ stage: node.stage, number: node.number,
-    availability: node.availability }))).toEqual<readonly {
-    stage: string; number: string; availability: string;
-  }[]>([
+  expect(compiled.graph.nodes).toMatchObject([
     { stage: "prepare", number: "3.1", availability: "enabled" },
     { stage: "extension-step", number: "3.2", availability: "enabled" },
   ]);
@@ -55,7 +52,10 @@ test("selection retains installed definitions while marking inactive stages", ()
   const compiled = accept(compileAuthoredMethod({ core, contributions: [contribution], selection }, outline));
   expect(compiled.installedPlugins).toEqual([plugin]);
   expect(compiled.selection).toEqual(selection);
-  expect(compiled.graph.nodes.map((node) => node.availability)).toEqual(["enabled", "disabled"]);
+  expect(compiled.graph.nodes).toMatchObject([
+    { stage: "prepare", availability: "enabled" },
+    { stage: "extension-step", availability: "disabled" },
+  ]);
 });
 
 test("enabled required consumption refuses selection-disabled producers at the actual source", () => {

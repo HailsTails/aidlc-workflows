@@ -24,9 +24,9 @@ export const applyFragmentText = (request: { readonly body: AuthoredBody;
   const text = placed.filter((entry): entry is typeof entry & { readonly offset: number } =>
     entry.offset !== null)
     .toSorted((left, right) => right.offset - left.offset
-      || fragmentOrder(right, left)).reduce((body, entry) => {
+      || fragmentOrder(right, left)).reduce((instructions, entry) => {
       const offset = entry.offset;
-      return `${body.slice(0, offset)}\n${entry.fragment.text}\n\n${body.slice(offset)}`;
+      return `${instructions.slice(0, offset)}\n${entry.fragment.text}\n\n${instructions.slice(offset)}`;
     }, request.body.text);
   return { body: text === request.body.text ? request.body : request.outline(text), findings };
 };
