@@ -1,13 +1,5 @@
-import tseslint from "typescript-eslint";
-import tsParser from "@typescript-eslint/parser";
 import type { Linter } from "eslint";
-import {
-  BIOME_RELAXED_NON_NULL,
-  BIOME_RELAXED_TEMPLATE,
-  BIOME_SUCCESSOR_RULES,
-  KNOWLEDGE_FS_READS,
-} from "./biome-successor.ts";
-import { nodeImportProtocol } from "./node-import-protocol.ts";
+import { KNOWLEDGE_FS_READS } from "./biome-successor.ts";
 import {
   CONTEXTS,
   HARNESS_ADAPTER_FILES,
@@ -16,7 +8,6 @@ import {
   type ContextName,
 } from "./context-map.ts";
 import { readGlossary, type GlossaryEntry } from "./glossary.ts";
-import { noComments } from "./no-comments.ts";
 import {
   domainClock,
   harnessBranching,
@@ -94,16 +85,6 @@ const PURE_RULES: Linter.RulesRecord = {
   ],
 };
 
-const READABILITY_RULES: Linter.RulesRecord = {
-  "aidlc/no-comments": "error",
-  "no-nested-ternary": "error",
-  "max-len": ["error", { code: 100, ignoreUrls: true, ignoreRegExpLiterals: true }],
-  "max-params": ["error", 3],
-  "max-depth": ["error", 3],
-  complexity: ["error", 8],
-  "max-lines-per-function": ["error", { max: 50, skipBlankLines: true, skipComments: true }],
-};
-
 const isPure = (layer: Layer): boolean => layer === "domain" || layer === "application";
 
 const srcSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] => {
@@ -121,7 +102,6 @@ const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
       syntax: srcSyntax(context, layer),
     }),
     ...(isPure(layer) ? PURE_RULES : {}),
-    ...READABILITY_RULES,
   },
 });
 
@@ -146,7 +126,6 @@ const srcHarnessAdapterConfig =(adapter: SrcHarnessAdapter): Linter.Config => ({
       imports: srcImportRestrictions({ context: adapter.context, layer: "adapters" }),
       syntax: ownershipInSrc(adapter.context, glossary),
     }),
-    ...READABILITY_RULES,
   },
 });
 
@@ -177,35 +156,6 @@ const harnessTreeConfig: Linter.Config = {
   rules: restrict({ imports: [], syntax: legacyOwnership(glossary) }),
 };
 
-const IGNORED = [
-  "node_modules/**",
-  "dist/**",
-  "dist-release/**",
-  "tests/logs/**",
-  "tests/fixtures/v05-mr9-sensor-fire/failing-linter/**",
-  "tests/fixtures/markdown-goldens/**",
-];
-
-const LINT_TOOLING = ["lint/**/*.ts", "eslint.config.ts", "scripts/gate.ts"];
-
-const standardsConfigs: Linter.Config[] = [
-  {
-    name: "aidlc/standards",
-    files: ["**/*.ts"],
-    rules: { ...BIOME_SUCCESSOR_RULES, ...READABILITY_RULES },
-  },
-  {
-    name: "aidlc/standards/legacy-non-null",
-    files: BIOME_RELAXED_NON_NULL,
-    rules: { "@typescript-eslint/no-non-null-assertion": "off" },
-  },
-  {
-    name: "aidlc/standards/legacy-template",
-    files: BIOME_RELAXED_TEMPLATE,
-    rules: { "prefer-template": "off" },
-  },
-];
-
 const knowledgeConfig: Linter.Config = {
   name: "aidlc/legacy/knowledge-read-only-fs",
   files: ["core/tools/aidlc-knowledge.ts"],
@@ -213,18 +163,6 @@ const knowledgeConfig: Linter.Config = {
 };
 
 export const boundaryConfig: Linter.Config[] = [
-  { name: "aidlc/ignores", ignores: IGNORED },
-  {
-    name: "aidlc/parser",
-    files: ["**/*.ts"],
-    languageOptions: { parser: tsParser, sourceType: "module" },
-    plugins: {
-      aidlc: { rules: { "no-comments": noComments, "node-import-protocol": nodeImportProtocol } },
-      "@typescript-eslint": tseslint.plugin,
-    },
-    linterOptions: { reportUnusedDisableDirectives: "off" },
-  },
-  ...standardsConfigs,
   unassignedLegacyConfig,
   knowledgeConfig,
   ...TERRITORIES.map(legacyTerritoryConfig),
@@ -233,11 +171,6 @@ export const boundaryConfig: Linter.Config[] = [
   ...CONTEXTS.flatMap((context) => LAYERS.map((layer) => srcLayerConfig(context, layer))),
   ...CONTEXTS.flatMap((context) => PURE_LAYERS.map((layer) => srcPureTestConfig(context, layer))),
   ...SRC_HARNESS_ADAPTERS.map(srcHarnessAdapterConfig),
-  {
-    name: "aidlc/lint-tooling",
-    files: LINT_TOOLING,
-    rules: READABILITY_RULES,
-  },
   {
     name: "aidlc/lint-tooling/pure",
     files: ["lint/gate/domain/**/*.ts", "lint/gate/application/**/*.ts"],

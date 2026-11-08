@@ -24,7 +24,7 @@ const measure = (dependencies: MonolithDependencies, file: string): MonolithShap
 const unrecorded = (file: string): Finding => ({
   subject: file,
   violation: "has no monolith record, so its growth cannot be checked",
-  fix: "Lane G records it with bun scripts/gate.ts --full --record; ask on the board.",
+  fix: "Record the monolith with bun scripts/gate.ts --scope G --only monolith --record.",
 });
 
 const judge = (pair: Pair): readonly Finding[] =>

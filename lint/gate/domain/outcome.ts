@@ -4,6 +4,7 @@ export const CHECK_IDS = [
   "lint",
   "typecheck",
   "monolith",
+  "kernel",
   "tests",
   "goldens",
 ] as const;

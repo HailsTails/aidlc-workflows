@@ -34,6 +34,23 @@ const declaredBy = (statement: ts.Statement): readonly string[] => {
   return ts.isExportAssignment(statement) ? ["default"] : [];
 };
 
+const isExported = (statement: ts.Statement): boolean =>
+  ts.canHaveModifiers(statement) &&
+  (ts.getModifiers(statement) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+
+const exportedBy = (statement: ts.Statement): readonly string[] => {
+  if (!ts.isExportDeclaration(statement)) {
+    return isExported(statement) ? declaredBy(statement) : [];
+  }
+  const clause = statement.exportClause;
+  if (clause === undefined) {
+    return [`* from ${statement.moduleSpecifier?.getText() ?? ""}`];
+  }
+  return ts.isNamedExports(clause)
+    ? clause.elements.map((element) => element.name.text)
+    : [clause.name.text];
+};
+
 const isImport = (statement: ts.Statement): boolean =>
   ts.isImportDeclaration(statement) || ts.isImportEqualsDeclaration(statement);
 
@@ -51,6 +68,7 @@ export const typescriptModuleReader: ModuleReader = {
     const source = parseModule(request);
     return {
       declarations: declaredNames(source),
+      exports: source.statements.flatMap(exportedBy),
       statements: source.statements
         .filter((statement) => !isImport(statement))
         .map((statement) => statement.getText(source)),

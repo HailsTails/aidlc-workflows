@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { goldenDrift, goldenGroupOf } from "./golden.ts";
+import { judgeKernelSurface } from "./kernel-surface.ts";
 import { isStale, LOCK_MAX_AGE_MS, type LockOwner } from "./machine-lock.ts";
 import { countLines, judgeMonolith, shrunkRecord } from "./monolith.ts";
 import { categoryOf, increasesOver, withMeasured } from "./violation-ratchet.ts";
@@ -53,6 +54,19 @@ describe("monolith ratchet", () => {
 
   test("line counting ignores CRLF and the trailing newline", () => {
     expect(countLines("a\r\nb\n")).toBe(2);
+  });
+});
+
+describe("kernel surface", () => {
+  test("only names on the record may be exported from the kernel", () => {
+    const measured = [
+      { file: "src/kernel/result.ts", name: "Result" },
+      { file: "src/kernel/shared.ts", name: "StageHelpers" },
+    ];
+    const findings = judgeKernelSurface({ recorded: ["Result"], measured });
+    expect(findings.map((finding) => finding.subject)).toEqual([
+      "src/kernel/shared.ts · StageHelpers",
+    ]);
   });
 });
 

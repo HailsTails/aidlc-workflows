@@ -62,8 +62,8 @@ export const refusalFor = (request: ClaimRequest, claim: Claim): Finding | undef
       subject: path,
       violation: `is a hot file, and lane ${lane.id} has no deletion or grant for it in lanes.json`,
       fix:
-        "Hot files change only by deleting the declarations lanes.json lists for your lane. " +
-        "Revert this edit and ask on the board for the integration lane to make it.",
+        "Revert this edit. Put the new code in your context under src/ and point callers " +
+        "at it; a hot file only loses the declarations lanes.json lists for your lane.",
     };
   }
   if (claim.kind === "foreign") {
@@ -71,8 +71,8 @@ export const refusalFor = (request: ClaimRequest, claim: Claim): Finding | undef
       subject: path,
       violation: `is outside lane ${lane.id} (${lane.name}), which owns ${lane.owns.join(", ")}`,
       fix:
-        "Keep the change inside your lane's paths. If the work belongs elsewhere, ask its " +
-        "owning lane on the board; if a contract must change, ask Lane 0.",
+        "Revert it and make the change inside your own context: depend on the other " +
+        "context's published domain types or a port, never edit its files.",
     };
   }
   return undefined;

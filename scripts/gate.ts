@@ -1,5 +1,3 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONTEXTS, MONOLITH_FILES } from "../lint/context-map.ts";
 import { gateRequestFrom, USAGE } from "../lint/gate/adapters/cli-arguments.ts";
@@ -8,7 +6,10 @@ import {
   printProblem,
   summaryLine,
 } from "../lint/gate/adapters/console-report.ts";
-import { directoryLock } from "../lint/gate/adapters/directory-lock.ts";
+import {
+  directoryLock,
+  lockDirectoryBesideMainCheckout,
+} from "../lint/gate/adapters/directory-lock.ts";
 import { eslintLinter } from "../lint/gate/adapters/eslint-linter.ts";
 import { fileWorkspace } from "../lint/gate/adapters/file-workspace.ts";
 import { gitRepository } from "../lint/gate/adapters/git-repository.ts";
@@ -19,6 +20,7 @@ import {
 } from "../lint/gate/adapters/golden-files.ts";
 import { jsonReader } from "../lint/gate/adapters/json-reader.ts";
 import { lanesFile } from "../lint/gate/adapters/lanes-file.ts";
+import { nameListFile } from "../lint/gate/adapters/name-list-file.ts";
 import { processRunner } from "../lint/gate/adapters/process-runner.ts";
 import { ratchetRecords } from "../lint/gate/adapters/ratchet-records.ts";
 import {
@@ -30,6 +32,7 @@ import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-
 import type { GateCheck } from "../lint/gate/application/gate-check.ts";
 import { goldensCheck, type GoldensDependencies } from "../lint/gate/application/goldens-check.ts";
 import { lintCheck } from "../lint/gate/application/lint-check.ts";
+import { kernelCheck } from "../lint/gate/application/kernel-check.ts";
 import { monolithCheck } from "../lint/gate/application/monolith-check.ts";
 import { ownershipCheck } from "../lint/gate/application/ownership-check.ts";
 import { recordsCheck } from "../lint/gate/application/records-check.ts";
@@ -116,6 +119,12 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
   }),
   typecheckCheck({ runner, projects: TYPECHECK_PROJECTS }),
   monolithCheck({ records, workspace, modules: typescriptModuleReader }),
+  kernelCheck({
+    workspace,
+    modules: typescriptModuleReader,
+    record: nameListFile({ workspace, path: "lint/kernel-exports.txt" }),
+    sources: ["src/kernel/*.ts"],
+  }),
   testsCheck({
     runner,
     workspace,
@@ -134,7 +143,7 @@ const EXIT_CODES: Readonly<Record<GateReport["verdict"], number>> = {
 };
 
 const lock = directoryLock({
-  directory: process.env["AIDLC_GATE_LOCK_DIR"] ?? join(homedir(), ".aidlc", "gate"),
+  directory: process.env["AIDLC_GATE_LOCK_DIR"] ?? lockDirectoryBesideMainCheckout(ROOT),
   cwd: ROOT,
   onWait: consoleProgress.note,
 });

@@ -42,7 +42,7 @@ const parsePlan = (text: string): Loaded<LanePlan> => {
   return {
     ok: false,
     problem: `lanes.json does not match its schema: ${z.prettifyError(parsed.error)}`,
-    fix: "Ask Lane 0 to repair lanes.json; the gate reads lane ownership from it.",
+    fix: "Restore lanes.json from the base branch; the gate reads lane ownership from it.",
   };
 };
 

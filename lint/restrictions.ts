@@ -183,7 +183,8 @@ export const ownershipInSrc = (
       selector: `${DECLARATIONS}[id.name="${entry.name}"]`,
       message:
         `One owner: ${entry.name} belongs to ${entry.context}. Import it from ` +
-        `src/${entry.context}; to change it, ask Lane 0 to change the contract.`,
+        `src/${entry.context}/domain; if this context needs another shape, translate ` +
+        "at the boundary into a type with its own name.",
     }));
 
 const namedAny = (node: string, names: readonly string[]): readonly string[] =>

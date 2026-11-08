@@ -3,6 +3,7 @@ import type { Finding } from "./outcome.ts";
 
 export type ModuleShape = {
   readonly declarations: readonly string[];
+  readonly exports: readonly string[];
   readonly statements: readonly string[];
 };
 
@@ -13,7 +14,7 @@ export type DeletionEvidence = {
   readonly head: ModuleShape | undefined;
 };
 
-const EMPTY_MODULE: ModuleShape = { declarations: [], statements: [] };
+const EMPTY_MODULE: ModuleShape = { declarations: [], exports: [], statements: [] };
 
 const removedDeclarations = (base: ModuleShape, head: ModuleShape): readonly string[] => {
   const kept = new Set(head.declarations);
@@ -45,8 +46,8 @@ export const judgeDeletion = (evidence: DeletionEvidence): readonly Finding[] =>
     subject: `${evidence.path} · ${name}`,
     violation: "was deleted, but lanes.json does not list it for this lane",
     fix:
-      "Delete only the declarations lanes.json assigns to your lane. Leave this one in " +
-      "place, or ask Lane 0 to assign it to you.",
+      "Delete only the declarations lanes.json assigns to your lane. Restore this one; " +
+      "the lane that owns its concept moves it into its context and deletes it then.",
   }));
   const rewritten = isSubsequence(head.statements, evidence.base.statements)
     ? []

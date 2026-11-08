@@ -19,7 +19,8 @@ export const USAGE = [
   `--only <id>[,<id>...] limits --scope or --full to checks: ${CHECK_IDS.join(", ")}.`,
   "Run from the lane worktree root. One stdout line: AIDLC_GATE {json}.",
   "Exit: 0 green, 1 red, 2 usage or environment error, 3 machine lock busy.",
-  "Env: AIDLC_GATE_BASE (default base ref), AIDLC_GATE_LOCK_DIR (lock folder).",
+  "Env: AIDLC_GATE_BASE (default base ref), AIDLC_GATE_LOCK_DIR (lock folder; default",
+  "     .aidlc-gate in the folder that holds the main checkout).",
 ].join("\n");
 
 const OPTIONS = {

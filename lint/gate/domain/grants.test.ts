@@ -4,6 +4,7 @@ import { judgeJsonGrant } from "./json-grant.ts";
 
 const base: ModuleShape = {
   declarations: ["keep", "loadStageGraph", "loadScope"],
+  exports: [],
   statements: ["const keep = 1;", "function loadStageGraph() {}", "function loadScope() {}"],
 };
 
@@ -13,13 +14,14 @@ describe("judgeDeletion", () => {
   test("deleting a granted declaration passes", () => {
     const head = {
       declarations: ["keep", "loadScope"],
+      exports: [],
       statements: ["const keep = 1;", "function loadScope() {}"],
     };
     expect(judgeDeletion({ path: "lib.ts", grant, base, head })).toEqual([]);
   });
 
   test("deleting a declaration the lane was not given is refused", () => {
-    const head = { declarations: ["keep"], statements: ["const keep = 1;"] };
+    const head = { declarations: ["keep"], exports: [], statements: ["const keep = 1;"] };
     const subjects = judgeDeletion({ path: "lib.ts", grant, base, head }).map((f) => f.subject);
     expect(subjects).toEqual(["lib.ts · loadScope"]);
   });
@@ -27,6 +29,7 @@ describe("judgeDeletion", () => {
   test("changing a statement that stays is refused", () => {
     const head = {
       declarations: ["keep", "loadScope"],
+      exports: [],
       statements: ["const keep = 2;", "function loadScope() {}"],
     };
     const findings = judgeDeletion({ path: "lib.ts", grant, base, head });

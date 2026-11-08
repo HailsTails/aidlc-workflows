@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 import {
   describeOwner,
@@ -27,6 +27,18 @@ const LockOwnerSchema = z.object({
 });
 
 const OWNER_FILE = "owner.json";
+
+const SHARED_LOCK_FOLDER = ".aidlc-gate";
+
+export const lockDirectoryBesideMainCheckout = (root: string): string => {
+  const commonDir = Bun.spawnSync(
+    ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+    { cwd: root, stdout: "pipe", stderr: "pipe" },
+  );
+  const gitDir = commonDir.exitCode === 0 ? commonDir.stdout.toString().trim() : "";
+  const mainCheckout = gitDir === "" ? root : dirname(gitDir);
+  return join(dirname(mainCheckout), SHARED_LOCK_FOLDER);
+};
 
 const isAlive = (pid: number): boolean => {
   try {

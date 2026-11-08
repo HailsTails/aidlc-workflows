@@ -86,6 +86,11 @@ export type RatchetRecords = {
   readonly saveMonoliths: (shapes: readonly MonolithShape[]) => void;
 };
 
+export type NameList = {
+  readonly read: () => readonly string[] | undefined;
+  readonly write: (names: readonly string[]) => void;
+};
+
 export type GoldenSource = {
   readonly measure: () => GoldenSet;
 };

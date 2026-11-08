@@ -48,8 +48,8 @@ export const judgeJsonGrant = (request: {
       subject: `${request.grant.path} · ${keyPath}`,
       violation: `changed, but this lane's grant covers only ${request.grant.keyPaths.join(", ")}`,
       fix:
-        "Revert this key. Ask on the board for the integration lane to change it, or ask " +
-        "Lane 0 to widen the grant in lanes.json.",
+        "Revert this key: a lane changes only the keys its grant names. Express the need " +
+        "inside your context, or leave the shared setting to the integration lane.",
     }));
 
 export const grantsWholeFile = (grant: HotFileGrant): boolean =>

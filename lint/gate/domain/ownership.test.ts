@@ -87,6 +87,6 @@ describe("claimFor", () => {
   test("a refusal names the correct approach", () => {
     const request = { plan, lane: laneA, path: "src/cli/main.ts" };
     const refusal = refusalFor(request, claimFor(request, shared));
-    expect(refusal?.fix).toContain("ask its owning lane");
+    expect(refusal?.fix).toContain("published domain types or a port");
   });
 });
