@@ -119,7 +119,14 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
     readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
     retiresWhen: "Packaging's ToolBundler ships src; the interpreter then moves into src.",
   },
-  shippedOwner("aidlc-model-policy", "src/projection/adapters/legacy-agent-surfaces.ts"),
+  {
+    module: "core/tools/aidlc-model-policy.ts",
+    readBy: "src/projection/adapters/legacy-agent-surfaces.ts",
+    retiresWhen:
+      "Phase 2 model-policy cutover: its owner moves into src and ships in the runtime bundle " +
+      "(R1), deleting agentTiersFromAuthoredDirectory, the unreachable authored-agents walk " +
+      "the phase 1 freeze keeps in shipped bytes.",
+  },
   shippedOwner("aidlc-tiers", "src/projection/adapters/legacy-tiers.ts"),
   shippedOwner("aidlc-runner-gen", "src/projection/adapters/legacy-runners.ts"),
   shippedOwner("aidlc-utility", "src/projection/adapters/legacy-skill-tables.ts"),
@@ -129,7 +136,14 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   shippedOwner("aidlc-launcher-voucher", "src/projection/adapters/legacy-launcher.ts"),
   shippedOwner("aidlc-includes", "src/projection/adapters/legacy-includes.ts"),
   shippedOwner("aidlc-inline-context", "src/projection/adapters/legacy-format-docs.ts"),
-  shippedOwner("aidlc-plugin-emit", "src/projection/adapters/legacy-plugin-emit.ts"),
+  {
+    module: "core/tools/aidlc-plugin-emit.ts",
+    readBy: "src/projection/adapters/legacy-plugin-emit.ts",
+    retiresWhen:
+      "Phase 2 plugin-tools cutover: its owner moves into src and ships in the runtime bundle " +
+      "(R1), deleting the pluginReviewerAgents stage-file regex fallback that the shipped " +
+      "plugin build and plugin test still reach.",
+  },
   shippedOwner("aidlc", "src/projection/adapters/legacy-dispatcher.ts"),
   shippedOwner("aidlc-distribution", "src/packaging/adapters/legacy-distribution.ts"),
   shippedOwner("aidlc-version", "src/packaging/adapters/legacy-version.ts"),
