@@ -25,4 +25,3 @@ output_schema:
     file: { kind: "value", type: "string" }, line: { kind: "value", type: "number" },
   } } });
 });
-

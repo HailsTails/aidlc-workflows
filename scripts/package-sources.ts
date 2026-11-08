@@ -11,9 +11,10 @@ export const PACKAGE_SOURCES_FILE = join("dist", ".package-sources.json");
 // Everything the packager reads: the authored trees, the plugin hook template
 // it ships, and its own modules. Plugin tests are never packaged, so editing
 // one leaves dist/ current.
-const INPUT_DIRS = ["core", "harness", "plugins", "scripts/plugin-hooks-template"];
+const INPUT_DIRS = ["core", "harness", "plugins", "src", "scripts/plugin-hooks-template"];
 const INPUT_FILES = [
   "scripts/package.ts",
+  "scripts/package-sources.ts",
   "scripts/manifest-types.ts",
   "scripts/agent-knowledge.ts",
   "scripts/earlier-release-regions.ts",
@@ -22,14 +23,24 @@ const INPUT_FILES = [
   "scripts/onboarding.ts",
 ];
 
+const IGNORED_INPUT_PATHS = [
+  /(?:^|\/)node_modules(?:\/|$)/,
+  /^plugins\/[^/]+\/tests(?:\/|$)/,
+  /^src\/.*\/(?:fixtures|tests)(?:\/|$)/,
+  /^src\/.*\.(test|spec)\.ts$/,
+];
+
+const readsPackageSource = (path: string): boolean =>
+  !IGNORED_INPUT_PATHS.some((pattern) => pattern.test(path));
 function inputFiles(repoRoot: string): string[] {
   const files: string[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       const rel = relative(repoRoot, path).replaceAll("\\", "/");
+      if (!readsPackageSource(rel)) continue;
       if (entry.isDirectory()) {
-        if (entry.name !== "node_modules" && !/^plugins\/[^/]+\/tests$/.test(rel)) walk(path);
+        walk(path);
       } else if (entry.isFile()) {
         files.push(rel);
       }

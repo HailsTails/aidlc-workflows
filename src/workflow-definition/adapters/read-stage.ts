@@ -124,6 +124,3 @@ export const readStage = (request: {
   }));
 };
 type StageReading = { readonly stage: Stage; readonly memberships: readonly ScopeMembership[] };
-
-
-

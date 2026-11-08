@@ -102,4 +102,3 @@ export const readAuthoredCore = async (request: { readonly sourceFiles: SourceFi
     freeformDefaults: scopes.value.definitions.flatMap((reading) => reading.freeformDefaults),
   }, files: groups.flatMap((admission) => admission.ok ? admission.value.files : []) });
 };
-
