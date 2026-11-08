@@ -1,3 +1,4 @@
+import type { Arrivals } from "../domain/arrival.ts";
 import type { BaseRevision, ChangedFile } from "../domain/change.ts";
 import type { ModuleShape } from "../domain/deletion.ts";
 import type { DisciplineException } from "../domain/zone-rules.ts";
@@ -26,6 +27,7 @@ export type RevisionFile = {
 export type Repository = {
   readonly resolve: (ref: string) => BaseRevision | undefined;
   readonly changesSince: (base: BaseRevision) => readonly ChangedFile[];
+  readonly arrivals: (base: BaseRevision) => Arrivals;
   readonly readAt: (file: RevisionFile) => string | undefined;
   readonly listFiles: () => readonly string[];
 };

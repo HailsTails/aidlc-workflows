@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { z } from "zod";
+import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { CommandSource } from "../application/ports.ts";
 import { ENTRY_SHORTCUTS, nativeCommandName, commandFilePath, type NativeCommandFile,
@@ -11,8 +12,8 @@ import { scopeName, stageSlug } from "../../workflow-definition/domain/identitie
 import { METHOD_SOURCE_FOLDERS, type MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 
-const frozenStageSchema = z.object({ slug: z.string() }).passthrough();
-const frozenScopesSchema = z.record(z.string(), z.object({ description: z.string() }).passthrough());
+const frozenStageSchema = z.looseObject({ slug: z.string() });
+const frozenScopesSchema = z.record(z.string(), z.looseObject({ description: z.string() }));
 const generatorSchema = z.object({
   runnableStages: z.function({ input: [], output: z.array(frozenStageSchema) }),
   discoverScopes: z.function({ input: [], output: frozenScopesSchema }),
@@ -29,7 +30,11 @@ export type LegacyRunnerRequest = { readonly method: Method; readonly sources: r
   readonly projectRoot: string; readonly temporaryRoot: string;
   readonly harnessDir: string; readonly harnessName: string };
 const subjectSchema = z.object({ concept: z.enum(["stage-command", "scope-command", "orchestrator-skill"]), name: z.string() });
-const fileSchema = z.object({ nativeName: z.string(), within: z.string(), text: z.string(), mode: z.literal("regular") });
+const contentSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("text"), text: z.string() }),
+  z.object({ kind: z.literal("bytes"), bytes: z.array(z.number().int().min(0).max(255)) }),
+]);
+const fileSchema = z.object({ nativeName: z.string(), within: z.string(), content: contentSchema, mode: z.literal("regular") });
 const entrySchema = z.object({ subject: subjectSchema, files: z.array(fileSchema).nullable(), reason: z.string().nullable() });
 const replySchema = z.object({ entries: z.array(entrySchema), failure: z.string().nullable() });
 const childSchema = z.object({ module: z.string(), output: z.string(), stages: z.array(z.string()), scopes: z.array(z.string()) });
@@ -39,7 +44,9 @@ type ChildCommand = { readonly subject: WireSubject; readonly markdown: string |
   readonly nativeName: string | null; readonly reason: string | null };
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
 const failure = (subject: CommandSubject, reason: string): ProjectionRefusal => ({ kind: "render-failed", ...subject, reason });
-const failedSource = (reason: string): CommandSource => ({ read: (subject) => refused(failure(subject, reason)) });
+const failedSource = (reason: string): CommandSource => ({
+  read: () => refused({ kind: "command-source-failed", reason }),
+});
 const subjectFrom = (raw: WireSubject): CommandSubject | null => {
   if (raw.concept === "stage-command") {
     const name = stageSlug(raw.name);
@@ -58,8 +65,9 @@ const admitFile = (subject: CommandSubject, file: z.infer<typeof fileSchema>):
   const name = nativeCommandName(file.nativeName);
   if (!name.ok) return refused(failure(subject, "The frozen native name must be one portable path segment."));
   const within = commandFilePath(file.within);
-  return within.ok ? accepted({ name: name.value, within: within.value, mode: file.mode,
-    content: { kind: "text", text: file.text } })
+  const content: FileContent = file.content.kind === "text" ? file.content
+    : { kind: "bytes", bytes: new Uint8Array(file.content.bytes) };
+  return within.ok ? accepted({ name: name.value, within: within.value, mode: file.mode, content })
     : refused(failure(subject, "The frozen companion path must be a portable relative path."));
 };
 const admitReading = (subject: CommandSubject, documents: z.infer<typeof entrySchema>["files"]):
@@ -123,29 +131,31 @@ const renderFrozenCommands = (generator: Generator, input: z.infer<typeof childS
       const node = runnable.find((stage) => stage.slug === name);
       return node ? generator.renderStageRunner(node) : null;
     })),
-    ...input.scopes.map((name) => renderedCommand({ concept: "scope-command", name }, () => {
-      if (!selected.has(name)) return null;
+    ...input.scopes.map((name): ChildCommand => {
+      const subject: WireSubject = { concept: "scope-command", name };
+      if (!selected.has(name)) return renderedCommand(subject, () => null);
       const scope = discovered[name];
-      if (!scope) throw new Error(`The selected frozen scope is absent: ${name}`);
-      return generator.renderRunner(name, scope.description);
-    })),
+      return scope ? renderedCommand(subject, () => generator.renderRunner(name, scope.description))
+        : { subject, markdown: null, nativeName: null, reason: `The selected frozen scope is absent: ${name}` };
+    }),
     ...ENTRY_SHORTCUTS.map((name) => renderedCommand({ concept: "orchestrator-skill", name }, shortcuts[name])),
   ];
 };
 const walk = (directory: string): readonly string[] => readdirSync(directory, { withFileTypes: true })
   .flatMap((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]).sort();
 const commandDocuments = (command: ChildCommand, paths: readonly string[]): WireEntry => {
-  if (command.markdown === null || command.nativeName === null) return { subject: command.subject, files: null, reason: command.reason };
-  const skillPaths = paths.filter((path) => basename(path) === "SKILL.md" && basename(dirname(path)) === command.nativeName);
+  const nativeName = command.nativeName;
+  if (command.markdown === null || nativeName === null) return { subject: command.subject, files: null, reason: command.reason };
+  const skillPaths = paths.filter((path) => basename(path) === "SKILL.md" && basename(dirname(path)) === nativeName);
   const skill = skillPaths[0];
   if (skillPaths.length !== 1 || !skill) return { subject: command.subject, files: null,
     reason: "The frozen output must contain exactly one directory for this native name." };
   const directory = dirname(skill);
   return { subject: command.subject, reason: null, files: [
-    { nativeName: command.nativeName, within: "SKILL.md", text: command.markdown, mode: "regular" },
+    { nativeName, within: "SKILL.md", content: { kind: "text", text: command.markdown }, mode: "regular" },
     ...paths.filter((path) => path !== skill && relative(directory, path).split(/[\\/]/)[0] !== "..")
-      .map((path) => ({ nativeName: command.nativeName ?? "", within: relative(directory, path).replaceAll("\\", "/"),
-        text: readFileSync(path, "utf8"), mode: "regular" as const })),
+      .map((path): z.infer<typeof fileSchema> => ({ nativeName, within: relative(directory, path).replaceAll("\\", "/"),
+        content: { kind: "bytes", bytes: Array.from(readFileSync(path)) }, mode: "regular" })),
   ] };
 };
 export const duplicateNativeCommand = (commands: readonly ChildCommand[]): WireEntry | null => {
@@ -154,9 +164,11 @@ export const duplicateNativeCommand = (commands: readonly ChildCommand[]): WireE
   return collision ? { subject: collision.subject, files: null,
     reason: `Two frozen commands share the native destination: ${collision.nativeName}` } : null;
 };
-const runChild = async (raw: unknown): Promise<z.infer<typeof replySchema>> => {
-  const input = childSchema.parse(raw);
-  const generator = generatorSchema.parse(await import(Bun.pathToFileURL(input.module).href));
+export const runChildWithCapability = (input: z.infer<typeof childSchema>, capability: unknown):
+  z.infer<typeof replySchema> => {
+  const admitted = generatorSchema.safeParse(capability);
+  if (!admitted.success) return { entries: [], failure: "The frozen runner capability API is invalid." };
+  const generator = admitted.data;
   const commands = renderFrozenCommands(generator, input);
   const collision = duplicateNativeCommand(commands);
   if (collision) return { failure: null, entries: [collision] };
@@ -165,6 +177,12 @@ const runChild = async (raw: unknown): Promise<z.infer<typeof replySchema>> => {
   generator.regenerateRunnerSurfaces();
   const paths = walk(input.output);
   return { failure: null, entries: commands.map((command) => commandDocuments(command, paths)) };
+};
+
+export const runChild = async (raw: unknown): Promise<z.infer<typeof replySchema>> => {
+  const decoded = childSchema.safeParse(raw);
+  if (!decoded.success) return { entries: [], failure: "The frozen runner request is invalid." };
+  return runChildWithCapability(decoded.data, await import(Bun.pathToFileURL(decoded.data.module).href));
 };
 
 const captureScopes = (request: LegacyRunnerRequest): Result<readonly MethodSource[], ProjectionRefusal> => {

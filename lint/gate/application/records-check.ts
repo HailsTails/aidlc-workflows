@@ -1,12 +1,14 @@
+import { isLaneAuthored, type Arrivals } from "../domain/arrival.ts";
 import type { BaseRevision } from "../domain/change.ts";
 import { judgeMonolith } from "../domain/monolith.ts";
 import { judged, skipped, type Finding } from "../domain/outcome.ts";
 import { increasesOver } from "../domain/violation-ratchet.ts";
 import type { GateCheck } from "./gate-check.ts";
 import { touches, type GateScope } from "./gate-scope.ts";
-import type { RatchetRecords } from "./ports.ts";
+import type { RatchetRecords, Repository } from "./ports.ts";
 
 export type RecordsDependencies = {
+  readonly repository: Repository;
   readonly records: RatchetRecords;
   readonly ruleInputs: readonly string[];
 };
@@ -15,21 +17,29 @@ const RECORDS_ONLY_FALL =
   "Records only go down. Restore the recorded number and fix the code instead; a rule " +
   "change that moves the baseline belongs to Lane G with the rule itself.";
 
-const boundaryRises = (records: RatchetRecords, base: BaseRevision): readonly Finding[] => {
+type Rises = {
+  readonly records: RatchetRecords;
+  readonly base: BaseRevision;
+  readonly arrivals: Arrivals;
+};
+
+const boundaryRises = ({ records, base, arrivals }: Rises): readonly Finding[] => {
   const recorded = records.boundary({ kind: "base", commit: base.commit });
   const measured = records.boundary({ kind: "head" });
   if (recorded === undefined || measured === undefined) {
     return [];
   }
-  return increasesOver({ recorded, measured }).map((increase) => ({
+  const laneAuthored = isLaneAuthored(arrivals);
+  const increases = increasesOver({ recorded, measured });
+  return increases.filter((increase) => laneAuthored(increase.file)).map((increase) => ({
     subject: `boundary baseline · ${increase.file} · ${increase.category}`,
     violation: `was raised from ${increase.recorded} to ${increase.measured}`,
     fix: RECORDS_ONLY_FALL,
   }));
 };
 
-const monolithRises = (records: RatchetRecords, base: BaseRevision): readonly Finding[] =>
-  records.monolithFiles.flatMap((file) => {
+const monolithRises = ({ records, base, arrivals }: Rises): readonly Finding[] =>
+  records.monolithFiles.filter(isLaneAuthored(arrivals)).flatMap((file) => {
     const recorded = records.monolith({ source: { kind: "base", commit: base.commit }, file });
     const measured = records.monolith({ source: { kind: "head" }, file });
     return recorded === undefined || measured === undefined
@@ -55,8 +65,10 @@ export const recordsCheck = (dependencies: RecordsDependencies): GateCheck => ({
     }
     const { records, ruleInputs } = dependencies;
     const rulesChanged = touches(scope, ruleInputs);
-    const boundary = rulesChanged ? [] : boundaryRises(records, base);
-    const findings = [...boundary, ...monolithRises(records, base)];
+    const arrivals = dependencies.repository.arrivals(base);
+    const rises = { records, base, arrivals };
+    const boundary = rulesChanged ? [] : boundaryRises(rises);
+    const findings = [...boundary, ...monolithRises(rises)];
     return judged({ id: "records", findings, note: rulesNote(scope, ruleInputs) });
   },
 });

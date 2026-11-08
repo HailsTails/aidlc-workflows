@@ -31,6 +31,11 @@ const LOCATIONS: {
   },
   { kind: "rule", within: "phases/inception.md", path: "memory/phases/inception.md" },
   { kind: "hook", within: "aidlc-record-human-turn.ts", path: "hooks/aidlc-record-human-turn.ts" },
+  {
+    kind: "overlay",
+    within: "agents/aidlc-quality-agent.md",
+    path: "contributions/agents/aidlc-quality-agent.md",
+  },
 ];
 
 describe("METHOD_SOURCE_FOLDERS", () => {
@@ -43,6 +48,7 @@ describe("METHOD_SOURCE_FOLDERS", () => {
       knowledge: "knowledge",
       rule: "memory",
       hook: "hooks",
+      overlay: "contributions",
     });
   });
 });

@@ -14,12 +14,6 @@
 //     Task denial projected to a supported `tools:` allowlist that omits
 //     Copilot's `agent` delegation tool. Copilot has no all-except-agent form,
 //     so worker agents intentionally do not inherit arbitrary MCP tools.
-//   - .github/skills/ — the COMPLETE skill tree (orchestrator + generated
-//     stage/scope runners + session skills): Copilot discovers project
-//     skills at .github/skills/, never inside .aidlc/, so the manifest sets
-//     skipRunnerGen and emit composes runner-gen's render fns here (the
-//     codex .agents/skills/ idiom).
-//
 // MERGE NOTE: in the dist tree .github/ is wholly AIDLC-owned (clean-swept
 // each build for --check parity). A USER'S project .github/ is shared with
 // real repo content — the install step merges these aidlc-named files in;
@@ -39,6 +33,7 @@ import { accepted, refused } from "../../src/kernel/result.ts";
 import type { ProjectionRefusal } from "../../src/projection/domain/projection.ts";
 import { copilotAgentRenderer, type CopilotModelSurface,
   type CopilotRuntimeSurface } from "../../src/hosts/copilot/projection/agent-renderer.ts";
+import { copilotCommandPath } from "../../src/hosts/copilot/projection/command-renderer.ts";
 import { LAUNCHER_PATH, launcherBody } from "../../core/tools/aidlc-launcher-voucher.ts";
 
 // ---------------------------------------------------------------------------
@@ -79,24 +74,6 @@ export default function emit(ctx: EmitContext): void {
   const { coreRoot, harnessRoot, distRoot, harnessDir, substituteToken } = ctx;
   const SHELL = join(distRoot, ".github");
   const SKILLS_DST = join(SHELL, "skills");
-
-  // Compose runner-gen's render fns under the manifest harnessDir, loading
-  // the module FROM THE ASSEMBLED DIST TREE (the packager's compile step
-  // already wrote tools/data/stage-graph.json there; core/ carries no
-  // compiled JSON). The codex idiom, never reimplemented.
-  process.env.AIDLC_HARNESS_DIR = harnessDir;
-  process.env.AIDLC_HARNESS_NAME = "copilot";
-  const gen = require(join(distRoot, harnessDir, "tools", "aidlc-runner-gen.ts")) as {
-    runnableStages: () => Array<{ slug: string }>;
-    renderStageRunner: (node: { slug: string }) => string;
-    renderInitRunner: () => string;
-    renderComposeRunner: () => string;
-    defaultScopeBatch: (
-      discovered?: Record<string, { name: string; description: string }>,
-    ) => string[];
-    discoverScopes: () => Record<string, { name: string; description: string }>;
-    renderRunner: (scope: string, description: string) => string;
-  };
 
   function walk(dir: string): string[] {
     const out: string[] = [];
@@ -189,29 +166,6 @@ export default function emit(ctx: EmitContext): void {
       content: () => substituteToken(readFileSync(join(harnessRoot, "skills", "aidlc", f), "utf-8")),
     });
   }
-  // (b) stage runners + init + compose, generated.
-  for (const node of gen.runnableStages()) {
-    emissions.push({
-      path: join(SKILLS_DST, `aidlc-${node.slug}`, "SKILL.md"),
-      content: () => gen.renderStageRunner(node),
-    });
-  }
-  emissions.push({
-    path: join(SKILLS_DST, "aidlc-init", "SKILL.md"),
-    content: () => gen.renderInitRunner(),
-  });
-  emissions.push({
-    path: join(SKILLS_DST, "aidlc-compose", "SKILL.md"),
-    content: () => gen.renderComposeRunner(),
-  });
-  // (c) default-batch scope runners.
-  const scopes = gen.discoverScopes();
-  for (const scope of gen.defaultScopeBatch(scopes).filter((s) => s in scopes)) {
-    emissions.push({
-      path: join(SKILLS_DST, `aidlc-${scope}`, "SKILL.md"),
-      content: () => gen.renderRunner(scope, scopes[scope].description),
-    });
-  }
   // (d) session skills — copied from core/ with token substitution (the
   // engine dir ships NO skills/ — Copilot never scans it).
   for (const skill of ["aidlc-session-cost", "aidlc-replay", "aidlc-outcomes-pack", "aidlc-knowledge", "aidlc-issue-report"]) {
@@ -240,4 +194,5 @@ export default function emit(ctx: EmitContext): void {
   mkdirSync(dirname(launcher), { recursive: true });
   writeFileSync(launcher, substituteToken(launcherBody("{{INVOKE}}")), { encoding: "utf-8", mode: 0o755 });
   chmodSync(launcher, 0o755);
+  ctx.emitCommands(copilotCommandPath);
 }

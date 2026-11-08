@@ -313,9 +313,11 @@ Create `harness/<name>/manifest.ts` exporting a `HarnessManifest`
   supports always-on steering/rules; the neutral skeleton must contain no markers.
   The packager verifies byte identity for every `shared: "identical"` root path.
   Use `null` only when `emit.ts` owns onboarding or no onboarding ships.
-- `skipRunnerGen` — set when the harness ships no `<harnessDir>/skills/` (Codex
-  emits its skill tree to `.agents/skills/` via `emit`); the packager then skips
-  the standard runner-gen step.
+- `skipRunnerGen` - set to `true` when `emit()` owns runner production. An
+  `emit()` function is required, and the packager skips its standard runner-gen
+  step. This does not select a skills location: `orchestratorSkillPath` and
+  native placement declare the layout. Emitting other surfaces alone does not
+  change runner ownership.
 - `emit` — the optional plugin (Step 3), `null` for harnesses that need none.
 - `plugin` (optional) — the host plugin manifest directory and delivery kind.
   Omitting it derives `<harnessDir>-plugin` plus store delivery; set `kind:

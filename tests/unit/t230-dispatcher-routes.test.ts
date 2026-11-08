@@ -76,6 +76,7 @@ import {
 } from "../harness/fixtures.ts";
 import { setupTuiProject } from "../harness/tui-fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
+import { orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 
 setDefaultTimeout(NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
 
@@ -2650,11 +2651,9 @@ describe("t230 native review-brief dispatch", () => {
       // names the agent's step for it, here one fresh `next`, and each rules
       // part then names its own `continue`.
       expect(feedback.reason).toStartWith("AI-DLC is carrying on");
-      const skillPath = [join(harnessDir, "skills", "aidlc", "SKILL.md"), join(".agents", "skills", "aidlc", "SKILL.md"), join(".github", "skills", "aidlc", "SKILL.md")]
-        .map((rel) => join(project, rel))
-        .find((path) => existsSync(path));
-      expect(skillPath, harness.name).toBeDefined();
-      const recovery = /run one fresh `(aidlc engine orchestrate next)`/.exec(readFileSync(skillPath!, "utf-8"))?.[1];
+      const skillPath = join(project, orchestratorSkillLocation(harness.manifest));
+      expect(existsSync(skillPath), harness.name).toBe(true);
+      const recovery = /run one fresh `(aidlc engine orchestrate next)`/.exec(readFileSync(skillPath, "utf-8"))?.[1];
       expect(recovery, harness.name).toBeDefined();
       let command = recovery!;
       let kind = "";

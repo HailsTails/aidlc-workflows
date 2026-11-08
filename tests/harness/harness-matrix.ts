@@ -1,7 +1,10 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import {
+  runnerProducer, orchestratorSkillLocation, type HarnessManifest,
+} from "../../scripts/manifest-types.ts";
+import { frontmatterBlock } from "../../core/tools/aidlc-lib.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const HARNESS_ROOT = join(REPO_ROOT, "harness");
@@ -222,19 +225,36 @@ function fail(name: string, message: string): never {
   throw new Error(`harness matrix [${name}]: ${message}`);
 }
 
+export function agentFrontmatterGrantsIdeTools(file: string, lines: readonly string[]): boolean {
+  return /^agents\/[^/]+\.md$/.test(file)
+    && lines.some((line) => line.split(":", 1)[0]?.trim() === "tools");
+}
+
 export function manifestGrantsIdeAgentTools(
   manifest: Pick<HarnessManifest, "frontmatterAdditions">,
 ): boolean {
-  return (
-    manifest.frontmatterAdditions?.some(
-      ({ file, lines }) =>
-        /^agents\/[^/]+\.md$/.test(file) &&
-        lines.some((line) => line.split(":", 1)[0]?.trim() === "tools"),
-    ) ?? false
-  );
+  return manifest.frontmatterAdditions?.some(({ file, lines }) =>
+    agentFrontmatterGrantsIdeTools(file, lines)) ?? false;
 }
 
-function validateManifest(
+function validateEmittedAgentTools(name: ShippedHarnessName, manifest: HarnessManifest,
+  capabilities: HarnessCapabilities): void {
+  const directory = join(REPO_ROOT, "dist", name, manifest.harnessDir, "agents");
+  const files = existsSync(directory)
+    ? readdirSync(directory).filter((file) => file.endsWith(".md")) : [];
+  if (capabilities.ideAgentTools && files.length === 0) {
+    fail(name, "tools-capable emitted agent documents are missing");
+  }
+  for (const file of files) {
+    const header = frontmatterBlock(readFileSync(join(directory, file), "utf8")) ?? "";
+    const grantsTools = agentFrontmatterGrantsIdeTools(`agents/${file}`, header.split(/\r?\n/));
+    if (grantsTools !== capabilities.ideAgentTools) {
+      fail(name, `ideAgentTools does not agree with emitted agent ${file}`);
+    }
+  }
+}
+
+export function validateManifest(
   name: ShippedHarnessName,
   manifest: HarnessManifest,
   capabilities: HarnessCapabilities,
@@ -247,9 +267,11 @@ function validateManifest(
     );
   }
 
-  const usesEmittedSkills = manifest.skipRunnerGen === true;
-  if (usesEmittedSkills !== (capabilities.skillsRoot !== `${manifest.harnessDir}/skills`)) {
-    fail(name, "skillsRoot does not agree with manifest.skipRunnerGen");
+  const producer = runnerProducer(manifest);
+  if (!producer.ok) fail(name, producer.refusal);
+  const orchestratorLocation = orchestratorSkillLocation(manifest);
+  if (orchestratorLocation !== `${capabilities.skillsRoot}/aidlc/SKILL.md`) {
+    fail(name, "skillsRoot does not agree with manifest.orchestratorSkillPath");
   }
 
   const onboarding = manifest.onboarding ?? null;
@@ -295,22 +317,20 @@ function validateManifest(
     (capabilities.memoryInclude === "claude-import") !==
       manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.md") ||
     (capabilities.memoryInclude === "codex-engine") !==
-      (manifest.orchestratorSkillPath === ".agents/skills/aidlc/SKILL.md") ||
+      (orchestratorLocation === ".agents/skills/aidlc/SKILL.md") ||
     (capabilities.memoryInclude === "opencode-instructions") !==
       manifest.harnessFiles.some((file) => file.dst === "opencode.json") ||
     (capabilities.memoryInclude === "copilot-agents-md") !==
       (manifest.onboarding?.projectRoot === true &&
         manifest.onboarding.dst === "AGENTS.md" &&
         manifest.harnessDir === ".aidlc" &&
-        manifest.skipRunnerGen === true) ||
+        orchestratorLocation === ".github/skills/aidlc/SKILL.md") ||
     (capabilities.memoryInclude === "cursor-rule") !==
       manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.mdc")
   ) {
     fail(name, "memoryInclude does not agree with manifest-owned include surfaces");
   }
-  if (manifestGrantsIdeAgentTools(manifest) !== capabilities.ideAgentTools) {
-    fail(name, "ideAgentTools does not agree with manifest agent tools grants");
-  }
+  validateEmittedAgentTools(name, manifest, capabilities);
   if (
     manifest.plugin &&
     (manifest.plugin.kind !== capabilities.plugin.kind ||

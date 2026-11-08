@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { orchestratorSkillLocation, type HarnessManifest } from "../../scripts/manifest-types.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 
 describe("t303 manifest-owned orchestrator skill path", () => {
@@ -20,9 +20,8 @@ describe("t303 manifest-owned orchestrator skill path", () => {
       const module = await import(
         pathToFileURL(join(REPO_ROOT, "harness", name, "manifest.ts")).href
       ) as { default: HarnessManifest };
-      const rel = module.default.orchestratorSkillPath;
-      expect(rel).toBeDefined();
-      if (!rel) throw new Error(`${name} does not declare orchestratorSkillPath`);
+      expect(module.default.orchestratorSkillPath).toBeDefined();
+      const rel = orchestratorSkillLocation(module.default);
       expect(rel.length).toBeGreaterThan(0);
       expect(isAbsolute(rel)).toBe(false);
       expect(rel.split(/[\\/]/)).not.toContain("..");
@@ -43,7 +42,7 @@ describe("t303 manifest-owned orchestrator skill path", () => {
       ) as { default: HarnessManifest }).default;
       const skill = join(
         REPO_ROOT, "dist", name,
-        manifest.orchestratorSkillPath ?? join(manifest.harnessDir, "skills", "aidlc", "SKILL.md"),
+        orchestratorSkillLocation(manifest),
       );
       const reference = new RegExp(`\`(${manifest.harnessDir.replace(".", "\\.")}/[^\`\\s]+)\``, "g");
       let named = 0;
@@ -59,13 +58,11 @@ describe("t303 manifest-owned orchestrator skill path", () => {
     }
   });
 
-  test("package.ts resolves the optional manifest field with the in-tree default", () => {
-    const source = readFileSync(join(REPO_ROOT, "scripts", "package.ts"), "utf-8");
-    expect(source).toContain("manifest.orchestratorSkillPath");
-    expect(source).toContain(
-      'join(manifest.harnessDir, "skills", "aidlc", "SKILL.md")',
-    );
-    expect(source).not.toContain('join(projectRoot, ".agents", "skills", "aidlc"');
-    expect(source).not.toContain('join(projectRoot, ".github", "skills", "aidlc"');
+  test("the shared resolver supplies the default or declared native entry", () => {
+    expect(orchestratorSkillLocation({ harnessDir: ".native" }))
+      .toBe(".native/skills/aidlc/SKILL.md");
+    expect(orchestratorSkillLocation({ harnessDir: ".native",
+      orchestratorSkillPath: "native-skills/aidlc/SKILL.md" }))
+      .toBe("native-skills/aidlc/SKILL.md");
   });
 });

@@ -31,6 +31,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, posix, resolve, win32 } from "node:path";
+import { orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 import {
   acquireAuditLock,
   auditLockDir,
@@ -1158,11 +1159,8 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
         copyInstall: false,
       });
       expect(compose.composeStatus).toBe(0);
-      const skillsRoot = harness === "copilot"
-        ? join(project, ".github", "skills")
-        : harness === "codex"
-          ? join(project, ".agents", "skills")
-          : join(project, harnessByName(harness).manifest.harnessDir, "skills");
+      const skillsRoot = join(project,
+        dirname(dirname(orchestratorSkillLocation(harnessByName(harness).manifest))));
       const tables = readFileSync(join(skillsRoot, "aidlc", "tables.md"), "utf-8");
       expect(tables).toContain("test-pro-validation");
       expect(existsSync(join(skillsRoot, "test-pro-validation", "SKILL.md"))).toBe(true);

@@ -32,23 +32,31 @@ export type DefinitionIdentity =
   | "rule"
   | "hook";
 
-export type IdentityRefusal = {
-  readonly kind: "invalid-identity";
-  readonly identity: DefinitionIdentity;
-  readonly raw: string;
-};
+export type IdentityRefusal =
+  | {
+      readonly kind: "invalid-identity";
+      readonly identity: DefinitionIdentity;
+      readonly raw: string;
+    }
+  | { readonly kind: "reserved-plugin-name"; readonly raw: string };
 
 const KEBAB = /^[a-z][a-z0-9-]*$/;
 const SCOPE = /^[A-Za-z0-9][A-Za-z0-9._+@-]*$/;
 const RULE = /^[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*$/;
 const CORE_NAMESPACE = "aidlc-";
+const RESERVED_PLUGIN_NAMES: readonly string[] = ["core", "aidlc"];
+
+const pluginNameClaim = (raw: string): "reserved-for-core" | "open" =>
+  RESERVED_PLUGIN_NAMES.includes(raw) || raw.startsWith(CORE_NAMESPACE)
+    ? "reserved-for-core"
+    : "open";
 
 const identity =
   <Identity extends Brand<string, string>>({
     identity,
     pattern,
   }: {
-    readonly identity: IdentityRefusal["identity"];
+    readonly identity: DefinitionIdentity;
     readonly pattern: RegExp;
   }) =>
   (raw: string): Result<Identity, IdentityRefusal> =>
@@ -70,7 +78,9 @@ export const ruleId = identity<RuleId>({ identity: "rule", pattern: RULE });
 
 export const hookName = identity<HookName>({ identity: "hook", pattern: KEBAB });
 
-export const pluginId = (raw: string): Result<PluginId, IdentityRefusal> =>
-  KEBAB.test(raw) && !raw.startsWith(CORE_NAMESPACE)
-    ? accepted(brand<PluginId>(raw))
-    : refused({ kind: "invalid-identity", identity: "plugin", raw });
+export const pluginId = (raw: string): Result<PluginId, IdentityRefusal> => {
+  if (!KEBAB.test(raw)) return refused({ kind: "invalid-identity", identity: "plugin", raw });
+  return pluginNameClaim(raw) === "reserved-for-core"
+    ? refused({ kind: "reserved-plugin-name", raw })
+    : accepted(brand<PluginId>(raw));
+};

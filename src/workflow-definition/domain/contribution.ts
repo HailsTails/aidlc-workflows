@@ -3,13 +3,18 @@ import type { AgentSlug, PluginId, ScopeName, SensorId, StageSlug } from "./iden
 import type { ContributedContent } from "./method.ts";
 import type { ArtifactConsumption, ArtifactProduction } from "./stage.ts";
 
+export type SectionAnchor = { readonly kind: "in-section"; readonly section: string };
+
 export type StageAnchor =
   | { readonly kind: "after-step"; readonly step: number }
   | { readonly kind: "before-step"; readonly step: number }
   | { readonly kind: "end-of-steps" }
-  | { readonly kind: "in-section"; readonly section: string };
+  | SectionAnchor;
 
-export type PersonaAnchor = { readonly kind: "after-preflight" } | { readonly kind: "end-of-body" };
+export type PersonaAnchor =
+  | { readonly kind: "after-preflight" }
+  | { readonly kind: "end-of-body" }
+  | SectionAnchor;
 
 export type OverlayAnchor = StageAnchor | PersonaAnchor;
 

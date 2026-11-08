@@ -24,7 +24,8 @@ export const newDebtModules = (changes: readonly ChangedFile[]): readonly Findin
       violation: "is a new TypeScript module in the debt zone, which only shrinks",
       fix:
         "Create the module in its context under src/ and repoint callers there; the debt " +
-        "zone takes only edits that move callers and data files such as goldens.",
+        "zone takes only edits that move callers and data files such as goldens. A file that " +
+        "comes from the upstream project is admitted once git fetch upstream has run.",
     }));
 
 export const hiddenBaselineEntries = (baseline: CountsByFile): readonly Finding[] =>
