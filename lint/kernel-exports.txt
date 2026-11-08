@@ -3,7 +3,9 @@ Brand
 ContentHash
 DistributionId
 FileContent
+FileMode
 FrameworkVersion
+HostIdentity
 KernelRefusal
 NonEmptyArray
 PathBase
@@ -13,6 +15,7 @@ Result
 SourcePath
 Timestamp
 accepted
+brand
 contentHash
 distributionId
 frameworkVersion

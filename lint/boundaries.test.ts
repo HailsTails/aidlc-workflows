@@ -5,7 +5,7 @@ import { standardsConfig } from "./standards.ts";
 
 const BOUNDARIES: Linter.Config[] = [...standardsConfig, ...boundaryConfig];
 
-describe("boundaryConfig", () => {
+describe("boundaryConfig in production code", () => {
   test("refuses a platform import in a domain module", () => {
     const messages = new Linter({ configType: "flat" }).verify(
       'import { readFileSync } from "node:fs";\nexport const read = readFileSync;\n',
@@ -30,6 +30,21 @@ describe("boundaryConfig", () => {
     );
   });
 
+  test("refuses one context reaching into another's adapters", () => {
+    const messages = new Linter({ configType: "flat" }).verify(
+      'import { stageFile } from "../../workflow-definition/adapters/stage-file.ts";\n' +
+        "export const file = stageFile;\n",
+      BOUNDARIES,
+      { filename: "src/projection/adapters/reader.ts" },
+    );
+
+    expect(messages).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports", line: 1 }),
+    );
+  });
+});
+
+describe("boundaryConfig in colocated tests", () => {
   test("lets a domain test import bun:test and its own context's fixtures", () => {
     const messages = new Linter({ configType: "flat" }).verify(
       'import { expect, test } from "bun:test";\n' +
@@ -64,18 +79,5 @@ describe("boundaryConfig", () => {
     );
 
     expect(messages).toEqual([]);
-  });
-
-  test("refuses one context reaching into another's adapters", () => {
-    const messages = new Linter({ configType: "flat" }).verify(
-      'import { stageFile } from "../../workflow-definition/adapters/stage-file.ts";\n' +
-        "export const file = stageFile;\n",
-      BOUNDARIES,
-      { filename: "src/projection/adapters/reader.ts" },
-    );
-
-    expect(messages).toContainEqual(
-      expect.objectContaining({ ruleId: "no-restricted-imports", line: 1 }),
-    );
   });
 });
