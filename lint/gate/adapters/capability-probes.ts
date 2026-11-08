@@ -1,9 +1,15 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { CapabilityId, ProbeResult } from "../domain/capability-exclusion.ts";
 import type { Capabilities } from "../application/ports.ts";
-
-const LONG_NAME = "aidlc-gate-probe-long-name.txt";
 
 const inScratch = <T>(temp: string, use: (directory: string) => T): T => {
   const directory = mkdtempSync(join(temp, "aidlc-gate-probe-"));
@@ -26,25 +32,59 @@ const symlinks = (temp: string): ProbeResult =>
     }
   });
 
+const systemTemp = (): string => join(process.env["SystemRoot"] ?? "C:\\Windows", "Temp");
+
+const lengthOf = (directory: string): number => {
+  try {
+    return realpathSync(directory).length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+};
+
+const writable = (directory: string): boolean => {
+  try {
+    rmdirSync(mkdtempSync(join(directory, "aidlc-gate-probe-")));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const fixtureRoot = (temp: string): string => {
+  const system = systemTemp();
+  return lengthOf(system) < lengthOf(temp) && writable(system) ? system : temp;
+};
+
+const shortPathOf = (directory: string): string => {
+  const folder = `.GetFolder('${directory}')`;
+  const script = `(New-Object -ComObject Scripting.FileSystemObject)${folder}.ShortPath`;
+  const run = Bun.spawnSync(["powershell.exe", "-NoProfile", "-Command", script]);
+  return run.stdout.toString().trim();
+};
+
 const shortNames = (temp: string): ProbeResult => {
   if (process.platform !== "win32") {
     return { available: true, evidence: "not a Windows volume" };
   }
-  return inScratch(temp, (directory) => {
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, LONG_NAME), "x");
-    const listing = Bun.spawnSync(["cmd.exe", "/d", "/c", "dir", "/x"], { cwd: directory });
-    const entry = listing.stdout.toString().split(/\r?\n/).find((line) => line.includes(LONG_NAME));
-    const hasShortName = entry !== undefined && /~\d/.test(entry);
+  const root = fixtureRoot(temp);
+  const folder = mkdtempSync(join(root, "aidlc-gate-probe-long-folder-name-"));
+  try {
+    const short = shortPathOf(folder);
+    const available = short.includes("~") && short !== folder;
     return {
-      available: hasShortName,
-      evidence: hasShortName ? "8.3 short names are on" : "8.3 short names are off on this volume",
+      available,
+      evidence: available
+        ? `a long-named folder in ${root} has an 8.3 short path`
+        : `a long-named folder in ${root} has no 8.3 short path`,
     };
-  });
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 };
 
 const listableSystemTemp = (): ProbeResult => {
-  const directory = join(process.env["SystemRoot"] ?? "C:\\Windows", "Temp");
+  const directory = systemTemp();
   try {
     readdirSync(directory);
     return { available: true, evidence: "the system temp folder can be listed" };

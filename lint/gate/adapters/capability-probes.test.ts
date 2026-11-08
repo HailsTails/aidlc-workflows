@@ -30,4 +30,11 @@ describe("capability probes", () => {
     const ids = ["symlinks", "short-names", "listable-system-temp"] as const;
     expect(ids.every((id) => probes.probe(id).evidence.length > 0)).toBe(true);
   });
+
+  test("the short-names probe names the fixture root it checked", () => {
+    const system = join(process.env["SystemRoot"] ?? "C:\\Windows", "Temp").toLowerCase();
+    const evidence = capabilityProbes(SCRATCH).probe("short-names").evidence.toLowerCase();
+    const named = [SCRATCH.toLowerCase(), system].some((root) => evidence.includes(root));
+    expect(process.platform !== "win32" || named).toBe(true);
+  });
 });
