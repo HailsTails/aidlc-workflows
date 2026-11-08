@@ -109,6 +109,10 @@
         "scripts/package.ts",
         "scripts/manifest-types.ts",
         "harness/claude/manifest.ts",
+        "harness/kiro/manifest.ts",
+        "harness/cursor/manifest.ts",
+        "scripts/agent-knowledge.ts",
+        "tests/unit/t248-steering-content-delivery.test.ts",
         "tests/unit/t64.test.ts",
         "tests/unit/t-package-sources.test.ts",
         "tests/unit/t177-workspace-journey-fixture.test.ts",
@@ -120,9 +124,8 @@
         "discipline-exceptions.json"
       ],
       "notOwned": [
-        "harness/copilot/emit.ts",
-        "harness/{kiro,kiro-ide,cursor}/manifest.ts",
-        "harness/{codex,opencode}/{manifest,emit}.ts",
+        "harness/kiro-ide/manifest.ts",
+        "harness/{codex,opencode}/manifest.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/projection/adapters/compiled-method-file{,.test}.ts"
       ],
@@ -232,10 +235,7 @@
       "agent": "codex/dot",
       "owns": [
         "src/hosts/{kiro,kiro-ide,cursor,copilot}/**",
-        "harness/copilot/emit.ts",
-        "harness/kiro/manifest.ts",
-        "harness/kiro-ide/manifest.ts",
-        "harness/cursor/manifest.ts"
+        "harness/kiro-ide/manifest.ts"
       ],
       "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
@@ -251,9 +251,7 @@
         "src/hosts/{codex,opencode}/projection/**",
         "src/hosts/{codex,opencode}/build.ts",
         "harness/codex/manifest.ts",
-        "harness/codex/emit.ts",
         "harness/opencode/manifest.ts",
-        "harness/opencode/emit.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/projection/adapters/compiled-method-file{,.test}.ts"
       ],
