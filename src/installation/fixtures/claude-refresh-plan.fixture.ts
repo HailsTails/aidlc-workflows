@@ -14,10 +14,10 @@ import type {
 } from "../domain/install-plan.ts";
 import type { RootContribution } from "../domain/ownership.ts";
 
-const payload = claudeCopyPayloadFixture;
+const shippedPayload = claudeCopyPayloadFixture;
 
 const shipped = (raw: string): PayloadFile => {
-  const found = payload.files.find((file) => file.path === raw);
+  const found = shippedPayload.files.find((file) => file.path === raw);
   if (found === undefined) {
     throw new Error(`Payload fixture ships no ${raw}`);
   }
@@ -25,7 +25,9 @@ const shipped = (raw: string): PayloadFile => {
 };
 
 const integration = (raw: string): RootIntegration => {
-  const found = payload.descriptor.layout.rootIntegrations.find((entry) => entry.path === raw);
+  const found = shippedPayload.descriptor.layout.rootIntegrations.find(
+    (entry) => entry.path === raw,
+  );
   if (found === undefined) {
     throw new Error(`Payload fixture integrates no ${raw}`);
   }
@@ -100,7 +102,7 @@ const refreshRootIntegrations: readonly RootIntegrationDecision[] = [
 
 export const claudeRefreshPlanFixture: ReadyInstallPlan = {
   kind: "ready",
-  payload,
+  payload: shippedPayload,
   mode: { kind: "refresh", edits: "refuse" },
   installedVersion: version("2.11.1"),
   mcp: "defaults",
@@ -112,7 +114,7 @@ export const claudeRefreshPlanFixture: ReadyInstallPlan = {
 
 export const claudeBlockedRefreshPlanFixture: BlockedInstallPlan = {
   kind: "blocked",
-  payload,
+  payload: shippedPayload,
   mode: { kind: "refresh", edits: "refuse" },
   installedVersion: version("2.11.1"),
   mcp: "defaults",

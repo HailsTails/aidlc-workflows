@@ -6,7 +6,11 @@ import type { CompiledMethod, Method } from "../domain/method.ts";
 import type { AuthoredBody } from "../domain/outline.ts";
 import type { Rule } from "../domain/rule.ts";
 import type { Scope, ScopeMembership } from "../domain/scope.ts";
-import type { SensorDeclaration, SensorFieldShape } from "../domain/sensor.ts";
+import type {
+  SensorDeclaration,
+  SensorFieldShape,
+  SensorFieldShapes,
+} from "../domain/sensor.ts";
 import type { Stage } from "../domain/stage.ts";
 import { stageNumber } from "../domain/stage-graph.ts";
 import { authoredBody } from "./authored-body.fixture.ts";
@@ -17,7 +21,10 @@ const core = { kind: "core" } as const;
 
 const noAdditions: PersonaAdditions = { afterPreflight: [], endOfBody: [] };
 
-const value = (type: string): SensorFieldShape => ({ kind: "value", type });
+const scalar = (type: string): SensorFieldShape => ({ kind: "value", type });
+
+const fields = (entries: readonly (readonly [string, SensorFieldShape])[]): SensorFieldShapes =>
+  Object.fromEntries(entries);
 
 const persona = (role: string): AuthoredBody =>
   authoredBody([{ level: 1, title: role, prose: `\nYou are the ${role} for this AI-DLC run.\n` }]);
@@ -442,8 +449,15 @@ const requiredSectionsSensor: SensorDeclaration = {
   firesOn: "gate",
   matches: "**/{aidlc-docs,intents,codekb}/**",
   timeoutSeconds: 300,
-  input: { output_path: value("string"), stage_slug: value("string") },
-  output: { pass: value("boolean"), h2_count: value("integer"), message: value("string") },
+  input: fields([
+    ["output_path", scalar("string")],
+    ["stage_slug", scalar("string")],
+  ]),
+  output: fields([
+    ["pass", scalar("boolean")],
+    ["h2_count", scalar("integer")],
+    ["message", scalar("string")],
+  ]),
 };
 
 const upstreamCoverageSensor: SensorDeclaration = {
@@ -459,12 +473,15 @@ const upstreamCoverageSensor: SensorDeclaration = {
   firesOn: "gate",
   matches: "**/{aidlc-docs,intents,codekb}/**",
   timeoutSeconds: 300,
-  input: {
-    output_path: value("string"),
-    stage_slug: value("string"),
-    consumes: value("string[]"),
-  },
-  output: { pass: value("boolean"), unreferenced_artifacts: value("string[]") },
+  input: fields([
+    ["output_path", scalar("string")],
+    ["stage_slug", scalar("string")],
+    ["consumes", scalar("string[]")],
+  ]),
+  output: fields([
+    ["pass", scalar("boolean")],
+    ["unreferenced_artifacts", scalar("string[]")],
+  ]),
 };
 
 const linterSensor: SensorDeclaration = {
@@ -480,16 +497,16 @@ const linterSensor: SensorDeclaration = {
   firesOn: "write",
   matches: "**/*.{ts,js}",
   timeoutSeconds: 1200,
-  input: { file_path: value("string") },
+  input: fields([["file_path", scalar("string")]]),
   output: {
-    pass: value("boolean"),
+    pass: scalar("boolean"),
     violations: {
       kind: "list-of",
       fields: {
-        file: value("string"),
-        line: value("number"),
-        rule: value("string"),
-        message: value("string"),
+        file: scalar("string"),
+        line: scalar("number"),
+        rule: scalar("string"),
+        message: scalar("string"),
       },
     },
   },
