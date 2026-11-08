@@ -40,70 +40,64 @@ const opencodeContributions: OwnershipRecordFile["rootContributions"] = {
   },
 };
 
-describe("OwnershipRecordFileSchema", () => {
-  test("reads a Claude install record", () => {
-    expect(OwnershipRecordFileSchema.parse(claudeRecord)).toEqual(claudeRecord);
-  });
+const opencodeRecord: OwnershipRecordFile = {
+  ...claudeRecord,
+  rootContributions: opencodeContributions,
+};
 
-  test("reads every policy a root contribution can be recorded under", () => {
-    const record: OwnershipRecordFile = {
-      ...claudeRecord,
-      rootContributions: opencodeContributions,
-    };
-    expect(OwnershipRecordFileSchema.parse(record)).toEqual(record);
-  });
+const recordWithEntries: OwnershipRecordFile = {
+  ...claudeRecord,
+  entries: { ".claude/settings.json": { "hooks.UserPromptSubmit": SETTINGS_HASH } },
+};
 
-  test("reads per-file entry hashes", () => {
-    const record: OwnershipRecordFile = {
-      ...claudeRecord,
-      entries: { ".claude/settings.json": { "hooks.UserPromptSubmit": SETTINGS_HASH } },
-    };
-    expect(OwnershipRecordFileSchema.parse(record)).toEqual(record);
-  });
+const READABLE_RECORDS = [
+  { shape: "a Claude install record", record: claudeRecord },
+  { shape: "every policy a root contribution can be recorded under", record: opencodeRecord },
+  { shape: "per-file entry hashes", record: recordWithEntries },
+];
 
-  test("refuses a record from another schema version", () => {
-    expect(
-      OwnershipRecordFileSchema.safeParse({ ...claudeRecord, schemaVersion: 2 }),
-    ).toMatchObject({
-      success: false,
-      error: { issues: [{ code: "invalid_value", path: ["schemaVersion"] }] },
-    });
-  });
-
-  test("refuses an MCP mode it does not know", () => {
-    expect(OwnershipRecordFileSchema.safeParse({ ...claudeRecord, mcpMode: "all" })).toMatchObject({
-      success: false,
-      error: { issues: [{ code: "invalid_value", path: ["mcpMode"] }] },
-    });
-  });
-
-  test("refuses a root contribution under a policy it does not know", () => {
-    const record = {
+const REFUSED_RECORDS = [
+  {
+    shape: "a record from another schema version",
+    record: { ...claudeRecord, schemaVersion: 2 },
+    issues: [{ code: "invalid_value", path: ["schemaVersion"] }],
+  },
+  {
+    shape: "an MCP mode it does not know",
+    record: { ...claudeRecord, mcpMode: "all" },
+    issues: [{ code: "invalid_value", path: ["mcpMode"] }],
+  },
+  {
+    shape: "a root contribution under a policy it does not know",
+    record: {
       ...claudeRecord,
       rootContributions: { ".gitignore": { policy: "line-set", hash: BLOCK_HASH } },
-    };
-    expect(OwnershipRecordFileSchema.safeParse(record)).toMatchObject({
-      success: false,
-      error: {
-        issues: [{ code: "invalid_union", path: ["rootContributions", ".gitignore", "policy"] }],
-      },
-    });
-  });
-
-  test("refuses a json-array contribution without its key", () => {
-    const record = {
+    },
+    issues: [{ code: "invalid_union", path: ["rootContributions", ".gitignore", "policy"] }],
+  },
+  {
+    shape: "a json-array contribution without its key",
+    record: {
       ...claudeRecord,
       rootContributions: {
         ".kiro/settings/mcp.json": { policy: "json-array", entries: { context7: SERVER_HASH } },
       },
-    };
+    },
+    issues: [
+      { code: "invalid_type", path: ["rootContributions", ".kiro/settings/mcp.json", "key"] },
+    ],
+  },
+];
+
+describe("OwnershipRecordFileSchema", () => {
+  test.each(READABLE_RECORDS)("reads $shape", ({ record }) => {
+    expect(OwnershipRecordFileSchema.parse(record)).toEqual(record);
+  });
+
+  test.each(REFUSED_RECORDS)("refuses $shape", ({ record, issues }) => {
     expect(OwnershipRecordFileSchema.safeParse(record)).toMatchObject({
       success: false,
-      error: {
-        issues: [
-          { code: "invalid_type", path: ["rootContributions", ".kiro/settings/mcp.json", "key"] },
-        ],
-      },
+      error: { issues },
     });
   });
 });

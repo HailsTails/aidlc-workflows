@@ -1,29 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import { RuleFileSchema, type RuleFile } from "./rule-file.ts";
+import { RuleFileSchema } from "./rule-file.ts";
 
-const pairedRule: RuleFile = {
-  pairing: "aidlc-required-sections",
-  status: "active",
-  stale_after: "2026-12-31",
-};
+const READABLE_RULES = [
+  {
+    shape: "a rule paired with a sensor and its lifecycle",
+    text: `{
+      "pairing": "aidlc-required-sections", "status": "active", "stale_after": "2026-12-31"
+    }`,
+  },
+  { shape: "a rule declared feedforward-only", text: '{ "pairing": "feedforward-only" }' },
+  { shape: "a rule file with no frontmatter fields", text: "{}" },
+];
+
+const UNNAMED_PAIRING = '{ "pairing": "required-sections" }';
 
 describe("RuleFileSchema", () => {
-  test("reads a rule paired with a sensor and its lifecycle", () => {
-    expect(RuleFileSchema.parse(pairedRule)).toEqual(pairedRule);
-  });
-
-  test("reads a rule declared feedforward-only", () => {
-    expect(RuleFileSchema.parse({ pairing: "feedforward-only" })).toEqual({
-      pairing: "feedforward-only",
-    });
-  });
-
-  test("reads a rule file with no frontmatter fields", () => {
-    expect(RuleFileSchema.parse({})).toEqual({});
+  test.each(READABLE_RULES)("reads $shape", ({ text }) => {
+    expect(RuleFileSchema.parse(JSON.parse(text))).toEqual(JSON.parse(text));
   });
 
   test("refuses a pairing that does not name a sensor manifest", () => {
-    expect(RuleFileSchema.safeParse({ pairing: "required-sections" })).toMatchObject({
+    expect(RuleFileSchema.safeParse(JSON.parse(UNNAMED_PAIRING))).toMatchObject({
       success: false,
       error: { issues: [{ code: "invalid_format", path: ["pairing"] }] },
     });
