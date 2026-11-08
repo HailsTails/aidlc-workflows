@@ -37,7 +37,8 @@ const membershipReferences = (core: CoreContent): readonly MethodRefusal[] =>
     const declaringStage = core.stages.find((stage) => stage.slug === membership.stage);
     const declaringScope = core.scopes.find((scope) => scope.name === membership.scope);
     const declaration = declaringStage ?? declaringScope;
-    if (!declaration) throw new Error("A captured membership needs its owning stage or scope");
+    if (!declaration) return [{ kind: "unattributed-membership",
+      scope: membership.scope, stage: membership.stage, declaredBy: membership.declaredBy }];
     const source = { path: declaration.source, owner: declaration.owner };
     return [
       ...unknown({ names: [membership.stage], known: core.stages.map((stage) => stage.slug),

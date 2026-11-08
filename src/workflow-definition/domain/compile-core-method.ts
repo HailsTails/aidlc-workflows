@@ -19,15 +19,28 @@ const rulesFor = (request: { readonly stage: Stage; readonly rules: readonly Rul
     priority[left.layer.kind] - priority[right.layer.kind] || left.id.localeCompare(right.id))
     .map((rule) => rule.id);
 
-const numbered = (request: { readonly ordered: readonly Stage[];
-  readonly core: CoreContent }): readonly StageNode[] => request.ordered.map((stage, index) => {
-  const position = request.ordered.slice(0, index)
-    .filter((prior) => prior.phase === stage.phase).length + 1;
+export const numberStage = (request: { readonly stage: Stage; readonly position: number;
+  readonly rules: readonly Rule[] }): Result<StageNode, readonly MethodRefusal[]> => {
+  const { stage, position } = request;
   const number = stageNumber(`${PHASES.indexOf(stage.phase)}.${position}`);
-  if (!number.ok) throw new Error("A known phase and positive position form a stage number");
-  return { stage: stage.slug, number: number.value, availability: "enabled",
-    rulesInContext: rulesFor({ stage, rules: request.core.rules }), activeSensors: stage.sensors };
-});
+  if (!number.ok) return refused([{ kind: "invalid-file",
+    location: { kind: "method-source", path: stage.source, owner: stage.owner },
+    issues: [`Stage ${stage.slug} cannot be numbered at position ${position} in phase ${stage.phase}`],
+  }]);
+  return accepted({ stage: stage.slug, number: number.value, availability: "enabled",
+    rulesInContext: rulesFor({ stage, rules: request.rules }), activeSensors: stage.sensors });
+};
+
+const numbered = (request: { readonly ordered: readonly Stage[];
+  readonly core: CoreContent }): Result<readonly StageNode[], readonly MethodRefusal[]> => {
+  const numberedStages = request.ordered.map((stage, index) => numberStage({ stage,
+    position: request.ordered.slice(0, index).filter((prior) => prior.phase === stage.phase).length + 1,
+    rules: request.core.rules,
+  }));
+  const issues = numberedStages.flatMap((numbering) => numbering.ok ? [] : numbering.refusal);
+  return issues.length > 0 ? refused(issues)
+    : accepted(numberedStages.flatMap((numbering) => numbering.ok ? [numbering.value] : []));
+};
 
 const routeIssues = (routed: readonly Stage[]): readonly MethodRefusal[] =>
   routed.flatMap((stage, index) => {
@@ -57,10 +70,11 @@ export const compileCoreMethod = (core: CoreContent): Result<Method, readonly Me
   const defaults = [...new Set(core.freeformDefaults.map((claim) => claim.scope))];
   if (defaults.length > 1) return refused([{ kind: "several-freeform-defaults", scopes: defaults }]);
   const nodes = numbered({ ordered: ordered.value, core });
+  if (!nodes.ok) return nodes;
   return accepted(brand<Method>({ ...core, freeformDefault: defaults[0] ?? null,
     installedPlugins: [], selection: { kind: "every-installed" }, findings: [],
     graph: { nodes: routed.flatMap((stage) => {
-      const node = nodes.find((candidate) => candidate.stage === stage.slug);
+      const node = nodes.value.find((candidate) => candidate.stage === stage.slug);
       return node ? [node] : [];
     }) },
   }));

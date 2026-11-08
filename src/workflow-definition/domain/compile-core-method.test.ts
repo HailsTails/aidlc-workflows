@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
-import type { Stage } from "./stage.ts";
+import { accept } from "../../kernel/fixtures/accept.ts";
 import { methodSource } from "../fixtures/method-source.fixture.ts";
-import { artifact, stage } from "../fixtures/identities.fixture.ts";
+import { artifact, scope, stage } from "../fixtures/identities.fixture.ts";
+
+import { compileCoreMethod, numberStage } from "./compile-core-method.ts";
+import type { CoreContent } from "./method.ts";
+import type { Stage } from "./stage.ts";
+import { stageNumber } from "./stage-graph.ts";
 
 const requirements: Stage = {
   slug: stage("requirements-analysis"),
@@ -23,26 +28,27 @@ const code: Stage = { ...requirements, slug: stage("code-generation"), phase: "c
   source: methodSource({ kind: "stage", within: "construction/code-generation.md" }),
   produces: [{ artifact: artifact("code"), obligation: "required", unitKinds: "all" }],
 };
-import type { CoreContent } from "./method.ts";
 const core: CoreContent = { stages: [requirements, units, code], scopes: [],
   memberships: [], freeformDefaults: [], agents: [], sensors: [], rules: [], knowledge: [], hooks: [],
 };
-import { compileCoreMethod } from "./compile-core-method.ts";
+const number = (raw: string) => accept(stageNumber(raw));
 
 test("fresh compilation assigns phase-local numbers", () => {
-  const compilation = compileCoreMethod(core);
-  expect(compilation).toMatchObject({ ok: true, value: { graph: { nodes: [
-    { stage: "requirements-analysis", number: "2.1", availability: "enabled" },
-    { stage: "units-generation", number: "2.2", availability: "enabled" },
-    { stage: "code-generation", number: "3.1", availability: "enabled" },
-  ] } } });
+  expect(accept(compileCoreMethod(core)).graph).toEqual({ nodes: [
+    { stage: stage("requirements-analysis"), number: number("2.1"), availability: "enabled",
+      rulesInContext: [], activeSensors: [] },
+    { stage: stage("units-generation"), number: number("2.2"), availability: "enabled",
+      rulesInContext: [], activeSensors: [] },
+    { stage: stage("code-generation"), number: number("3.1"), availability: "enabled",
+      rulesInContext: [], activeSensors: [] },
+  ] });
 });
 
 test("a dependency cycle never constructs an accepted Method", () => {
   expect(compileCoreMethod({ ...core, stages: [
     { ...requirements, requires: [units.slug] }, { ...units, requires: [requirements.slug] },
-  ] })).toMatchObject({ ok: false, refusal: [{ kind: "requires-cycle",
-    stages: ["requirements-analysis", "units-generation"] }] });
+  ] })).toEqual({ ok: false, refusal: [{ kind: "requires-cycle",
+    stages: [stage("requirements-analysis"), stage("units-generation")] }] });
 });
 
 test("per-unit regrouping cannot move a stage before its prerequisite", () => {
@@ -51,7 +57,28 @@ test("per-unit regrouping cannot move a stage before its prerequisite", () => {
     { ...units, orderingHint: 2 },
     { ...code, phase: "inception", cardinality: { kind: "per-unit" },
       requires: [units.slug], orderingHint: 3 },
-  ] })).toMatchObject({ ok: false, refusal: [{ kind: "invalid-file",
+  ] })).toEqual({ ok: false, refusal: [{ kind: "invalid-file",
+    location: { kind: "method-source", owner: { kind: "core" },
+      path: methodSource({ kind: "stage", within: "construction/code-generation.md" }) },
     issues: ["Stage code-generation requires a stage after its per-unit run block begins"],
   }] });
+});
+
+test("an invalid stage position is refused at the real stage source", () => {
+  expect(numberStage({ stage: requirements, position: -1, rules: [] })).toEqual({
+    ok: false,
+    refusal: [{ kind: "invalid-file",
+      location: { kind: "method-source", owner: { kind: "core" },
+        path: methodSource({ kind: "stage", within: "inception/requirements-analysis.md" }) },
+      issues: ["Stage requirements-analysis cannot be numbered at position -1 in phase inception"],
+    }],
+  });
+});
+
+test("compilation returns an unattributed membership without inventing a source", () => {
+  expect(compileCoreMethod({ ...core, memberships: [{ scope: scope("missing-scope"),
+    stage: stage("missing-stage"), declaredBy: { kind: "core" } }] })).toEqual({
+    ok: false, refusal: [{ kind: "unattributed-membership", scope: scope("missing-scope"),
+      stage: stage("missing-stage"), declaredBy: { kind: "core" } }],
+  });
 });
