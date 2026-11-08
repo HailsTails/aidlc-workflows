@@ -8,6 +8,7 @@
 
 import type { OnboardingFills } from "./onboarding.ts";
 import type { Method } from "../src/workflow-definition/domain/method.ts";
+import type { MethodSource } from "../src/workflow-definition/domain/method-source.ts";
 
 /** A single core dir projected from core/<src> into <harnessDir>/<dst>. */
 export type DirMap = { src: string; dst: string };
@@ -30,6 +31,7 @@ export type FileMap = { src: string; dst: string; projectRoot?: boolean; copyOnl
  */
 export type EmitContext = {
   method: Method;
+  sources: readonly MethodSource[];
   /** Absolute path to the repo root. */
   repoRoot: string;
   /** Absolute path to core/ (the harness-neutral source). */

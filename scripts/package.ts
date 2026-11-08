@@ -1078,6 +1078,7 @@ function buildTree(
   if (m.emit) {
     m.emit({
       method: coreBuild.method,
+      sources: coreBuild.sources,
       repoRoot: REPO_ROOT,
       coreRoot: CORE_ROOT,
       harnessRoot: harnessSrcRoot,
