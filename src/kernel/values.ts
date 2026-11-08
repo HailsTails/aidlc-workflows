@@ -24,7 +24,8 @@ export type KernelRefusal =
   | { readonly kind: "invalid-distribution-id"; readonly raw: string }
   | { readonly kind: "invalid-timestamp"; readonly raw: string };
 
-const UNPORTABLE_CHARACTER = /[\\:*?"<>|\u0000-\u001f]/;
+const UNPORTABLE_CHARACTER = /[\\:*?"<>|]/;
+const FIRST_PRINTABLE_CODE = 0x20;
 const TRAILING_DOT_OR_SPACE = /[. ]$/;
 const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 const CONTENT_HASH = /^sha256:[0-9a-f]{64}$/;
@@ -33,11 +34,15 @@ const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const FRAMEWORK_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-preview\.\d{8}\.[1-9]\d*)?$/;
 
+const isControlCharacter = (character: string): boolean =>
+  character.charCodeAt(0) < FIRST_PRINTABLE_CODE;
+
 const isPortableSegment = (segment: string): boolean =>
   segment !== "" &&
   segment !== "." &&
   segment !== ".." &&
   !UNPORTABLE_CHARACTER.test(segment) &&
+  ![...segment].some(isControlCharacter) &&
   !TRAILING_DOT_OR_SPACE.test(segment) &&
   !WINDOWS_DEVICE_NAME.test(segment);
 

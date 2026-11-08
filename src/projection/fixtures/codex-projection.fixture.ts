@@ -1,6 +1,6 @@
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import type { Projection } from "../domain/projection.ts";
-import { methodPath, root, text } from "./values.fixture.ts";
+import { root, text } from "./values.fixture.ts";
 
 export const codexProjectionFixture: Projection = {
   harness: distribution("codex"),
