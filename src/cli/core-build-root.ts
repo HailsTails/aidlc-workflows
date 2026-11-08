@@ -3,8 +3,6 @@ import { distributionId, projectPath, type KernelRefusal } from "../kernel/value
 import { serializeCompiledMethod } from "../projection/core-root.ts";
 import { loadAuthoredCoreMethod } from "../workflow-definition/core-root.ts";
 
-// Phase 1's core-only production path. Complete Harness/Packaging composition
-// replaces the remaining legacy producers as their rendered concepts land.
 export const loadCoreBuild = async (request: {
   readonly coreRoot: string | URL;
   readonly markdownBlocks: Parameters<typeof loadAuthoredCoreMethod>[0]["markdownBlocks"];
