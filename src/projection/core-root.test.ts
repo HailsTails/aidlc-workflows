@@ -1,10 +1,12 @@
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
 import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
 import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { tokenBindingsFixture } from "./fixtures/token-bindings.fixture.ts";
+import type { HostAgentRenderer } from "./application/ports/agents.ts";
+import type { HostSettingsRenderer } from "./application/ports/settings.ts";
 import { createBuildProjection } from "./core-root.ts";
 
 const identity = host({ name: "claude", directory: ".claude" });
@@ -50,4 +52,38 @@ test("Projection composition serves the retained shell policy to a native data r
       mode: "regular", availability: "always",
       origin: { kind: "rendered", concept: "host-data", name: "claude" } },
   ]));
+});
+
+test("settings composition supplies captured timeout, trust identity and capped CLI policy", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
+    runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
+    runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
+  const render = mock<HostSettingsRenderer>(() => ({ renderSettings: () => accepted([]),
+    renderHookRegistrations: () => accepted([]) }));
+  expect(projection.projectSettings({ method: methodSliceFixture, host: identity, render,
+    files: [], prepare: accepted, tokens: tokenBindingsFixture({ harnessDir: ".claude" }),
+    channel: "copy", entrypoints: [], modelCap: "templated" })).toEqual(accepted([]));
+  expect(render).toHaveBeenCalledTimes(1);
+  const inputs = render.mock.calls[0]?.[0];
+  expect(inputs?.extendedSubprocessTimeoutMs).toBe(1_800_000);
+  expect(inputs?.hookTrust({ event: "session_start", command: "aidlc engine hook session-start",
+    timeoutSeconds: 1800, matcher: undefined }))
+    .toBe("sha256:2b4117d0e4fefa944da660b81b311dfd50426b70b8612cf9046f1cbcf4c7f163");
+  expect(inputs?.cliModels({ source: source("settings/cli.json"), content: { kind: "text", text: "{}" } }))
+    .toEqual(accepted({ source: source("settings/cli.json"), content: { kind: "text", text: "{}\n" } }));
+});
+
+test("agent composition supplies shipped allows to one native factory for the complete Method", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
+    runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
+    runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
+  const render = mock<HostAgentRenderer>(() => ({ renderAgent: () => accepted([]),
+    renderConductorAgent: () => accepted([]) }));
+  expect(projection.projectAgents({ method: methodSliceFixture, host: identity, render, files: [],
+    prepare: accepted, channel: "copy", modelCap: null })).toEqual(accepted([]));
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(render.mock.calls[0]?.[0].allows.dispatcherCommands).toContain("doctor");
+  expect(render.mock.calls[0]?.[0].allows.toolScripts).toContain("aidlc-graph.ts");
 });

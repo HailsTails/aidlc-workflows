@@ -3,7 +3,7 @@ import { accepted } from "../../kernel/result.ts";
 import { path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { methodSource } from "../../workflow-definition/fixtures/method-source.fixture.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
-import type { Rendering } from "./ports.ts";
+import type { Rendering } from "./ports/harness.ts";
 import { projectMethodAgents } from "./project-method-agents.ts";
 
 test("the agent projection calls the conductor once beside each Method persona", () => {

@@ -2,7 +2,7 @@ import { expect, mock, test } from "bun:test";
 import { path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
-import type { Rendering } from "./ports.ts";
+import type { Rendering } from "./ports/harness.ts";
 import { projectMethodSkills } from "./project-method-skills.ts";
 
 const shortcutFile = { path: path(".claude/skills/aidlc-init/SKILL.md"),

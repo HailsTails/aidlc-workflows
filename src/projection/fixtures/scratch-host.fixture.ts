@@ -1,15 +1,12 @@
 import { host } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { projectPath } from "../../kernel/values.ts";
-import type {
-  AgentRenderingInputs,
-  CommandPlacement,
-  HostAgentRenderer,
-  HostDocumentRenderer,
-  HostSettingsRenderer,
-  HostSkillRenderer,
-  Rendering,
-} from "../application/ports.ts";
+import type { AgentRenderingInputs, HostAgentRenderer } from "../application/ports/agents.ts";
+import type { CommandPlacement } from "../application/ports/commands.ts";
+import type { HostDocumentRenderer } from "../application/ports/documents.ts";
+import type { HostSettingsRenderer } from "../application/ports/settings.ts";
+import type { HostSkillRenderer } from "../application/ports/skills.ts";
+import type { Rendering } from "../application/ports/harness.ts";
 import type { HostData } from "../domain/host-surface.ts";
 import type { HostTokenChoices } from "../domain/template-token.ts";
 
@@ -35,6 +32,7 @@ export const SCRATCH_AGENT_INPUTS: AgentRenderingInputs = {
   prepare: accepted,
   models: () => accepted(undefined),
   formatDocuments: new Set(),
+  allows: { dispatcherCommands: [], toolScripts: [] },
 };
 
 export const scratchAgentRenderer: HostAgentRenderer = ({ channel }) => ({

@@ -127,6 +127,14 @@ describe("boundaryConfig published types", () => {
     );
   });
 
+  test("refuses a port in a ports concept file the context's glossary does not name", () => {
+    const code = "export interface StageCache {\n  read(): string;\n}\n";
+
+    expect(findingsFor(code, "src/projection/application/ports/stages.ts")).toContainEqual(
+      refusal(UNGLOSSED),
+    );
+  });
+
   test("accepts a type the context's glossary names", () => {
     const code = "export type ProjectedFile = { readonly path: string };\n";
 
@@ -227,6 +235,24 @@ describe("boundaryConfig in host bundles", () => {
     expect(findingsFor(FIXTURE_IMPORT, "src/hosts/claude/projection/agent.ts")).toContainEqual(
       IMPORT_REFUSAL,
     );
+  });
+
+  test("lets host production code import a context's ports concept file", () => {
+    const code =
+      'import type { Rendering } from "../../../projection/application/ports/harness.ts";\n' +
+      "export type Sample = Rendering;\n";
+
+    expect(findingsFor(code, "src/hosts/claude/projection/agent.ts")).not.toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+
+  test("still refuses host production code importing a context's use case", () => {
+    const code =
+      'import { project } from "../../../projection/application/project-runtime.ts";\n' +
+      "export const p = project;\n";
+
+    expect(findingsFor(code, "src/hosts/claude/projection/agent.ts")).toContainEqual(IMPORT_REFUSAL);
   });
 
   test("still refuses a host test reaching into a context's adapters", () => {

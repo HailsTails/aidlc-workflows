@@ -134,7 +134,7 @@ test("the real root renders a captured Kiro conductor without replacing its mode
 });
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
 import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
-import type { CommandSource } from "../projection/application/ports.ts";
+import type { CommandSource } from "../projection/application/ports/commands.ts";
 
 const skillFiles = [
   { source: source("skills/aidlc/SKILL.md"), content: { kind: "text", text: "Door\n" } },
@@ -325,7 +325,7 @@ test("an unregistered settings host performs no source read or preparation", () 
   const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readFile, readTree },
     processRunner, yaml }, outliner, sources, runnerFrames });
   expect(root.projectSettings({ host: host({ name: "fixture-host", directory: ".fixture" }),
-    method: methodSliceFixture, files: [], prepare, tokens: skillTokens, channel: "copy", entrypoints: [] }))
+    method: methodSliceFixture, files: [], prepare, tokens: skillTokens, channel: "copy", entrypoints: [], modelCap: null }))
     .toEqual(accepted([]));
   expect(readFile).not.toHaveBeenCalled();
   expect(readTree).not.toHaveBeenCalled();
@@ -341,7 +341,7 @@ test("the real settings route uses the captured file once, with shipped allows a
     root: new URL("file:///host/"), copied: [], required: [] }));
   const prepare = mock(accepted);
   const settingsRequest = { host: captured.host, method: methodSliceFixture, files: captured.files,
-    prepare, tokens: skillTokens, channel: "copy", entrypoints: [] } as const;
+    prepare, tokens: skillTokens, channel: "copy", entrypoints: [], modelCap: null } as const;
   const settings = root.projectSettings(settingsRequest);
   expect(settings).toHaveProperty("value.length", 1);
   expect(settings).toHaveProperty("value.0.path", path(".claude/settings.json"));
@@ -376,7 +376,7 @@ test("the actual settings route preserves the missing-glob failure instead of sh
   expect(root.projectSettings({ host: host({ name: "claude", directory: ".claude" }),
     method: methodSliceFixture, files: [{ source: source("settings.json"),
       content: { kind: "text", text: '{"permissions":{"allow":["Edit(/**)"]}}' } }],
-    prepare: accepted, tokens: skillTokens, channel: "copy", entrypoints: [] })).toEqual(refused({
+    prepare: accepted, tokens: skillTokens, channel: "copy", entrypoints: [], modelCap: null })).toEqual(refused({
       kind: "render-failed", concept: "settings", name: "settings.json",
       reason: "settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand",
     }));

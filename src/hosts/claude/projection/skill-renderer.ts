@@ -2,7 +2,11 @@ import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts"
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
-import type { HostSkillRenderer, Rendering, SkillRenderingInputs } from "../../../projection/application/ports.ts";
+import type {
+  HostSkillRenderer,
+  SkillRenderingInputs,
+} from "../../../projection/application/ports/skills.ts";
+import type { Rendering } from "../../../projection/application/ports/harness.ts";
 import type { SessionSkill } from "../../../projection/domain/neutral-surface.ts";
 import type { TokenBindings, TemplateToken } from "../../../projection/domain/template-token.ts";
 import { refreshSkillRegions, finishEarlierReleaseSkill } from "../../../projection/domain/skill-regions.ts";

@@ -4,7 +4,7 @@ import {
   RISKY_SHELL_FORMS,
   shellDenyLines,
 } from "../../../harness/kiro-ide/delegate-shell-deny.ts";
-import type { DelegateShellPolicy } from "../application/ports.ts";
+import type { DelegateShellPolicy } from "../application/ports/delegate-shell.ts";
 
 export const legacyDelegateShellPolicy = (directory: string): DelegateShellPolicy => ({
   shellDeny: (agent) => [

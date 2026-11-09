@@ -273,6 +273,7 @@ function producesConductorAgent(name: ShippedHarnessName, manifest: HarnessManif
     files: [{ source: conductor,
       content: { kind: "text", text: readFileSync(authored, "utf8") } }],
     prepare: accepted, formatDocuments: new Set(),
+    allows: { dispatcherCommands: [], toolScripts: [] },
     models: () => refused({ kind: "render-failed", concept: "agent", name: "aidlc",
       reason: "The conductor must preserve its model without persona model policy." }),
   }).renderConductorAgent({ knowledge: [] });
