@@ -1,3 +1,4 @@
+import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
 import { CLAUDE_HOST_DATA, CLAUDE_AUTHORED_PLACEMENTS } from "../hosts/claude/host-data.ts";
 import { OPENCODE_SKILL_INPUTS, createOpenCodeSkillRenderer } from "../hosts/opencode/projection/skill-renderer.ts";
 import { KIRO_SKILL_INPUTS, createKiroSkillRenderer } from "../hosts/kiro/projection/skill-renderer.ts";
@@ -27,6 +28,7 @@ Result<HostAgentMembers | null, ProjectionRefusal> => {
   return accepted({ host, render: entry.render, inputs: paths.flatMap((path) => path.ok ? [path.value] : []) });
 };
 const HOST_SKILL_MEMBERS = [
+  { name: "kiro-ide", inputs: KIRO_IDE_SKILL_INPUTS, render: createKiroIdeSkillRenderer },
   { name: "opencode", inputs: OPENCODE_SKILL_INPUTS, render: createOpenCodeSkillRenderer },
   { name: "kiro", inputs: KIRO_SKILL_INPUTS, render: createKiroSkillRenderer },
   { name: "codex", inputs: CODEX_SKILL_INPUTS, render: createCodexSkillRenderer },
