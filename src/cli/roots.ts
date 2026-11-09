@@ -194,6 +194,7 @@ export type HostSurfaceRequest = {
 export type ProjectHostSurface = (request: HostSurfaceRequest) => Rendering;
 
 export type HostSettingsRequest = {
+  readonly modelCap: Tier | null;
   readonly host: HostIdentity;
   readonly method: Method;
   readonly files: readonly AuthoredHostFile[];

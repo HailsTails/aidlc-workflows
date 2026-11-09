@@ -68,7 +68,7 @@ test("the published agent member prepares a persona once and delegates its model
   const prepare = mock(() => accepted(file));
   const models = mock(() => accepted(undefined));
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({ host, formatDocuments, channel: "copy",
-    files: [file], prepare, models });
+    files: [file], prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderAgent({ agent, knowledge: [] })).toEqual(accepted([{
     path: path(".kiro/agents/aidlc-architect-agent.json"), mode: "regular", availability: "always",
     content: { kind: "text", text: '{\n  "name": "original",\n  "custom": true\n}\n' },
@@ -84,7 +84,7 @@ test("the conductor preserves its model and appends the native hook suffix once"
   const prepare = mock(() => accepted(conductor));
   const models = mock(() => accepted("unused"));
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({ host, formatDocuments, channel: "native",
-    files: [conductor], prepare, models });
+    files: [conductor], prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
     path: path(".kiro/agents/aidlc.json"), mode: "regular", availability: "always",
     content: { kind: "text", text: '{\n  "model": "personal",\n  "hooks": {\n    "pre": [\n      {\n        "command": "run; exit $LASTEXITCODE"\n      }\n    ]\n  }\n}\n' },
@@ -98,7 +98,8 @@ test("the published member preserves a preparation refusal before model lookup",
   const failure = { kind: "host-source-unreadable", host, source: file.source, reason: "token failure" } as const;
   const models = mock(() => accepted("unused"));
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({ host, formatDocuments, channel: "copy",
-    files: [file], prepare: () => refused(failure), models });
+    files: [file], prepare: () => refused(failure), models,
+    allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderAgent({ agent, knowledge: [] })).toEqual(refused(failure));
   expect(models).not.toHaveBeenCalled();
 });

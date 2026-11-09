@@ -55,6 +55,9 @@ export const settingsRenderingInputsFixture = ({ harnessDir, files }: {
   prepare: (file) => accepted(file),
   tokens: tokenBindingsFixture({ harnessDir }),
   allows: COPY_CHANNEL_ALLOWS_FIXTURE,
+  extendedSubprocessTimeoutMs: 12_000,
+  hookTrust: () => "fixture-hook-trust",
+  cliModels: accepted,
   entrypoints: RUNTIME_ENTRYPOINTS_FIXTURE,
   channel: "copy",
 });

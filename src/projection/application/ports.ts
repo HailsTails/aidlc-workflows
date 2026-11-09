@@ -91,6 +91,7 @@ export type AgentRenderingInputs = {
   readonly prepare: AuthoredFilePreparer;
   readonly models: AgentModelPolicy;
   readonly formatDocuments: ReadonlySet<string>;
+  readonly allows: CopyChannelAllows;
 };
 
 export type HostAgentRenderer = (
@@ -163,6 +164,9 @@ export type HookTrustHash = (identity: HookTrustIdentity) => string;
 export type CliModelPolicy = (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
 
 export type SettingsRenderingInputs = {
+  readonly extendedSubprocessTimeoutMs: number;
+  readonly hookTrust: HookTrustHash;
+  readonly cliModels: CliModelPolicy;
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
   readonly tokens: TokenBindings;
@@ -327,6 +331,7 @@ export type HostSurfaceProjectionRequest = {
 export type HostSurfaceProjection = (request: HostSurfaceProjectionRequest) => Rendering;
 
 export type SettingsProjectionRequest = {
+  readonly modelCap: Tier | null;
   readonly method: Method;
   readonly host: HostIdentity;
   readonly render: HostSettingsRenderer;

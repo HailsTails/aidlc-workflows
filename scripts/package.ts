@@ -66,7 +66,7 @@ import {
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { hostAgentInputs, hostSkillInputs, hostSurfaceMembers } from "../src/cli/host-table.ts";
+import { hostAgentInputs, hostSkillInputs, hostSurfaceMembers, hostSettingsInputs } from "../src/cli/host-table.ts";
 import { distributionId, projectPath, sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
   DistributionChannel, ProjectedFile,
@@ -789,7 +789,8 @@ function prepareAuthoredHostFile(request: {
     kind: "bytes", bytes: transform(srcPath, hostContentBytes(content),
       m.harnessDir, m.rulesRename, m.tierFlavor, invoke, letters),
   })];
-  if (m.tierFlavor === "kiro" && file.source === "settings/cli.json") {
+  if (m.tierFlavor === "kiro" && file.source === "settings/cli.json"
+    && !hostSettingsInputs(m.name).includes(file.source)) {
     steps.push((content) => ({ kind: "bytes",
       bytes: projectKiroCliJson(hostContentBytes(content)) }));
   }
@@ -1056,6 +1057,7 @@ async function buildTree(
     writeProjectedFiles({ files: skills.value, projectRoot: outRoot });
   }
   const settings = packageBuildRoot.projectSettings({ host: hostInput.host, method: coreBuild.method,
+    modelCap: TIER_CAP,
     files: hostInput.files, prepare: prepareHostInput, channel,
     entrypoints: shippedSettingsEntrypoints(treeRoot),
     tokens: { HARNESS_DIR: harnessDir, INVOKE: invoke, SKILL_INVOKE: null,
