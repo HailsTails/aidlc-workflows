@@ -220,7 +220,7 @@ export const typeOnlyBridge = (bridgedModules: readonly string[]): SyntaxRestric
   ].map((selector) => ({ selector, message }));
 };
 
-const PUBLISHED_TO_HOSTS = "domain/|application/(boundary-)?ports\\.ts$";
+const PUBLISHED_TO_HOSTS = "domain/|application/(boundary-ports|ports(/[\\w-]+)?)\\.ts$";
 
 const contextReachFromHosts = (published: string): ImportRestriction[] =>
   CONTEXTS.filter((context) => context !== "kernel").map((context) => ({

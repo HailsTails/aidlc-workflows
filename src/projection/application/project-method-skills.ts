@@ -1,6 +1,6 @@
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { SessionSkill } from "../domain/neutral-surface.ts";
-import type { Harness, Rendering } from "./ports.ts";
+import type { Harness, Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 import { projectMethodCommands } from "./project-method-commands.ts";
 

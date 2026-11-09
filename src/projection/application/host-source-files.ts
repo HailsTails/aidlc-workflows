@@ -1,7 +1,7 @@
 import { asFolder } from "../../kernel/file-system-port.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { SourcePath } from "../../kernel/values.ts";
-import type { HostFileReader, HostSourceCapture, HostSurfaceReader } from "./ports.ts";
+import type { HostFileReader, HostSourceCapture, HostSurfaceReader } from "./ports/host-sources.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 

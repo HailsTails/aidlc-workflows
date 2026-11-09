@@ -84,7 +84,7 @@ import { pluginId as pluginBuildName } from "../src/workflow-definition/domain/i
 import { reviewerAgentSet, inlineAgentSet }
   from "../src/workflow-definition/domain/method-participation.ts";
 import { projectMethodCommands } from "../src/projection/application/project-method-commands.ts";
-import type { CommandPlacement } from "../src/projection/application/ports.ts";
+import type { CommandPlacement } from "../src/projection/application/ports/commands.ts";
 import { createCommandRenderers } from "../src/projection/application/command-renderers.ts";
 import { prepareHostSource } from "../src/projection/application/prepared-host-source.ts";
 import type { AuthoredPluginBuild as PluginBuildCatalog, PluginBuildTarget }

@@ -1,5 +1,5 @@
 import { describe, expect, test, type AsymmetricMatcher } from "bun:test";
-import { boundaryConfig, typeBridgeConfigs } from "./boundaries.ts";
+import { boundaryConfig, portFilesConfig, typeBridgeConfigs } from "./boundaries.ts";
 import { Linter } from "./eslint-port.ts";
 import { legacyOwnership } from "./restrictions.ts";
 import { standardsConfig } from "./standards.ts";
@@ -47,6 +47,11 @@ describe("boundaryConfig in production code", () => {
 
 const findingsFor = (code: string, filename: string): Linter.LintMessage[] =>
   new Linter({ configType: "flat" }).verify(code, BOUNDARIES, { filename });
+
+const PORT_FILE_BOUNDARIES: Linter.Config[] = [...standardsConfig, ...portFilesConfig];
+
+const portFileFindingsFor = (code: string, filename: string): Linter.LintMessage[] =>
+  new Linter({ configType: "flat" }).verify(code, PORT_FILE_BOUNDARIES, { filename });
 
 const UNDECLARED = "not a layer of a context in lint/context-map.ts";
 
@@ -125,6 +130,26 @@ describe("boundaryConfig published types", () => {
     expect(findingsFor(code, "src/execution/application/ports.ts")).toContainEqual(
       refusal(UNGLOSSED),
     );
+  });
+
+  test("refuses a port in a ports concept file the context's glossary does not name", () => {
+    const code = "export interface StageCache {\n  read(): string;\n}\n";
+
+    expect(findingsFor(code, "src/projection/application/ports/stages.ts")).toContainEqual(
+      refusal(UNGLOSSED),
+    );
+  });
+
+  test("leaves a ports concept file's test outside the port files", () => {
+    const code = "export type StageSample = { readonly slug: string };\n";
+
+    expect({
+      concept: portFileFindingsFor(code, "src/projection/application/ports/stages.ts"),
+      test: portFileFindingsFor(code, "src/projection/application/ports/stages.test.ts"),
+    }).toEqual({
+      concept: expect.arrayContaining([refusal(UNGLOSSED)]),
+      test: expect.not.arrayContaining([refusal(UNGLOSSED)]),
+    });
   });
 
   test("accepts a type the context's glossary names", () => {
@@ -227,6 +252,24 @@ describe("boundaryConfig in host bundles", () => {
     expect(findingsFor(FIXTURE_IMPORT, "src/hosts/claude/projection/agent.ts")).toContainEqual(
       IMPORT_REFUSAL,
     );
+  });
+
+  test("lets host production code import a context's ports concept file", () => {
+    const code =
+      'import type { Rendering } from "../../../projection/application/ports/harness.ts";\n' +
+      "export type Sample = Rendering;\n";
+
+    expect(findingsFor(code, "src/hosts/claude/projection/agent.ts")).not.toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+
+  test("still refuses host production code importing a context's use case", () => {
+    const code =
+      'import { project } from "../../../projection/application/project-runtime.ts";\n' +
+      "export const p = project;\n";
+
+    expect(findingsFor(code, "src/hosts/claude/projection/agent.ts")).toContainEqual(IMPORT_REFUSAL);
   });
 
   test("still refuses a host test reaching into a context's adapters", () => {

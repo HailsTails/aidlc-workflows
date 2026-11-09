@@ -156,7 +156,7 @@ const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   },
 });
 
-const PORT_FILES = ["ports", "boundary-ports"];
+const PORT_FILES = ["ports", "ports/!(*.test)", "boundary-ports"];
 
 const srcPortsConfig = (context: ContextName): Linter.Config => ({
   name: `aidlc/src/${context}/application/ports`,
@@ -172,6 +172,10 @@ const srcPortsConfig = (context: ContextName): Linter.Config => ({
     ...PURE_RULES,
   },
 });
+
+export const portFilesConfig: Linter.Config[] = CONTEXTS.filter((context) =>
+  layersOf(context).includes("application"),
+).map(srcPortsConfig);
 
 const srcTestConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   name: `aidlc/src/${context}/${layer}/tests`,
@@ -366,7 +370,7 @@ export const boundaryConfig: Linter.Config[] = [
   monolithConfig,
   harnessTreeConfig,
   ...CONTEXTS.flatMap((context) => layersOf(context).map((layer) => srcLayerConfig(context, layer))),
-  ...CONTEXTS.filter((context) => layersOf(context).includes("application")).map(srcPortsConfig),
+  ...portFilesConfig,
   ...CONTEXTS.flatMap((context) =>
     testedLayersOf(context).map((layer) => srcTestConfig(context, layer)),
   ),

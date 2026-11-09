@@ -1,6 +1,6 @@
 import { graphEntries, type Method } from "../../workflow-definition/domain/method.ts";
 import { scopeColumn } from "../../workflow-definition/domain/scope-grid.ts";
-import type { Harness, Rendering } from "./ports.ts";
+import type { Harness, Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 
 export const renderStageAndScopeCommands = (request: {

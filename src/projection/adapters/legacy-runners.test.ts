@@ -1,6 +1,6 @@
 import { createInMemoryFileSystem } from "../../kernel/fixtures/file-system.fake.ts";
 import { createScriptedProcessRunner } from "../../kernel/fixtures/process-runner.fake.ts";
-import type { LegacyRunnerScratch } from "../application/ports.ts";
+import type { LegacyRunnerScratch } from "../application/ports/legacy-runner.ts";
 import type { MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import { methodSource } from "../../workflow-definition/fixtures/method-source.fixture.ts";
 import { expect, mock, test } from "bun:test";

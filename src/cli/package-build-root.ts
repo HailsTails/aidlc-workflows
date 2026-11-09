@@ -1,9 +1,9 @@
 import { createBuildPackaging } from "../packaging/core-root.ts";
-import type { VersionStamp } from "../projection/application/ports.ts";
+import type { VersionStamp } from "../projection/application/ports/runtime.ts";
 import type { SharedRuntime } from "../projection/domain/neutral-surface.ts";
 import type { ProjectRuntime } from "./roots.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
-import type { BuildProjection } from "../projection/application/ports.ts";
+import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
 import { hostAgentMembers, hostSkillMembers, hostSkillInputs, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { accepted, refused } from "../kernel/result.ts";

@@ -1,6 +1,7 @@
 import { accepted, refused } from "../../kernel/result.ts";
 import { ENTRY_SHORTCUTS, type CommandSubject } from "../domain/native-command.ts";
-import type { CommandPlacement, CommandSource, Harness, Rendering } from "./ports.ts";
+import type { CommandPlacement, CommandSource } from "./ports/commands.ts";
+import type { Harness, Rendering } from "./ports/harness.ts";
 
 export const collectCommandRenderings = (renderings: readonly Rendering[]): Rendering => {
   const failed = renderings.find((rendering) => !rendering.ok);

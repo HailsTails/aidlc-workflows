@@ -134,7 +134,7 @@ test("the real root renders a captured Kiro conductor without replacing its mode
 });
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
 import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
-import type { CommandSource } from "../projection/application/ports.ts";
+import type { CommandSource } from "../projection/application/ports/commands.ts";
 
 const skillFiles = [
   { source: source("skills/aidlc/SKILL.md"), content: { kind: "text", text: "Door\n" } },

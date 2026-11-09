@@ -1,4 +1,4 @@
-import type { DelegateShellPolicy } from "../../../projection/application/ports.ts";
+import type { DelegateShellPolicy } from "../../../projection/application/ports/delegate-shell.ts";
 
 const composerProposalPath = "aidlc/spaces/*/intents/.aidlc-engine/composer-proposal.json";
 const spacePaths = ["aidlc/spaces/**", ".aidlc/worktrees/*/aidlc/spaces/**"];

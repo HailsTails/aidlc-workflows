@@ -2,7 +2,7 @@ import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { tokenBindingsFixture } from "../fixtures/token-bindings.fixture.ts";
-import type { HostDataInputs, HostSurfaceProjectionRequest } from "./ports.ts";
+import type { HostDataInputs, HostSurfaceProjectionRequest } from "./ports/host-surface.ts";
 import { createHostSurfaceProjection } from "./project-host-surface.ts";
 
 const projectHostSurface = createHostSurfaceProjection(() => ({ shellDeny: () => [], riskyForms: [] }));

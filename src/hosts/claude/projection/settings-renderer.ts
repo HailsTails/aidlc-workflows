@@ -2,7 +2,11 @@ import { z } from "zod";
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
-import type { HostSettingsRenderer, Rendering, SettingsRenderingInputs } from "../../../projection/application/ports.ts";
+import type {
+  HostSettingsRenderer,
+  SettingsRenderingInputs,
+} from "../../../projection/application/ports/settings.ts";
+import type { Rendering } from "../../../projection/application/ports/harness.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 
 export const CLAUDE_SETTINGS_INPUTS = ["settings.json"] as const;

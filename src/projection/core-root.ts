@@ -13,14 +13,16 @@ import { createSessionSkillSource } from "./adapters/session-skill-files.ts";
 import { prepareLegacySkillTables } from "./adapters/legacy-skill-tables.ts";
 import { projectMethodSkills } from "./application/project-method-skills.ts";
 import { createCommandRenderers } from "./application/command-renderers.ts";
-import type { SessionSkillTreeReader } from "./application/ports.ts";
+import type { SessionSkillTreeReader } from "./application/ports/skills.ts";
 import { shippedFormatDocuments } from "./adapters/legacy-format-docs.ts";
 import { projectMethodAgents } from "./application/project-method-agents.ts";
 import { legacyAgentModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
 import { createHostSurfaceReader } from "./application/host-source-files.ts";
 import { prepareLegacyRunners } from "./adapters/legacy-runners.ts";
 import { serializeCompiledMethod } from "./adapters/compiled-method-file.ts";
-import type { BuildProjection, HostFileReader, LegacyRunnerProcess, LegacyRunnerScratch } from "./application/ports.ts";
+import type { BuildProjection } from "./application/ports/build-projection.ts";
+import type { HostFileReader } from "./application/ports/host-sources.ts";
+import type { LegacyRunnerProcess, LegacyRunnerScratch } from "./application/ports/legacy-runner.ts";
 
 export const createBuildProjection = (request: {
   readonly hostFiles: HostFileReader;

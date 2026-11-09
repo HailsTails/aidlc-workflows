@@ -3,7 +3,7 @@ import { createInMemoryFileSystem } from "../../kernel/fixtures/file-system.fake
 import { host, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { accepted, refused } from "../../kernel/result.ts";
-import type { HostFileReader } from "./ports.ts";
+import type { HostFileReader } from "./ports/host-sources.ts";
 import { createHostSurfaceReader } from "./host-source-files.ts";
 
 const identity = host({ name: "kiro", directory: ".kiro" });
