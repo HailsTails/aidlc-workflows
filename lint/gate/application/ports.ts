@@ -1,3 +1,4 @@
+import type { SweepEntry } from "../domain/sweep.ts";
 import type { Arrivals } from "../domain/arrival.ts";
 import type { CapabilityId, ProbeResult } from "../domain/capability-exclusion.ts";
 import type { BaseRevision, ChangedFile } from "../domain/change.ts";
@@ -127,6 +128,7 @@ export type GoldenStore = {
 };
 
 export type LockRequest = {
+  readonly slots?: number;
   readonly lane: string | undefined;
   readonly command: string;
   readonly waitMs: number;
@@ -135,6 +137,11 @@ export type LockRequest = {
 export type LockOutcome =
   | { readonly acquired: true }
   | { readonly acquired: false; readonly reason: WaitReason };
+
+export type SweepLedger = {
+  readonly record: (entry: SweepEntry) => void;
+  readonly find: (commit: string) => SweepEntry | undefined;
+};
 
 export type HeavySlot = {
   readonly ensure: () => Promise<LockOutcome>;

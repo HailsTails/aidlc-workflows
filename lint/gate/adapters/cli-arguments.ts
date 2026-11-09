@@ -13,7 +13,10 @@ export type ArgumentDefaults = {
 export const USAGE = [
   "bun scripts/gate.ts --scope <lane-id>|<path>[,<path>...] [--base <ref>] [--record]",
   "bun scripts/gate.ts --full [--lane <lane-id>] [--base <ref>] [--no-build] [--record]",
-  "                    [--all-tests]",
+  "                    [--all-tests] [--sweep]",
+  "--sweep runs once on the clean current foundation, holds every slot and records its verdict.",
+  "Candidate test gates name that sweep; a missing or red sweep blocks a green candidate.",
+  "Cheap-only checks remain available. Budgets (180 s candidate, 600 s sweep) are advisory.",
   "                    [--wait <seconds> | --no-wait]",
   "bun scripts/gate.ts --update-goldens [--no-build] [--wait <seconds> | --no-wait]",
   "bun scripts/gate.ts --locked [--wait <seconds> | --no-wait] -- <command> [args...]",
@@ -47,6 +50,7 @@ const OPTIONS = {
   only: { type: "string" },
   scope: { type: "string" },
   full: { type: "boolean" },
+  sweep: { type: "boolean" },
   lane: { type: "string" },
   base: { type: "string" },
   wait: { type: "string" },
@@ -68,6 +72,7 @@ const RawSchema = z.object({
   only: OnlySchema.optional(),
   scope: z.string().min(1).optional(),
   full: z.boolean().optional(),
+  sweep: z.boolean().optional(),
   lane: z.string().min(1).optional(),
   base: z.string().min(1).optional(),
   wait: z.coerce.number().int().nonnegative().optional(),
@@ -111,6 +116,7 @@ const requestFor = (parsed: Parsed, defaults: ArgumentDefaults): GateRequest => 
     return {
       kind: "full",
       laneId: raw.lane,
+      sweep: raw.sweep === true,
       baseRef,
       build,
       record,
@@ -170,6 +176,10 @@ export const slotPolicyFrom = (
       };
 };
 
+const invalidSweep = (raw: Raw): boolean =>
+  raw.sweep === true &&
+  (!raw.full || raw.only !== undefined || raw["no-build"] || raw.record) === true;
+
 export const gateRequestFrom = (
   argv: readonly string[],
   defaults: ArgumentDefaults,
@@ -180,6 +190,10 @@ export const gateRequestFrom = (
   }
   if (modeCount(parsed.value.raw) !== 1) {
     return usageError("pass exactly one of --scope, --full, --update-goldens or --locked");
+  }
+  const { raw } = parsed.value;
+  if (invalidSweep(raw)) {
+    return usageError("--sweep requires --full, every check, a build, and no --record");
   }
   const request = requestFor(parsed.value, defaults);
   return request.kind === "locked" && request.command.length === 0

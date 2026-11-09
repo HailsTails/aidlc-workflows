@@ -1,0 +1,14 @@
+{
+  "release": "2.11.2",
+  "sourceCommit": "10a9bc9d85395a601de2624cf5bdd35292c10db4",
+  "location": "aidlc-release-v2.11.2/dist",
+  "stamps": [
+    "claude/.claude/tools/data/aidlc-stamp.json",
+    "codex/.codex/tools/data/aidlc-stamp.json",
+    "copilot/.aidlc/tools/data/aidlc-stamp.json",
+    "cursor/.cursor/tools/data/aidlc-stamp.json",
+    "kiro/.kiro/tools/data/aidlc-stamp.json",
+    "kiro-ide/.kiro/tools/data/aidlc-stamp.json",
+    "opencode/.aidlc/tools/data/aidlc-stamp.json"
+  ]
+}

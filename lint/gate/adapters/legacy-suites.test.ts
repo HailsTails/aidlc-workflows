@@ -3,7 +3,7 @@ import { globMatcher } from "../domain/glob.ts";
 import type { TestReach } from "../domain/test-impact.ts";
 import type { Command } from "../application/ports.ts";
 import { describe, expect, test } from "bun:test";
-import { legacyEnvironment, legacySuites } from "./legacy-suites.ts";
+import { changedLegacyCommand, legacyEnvironment, legacySuites } from "./legacy-suites.ts";
 
 describe("legacy suites", () => {
   test("the runner environment is built from named variables, never inherited whole", () => {
@@ -135,7 +135,7 @@ const selectedLegacy = async (
 
 describe("legacy admission preserves conservative impact selection", () => {
   test.each([
-    "scripts/package.ts", "package.json", "bun.lock", "bunfig.toml",
+    "package.json", "bun.lock", "bunfig.toml",
     "tsconfig.json", "tsconfig.tests.json", "tests/run-tests.ts",
     "tests/unit-shard-weights.json", "tests/lib/shared.ts", "tests/golden/kiro.json",
     "tests/harness/shared.ts", "tests/fixtures/input.json",
@@ -187,4 +187,31 @@ describe("smoke impact uses the existing conservative selector", () => {
       reach: known, files: [...LEGACY_FILES, "tests/smoke/other.test.ts"],
     })).toEqual(KNOWN_LEGACY);
   });
+});
+
+
+describe("Phase 1 candidates rely on the enforced foundation sweep", () => {
+  test.each(["src/projection/render.ts", "scripts/package.ts", "lint/gate/domain/x.ts"])(
+    "%s defers legacy suites", async (path) => {
+      expect(await selectedLegacy([path])).toEqual([]);
+    },
+  );
+  test("runtime edits still select their impacted matrix", async () => {
+    expect(await selectedLegacy(["core/a.ts"])).toEqual(KNOWN_LEGACY);
+  });
+  test("mixing a Phase 1 path with an unknown path remains conservative", async () => {
+    expect(await selectedLegacy(["src/projection/render.ts", "unknown/x"])).toEqual(ALL_LEGACY);
+  });
+});
+
+
+test("uncovered changed legacy files use the repository runner and their levels", () => {
+  const command = changedLegacyCommand({ bun: "bun", environment: { PATH: "native" } }, [
+    "tests/unit/uncovered.test.ts", "tests/integration/contract.test.ts",
+  ]);
+  expect(command.argv).toEqual([
+    "bun", "tests/run-tests.ts", "--unit", "--integration",
+    "--filter", "^(uncovered|contract)", "--no-llm",
+  ]);
+  expect(command.env).toEqual({ PATH: "native" });
 });

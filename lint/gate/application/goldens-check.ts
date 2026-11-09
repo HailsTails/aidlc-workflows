@@ -1,5 +1,5 @@
 import { driftFinding, goldenDrift, type GoldenSet } from "../domain/golden.ts";
-import { judged, skipped, type Finding } from "../domain/outcome.ts";
+import { judged, type Finding } from "../domain/outcome.ts";
 import type { GateCheck } from "./gate-check.ts";
 import type { CommandRunner, GoldenSource, GoldenStore } from "./ports.ts";
 import type { SharedBuild } from "./shared-build.ts";
@@ -9,6 +9,7 @@ export type GoldensDependencies = {
   readonly source: GoldenSource;
   readonly store: GoldenStore;
   readonly build: SharedBuild;
+  readonly install?: () => readonly Finding[];
 };
 
 const groupCounts = (set: GoldenSet): string =>
@@ -19,16 +20,24 @@ const groupCounts = (set: GoldenSet): string =>
 export const goldensCheck = (dependencies: GoldensDependencies): GateCheck => ({
   id: "goldens",
   run: async (scope) => {
-    if (!scope.everything) {
-      return skipped("goldens", "goldens run in --full only");
+    const slot = await scope.heavy.ensure();
+    if (!slot.acquired) {
+      return judged({ id: "goldens", note: "admission refused", findings: [{
+        subject: "machine lock", violation: `goldens need a slot: ${slot.reason}`,
+        fix: "Wait for normal resource admission.",
+      }] });
     }
-    const failure = scope.build ? dependencies.build.ensure() : undefined;
+    const failure = dependencies.build.ensure();
     if (failure !== undefined) {
       return judged({ id: "goldens", findings: [failure], note: "build failed" });
     }
     const expected = dependencies.store.read();
     const actual = dependencies.source.measure();
-    const findings = goldenDrift({ expected, actual }).map(driftFinding);
+    const installs = dependencies.install?.() ?? [{
+      subject: "install goldens", violation: "install lifecycle runner is not configured",
+      fix: "Configure the existing install-lifecycle checker and previous-release dist.",
+    }];
+    const findings = [...goldenDrift({ expected, actual }).map(driftFinding), ...installs];
     return judged({ id: "goldens", findings, note: `files per harness: ${groupCounts(actual)}` });
   },
 });

@@ -1,3 +1,7 @@
+import type { SweepTree } from "./sweep-run.ts";
+import { CHECK_IDS } from "../domain/outcome.ts";
+import type { FullRequest } from "./gate-request.ts";
+import type { SweepEntry } from "../domain/sweep.ts";
 import { describe, expect, test } from "bun:test";
 import type { CheckId } from "../domain/outcome.ts";
 import type { GateCheck } from "./gate-check.ts";
@@ -149,5 +153,185 @@ describe("runGateRequest machine slot", () => {
     await runGateRequest({ ...withBase, repository }, request);
 
     expect(events).toEqual(["acquire gate full", "acquired", "release"]);
+  });
+});
+
+const SWEEP: FullRequest = {
+  kind: "full", laneId: undefined, baseRef: "origin/rebuild/foundation", build: true,
+  record: false, allTests: false, waitMs: 0, only: "all", sweep: true,
+};
+const FOUNDATION = "abcdef0123456789";
+const GREEN_SWEEP: SweepEntry = {
+  commit: FOUNDATION, result: "green", finishedAt: 10, durationMs: 5,
+};
+const RED_SWEEP: SweepEntry = { ...GREEN_SWEEP, result: "red" };
+
+const CLEAN_TREE = { head: FOUNDATION, foundation: FOUNDATION, clean: true };
+const sweepFixture = (entry?: SweepEntry, tree: () => SweepTree = () => CLEAN_TREE) => {
+  const entries = new Map<string, SweepEntry>(entry === undefined ? [] : [[entry.commit, entry]]);
+  const weights: number[] = [];
+  const allTests: boolean[] = [];
+  const base = { ref: SWEEP.baseRef, commit: FOUNDATION };
+  const original = services({ ok: true, value: "ready" });
+  const configured: GateServices = {
+    ...original,
+    repository: { ...original.repository, resolve: () => base },
+    lock: {
+      acquire: async (request) => { weights.push(request.slots ?? 1); return { acquired: true }; },
+      release: () => undefined,
+    },
+    checksFor: () => CHECK_IDS.map((id) => ({
+      id,
+      run: async (scope) => {
+        allTests.push(scope.allTests);
+        return { id, status: "green", findings: [], note: "fixture" };
+      },
+    })),
+    sweeps: {
+      tree,
+      ledger: {
+        find: (commit) => entries.get(commit),
+        record: (value) => entries.set(value.commit, value),
+      },
+      slots: 3,
+    },
+  };
+  return { services: configured, entries, weights, allTests };
+};
+
+describe("foundation sweeps", () => {
+  test("a sweep holds every slot, forces every test and caches its exact SHA", async () => {
+    const fixture = sweepFixture();
+    const first = await runGateRequest(fixture.services, SWEEP);
+    const second = await runGateRequest(fixture.services, SWEEP);
+    expect(first.verdict).toBe("green");
+    expect(first.sweepCached).toBe(false);
+    expect(second.sweepCached).toBe(true);
+    expect(second.outcomes).toEqual([]);
+    expect(fixture.weights).toEqual([3, 3]);
+    expect(fixture.allTests).toEqual([
+      true, true, true, true, true, true, true, true, true, true, true,
+    ]);
+    expect(fixture.entries.get(FOUNDATION)?.result).toBe("green");
+  });
+
+  test("a red sweep is reused, not retried into green", async () => {
+    const fixture = sweepFixture(RED_SWEEP);
+    const report = await runGateRequest(fixture.services, SWEEP);
+    expect(report.verdict).toBe("red");
+    expect(report.sweepCached).toBe(true);
+    expect(fixture.allTests).toEqual([]);
+  });
+
+  test("partial checks cannot create full sweep evidence", async () => {
+    const fixture = sweepFixture();
+    const report = await runGateRequest(fixture.services, { ...SWEEP, only: ["tests"] });
+    expect(report.verdict).toBe("red");
+    expect(fixture.entries.size).toBe(0);
+    expect(fixture.allTests).toEqual([]);
+  });
+
+  test("a partial execution stays red even if every executed check passed", async () => {
+    const fixture = sweepFixture();
+    const configured = { ...fixture.services, checksFor: () => [recordingCheck("tests")] };
+    const report = await runGateRequest(configured, SWEEP);
+    expect(report.verdict).toBe("red");
+    expect(fixture.entries.get(FOUNDATION)?.result).toBe("red");
+  });
+
+  test("a thrown sweep leaves a blocking red record", async () => {
+    const fixture = sweepFixture();
+    const configured = {
+      ...fixture.services, checksFor: (): GateCheck[] => { throw new Error("stop"); },
+    };
+    await expect(runGateRequest(configured, SWEEP)).rejects.toThrow("stop");
+    expect(fixture.entries.get(FOUNDATION)?.result).toBe("red");
+  });
+
+});
+
+describe("candidate sweep reliance", () => {
+  test("candidate checks qualify while missing runtime evidence remains explicit", async () => {
+    const fixture = sweepFixture();
+    const report = await runGateRequest(fixture.services, { ...SWEEP, sweep: false });
+    expect(report.verdict).toBe("green");
+    expect(report.sweep).toEqual({ commit: FOUNDATION, state: "none" });
+    expect(fixture.entries.size).toBe(0);
+  });
+
+  test("a candidate names its green foundation sweep", async () => {
+    const fixture = sweepFixture(GREEN_SWEEP);
+    const report = await runGateRequest(fixture.services, { ...SWEEP, sweep: false });
+    expect(report.verdict).toBe("green");
+    expect(report.sweep).toEqual({ commit: FOUNDATION, state: "green" });
+  });
+
+  test("cheap-only checks remain usable on a red foundation", async () => {
+    const fixture = sweepFixture(RED_SWEEP);
+    const report = await runGateRequest(fixture.services, {
+      ...SWEEP, sweep: false, only: ["ownership"],
+    });
+    expect(report.verdict).toBe("green");
+    expect(report.sweep).toBeUndefined();
+  });
+});
+describe("sweep identity", () => {
+  test("dirty foundation cannot create evidence", async () => {
+    const fixture = sweepFixture(undefined, () => ({ ...CLEAN_TREE, clean: false }));
+    const report = await runGateRequest(fixture.services, SWEEP);
+    expect(report.verdict).toBe("red");
+    expect(fixture.entries.size).toBe(0);
+  });
+  test("a clean candidate cannot impersonate its foundation", async () => {
+    const fixture = sweepFixture(undefined, () => ({ ...CLEAN_TREE, head: "other" }));
+    const report = await runGateRequest(fixture.services, SWEEP);
+    expect(report.verdict).toBe("red");
+    expect(fixture.entries.size).toBe(0);
+  });
+  test("a green old sweep is reported as superseded, not current runtime proof", async () => {
+    const fixture = sweepFixture(GREEN_SWEEP, () => ({ ...CLEAN_TREE, foundation: "new" }));
+    const report = await runGateRequest(fixture.services, { ...SWEEP, sweep: false });
+    expect(report.verdict).toBe("green");
+    expect(report.sweep).toEqual({
+      commit: FOUNDATION, state: "superseded", currentFoundation: "new",
+    });
+  });
+});
+const changingTree = (): (() => SweepTree) => {
+  let observed = false;
+  return () => {
+    const clean = !observed;
+    observed = true;
+    return { ...CLEAN_TREE, clean };
+  };
+};
+
+test("source changed during a passing sweep leaves red evidence", async () => {
+  const fixture = sweepFixture(undefined, changingTree());
+  const report = await runGateRequest(fixture.services, SWEEP);
+  expect(report.verdict).toBe("red");
+  expect(fixture.entries.get(FOUNDATION)?.result).toBe("red");
+});
+
+describe("pending sweep is not a red sweep", () => {
+  test("in-flight evidence does not block passing candidate checks", async () => {
+    const fixture = sweepFixture({ ...GREEN_SWEEP, result: "pending", finishedAt: 0 });
+    const report = await runGateRequest(fixture.services, { ...SWEEP, sweep: false });
+    expect(report.verdict).toBe("green");
+    expect(report.sweep?.state).toBe("pending");
+  });
+  test("an actual recorded failure blocks candidate qualification", async () => {
+    const report = await runGateRequest(sweepFixture(RED_SWEEP).services, {
+      ...SWEEP, sweep: false,
+    });
+    expect(report.verdict).toBe("red");
+    expect(report.sweep?.state).toBe("red");
+  });
+  test("a red current foundation blocks an older-base candidate", async () => {
+    const fixture = sweepFixture(GREEN_SWEEP, () => ({ ...CLEAN_TREE, foundation: "new" }));
+    fixture.entries.set("new", { ...RED_SWEEP, commit: "new" });
+    const report = await runGateRequest(fixture.services, { ...SWEEP, sweep: false });
+    expect(report.verdict).toBe("red");
+    expect(report.sweep?.state).toBe("superseded");
   });
 });

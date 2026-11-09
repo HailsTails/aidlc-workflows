@@ -1,3 +1,5 @@
+import type { SweepReliance } from "./sweep.ts";
+
 export const CHECK_IDS = [
   "ownership",
   "zones",
@@ -28,6 +30,7 @@ export type CheckOutcome = {
   readonly findings: readonly Finding[];
   readonly note: string;
   readonly durationMs?: number;
+  readonly sweep?: SweepReliance;
 };
 
 export type GateVerdict = "green" | "red" | "error" | "busy";

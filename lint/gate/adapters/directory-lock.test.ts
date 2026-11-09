@@ -147,3 +147,31 @@ describe("directoryLock slots", () => {
     lock.release();
   });
 });
+
+describe("directoryLock weight", () => {
+  test("a job that wants every slot takes all three and frees them on release", async () => {
+    const directory = lockFolder("weighted");
+    const lock = lockIn(directory, PLENTY);
+
+    const outcome = await lock.acquire({ ...REQUEST, slots: 3 });
+
+    expect(outcome).toEqual({ acquired: true });
+    expect(ownerPidOf(directory, "heavy-3.lock")).toBe(process.pid);
+    lock.release();
+    const second = lockIn(directory, PLENTY);
+    expect(await second.acquire({ ...REQUEST, slots: 3 })).toEqual({ acquired: true });
+    second.release();
+  });
+
+  test("red: a three-slot job waits and keeps nothing while another job holds one", async () => {
+    const directory = lockFolder("weighted-busy");
+    holdSlot({ directory, name: "heavy-1.lock", pid: process.pid });
+
+    const outcome = await lockIn(directory, PLENTY).acquire({ ...REQUEST, slots: 3 });
+
+    expect(outcome).toEqual({ acquired: false, reason: "no free slot" });
+    expect(readdirSync(directory).filter((name) => name.endsWith(".lock"))).toEqual([
+      "heavy-1.lock",
+    ]);
+  });
+});

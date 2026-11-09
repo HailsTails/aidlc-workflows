@@ -1,3 +1,5 @@
+import { previousRelease } from "../lint/gate/adapters/previous-release.ts";
+import { sweepLedger } from "../lint/gate/adapters/sweep-ledger.ts";
 import { fileURLToPath } from "node:url";
 import { MONOLITH_FILES } from "../lint/context-map.ts";
 import { CLEAN_ZONE } from "../lint/zones.ts";
@@ -18,7 +20,7 @@ import { disciplineCore } from "../lint/gate/adapters/discipline-core.ts";
 import { disciplinesFiles } from "../lint/gate/adapters/disciplines-files.ts";
 import { eslintLinter } from "../lint/gate/adapters/eslint-linter.ts";
 import { fileWorkspace } from "../lint/gate/adapters/file-workspace.ts";
-import { gitRepository } from "../lint/gate/adapters/git-repository.ts";
+import { gitRepository, sweepTree } from "../lint/gate/adapters/git-repository.ts";
 import {
   goldenSource,
   goldenStore,
@@ -40,7 +42,9 @@ import { capabilityProbes } from "../lint/gate/adapters/capability-probes.ts";
 import { environmentExclusions } from "../lint/gate/adapters/environment-exclusions.ts";
 import { testReach } from "../lint/gate/adapters/test-reach.ts";
 import { transpilerCacheFolder } from "../lint/gate/adapters/transpiler-cache.ts";
-import { legacyEnvironment, legacySuites } from "../lint/gate/adapters/legacy-suites.ts";
+import {
+  changedLegacyCommand, legacyEnvironment, legacySuites,
+} from "../lint/gate/adapters/legacy-suites.ts";
 import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
 import { systemClock } from "../lint/gate/adapters/system-clock.ts";
 import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
@@ -79,7 +83,10 @@ const RULE_INPUTS = [
 const DEFAULT_DISCIPLINE_CORE = "aidlc-discipline-core-main/plugins/discipline-core";
 const DISCIPLINE_CORE_PIN = "lint/discipline-core-pin.txt";
 const LINT_ROOTS = ["core", "harness", "scripts", "plugins", "src", "lint", "tests"];
-const LOOSE_TESTS = ["tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts"];
+const LOOSE_TESTS = [
+  "tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts",
+  "tests/integration/**/*.test.ts", "tests/e2e/**/*.test.ts",
+];
 
 const workspace = fileWorkspace(ROOT);
 const repository = gitRepository(ROOT);
@@ -120,6 +127,23 @@ const goldens: GoldensDependencies = {
   source: goldenSource(goldenLayout),
   store: goldenStore({ layout: goldenLayout, workspace }),
   build: packageBuild,
+  install: () => {
+    const previous = previousRelease({
+      workspace, beside: (location) => besideMainCheckout(ROOT, location),
+    });
+    if (!previous.ok) {
+      return [{
+        subject: "install lifecycle goldens", violation: previous.problem, fix: previous.fix,
+      }];
+    }
+    const result = runner.capture(bun("install lifecycle goldens", [
+      "lint/gate/install-lifecycle.ts", "--check", "--previous", previous.value,
+    ]));
+    return result.exitCode === 0 ? [] : [{
+      subject: "install lifecycle goldens", violation: result.output,
+      fix: "Restore lint/gate/previous-release.json's retained dist and fix lifecycle drift.",
+    }];
+  },
 };
 
 const tsc = (project: string): Command =>
@@ -207,6 +231,9 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     exclusions: environmentExclusions(workspace),
     testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
     build: packageBuild,
+    looseCommand: (files) => changedLegacyCommand({
+      bun: BUN, environment: legacyEnvironment(process.env, TRANSPILER_CACHE),
+    }, files),
     reachOf: (tests) => testReach({ workspace, tests }),
   }),
 ];
@@ -240,8 +267,9 @@ const main = async (): Promise<number> => {
   if (!policy.ok) {
     return usageError(policy);
   }
+  const lockDirectory = process.env["AIDLC_GATE_LOCK_DIR"] ?? lockDirectoryBesideMainCheckout(ROOT);
   const lock = directoryLock({
-    directory: process.env["AIDLC_GATE_LOCK_DIR"] ?? lockDirectoryBesideMainCheckout(ROOT),
+    directory: lockDirectory,
     cwd: process.cwd(),
     onWait: consoleProgress.note,
     policy: policy.value,
@@ -258,6 +286,11 @@ const main = async (): Promise<number> => {
     goldens,
     checksFor,
     toolchain: audit,
+    sweeps: {
+      ledger: sweepLedger(lockDirectory),
+      tree: () => sweepTree(ROOT, DEFAULT_BASE),
+      slots: policy.value.slots,
+    },
   };
   const report = await runGateRequest({ ...services, progress: consoleProgress }, request.value);
   const debt = debtFigureOf(records.boundary({ kind: "head" }) ?? {});

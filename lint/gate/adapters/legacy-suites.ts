@@ -105,6 +105,7 @@ export const legacySuites = (
     tests: ["tests/smoke/**/*.test.ts"],
     sharesPackageBuild: true,
     heavy: true,
+    foundationLegacy: true,
     selectsByImpact: true,
     command: (files) => runnerCommand({
       runner, label: "legacy smoke", args: ["--smoke", "--filter", filterPattern(files)],
@@ -117,6 +118,7 @@ export const legacySuites = (
     following: ["harness-matrix"],
     sharesPackageBuild: true,
     heavy: true,
+    foundationLegacy: true,
     selectsByImpact: true,
     command: (files) =>
       runnerCommand({
@@ -132,3 +134,12 @@ export const legacySuites = (
         }),
   },
 ];
+
+
+export const changedLegacyCommand = (runner: LegacyRunner, files: readonly string[]): Command => {
+  const levels = [...new Set(files.map((file) => file.split("/")[1]))];
+  return runnerCommand({
+    runner, label: "changed legacy tests",
+    args: [...levels.map((level) => `--${level}`), "--filter", filterPattern(files)],
+  });
+};

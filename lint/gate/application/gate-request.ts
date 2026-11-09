@@ -13,6 +13,7 @@ export type ScopeRequest = {
 };
 
 export type FullRequest = {
+  readonly sweep?: boolean;
   readonly kind: "full";
   readonly laneId: string | undefined;
   readonly baseRef: string;
