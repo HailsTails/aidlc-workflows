@@ -1,3 +1,8 @@
+import { caseShards, type CaseTiming } from "./case-split.ts";
+import { assignGroups, escapeRegex } from "./grouping.ts";
+
+export { assignGroups, escapeRegex };
+
 export type Shard = {
   readonly pattern: string | undefined;
   readonly weight: number;
@@ -7,15 +12,8 @@ export type PlanItem = {
   readonly files: readonly string[];
   readonly pattern: string | undefined;
   readonly weight: number;
+  readonly canBeEmpty?: boolean;
 };
-
-const REGEX_SPECIALS = ".*+?^${}()|[]\\";
-const ESCAPE = String.fromCharCode(92);
-
-export const escapeRegex = (text: string): string =>
-  Array.from(text, (character) =>
-    REGEX_SPECIALS.includes(character) ? ESCAPE + character : character,
-  ).join("");
 
 const startsWithName = (name: string): string => `${escapeRegex(name)}( |$)`;
 
@@ -38,22 +36,6 @@ export const describePatterns = (
   return names.length === 0 ? [] : [...owned, ...(withRemainder ? [remainder] : [])];
 };
 
-export const assignGroups = <T extends { readonly weight: number }>(
-  items: readonly T[],
-  groups: number,
-): readonly (readonly T[])[] => {
-  const buckets = Array.from({ length: Math.max(1, groups) }, () => ({
-    total: 0,
-    members: [] as T[],
-  }));
-  for (const item of [...items].sort((a, b) => b.weight - a.weight)) {
-    const lightest = buckets.reduce((best, next) => (next.total < best.total ? next : best));
-    lightest.members.push(item);
-    lightest.total += item.weight;
-  }
-  return buckets.filter((bucket) => bucket.members.length > 0).map((bucket) => bucket.members);
-};
-
 export type PlanRequest = {
   readonly files: readonly string[];
   readonly weightOf: (file: string) => number;
@@ -61,7 +43,33 @@ export type PlanRequest = {
   readonly hasOtherTests: (file: string) => boolean;
   readonly splitAtOrAbove: number;
   readonly groups: number;
+  readonly casesOf: (file: string) => readonly CaseTiming[];
+  readonly targetSeconds: number;
 };
+
+const MAX_PATTERN_LENGTH = 16_000;
+
+const recordedSeconds = (cases: readonly CaseTiming[]): number =>
+  cases.reduce((sum, { seconds }) => sum + seconds, 0);
+
+const caseItemsOf = (request: PlanRequest, file: string): readonly PlanItem[] => {
+  const cases = request.casesOf(file);
+  const shards = caseShards({ cases, targetSeconds: request.targetSeconds });
+  const fits = shards.every(({ pattern }) => pattern.length <= MAX_PATTERN_LENGTH);
+  const lastIndex = shards.length - 1;
+  return fits
+    ? shards.map(({ pattern, weight }, index) => ({
+        files: [file],
+        pattern,
+        weight: Math.max(weight, 1),
+        canBeEmpty: index === lastIndex,
+      }))
+    : [];
+};
+
+const isCaseSplit = (request: PlanRequest, file: string): boolean =>
+  recordedSeconds(request.casesOf(file)) > request.targetSeconds &&
+  caseItemsOf(request, file).length > 0;
 
 const shardsOf = (request: PlanRequest, file: string): readonly PlanItem[] => {
   const patterns = describePatterns(request.describesOf(file), request.hasOtherTests(file));
@@ -76,8 +84,10 @@ const shardsOf = (request: PlanRequest, file: string): readonly PlanItem[] => {
 };
 
 export const planItems = (request: PlanRequest): readonly PlanItem[] => {
-  const big = request.files.filter((file) => request.weightOf(file) >= request.splitAtOrAbove);
-  const small = request.files.filter((file) => !big.includes(file));
+  const byCase = request.files.filter((file) => isCaseSplit(request, file));
+  const rest = request.files.filter((file) => !byCase.includes(file));
+  const big = rest.filter((file) => request.weightOf(file) >= request.splitAtOrAbove);
+  const small = rest.filter((file) => !big.includes(file));
   const packed = assignGroups(
     small.map((file) => ({ file, weight: request.weightOf(file) })),
     request.groups,
@@ -86,7 +96,8 @@ export const planItems = (request: PlanRequest): readonly PlanItem[] => {
     pattern: undefined,
     weight: group.reduce((sum, { weight }) => sum + weight, 0),
   }));
-  return [...big.flatMap((file) => shardsOf(request, file)), ...packed].sort(
+  const caseItems = byCase.flatMap((file) => caseItemsOf(request, file));
+  return [...caseItems, ...big.flatMap((file) => shardsOf(request, file)), ...packed].sort(
     (a, b) => b.weight - a.weight,
   );
 };
