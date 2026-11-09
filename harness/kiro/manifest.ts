@@ -219,7 +219,7 @@ const manifest: HarnessManifest = {
     { src: "settings/cli.json", dst: "settings/cli.json" },
   ],
 
-  pluginAgentFrontmatter: KIRO_HOST_DATA.pluginAgentFrontmatter.copy,
+  pluginAgentFrontmatter: [...KIRO_HOST_DATA.pluginAgentFrontmatter.copy],
 
   // Neutral root guidance is shared; native setup is loaded through agent resources.
   onboarding: { dst: "AGENTS.md", projectRoot: true, harnessDst: "steering/aidlc-onboarding.md", fills: onboardingFills },
