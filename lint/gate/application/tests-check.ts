@@ -253,6 +253,9 @@ const judgeExecutions = (request: {
   };
 };
 
+const sharesBuild = (run: Run, scope: GateScope): boolean =>
+  run.sharesPackageBuild && (scope.build || !scope.everything);
+
 const beforeRunning = async (request: {
   readonly dependencies: TestsDependencies;
   readonly run: Run;
@@ -263,7 +266,7 @@ const beforeRunning = async (request: {
   if (!slot.acquired) {
     return noSlot(slot.reason);
   }
-  return run.sharesPackageBuild && scope.build ? request.dependencies.build.ensure() : undefined;
+  return sharesBuild(run, scope) ? request.dependencies.build.ensure() : undefined;
 };
 
 const judgeRun = async (request: {
@@ -276,7 +279,7 @@ const judgeRun = async (request: {
   if (blocked !== undefined) {
     return buildFailureVerdict(blocked);
   }
-  const sharing = request.run.sharesPackageBuild && scope.build;
+  const sharing = sharesBuild(request.run, scope);
   const commands = sharing ? request.run.commands.map(withPackageReady) : request.run.commands;
   const run = { ...request.run, commands };
   const executions = await executionsOf(dependencies, run);
