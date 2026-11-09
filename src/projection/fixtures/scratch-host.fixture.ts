@@ -34,6 +34,7 @@ export const SCRATCH_AGENT_INPUTS: AgentRenderingInputs = {
   files: [],
   prepare: accepted,
   models: () => accepted(undefined),
+  formatDocuments: new Set(),
 };
 
 export const scratchAgentRenderer: HostAgentRenderer = ({ channel }) => ({
