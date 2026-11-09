@@ -367,7 +367,9 @@ export function validateManifest(
         manifest.harnessDir === ".aidlc" &&
         orchestratorLocation === ".github/skills/aidlc/SKILL.md") ||
     (capabilities.memoryInclude === "cursor-rule") !==
-      manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.mdc")
+      (manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.mdc") ||
+        placements.some((placement) =>
+          placement.destination === `${manifest.harnessDir}/rules/aidlc.mdc`))
   ) {
     fail(name, "memoryInclude does not agree with the registered include surfaces");
   }
