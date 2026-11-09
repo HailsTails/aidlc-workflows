@@ -6,7 +6,8 @@ import { disciplineCore, INSTALL_LINK } from "./discipline-core.ts";
 
 const SANDBOX = join(import.meta.dir, "../../../.cache/gate-tests", randomUUID());
 const INSTALL = join(SANDBOX, "install");
-const IDLE_RUNNER = { capture: () => ({ exitCode: 0, output: "" }), attach: () => 0 };
+const IDLE_RUNNER = { capture: () => ({ exitCode: 0, output: "" }), captureAll: async () => [],
+    attach: () => 0 };
 
 const git = (args: readonly string[]): string =>
   Bun.spawnSync(["git", "-c", "user.email=gate@test", "-c", "user.name=gate", ...args], {

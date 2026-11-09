@@ -19,6 +19,7 @@ const ranFiles: string[][] = [];
 const check = testsCheck({
   runner: {
     capture: () => ({ exitCode: 0, output: "" }),
+    captureAll: async () => [],
     attach: () => 0,
   },
   workspace: {

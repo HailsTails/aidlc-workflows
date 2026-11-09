@@ -1,6 +1,9 @@
+import { z } from "zod";
 import { filterPattern } from "../domain/legacy-selection.ts";
+import { planItems, type PlanItem } from "../domain/test-sharding.ts";
 import type { TestSuite } from "../application/tests-check.ts";
-import type { Command } from "../application/ports.ts";
+import type { Command, Workspace } from "../application/ports.ts";
+import { topLevelDescribes } from "./describe-reader.ts";
 
 const INHERITED_NAMES = [
   "PATH",
@@ -44,7 +47,55 @@ const runnerCommand = (request: {
   env: request.runner.environment,
 });
 
-export const legacySuites = (runner: LegacyRunner): readonly TestSuite[] => [
+export type LegacyPlanning = {
+  readonly workspace: Workspace;
+  readonly workers: number;
+  readonly splitAtOrAbove: number;
+};
+
+const WEIGHTS_PATH = "tests/unit-shard-weights.json";
+
+const WeightsSchema = z.object({
+  defaultSeconds: z.number().positive(),
+  weights: z.record(z.string(), z.number()),
+});
+
+const baseName = (file: string): string => file.split("/").pop() ?? file;
+
+const weightsOf = (workspace: Workspace): ((file: string) => number) => {
+  const text = workspace.read(WEIGHTS_PATH);
+  const parsed = WeightsSchema.safeParse(text === undefined ? undefined : JSON.parse(text));
+  const known = parsed.success ? parsed.data : { defaultSeconds: 1, weights: {} };
+  return (file) => known.weights[baseName(file)] ?? known.defaultSeconds;
+};
+
+const itemCommand = (runner: LegacyRunner, item: PlanItem): Command => {
+  const select = ["--unit", "--filter", filterPattern(item.files)];
+  const shard = item.pattern === undefined ? [] : ["--test-name-pattern", item.pattern];
+  return runnerCommand({
+    runner,
+    label: "legacy tests on the harness matrix",
+    args: [...select, ...shard],
+  });
+};
+
+const matrixCommands = (
+  runner: LegacyRunner,
+  planning: LegacyPlanning,
+  files: readonly string[],
+): readonly Command[] =>
+  planItems({
+    files,
+    weightOf: weightsOf(planning.workspace),
+    describesOf: (file) => topLevelDescribes(planning.workspace.read(file) ?? ""),
+    splitAtOrAbove: planning.splitAtOrAbove,
+    groups: Math.max(1, Math.floor(planning.workers / 2)),
+  }).map((item) => itemCommand(runner, item));
+
+export const legacySuites = (
+  runner: LegacyRunner,
+  planning?: LegacyPlanning,
+): readonly TestSuite[] => [
   {
     name: "legacy smoke",
     triggers: [...SOURCES_THAT_MOVE_LEGACY_TESTS, "tests/smoke/**"],
@@ -64,5 +115,11 @@ export const legacySuites = (runner: LegacyRunner): readonly TestSuite[] => [
         label: "legacy tests on the harness matrix",
         args: ["--unit", "--filter", filterPattern(files)],
       }),
+    ...(planning === undefined
+      ? {}
+      : {
+          commands: (files: readonly string[]) => matrixCommands(runner, planning, files),
+          concurrency: planning.workers,
+        }),
   },
 ];

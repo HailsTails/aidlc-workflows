@@ -11,7 +11,8 @@ const runnerReturning = (result: CommandResult, calls: Command[]) => ({
     calls.push(command);
     return result;
   },
-  attach: () => 0,
+  captureAll: async () => [],
+    attach: () => 0,
 });
 
 describe("sharedBuild", () => {

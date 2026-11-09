@@ -32,3 +32,35 @@ describe("the per-run temp folder", () => {
     expect(explicit.output.trim()).toBe(expected);
   });
 });
+
+describe("captureAll", () => {
+  const SLEEP = "await Bun.sleep(700); console.log(process.argv[1])";
+  const sleeping = (label: string) => ({
+    label,
+    argv: [process.execPath, "-e", SLEEP, label],
+  });
+
+  test("results come back in command order whatever order they finish in", async () => {
+    const temp = runTemp(ROOT);
+    const runner = processRunner(ROOT, temp.path);
+    const results = await runner.captureAll({
+      commands: [sleeping("a"), sleeping("b"), sleeping("c")],
+      concurrency: 3,
+    });
+    temp.dispose();
+    expect(results.map((result) => result.output.trim())).toEqual(["a", "b", "c"]);
+  });
+
+  test("commands run side by side up to the limit", async () => {
+    const temp = runTemp(ROOT);
+    const runner = processRunner(ROOT, temp.path);
+    const started = Date.now();
+    await runner.captureAll({
+      commands: [sleeping("a"), sleeping("b"), sleeping("c"), sleeping("d")],
+      concurrency: 4,
+    });
+    const elapsed = Date.now() - started;
+    temp.dispose();
+    expect(elapsed).toBeLessThan(2200);
+  });
+});

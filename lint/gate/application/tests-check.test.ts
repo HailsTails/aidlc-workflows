@@ -34,7 +34,8 @@ const checkWith = (request: {
   readonly build?: SharedBuild;
 }) =>
   testsCheck({
-    runner: { capture: () => request.result, attach: () => 0 },
+    runner: { capture: () => request.result, captureAll: async () => [],
+    attach: () => 0 },
     workspace: workspaceOf(request.files ?? { "tests/a.test.ts": "" }),
     suites: [request.suite ?? SUITE],
     looseTests: [],
@@ -114,6 +115,7 @@ describe("the tests check shares one package build", () => {
       commands.push(command);
       return { exitCode: 0, output: "" };
     },
+    captureAll: async () => [],
     attach: () => 0,
   });
 

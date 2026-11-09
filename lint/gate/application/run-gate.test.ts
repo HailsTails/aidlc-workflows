@@ -34,9 +34,11 @@ const services = (ready: Loaded<string>): GateServices => ({
   lock: { acquire: async () => ({ acquired: true }), release: () => undefined },
   progress: { started: () => undefined, finished: () => undefined, note: () => undefined },
   clock: { nowMs: () => 0 },
-  runner: { capture: () => ({ exitCode: 0, output: "" }), attach: () => 0 },
+  runner: { capture: () => ({ exitCode: 0, output: "" }), captureAll: async () => [],
+    attach: () => 0 },
   goldens: {
-    runner: { capture: () => ({ exitCode: 0, output: "" }), attach: () => 0 },
+    runner: { capture: () => ({ exitCode: 0, output: "" }), captureAll: async () => [],
+    attach: () => 0 },
     source: { measure: () => ({}) },
     store: { read: () => ({}), write: () => undefined },
     build: { ensure: () => undefined },

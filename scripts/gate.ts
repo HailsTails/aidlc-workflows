@@ -127,9 +127,16 @@ const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
   },
 ];
 
+const LEGACY_SPLIT_SECONDS = 60;
+
+const LEGACY_WORKERS = Math.max(1, Number(process.env["AIDLC_GATE_TEST_WORKERS"]) || 8);
+
 const TEST_SUITES: readonly TestSuite[] = [
   ...SOURCE_SUITES,
-  ...legacySuites({ bun: BUN, environment: legacyEnvironment(process.env) }),
+  ...legacySuites(
+    { bun: BUN, environment: legacyEnvironment(process.env) },
+    { workspace, workers: LEGACY_WORKERS, splitAtOrAbove: LEGACY_SPLIT_SECONDS },
+  ),
   {
     name: "lint",
     triggers: ["lint/**", "scripts/gate.ts", "eslint.config.ts", "eslint.config.test.ts"],

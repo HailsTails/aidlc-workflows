@@ -75,6 +75,10 @@ export type CommandResult = {
 
 export type CommandRunner = {
   readonly capture: (command: Command) => CommandResult;
+  readonly captureAll: (request: {
+    readonly commands: readonly Command[];
+    readonly concurrency: number;
+  }) => Promise<readonly CommandResult[]>;
   readonly attach: (command: Command) => number;
 };
 

@@ -149,7 +149,7 @@ export function parseRunnerArgs(
       case "--test-name-pattern":
         out.testNamePattern = argv[++i] ?? "";
         if (!out.testNamePattern) {
-          throw new RunnerArgsError("ERROR: --test-name-pattern requires a non-empty test name regex");
+          throw new RunnerArgsError("ERROR: --test-name-pattern requires a non-empty regex");
         }
         break;
       case "--exclude":

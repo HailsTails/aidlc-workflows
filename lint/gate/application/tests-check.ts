@@ -13,7 +13,13 @@ import { judged, skipped, type Finding } from "../domain/outcome.ts";
 import { fileTimings, slowestNote, type FileTiming } from "../domain/test-timing.ts";
 import type { GateCheck } from "./gate-check.ts";
 import { touches, type GateScope } from "./gate-scope.ts";
-import type { Capabilities, Command, CommandRunner, Workspace } from "./ports.ts";
+import type {
+  Capabilities,
+  Command,
+  CommandResult,
+  CommandRunner,
+  Workspace,
+} from "./ports.ts";
 import type { SharedBuild } from "./shared-build.ts";
 
 export type TestSuite = {
@@ -22,6 +28,8 @@ export type TestSuite = {
   readonly tests: readonly string[];
   readonly following?: readonly string[];
   readonly command?: (files: readonly string[]) => Command;
+  readonly commands?: (files: readonly string[]) => readonly Command[];
+  readonly concurrency?: number;
   readonly sharesPackageBuild?: boolean;
 };
 
@@ -39,7 +47,8 @@ export type TestsDependencies = {
 type Run = {
   readonly name: string;
   readonly files: readonly string[];
-  readonly command: Command;
+  readonly commands: readonly Command[];
+  readonly concurrency: number;
   readonly sharesPackageBuild: boolean;
 };
 
@@ -50,6 +59,8 @@ type RunVerdict = {
 };
 
 const SLOWEST_FILES = 10;
+
+const OUTPUT_SEPARATOR = String.fromCharCode(10);
 
 const CAPABILITIES: readonly CapabilityId[] = ["symlinks", "short-names", "listable-system-temp"];
 
@@ -65,6 +76,13 @@ const selectedFiles = (dependencies: TestsDependencies, suite: TestSuite): reado
     : files.filter((file) => follows(workspace.read(file) ?? "", following));
 };
 
+const commandsOf = (
+  dependencies: TestsDependencies,
+  suite: TestSuite,
+  files: readonly string[],
+): readonly Command[] =>
+  suite.commands?.(files) ?? [(suite.command ?? dependencies.testCommand)(files)];
+
 const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly Run[] =>
   dependencies.suites
     .filter((suite) => scope.everything || touches(scope, suite.triggers))
@@ -73,7 +91,8 @@ const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly 
     .map(({ suite, files }) => ({
       name: suite.name,
       files,
-      command: (suite.command ?? dependencies.testCommand)(files),
+      commands: commandsOf(dependencies, suite, files),
+      concurrency: suite.concurrency ?? 1,
       sharesPackageBuild: suite.sharesPackageBuild === true,
     }));
 
@@ -85,7 +104,8 @@ const looseRun = (dependencies: TestsDependencies, scope: GateScope): readonly R
         {
           name: "changed tests",
           files,
-          command: dependencies.testCommand(files),
+          commands: [dependencies.testCommand(files)],
+          concurrency: 1,
           sharesPackageBuild: false,
         },
       ];
@@ -94,13 +114,16 @@ const looseRun = (dependencies: TestsDependencies, scope: GateScope): readonly R
 const probesOf = (capabilities: Capabilities): Probes =>
   Object.fromEntries(CAPABILITIES.map((id) => [id, capabilities.probe(id)])) as Probes;
 
+const hintOf = (run: Run): string =>
+  (run.commands[0]?.argv ?? []).slice(1).join(" ");
+
 const unnamedFailure = (run: Run, output: string, exitCode: number): Finding => {
   const summary = output.split(/\r?\n/).filter((line) => /^\s*\d+ fail/.test(line));
   return {
     subject: run.name,
     violation: `bun test failed (${summary.join(" ").trim() || `exit ${exitCode}`})`,
     fix:
-      `Run ${run.command.argv.slice(1).join(" ")} and fix the code or the failing test; ` +
+      `Run ${hintOf(run)} and fix the code or the failing test; ` +
       "never skip, loosen or delete a test to get green.",
   };
 };
@@ -109,7 +132,7 @@ const regression = (run: Run, name: string): Finding => ({
   subject: `${run.name} · ${name}`,
   violation: "failed, and no capability this machine lacks accounts for it",
   fix:
-    `Run ${run.command.argv.slice(1).join(" ")} and fix the code or the failing test; ` +
+    `Run ${hintOf(run)} and fix the code or the failing test; ` +
     "never skip, loosen or delete a test to get green.",
 });
 
@@ -124,20 +147,36 @@ const buildFailureVerdict = (finding: Finding): RunVerdict => ({
   timings: [],
 });
 
-const judgeRun = (request: {
+const resultOf = async (dependencies: TestsDependencies, run: Run): Promise<CommandResult> => {
+  const [only] = run.commands;
+  if (run.commands.length === 1 && only !== undefined) {
+    return dependencies.runner.capture(only);
+  }
+  const results = await dependencies.runner.captureAll({
+    commands: run.commands,
+    concurrency: run.concurrency,
+  });
+  const failing = results.find((result) => result.exitCode !== 0);
+  return {
+    exitCode: failing?.exitCode ?? 0,
+    output: results.map((result) => result.output).join(OUTPUT_SEPARATOR),
+  };
+};
+
+const judgeRun = async (request: {
   readonly dependencies: TestsDependencies;
   readonly run: Run;
   readonly scope: GateScope;
-}): RunVerdict => {
+}): Promise<RunVerdict> => {
   const { dependencies, scope } = request;
   const sharing = request.run.sharesPackageBuild && scope.build;
   const built = sharing ? dependencies.build.ensure() : undefined;
   if (built !== undefined) {
     return buildFailureVerdict(built);
   }
-  const command = sharing ? withPackageReady(request.run.command) : request.run.command;
-  const run = { ...request.run, command };
-  const result = dependencies.runner.capture(run.command);
+  const commands = sharing ? request.run.commands.map(withPackageReady) : request.run.commands;
+  const run = { ...request.run, commands };
+  const result = await resultOf(dependencies, run);
   const timings = fileTimings(result.output);
   if (result.exitCode === 0) {
     return { findings: [], excluded: "", timings };
@@ -170,7 +209,7 @@ export const testsCheck = (dependencies: TestsDependencies): GateCheck => ({
     if (runs.length === 0) {
       return skipped("tests", "no changed context has tests");
     }
-    const verdicts = runs.map((run) => judgeRun({ dependencies, run, scope }));
+    const verdicts = await Promise.all(runs.map((run) => judgeRun({ dependencies, run, scope })));
     const ran = runs.map((run) => `${run.name} (${run.files.length})`).join(", ");
     const excluded = verdicts.map((verdict) => verdict.excluded).filter((note) => note !== "");
     const slowest = slowestNote(verdicts.flatMap((verdict) => verdict.timings), SLOWEST_FILES);
