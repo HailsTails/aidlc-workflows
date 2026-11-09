@@ -15,7 +15,6 @@ export const claudeHostDataFixture: HostData = {
       unwired: "A hook is not wired.",
     },
   },
-  newChatStep: { text: "type /clear, then <entry>" },
   statusLine: { type: "command", command: 'bun "$CLAUDE_PROJECT_DIR/.claude/tools/aidlc.ts" engine statusline' },
   agentFinishRecorded: { env: ["CLAUDE_CODE_SESSION_ID"] },
   hostShell: { env: ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID"] },
