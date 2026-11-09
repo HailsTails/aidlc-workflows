@@ -80,6 +80,17 @@ const OWN_LAYER_RESTRICTIONS: Readonly<Record<Layer, readonly ImportRestriction[
   root: [],
 };
 
+const rootEffects: ImportRestriction = {
+  regex: "^(?![./])",
+  message:
+    "Layer: a root composes. It imports its own application, adapters and domain and the " +
+    "kernel, and receives the platform as parameters; only src/cli reaches node:, Bun or " +
+    "a package.",
+};
+
+const rootEffectRestrictions = (placement: Placement): ImportRestriction[] =>
+  placement.layer === "root" && placement.context !== "cli" ? [rootEffects] : [];
+
 const purityRestriction = (layer: Layer): ImportRestriction[] =>
   purityOf(layer) === "pure"
     ? [
@@ -141,20 +152,37 @@ const testDiscipline: readonly ImportRestriction[] = [
   },
 ];
 
-const layerTestDiscipline = (layer: Layer): readonly ImportRestriction[] =>
-  purityOf(layer) === "pure" ? testDiscipline : [];
+const platformFreeTest: ImportRestriction = {
+  regex: "^(node:|bun:(?!test$)|bun$)",
+  message:
+    "Test discipline: an adapter or root test imports no node: or Bun module. Reach the " +
+    "platform through the kernel's fake of the port, or register the test as an " +
+    "implementer's hermetic test in lint/implementers.json.",
+};
 
-export const testImportRestrictions = (placement: Placement): ImportRestriction[] => [
+const layerTestDiscipline = (layer: Layer): readonly ImportRestriction[] => {
+  if (purityOf(layer) === "pure") {
+    return testDiscipline;
+  }
+  return layer === "fixtures" ? [] : [platformFreeTest];
+};
+
+export const hermeticTestImportRestrictions = (placement: Placement): ImportRestriction[] => [
   ...otherContextRestrictions(placement),
   ...OWN_LAYER_RESTRICTIONS[placement.layer],
-  ...layerTestDiscipline(placement.layer),
   ...hostReachFor(placement),
   monolithReachBack,
+];
+
+export const testImportRestrictions = (placement: Placement): ImportRestriction[] => [
+  ...hermeticTestImportRestrictions(placement),
+  ...layerTestDiscipline(placement.layer),
 ];
 
 export const srcImportRestrictions = (placement: Placement): ImportRestriction[] => [
   ...otherContextRestrictions(placement),
   ...OWN_LAYER_RESTRICTIONS[placement.layer],
+  ...rootEffectRestrictions(placement),
   ...purityRestriction(placement.layer),
   ...testSupportRestriction(placement.layer),
   ...hostReachFor(placement),

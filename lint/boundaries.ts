@@ -26,6 +26,7 @@ import {
   methodSyntaxFor,
   ownershipInSrc,
   purityOf,
+  hermeticTestImportRestrictions,
   testImportRestrictions,
   srcImportRestrictions,
   undecodedJson,
@@ -288,7 +289,7 @@ const hermeticTestConfig = (implementer: Implementer): Linter.Config => ({
   name: `aidlc/src/kernel/implementer/${implementer.capability}/hermetic-test`,
   files: [implementer.hermeticTest],
   rules: restrict({
-    imports: testImportRestrictions({ context: "kernel", layer: "adapters" }),
+    imports: hermeticTestImportRestrictions({ context: "kernel", layer: "adapters" }),
     syntax: sampleSyntax("kernel", "adapters"),
   }),
 });

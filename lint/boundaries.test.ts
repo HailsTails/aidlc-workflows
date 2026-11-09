@@ -331,3 +331,43 @@ describe("boundaryConfig for registered kernel implementers", () => {
     );
   });
 });
+
+const NODE_FS_IMPORT = 'import { readFileSync } from "node:fs";\nexport const read = readFileSync;\n';
+
+const IMPORT_REFUSED = expect.objectContaining({ ruleId: "no-restricted-imports" });
+
+describe("boundaryConfig for roots and the tests of adapters and roots", () => {
+  test("refuses a platform import in a context root", () => {
+    expect(findingsFor(NODE_FS_IMPORT, "src/execution/main.ts")).toContainEqual(IMPORT_REFUSED);
+  });
+
+  test("lets the composition root in src/cli import the platform", () => {
+    expect(findingsFor(NODE_FS_IMPORT, "src/cli/main.ts")).not.toContainEqual(IMPORT_REFUSED);
+  });
+
+  test("refuses a platform import in an adapter test", () => {
+    const messages = findingsFor(NODE_FS_IMPORT, "src/projection/adapters/reader.test.ts");
+
+    expect(messages).toContainEqual(IMPORT_REFUSED);
+  });
+
+  test("refuses a platform import in a root test", () => {
+    expect(findingsFor(NODE_FS_IMPORT, "src/execution/main.test.ts")).toContainEqual(
+      IMPORT_REFUSED,
+    );
+  });
+
+  test("lets an adapter test import a package that is not the platform", () => {
+    const code = 'import { z } from "zod";\nexport const name = z.string();\n';
+
+    const messages = findingsFor(code, "src/projection/adapters/reader.test.ts");
+
+    expect(messages).not.toContainEqual(IMPORT_REFUSED);
+  });
+
+  test("lets a registered hermetic test import the platform", () => {
+    const hermetic = "src/kernel/file-system.hermetic.test.ts";
+
+    expect(findingsFor(NODE_FS_IMPORT, hermetic)).not.toContainEqual(IMPORT_REFUSED);
+  });
+});
