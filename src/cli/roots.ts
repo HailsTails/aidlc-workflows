@@ -20,6 +20,7 @@ import type {
   HostSkillRenderer,
 } from "../projection/application/ports.ts";
 import type { AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
+import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
 import type { HostTokenBindings } from "../projection/domain/template-token.ts";
 import type { MarkdownOutliner } from "../workflow-definition/application/ports.ts";
 
@@ -61,6 +62,7 @@ export type HostBuildMembers = {
   readonly skills: ConceptMembers<HostSkillRenderer>;
   readonly settings: ConceptMembers<HostSettingsRenderer>;
   readonly documents: ConceptMembers<HostDocumentRenderer>;
+  readonly fills: OnboardingFills;
   readonly distribution?: HostDistributionReader;
 };
 
