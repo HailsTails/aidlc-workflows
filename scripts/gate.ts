@@ -64,7 +64,8 @@ import { ownershipCheck } from "../lint/gate/application/ownership-check.ts";
 import { recordsCheck } from "../lint/gate/application/records-check.ts";
 import { runGateRequest, type GateReport } from "../lint/gate/application/run-gate.ts";
 import { testsCheck, type TestSuite } from "../lint/gate/application/tests-check.ts";
-import { typecheckCheck, type TypecheckProject } from "../lint/gate/application/typecheck-check.ts";
+import { typecheckCheck } from "../lint/gate/application/typecheck-check.ts";
+import { typecheckProjects } from "../lint/gate/application/typecheck-projects.ts";
 import { zonesCheck } from "../lint/gate/application/zones-check.ts";
 import type { Command } from "../lint/gate/application/ports.ts";
 import type { LanePlan } from "../lint/gate/domain/lane-plan.ts";
@@ -152,21 +153,17 @@ const tsc = (project: string): Command =>
 
 const SHIPPED_TYPES_PROJECT = "src/tsconfig.shipped-types.json";
 
-const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
+const TYPECHECK_PROJECTS = typecheckProjects(
   {
-    command: bun(`tsc -b ${SHIPPED_TYPES_PROJECT}`, [
+    tsc,
+    shippedTypes: bun(`tsc -b ${SHIPPED_TYPES_PROJECT}`, [
       "node_modules/typescript/bin/tsc",
       "-b",
       SHIPPED_TYPES_PROJECT,
     ]),
-    triggers: ["src/**", "core/**/*.ts"],
   },
-  { command: tsc("src/tsconfig.json"), triggers: ["src/**"] },
-  {
-    command: tsc("lint/tsconfig.json"),
-    triggers: ["lint/**", "eslint.config.ts", "scripts/gate.ts", "src/glossary.json"],
-  },
-];
+  packageBuild,
+);
 
 const TRANSPILER_CACHE = transpilerCacheFolder(ROOT);
 
