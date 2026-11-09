@@ -135,6 +135,14 @@ describe("boundaryConfig published types", () => {
     );
   });
 
+  test("leaves a ports concept file's test outside the port files", () => {
+    const code = "export type StageSample = { readonly slug: string };\n";
+
+    expect(findingsFor(code, "src/projection/application/ports/stages.test.ts")).not.toContainEqual(
+      refusal(UNGLOSSED),
+    );
+  });
+
   test("accepts a type the context's glossary names", () => {
     const code = "export type ProjectedFile = { readonly path: string };\n";
 
