@@ -39,9 +39,17 @@ const unknownLane = (plan: LanePlan, id: string): Loaded<never> => ({
   fix: `Use one of the lane ids in lanes.json: ${plan.lanes.map((lane) => lane.id).join(", ")}.`,
 });
 
+const withoutTrailingSlash = (path: string): string => path.replace(/\/$/, "");
+
 const pathChanges = (workspace: Workspace, paths: readonly string[]): readonly ChangedFile[] => {
-  const asGlobs = paths.flatMap((path) => [path, `${path.replace(/\/$/, "")}/**`]);
-  return workspace.filesMatching(asGlobs).map((path) => ({ path, kind: "modified" as const }));
+  const asGlobs = paths.flatMap((path) => [path, `${withoutTrailingSlash(path)}/**`]);
+  const present = workspace.filesMatching(asGlobs);
+  const isPresent = (path: string): boolean =>
+    present.some((file) => file === path || file.startsWith(`${withoutTrailingSlash(path)}/`));
+  return [
+    ...present.map((path) => ({ path, kind: "modified" as const })),
+    ...paths.filter((path) => !isPresent(path)).map((path) => ({ path, kind: "deleted" as const })),
+  ];
 };
 
 const laneScope = (
