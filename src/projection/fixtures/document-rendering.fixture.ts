@@ -7,7 +7,7 @@ import { text } from "./values.fixture.ts";
 export const ONBOARDING_TEMPLATES_FIXTURE: OnboardingTemplates = {
   neutral: ["# AI-DLC in this project", "", "Your work is recorded under aidlc/.", ""].join("\n"),
   harnessSkeleton: [
-    "{{SLOT:titleBlock}}",
+    "{{SLOT:title_block}}",
     "",
     "Start a piece of work with {{SKILL_INVOKE}}.",
     "The install lives in {{HARNESS_DIR}}; run {{INVOKE}} doctor to check it.",
@@ -17,7 +17,7 @@ export const ONBOARDING_TEMPLATES_FIXTURE: OnboardingTemplates = {
 
 export const ONBOARDING_FILLS_FIXTURE: OnboardingFills = {
   invoke: "/aidlc",
-  slots: { titleBlock: "# AI-DLC for this host" },
+  slots: { ["title_block"]: "# AI-DLC for this host" },
 };
 
 export const protocolDocumentFixture: NeutralDocument = {
@@ -34,9 +34,29 @@ export const protocolDocumentFixture: NeutralDocument = {
     "",
     "Claude Code runs the stage in the chat.",
     "",
+    "#### Kiro CLI",
+    "",
+    "Kiro CLI runs the stage in the agent.",
+    "",
+    "#### Kiro IDE",
+    "",
+    "Kiro IDE runs the stage in the agent panel.",
+    "",
     "#### Codex CLI",
     "",
     "Codex CLI runs the stage in the session.",
+    "",
+    "#### Cursor",
+    "",
+    "Cursor runs the stage in the agent chat.",
+    "",
+    "#### opencode",
+    "",
+    "opencode runs the stage in the session.",
+    "",
+    "#### GitHub Copilot",
+    "",
+    "GitHub Copilot runs the stage in the chat.",
   ]),
 };
 
