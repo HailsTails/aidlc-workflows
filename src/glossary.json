@@ -151,6 +151,7 @@
 {"name":"NeutralSurfaceReader","context":"projection","kind":"port","definition":"Port: reads the NeutralSurface from core."},
 {"name":"SessionSkillSource","context":"projection","kind":"port","definition":"Port: reads only the session skills from core, for a caller that needs no documents or onboarding."},
 {"name":"SessionSkillTreeReader","context":"projection","kind":"port","definition":"Port: reads the core session skills folder as one tree of bytes, naming each entry it cannot read; the file-system implementer serves it."},
+{"name":"HostFileReader","context":"projection","kind":"port","definition":"Port: reads one authored host file as bytes, or says why it cannot; the file-system implementer serves it."},
 {"name":"LegacyRunnerScratch","context":"projection","kind":"port","definition":"Port: makes, fills and removes the private scratch folder the legacy runner bridge works in; the file-system implementer serves it."},
 {"name":"LegacyRunnerProcess","context":"projection","kind":"port","definition":"Port: runs the legacy runner bridge's child on the current runtime; the process-runner implementer serves it."},
 {"name":"SkillTableVerb","context":"projection","kind":"concept","definition":"Which generated table a skill region holds: the compiled stage graph or the compiled scope grid."},

@@ -1,8 +1,10 @@
+import type { FileContent } from "../../kernel/file-content.ts";
 import type {
   FileSystemError,
   FileWriteError,
   MakeFolderArgs,
   MakeScratchFolderArgs,
+  ReadFileArgs,
   ReadTreeArgs,
   RemoveFolderArgs,
   TreeReading,
@@ -129,6 +131,10 @@ export interface NeutralSurfaceReader {
 
 export interface SessionSkillTreeReader {
   readTree(readTreeArgs: ReadTreeArgs): Promise<Result<TreeReading, FileSystemError>>;
+}
+
+export interface HostFileReader {
+  readFile(readFileArgs: ReadFileArgs): Promise<Result<FileContent, FileSystemError>>;
 }
 
 export interface LegacyRunnerScratch {
