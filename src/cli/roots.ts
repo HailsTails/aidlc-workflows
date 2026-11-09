@@ -191,6 +191,17 @@ export type ProjectRuntime = (
   request: HostRuntimeRequest,
 ) => Promise<Result<readonly ProjectedFile[], readonly ProjectionRefusal[]>>;
 
+export type HostDocumentsRequest = {
+  readonly host: HostIdentity;
+  readonly core: CoreBuild;
+  readonly fills: OnboardingFills;
+  readonly tokens: TokenBindings;
+};
+
+export type ProjectDocuments = (
+  request: HostDocumentsRequest,
+) => Promise<Result<readonly ProjectedFile[], readonly ProjectionRefusal[]>>;
+
 export type CapturedHostSources = {
   readonly host: HostIdentity;
   readonly files: readonly AuthoredHostFile[];
