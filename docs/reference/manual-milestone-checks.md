@@ -76,8 +76,20 @@ the rebuild PR #129 to either commit.
    outcome, counts and exclusions. A job cancelled during setup/cleanup has
    incomplete evidence even if part of the suite ran.
 
-The sanitized summary and the final 256 KiB of runner output are printed in the
-Actions diagnostics step. No artifact is uploaded, so large per-file fixture
+The suite streams the candidate runner's output through its existing secret
+redactor into the Actions log, including file START/DONE markers as emitted.
+GitHub workflow-command interpretation is disabled while these lines stream.
+A heartbeat every 60 seconds reports elapsed time while waiting; it is not
+proof of test progress or completion. Runner, local-log and live-stream failures
+all fail the step. The runner command and its selection are unchanged.
+
+Console lines already received by Actions remain available if the runner
+machine crashes. The last buffered bytes, raw runner-local log and per-file
+logs can still be lost; a crash or incomplete summary is never a pass. This
+change does not retrofit an already running workflow.
+
+The sanitized summary and the final 256 KiB of runner output are also printed
+in the Actions diagnostics step when cleanup can run. No artifact is uploaded, so large per-file fixture
 logs are not retained. The run log follows the repository's existing retention
 policy. A separate artifact-based diagnostic run would need its storage/public
 log-sharing implications considered before changing this lane.

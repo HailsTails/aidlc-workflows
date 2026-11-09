@@ -118,10 +118,45 @@ jobs:
         run: |
           set -euo pipefail
           start=$(date +%s)
-          result=0
+          # Keep raw output locally, but send only redacted lines to Actions as
+          # they arrive. Received console lines survive loss of this machine;
+          # buffered output and per-file logs do not have that guarantee.
+          token="$(cat /proc/sys/kernel/random/uuid)"
+          echo "::stop-commands::$token"
+          set +e
           bun tests/run-tests.ts --no-llm --parallel 4 --verbose \
-            --file-retries 0 --run-timeout 8100 \
-            > tmp/ci-milestone/run.log 2>&1 || result=$?
+            --file-retries 0 --run-timeout 8100 2>&1 \
+            | tee tmp/ci-milestone/run.log \
+            | bun -e '
+              import { createInterface } from "node:readline";
+              import { writeSync } from "node:fs";
+              import { redactSecrets } from "./scripts/ci-sanitize-logs.ts";
+              const started = Date.now();
+              const emit = (line) => writeSync(1, line + "\n");
+              const heartbeat = setInterval(() => {
+                emit(`[milestone] ${Math.floor((Date.now() - started) / 1000)}s elapsed; waiting for runner output or exit, not a completion result.`);
+              }, 60000);
+              try {
+                for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
+                  emit(redactSecrets(line));
+                }
+              } catch {
+                // Never print an exception that might contain unsanitized input.
+                emit("[milestone] Live log sanitization/stream failed; this is not a pass.");
+                process.exitCode = 1;
+              } finally {
+                clearInterval(heartbeat);
+              }
+            '
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          echo "::$token::"
+          result=${statuses[0]}
+          printf 'runner_exit=%s raw_log_exit=%s live_stream_exit=%s\n' "${statuses[@]}"
+          if [ "${statuses[1]}" -ne 0 ] || [ "${statuses[2]}" -ne 0 ]; then
+            echo '::error::Milestone evidence stream failed; this is not a pass'
+            if [ "$result" -eq 0 ]; then result=1; fi
+          fi
           printf 'exit_code=%s\nelapsed_seconds=%s\n' "$result" "$(( $(date +%s) - start ))" \
             > tmp/ci-milestone/result.txt
           stamp="$(sed -n '/^Verbose mode: logging to /{s/^Verbose mode: logging to //;p;q;}' tmp/ci-milestone/run.log | tr -d '\r')"
