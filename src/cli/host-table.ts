@@ -1,3 +1,5 @@
+import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS } from "../hosts/kiro/host-data.ts";
+import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS } from "../hosts/codex/host-data.ts";
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
@@ -52,6 +54,8 @@ export const hostSkillMembers = (host: HostIdentity): Result<HostSkillMembers | 
   return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
 };
 const HOST_SURFACE_MEMBERS = [
+  { name: "kiro", data: KIRO_HOST_DATA, placements: KIRO_AUTHORED_PLACEMENTS },
+  { name: "codex", data: CODEX_HOST_DATA, placements: CODEX_AUTHORED_PLACEMENTS },
   { name: "claude", data: CLAUDE_HOST_DATA, placements: CLAUDE_AUTHORED_PLACEMENTS },
 ] as const;
 

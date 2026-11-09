@@ -1,10 +1,8 @@
 #!/usr/bin/env bun
 import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
-import { refreshSkillRegions, finishEarlierReleaseSkill }
-  from "../src/projection/domain/skill-regions.ts";
 import type { FileContent } from "../src/kernel/file-content.ts";
 import type { HostIdentity } from "../src/kernel/host.ts";
-import { accepted, refused, type Result } from "../src/kernel/result.ts";
+import { refused, type Result } from "../src/kernel/result.ts";
 import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts";
 import type { ProjectionRefusal } from "../src/projection/domain/projection.ts";
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
@@ -29,8 +27,7 @@ import type { ProjectionRefusal } from "../src/projection/domain/projection.ts";
 //   5. GENERATE runners into the assembled tree by running aidlc-runner-gen's
 //      write and scopes CLIs under AIDLC_HARNESS_DIR (skipped when the manifest
 //      sets skipRunnerGen).
-//   6. REFRESH generated stage/scope table regions in the assembled orchestrator
-//      skill from the just-compiled graph and scope grid.
+//   6. Native skill projection owns the final table regions and earlier-release tail.
 //
 // THE TOKENS: core/ prose carries {{HARNESS_DIR}}, {{INVOKE}}, {{TOOL_PREFIX}},
 // {{TRUSTED_NAMESPACE}} and {{OPTION_LETTERS}}; here they become the harness's
@@ -93,7 +90,7 @@ import { prepareHostSource } from "../src/projection/application/prepared-host-s
 import type { AuthoredPluginBuild as PluginBuildCatalog, PluginBuildTarget }
   from "../src/workflow-definition/application/ports.ts";
 import {
-  runnerProducer, orchestratorSkillLocation, type HarnessManifest,
+  runnerProducer, type HarnessManifest,
 } from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
@@ -102,7 +99,6 @@ import {
 } from "./agent-knowledge.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
-import { earlierReleasesReadSkill } from "./earlier-release-regions.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
 import {
   buildPluginProjection as emitPluginProjection,
@@ -1009,7 +1005,6 @@ async function buildTree(
     reason: "This manifest selected standard runner production." }) };
   let commandPlacement: CommandPlacement | undefined;
   const skillInputs = hostSkillInputs(m.name);
-  const projectedPaths = new Set<string>();
   if (m.emit) {
     m.emit({
       emitCommands: (place) => {
@@ -1047,7 +1042,6 @@ async function buildTree(
         TRUSTED_NAMESPACE: TRUSTED_ROUTE_NAMESPACE, OPTION_LETTERS: letters } });
     if (!skills.ok) throw new Error(JSON.stringify(skills.refusal));
     writeProjectedFiles({ files: skills.value, projectRoot: outRoot });
-    skills.value.forEach((file) => { projectedPaths.add(file.path); });
   }
   const agents = packageBuildRoot.projectAgents({ host: hostInput.host, method: coreBuild.method,
     files: hostInput.files, prepare: prepareHostInput, channel, modelCap: TIER_CAP });
@@ -1064,12 +1058,6 @@ async function buildTree(
   expandKiroIdeConductorAllows(treeRoot, m, invoke);
   writeProjectionData(outRoot, treeRoot, m);
 
-  // 6. Generated table regions are build products, not authored prose. Refresh
-  //    them only after emit(), because Codex and Copilot place the orchestrator
-  //    skill outside <harnessDir>/skills/.
-  refreshGeneratedSkillRegions({ outRoot, treeRoot, harnessDir, manifest: m, projectedPaths });
-  // 7. The place an earlier release's refresh writes the tables into the skill.
-  keepEarlierReleaseRegions({ outRoot, manifest: m, projectedPaths });
   return [...walk(outRoot)];
 }
 
@@ -1717,55 +1705,6 @@ function runTool(
     process.exit(1);
   }
   return res.stdout ?? "";
-}
-
-function assembledOrchestratorSkill(
-  outRoot: string,
-  manifest: HarnessManifest,
-): string {
-  const rel = orchestratorSkillLocation(manifest);
-  if (isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) {
-    throw new Error(
-      `packager: ${manifest.name} orchestratorSkillPath must stay within its dist root: ${rel}`,
-    );
-  }
-  const skillPath = join(outRoot, rel);
-  if (!existsSync(skillPath)) {
-    throw new Error(
-      `packager: ${manifest.name} orchestrator SKILL.md not found at ${skillPath}`,
-    );
-  }
-  return skillPath;
-}
-
-function refreshGeneratedSkillRegions(request: {
-  readonly outRoot: string; readonly treeRoot: string; readonly harnessDir: string;
-  readonly manifest: HarnessManifest; readonly projectedPaths: ReadonlySet<string>;
-}): void {
-  const { outRoot, treeRoot, harnessDir, manifest, projectedPaths } = request;
-  // The generated tables live beside the skill (tables.md), out of its body.
-  const skillPath = join(dirname(assembledOrchestratorSkill(outRoot, manifest)), "tables.md");
-  if (projectedPaths.has(relative(outRoot, skillPath).split(sep).join("/"))) return;
-  if (!existsSync(skillPath)) return;
-  const refreshed = refreshSkillRegions({ text: readFileSync(skillPath, "utf-8"),
-    render: (verb) => accepted(runTool(treeRoot, harnessDir, manifest.name,
-      ["tools/aidlc-utility.ts", verb])) });
-  if (!refreshed.ok) throw new Error(`packager: ${refreshed.refusal} in ${skillPath}`);
-  const body = refreshed.value;
-  writeFileSync(skillPath, body, "utf-8");
-}
-
-// See scripts/earlier-release-regions.ts.
-function keepEarlierReleaseRegions(request: {
-  readonly outRoot: string; readonly manifest: HarnessManifest; readonly projectedPaths: ReadonlySet<string>;
-}): void {
-  const { outRoot, manifest, projectedPaths } = request;
-  const skillPath = assembledOrchestratorSkill(outRoot, manifest);
-  if (projectedPaths.has(relative(outRoot, skillPath).split(sep).join("/"))) return;
-  if (!earlierReleasesReadSkill(relative(outRoot, skillPath), manifest.harnessDir)) return;
-  const body = readFileSync(skillPath, "utf-8");
-  writeFileSync(skillPath, finishEarlierReleaseSkill({ text: body,
-    skillRel: relative(outRoot, skillPath), harnessDir: manifest.harnessDir }), "utf-8");
 }
 
 function loadManifest(name: string): HarnessManifest {

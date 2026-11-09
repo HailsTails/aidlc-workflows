@@ -66,6 +66,17 @@ export type HostAgentRenderer = (
   inputs: AgentRenderingInputs,
 ) => Pick<Harness, "renderAgent" | "renderConductorAgent">;
 
+export type DelegateShellPolicy = {
+  readonly shellDeny: (agent: string) => readonly string[];
+  readonly riskyForms: readonly string[];
+};
+
+export type HostDataInputs = {
+  readonly delegateShell: DelegateShellPolicy;
+};
+
+export type HostDataRenderer = (inputs: HostDataInputs) => HostData;
+
 export type SkillRenderingInputs = {
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
