@@ -32,11 +32,17 @@ import type {
   OnboardingTemplates,
   SessionSkill,
 } from "../domain/neutral-surface.ts";
-import type { ProjectedFile } from "../domain/projected-file.ts";
+import type { DistributionChannel, ProjectedFile } from "../domain/projected-file.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 import type { HostTokenBindings, TokenBindings } from "../domain/template-token.ts";
 
 export type Rendering = Result<readonly ProjectedFile[], ProjectionRefusal>;
+
+export type AgentRenderingInputs = {
+  readonly channel: DistributionChannel;
+};
+
+export type HostAgentRenderer = (inputs: AgentRenderingInputs) => Harness["renderAgent"];
 
 export type SkillTableVerb = "stage-table" | "scope-table";
 
@@ -69,6 +75,7 @@ export type SettingsRenderingInputs = {
   readonly prepare: AuthoredFilePreparer;
   readonly tokens: TokenBindings;
   readonly allows: CopyChannelAllows;
+  readonly channel: DistributionChannel;
   readonly entrypoints: readonly SourcePath[];
 };
 

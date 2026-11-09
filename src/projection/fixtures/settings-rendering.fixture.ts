@@ -56,4 +56,5 @@ export const settingsRenderingInputsFixture = ({ harnessDir, files }: {
   tokens: tokenBindingsFixture({ harnessDir }),
   allows: COPY_CHANNEL_ALLOWS_FIXTURE,
   entrypoints: RUNTIME_ENTRYPOINTS_FIXTURE,
+  channel: "copy",
 });

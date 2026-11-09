@@ -6,12 +6,12 @@ import type {
   ProjectPath,
   SourcePath,
 } from "../../kernel/values.ts";
-import type { ProjectionOrigin } from "../../projection/domain/projected-file.ts";
+import type { DistributionChannel, ProjectionOrigin } from "../../projection/domain/projected-file.ts";
 import type { ManagedDirectory } from "./managed-directory.ts";
 import type { PriorIntegrationShapes, ReleaseHistory } from "./release-history.ts";
 import type { RootIntegration } from "./root-integration.ts";
 
-export const CHANNELS = ["copy", "native"] as const;
+export const CHANNELS = ["copy", "native"] as const satisfies readonly DistributionChannel[];
 
 export type Channel = (typeof CHANNELS)[number];
 
@@ -61,6 +61,7 @@ export type NativeReplacement = {
 export type NativeRelease = {
   readonly replacements: readonly NativeReplacement[];
   readonly copyOnly: readonly ProjectPath[];
+  readonly permissionsLine: "exact-reads" | "prefix-only";
 };
 
 export type HostPluginTarget = {

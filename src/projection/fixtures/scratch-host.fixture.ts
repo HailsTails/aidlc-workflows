@@ -3,23 +3,20 @@ import { accepted, refused } from "../../kernel/result.ts";
 import { projectPath } from "../../kernel/values.ts";
 import type {
   CommandPlacement,
-  Harness,
+  HostAgentRenderer,
   HostDocumentRenderer,
   HostSettingsRenderer,
   HostSkillRenderer,
   Rendering,
 } from "../application/ports.ts";
 import type { HostData } from "../domain/host-surface.ts";
-import type { HostTokenBindings } from "../domain/template-token.ts";
+import type { HostTokenChoices } from "../domain/template-token.ts";
 
 export const SCRATCH_HOST = host({ name: "scratch", directory: ".scratch" });
 
-export const SCRATCH_TOKENS: HostTokenBindings = {
-  ["INVOKE"]: "bun .scratch/tools/aidlc.ts",
+export const SCRATCH_TOKENS: HostTokenChoices = {
   ["SKILL_INVOKE"]: null,
   ["OPTION_LETTERS"]: "A-E",
-  ["TRUSTED_NAMESPACE"]: "aidlc",
-  ["TOOL_PREFIX"]: "bun .scratch/tools/",
 };
 
 export const SCRATCH_HOST_DATA: HostData = {
@@ -30,12 +27,12 @@ export const SCRATCH_HOST_DATA: HostData = {
 
 const nothing = (): Rendering => accepted([]);
 
-export const scratchAgentRenderer: Harness["renderAgent"] = ({ agent }) => {
+export const scratchAgentRenderer: HostAgentRenderer = ({ channel }) => ({ agent }) => {
   const destination = projectPath(`.scratch/agents/${agent.slug}.md`);
   return destination.ok
     ? accepted([{
       path: destination.value,
-      content: { kind: "text", text: `${agent.slug}\n` },
+      content: { kind: "text", text: `${agent.slug} for the ${channel} channel\n` },
       mode: "regular",
       origin: { kind: "method-source", path: agent.source },
       availability: "always",

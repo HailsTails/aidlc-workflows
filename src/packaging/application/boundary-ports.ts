@@ -6,3 +6,11 @@ import type { DistributionLayout } from "../domain/payload.ts";
 export interface DistributionLayouts {
   layout(distribution: DistributionId): Result<DistributionLayout, PackagingRefusal>;
 }
+
+export interface NativeCommandRoutes {
+  readonly prefix: string;
+  readonly namespace: string;
+  readonly delegates: readonly string[];
+  trusted(suffix: string): string;
+  unresolvable(request: { readonly file: string; readonly text: string }): readonly string[];
+}

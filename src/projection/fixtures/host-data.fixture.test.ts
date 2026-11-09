@@ -9,12 +9,15 @@ describe("host data fixtures", () => {
     });
   });
 
-  test("give kiro its steering folder, its layout, a tool-prefixed recovery line and plugin frontmatter", () => {
+  test("give kiro its steering folder, its layout, a tool-prefixed recovery line and plugin frontmatter per channel", () => {
     expect(kiroHostDataFixture).toMatchObject({
       rulesFolder: "steering",
       kiroLayout: "agent-v1",
       hookActivation: { recovery: expect.stringContaining("{{TOOL_PREFIX}}") },
-      pluginAgentFrontmatter: ["tools: [\"*\"]"],
+      pluginAgentFrontmatter: {
+        copy: ["tools: [\"*\"]", "  - \"bun .kiro/tools/aidlc-*\""],
+        native: ["tools: [\"*\"]", "  - \"aidlc engine *\""],
+      },
     });
   });
 

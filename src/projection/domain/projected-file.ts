@@ -22,7 +22,9 @@ export type ProjectionOrigin =
   | { readonly kind: "harness-authored"; readonly source: SourcePath }
   | { readonly kind: "rendered"; readonly concept: RenderedConcept; readonly name: string };
 
-export type Availability = "always" | "copy-only" | "native-only";
+export type DistributionChannel = "copy" | "native";
+
+export type Availability = "always" | `${DistributionChannel}-only`;
 
 export type ProjectedFile = {
   readonly path: ProjectPath;

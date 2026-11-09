@@ -1,3 +1,4 @@
+import type { DistributionChannel } from "./projected-file.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 
@@ -62,7 +63,7 @@ export type HostData = {
   readonly statusLine?: StatusLine;
   readonly agentFinishRecorded?: { readonly env: readonly string[] };
   readonly hostShell?: { readonly env: readonly string[] };
-  readonly pluginAgentFrontmatter?: readonly string[];
+  readonly pluginAgentFrontmatter?: Readonly<Record<DistributionChannel, readonly string[]>>;
 };
 
 export type AuthoredPlacement = {

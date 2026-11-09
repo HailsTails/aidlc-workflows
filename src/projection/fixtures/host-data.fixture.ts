@@ -31,7 +31,10 @@ export const kiroHostDataFixture: HostData = {
   },
   kiroLayout: "agent-v1",
   hostShell: { env: ["KIRO_SESSION_ID"] },
-  pluginAgentFrontmatter: ["tools: [\"*\"]"],
+  pluginAgentFrontmatter: {
+    copy: ["tools: [\"*\"]", "  - \"bun .kiro/tools/aidlc-*\""],
+    native: ["tools: [\"*\"]", "  - \"aidlc engine *\""],
+  },
 };
 
 export const AUTHORED_PLACEMENTS_FIXTURE: readonly AuthoredPlacement[] = [

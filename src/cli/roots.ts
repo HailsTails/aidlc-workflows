@@ -15,13 +15,14 @@ import type { DistributionLayout, HostDistribution } from "../packaging/domain/p
 import type {
   CommandPlacement,
   Harness,
+  HostAgentRenderer,
   HostDocumentRenderer,
   HostSettingsRenderer,
   HostSkillRenderer,
 } from "../projection/application/ports.ts";
 import type { AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
 import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
-import type { HostTokenBindings } from "../projection/domain/template-token.ts";
+import type { HostTokenChoices } from "../projection/domain/template-token.ts";
 import type { MarkdownOutliner } from "../workflow-definition/application/ports.ts";
 
 export type ExitStatus = 0 | 1 | 2;
@@ -54,10 +55,10 @@ export type HostDocumentMembers = HostConceptMembers<HostDocumentRenderer>;
 
 export type HostBuildMembers = {
   readonly host: HostIdentity;
-  readonly tokens: HostTokenBindings;
+  readonly tokens: HostTokenChoices;
   readonly data: HostData;
   readonly placements: readonly AuthoredPlacement[];
-  readonly agents: Harness["renderAgent"];
+  readonly agents: HostAgentRenderer;
   readonly commands: CommandPlacement;
   readonly skills: ConceptMembers<HostSkillRenderer>;
   readonly settings: ConceptMembers<HostSettingsRenderer>;

@@ -6,7 +6,7 @@ export const claudeHostDistributionFixture: HostDistribution = {
   layout: claudeLayoutFixture,
   priorIntegrations: claudePriorIntegrationsFixture,
   listing: {},
-  native: { replacements: [], copyOnly: [] },
+  native: { replacements: [], copyOnly: [], permissionsLine: "exact-reads" },
   plugin: {
     format: "store",
     manifestDir: ".claude-plugin",
@@ -35,6 +35,7 @@ export const kiroIdeHostDistributionFixture: HostDistribution = {
   native: {
     replacements: [{ from: "bun .kiro/tools/aidlc.ts", to: "aidlc" }],
     copyOnly: [],
+    permissionsLine: "exact-reads",
   },
   plugin: {
     format: "kiro-ide",
@@ -48,6 +49,7 @@ export const kiroIdeHostDistributionFixture: HostDistribution = {
 export const cursorNativeReleaseFixture: HostDistribution["native"] = {
   replacements: [],
   copyOnly: [path("install.ts")],
+  permissionsLine: "exact-reads",
 };
 
 export const scratchHostDistributionFixture: HostDistribution = {
@@ -57,7 +59,7 @@ export const scratchHostDistributionFixture: HostDistribution = {
   },
   priorIntegrations: [],
   listing: {},
-  native: { replacements: [], copyOnly: [] },
+  native: { replacements: [], copyOnly: [], permissionsLine: "prefix-only" },
   plugin: {
     format: "store",
     manifestDir: ".scratch-plugin",
