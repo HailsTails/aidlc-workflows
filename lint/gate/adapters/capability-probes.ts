@@ -1,8 +1,6 @@
 import {
   mkdtempSync,
   readdirSync,
-  realpathSync,
-  rmdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -34,28 +32,6 @@ const symlinks = (temp: string): ProbeResult =>
 
 const systemTemp = (): string => join(process.env["SystemRoot"] ?? "C:\\Windows", "Temp");
 
-const lengthOf = (directory: string): number => {
-  try {
-    return realpathSync(directory).length;
-  } catch {
-    return Number.POSITIVE_INFINITY;
-  }
-};
-
-const writable = (directory: string): boolean => {
-  try {
-    rmdirSync(mkdtempSync(join(directory, "aidlc-gate-probe-")));
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const fixtureRoot = (temp: string): string => {
-  const system = systemTemp();
-  return lengthOf(system) < lengthOf(temp) && writable(system) ? system : temp;
-};
-
 const shortPathOf = (directory: string): string => {
   const folder = `.GetFolder('${directory}')`;
   const script = `(New-Object -ComObject Scripting.FileSystemObject)${folder}.ShortPath`;
@@ -67,7 +43,7 @@ const shortNames = (temp: string): ProbeResult => {
   if (process.platform !== "win32") {
     return { available: true, evidence: "not a Windows volume" };
   }
-  const root = fixtureRoot(temp);
+  const root = temp;
   const folder = mkdtempSync(join(root, "aidlc-gate-probe-long-folder-name-"));
   try {
     const short = shortPathOf(folder);

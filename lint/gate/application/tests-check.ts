@@ -1,4 +1,4 @@
-import { needsCandidateLegacy } from "../domain/candidate-selection.ts";
+import { candidateBuildTests, needsCandidateLegacy } from "../domain/candidate-selection.ts";
 import { presentPaths } from "../domain/change.ts";
 import {
   classifyFailures,
@@ -137,7 +137,10 @@ const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly 
 const looseRun = (
   dependencies: TestsDependencies, scope: GateScope, covered: ReadonlySet<string>,
 ): readonly Run[] => {
-  const files = presentPaths(scope.changes)
+  const candidates = [
+    ...presentPaths(scope.changes), ...candidateBuildTests(pathsOf(scope.changes)),
+  ];
+  const files = [...new Set(candidates)]
     .filter(globMatcher(dependencies.looseTests))
     .filter((file) => !covered.has(file));
   return scope.everything || files.length === 0

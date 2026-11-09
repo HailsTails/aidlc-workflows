@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { changedLegacyCommand } from "../adapters/legacy-suites.ts";
+import { changedLegacyCommand, legacySuites } from "../adapters/legacy-suites.ts";
+import { globMatcher } from "../domain/glob.ts";
 import type { GateScope } from "./gate-scope.ts";
 import { goldensCheck } from "./goldens-check.ts";
 import type { Command, CommandRunner } from "./ports.ts";
@@ -15,12 +16,12 @@ const SCOPE: GateScope = {
 };
 const BUILD: Command = { label: "package", argv: ["bun", "scripts/package.ts"] };
 
-const fixture = (exitCode = 0) => {
+const fixture = (exitCode = 0, startup = false, startupExit = 0) => {
   const calls: Command[] = [];
   const runner: CommandRunner = {
     capture: (command) => {
       calls.push(command);
-      return { exitCode: command === BUILD ? exitCode : 0, output: "" };
+      return { exitCode: command === BUILD ? exitCode : startupExit, output: "" };
     },
     captureAll: async () => [], attach: () => 0,
   };
@@ -30,12 +31,17 @@ const fixture = (exitCode = 0) => {
     store: { read: () => ({}), write: () => undefined }, install: () => [],
   });
   const tests = testsCheck({
-    runner, build, suites: [], looseTests: ["tests/unit/**/*.test.ts"],
+    runner, build,
+    suites: startup ? legacySuites({ bun: "bun", environment: { PATH: "native" } }) : [],
+    looseTests: ["tests/unit/**/*.test.ts"],
     testCommand: () => ({ label: "unused", argv: [] }),
     looseCommand: (files) => changedLegacyCommand({
       bun: "bun", environment: { PATH: "native" },
     }, files),
-    workspace: { read: () => "", write: () => undefined, filesMatching: () => [] },
+    workspace: {
+      read: () => "", write: () => undefined,
+      filesMatching: (globs) => ["tests/harness/harness-matrix.ts"].filter(globMatcher(globs)),
+    },
     capabilities: { probe: () => ({ available: true, evidence: "fake" }) },
     exclusions: [], reachOf: () => ({}),
   });
@@ -65,4 +71,27 @@ describe("scoped tests reuse the golden package build", () => {
     expect(f.calls[0]).toBe(BUILD);
     expect(f.calls[1]?.env?.["AIDLC_TEST_PACKAGE_READY"]).toBe("1");
   });
+});
+
+
+const MANIFEST_SCOPE: GateScope = {
+  ...SCOPE, changes: [{ path: "harness/kiro/manifest.ts", kind: "modified" }],
+};
+test("manifest startup reuses the successful golden build", async () => {
+  const f = fixture(0, true);
+  expect((await f.goldens.run(MANIFEST_SCOPE)).status).toBe("green");
+  expect((await f.tests.run(MANIFEST_SCOPE)).status).toBe("green");
+  expect(f.calls.map((call) => call.argv)).toEqual([
+    BUILD.argv, ["bun", "tests/harness/harness-matrix.ts"],
+  ]);
+  expect(f.calls[1]?.env?.["AIDLC_TEST_PACKAGE_READY"]).toBe("1");
+});
+test("a failed build cannot launch manifest startup", async () => {
+  const f = fixture(1, true);
+  expect((await f.tests.run(MANIFEST_SCOPE)).status).toBe("red");
+  expect(f.calls).toEqual([BUILD]);
+});
+test("a red manifest startup cannot make a green candidate", async () => {
+  const f = fixture(0, true, 1);
+  expect((await f.tests.run(MANIFEST_SCOPE)).status).toBe("red");
 });
