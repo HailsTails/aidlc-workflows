@@ -1,3 +1,4 @@
+import type { ProjectedFile } from "../projection/domain/projected-file.ts";
 const outliner = { outline: (text: string) => ({ text, headings: [] }) };
 import { expect, mock, test } from "bun:test";
 import { accept } from "../kernel/fixtures/accept.ts";
@@ -71,9 +72,9 @@ test("host path refusal precedes IO and a valid capture retains its host", async
     { kind: "invalid-path", base: "source", raw: "../outside" },
   ] });
   expect(readFile).not.toHaveBeenCalled();
-  expect(await root.readHostSources({ name: "claude", directory: ".claude", root: new URL("file:///host/"),
+  expect(await root.readHostSources({ name: "kiro", directory: ".kiro", root: new URL("file:///host/"),
     copied: [], required: [] })).toEqual({ ok: true, value: {
-      host: host({ name: "claude", directory: ".claude" }), files: [],
+      host: host({ name: "kiro", directory: ".kiro" }), files: [],
     } });
 });
 
@@ -130,4 +131,70 @@ test("the real root renders a captured Kiro conductor without replacing its mode
       mode: "regular", availability: "always",
       origin: { kind: "harness-authored", source: source("agents/aidlc.json") },
     }]));
+});
+import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
+import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
+import type { CommandSource } from "../projection/application/ports.ts";
+
+const skillFiles = [
+  { source: source("skills/aidlc/SKILL.md"), content: { kind: "text", text: "Door\n" } },
+  { source: source("skills/aidlc/question-rendering.md"), content: { kind: "text", text: "Question\n" } },
+  { source: source("skills/aidlc/composer.md"), content: { kind: "text", text: "Composer\n" } },
+  { source: source("skills/aidlc/tables.md"), content: { kind: "text", text: "Tables\n" } },
+] as const;
+const skillTokens = { ["HARNESS_DIR"]: ".claude", ["INVOKE"]: "aidlc", ["SKILL_INVOKE"]: null,
+  ["TOOL_PREFIX"]: "aidlc ", ["TRUSTED_NAMESPACE"]: "trusted", ["OPTION_LETTERS"]: "A-D" } as const;
+
+test("the skill route omits unregistered hosts without reading neutral sources", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml },
+    outliner, sources, runnerFrames });
+  expect(await root.projectSkills({ host: host({ name: "kiro", directory: ".kiro" }),
+    projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
+    commands: { read: () => accepted({ kind: "declined" }) }, place: claudeCommandPath, tokens: skillTokens }))
+    .toEqual(accepted([]));
+  expect(readTree).not.toHaveBeenCalled();
+});
+
+test("the real skill route composes B and C once and captures neutral skills once", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {
+    "file:///core/skills/aidlc-replay/SKILL.md": "R",
+  } });
+  const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
+  const runner = createScriptedProcessRunner({ outcome: accepted({ exit: { kind: "exited", code: 0 },
+    stdout: "Unused table without markers", stderr: "" }) });
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readTree }, processRunner: runner, yaml },
+    outliner, sources, runnerFrames });
+  const read = mock<CommandSource["read"]>(() => accepted({ kind: "declined" }));
+  const prepare = mock(accepted);
+  const skillRequest = { host: host({ name: "claude", directory: ".claude" }),
+    projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: skillFiles,
+    prepare, commands: { read }, place: claudeCommandPath, tokens: skillTokens };
+  const expected: readonly ProjectedFile[] = [
+    { path: path(".claude/skills/aidlc/SKILL.md"), mode: "regular", availability: "always",
+      content: { kind: "bytes", bytes: new TextEncoder().encode("Door\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n") },
+      origin: { kind: "harness-authored", source: source("skills/aidlc/SKILL.md") } },
+    { path: path(".claude/skills/aidlc/question-rendering.md"), mode: "regular", availability: "always",
+      content: { kind: "bytes", bytes: new TextEncoder().encode("Question\n") },
+      origin: { kind: "harness-authored", source: source("skills/aidlc/question-rendering.md") } },
+    { path: path(".claude/skills/aidlc/composer.md"), mode: "regular", availability: "always",
+      content: { kind: "bytes", bytes: new TextEncoder().encode("Composer\n") },
+      origin: { kind: "harness-authored", source: source("skills/aidlc/composer.md") } },
+    { path: path(".claude/skills/aidlc/tables.md"), mode: "regular", availability: "always",
+      content: { kind: "bytes", bytes: new TextEncoder().encode("Tables\n") },
+      origin: { kind: "harness-authored", source: source("skills/aidlc/tables.md") } },
+    { path: path(".claude/skills/aidlc-replay/SKILL.md"), mode: "regular", availability: "always",
+      content: { kind: "bytes", bytes: new Uint8Array([82]) },
+      origin: { kind: "neutral", source: source("skills/aidlc-replay/SKILL.md") } },
+  ];
+  expect(accept(await root.projectSkills(skillRequest))).toEqual(expected);
+  expect(read).toHaveBeenCalledTimes(7);
+  expect(prepare).toHaveBeenCalledTimes(4);
+  expect(runner.received()).toHaveLength(2);
+  expect(readTree).toHaveBeenCalledTimes(1);
+  accept(await fileSystem.writeFile({ file: new URL("file:///core/skills/aidlc-replay/SKILL.md"),
+    content: { kind: "text", text: "Changed after capture" } }));
+  expect(accept(await root.projectSkills(skillRequest))).toEqual(expected);
+  expect(readTree).toHaveBeenCalledTimes(1);
 });

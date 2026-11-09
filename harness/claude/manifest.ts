@@ -190,20 +190,11 @@ const manifest: HarnessManifest = {
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
     { src: "hooks", dst: "hooks" },
-    { src: "skills/aidlc-session-cost", dst: "skills/aidlc-session-cost" },
-    { src: "skills/aidlc-replay", dst: "skills/aidlc-replay" },
-    { src: "skills/aidlc-outcomes-pack", dst: "skills/aidlc-outcomes-pack" },
-    { src: "skills/aidlc-issue-report", dst: "skills/aidlc-issue-report" },
-    { src: "skills/aidlc-knowledge", dst: "skills/aidlc-knowledge" },
   ],
 
   // Authored harness surfaces copied verbatim (with token substitution on .md)
   // from harness/claude/<src> → <harnessDir>/<dst>.
   harnessFiles: [
-    { src: "skills/aidlc/SKILL.md", dst: "skills/aidlc/SKILL.md" },
-    { src: "skills/aidlc/question-rendering.md", dst: "skills/aidlc/question-rendering.md" },
-    { src: "skills/aidlc/composer.md", dst: "skills/aidlc/composer.md" },
-    { src: "skills/aidlc/tables.md", dst: "skills/aidlc/tables.md" },
     // The AIDLC method @-import stub: .claude/rules/aidlc.md pulls the method
     // into Claude's ambient context by reference (explicit @-imports of the
     // engine's git-ignored copy of the active space's memory,
