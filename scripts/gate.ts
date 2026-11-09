@@ -51,6 +51,8 @@ import { sharedBuild } from "../lint/gate/application/shared-build.ts";
 import { goldensCheck, type GoldensDependencies } from "../lint/gate/application/goldens-check.ts";
 import { lintCheck } from "../lint/gate/application/lint-check.ts";
 import { kernelCheck } from "../lint/gate/application/kernel-check.ts";
+import { isolationCheck } from "../lint/gate/application/isolation-check.ts";
+import { implementersFile } from "../lint/gate/adapters/implementers-file.ts";
 import { monolithCheck } from "../lint/gate/application/monolith-check.ts";
 import { ownershipCheck } from "../lint/gate/application/ownership-check.ts";
 import { recordsCheck } from "../lint/gate/application/records-check.ts";
@@ -180,6 +182,13 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     sources: ["src/kernel/*.ts"],
   }),
   goldensCheck(goldens),
+  isolationCheck({
+    workspace,
+    modules: typescriptModuleReader,
+    record: nameListFile({ workspace, path: "lint/isolation-offenders.txt" }),
+    implementers: implementersFile({ workspace, path: "lint/implementers.json" }),
+    sources: ["src/**/*.ts"],
+  }),
   testsCheck({
     runner,
     workspace,

@@ -1,0 +1,12 @@
+src/cli/core-build-root.test.ts · test reaches src/projection/adapters/legacy-runners.ts
+src/projection/adapters/host-source-files.test.ts · test reaches src/projection/adapters/host-source-files.ts
+src/projection/adapters/legacy-runners.test.ts · test reaches src/projection/adapters/legacy-runners.ts
+src/projection/adapters/legacy-runners.ts · uses Bun
+src/projection/adapters/legacy-runners.ts · uses import()
+src/projection/adapters/legacy-runners.ts · uses process
+src/projection/core-root.test.ts · test reaches src/projection/adapters/legacy-runners.ts
+src/workflow-definition/adapters/authored-core-reader.test.ts · test reaches src/workflow-definition/adapters/source-files.ts
+src/workflow-definition/adapters/authored-markdown.ts · uses Bun
+src/workflow-definition/adapters/read-plugin-content.test.ts · test reaches src/workflow-definition/adapters/source-files.ts
+src/workflow-definition/adapters/source-files.test.ts · test reaches src/workflow-definition/adapters/source-files.ts
+src/workflow-definition/core-root.test.ts · test reaches src/workflow-definition/adapters/source-files.ts
