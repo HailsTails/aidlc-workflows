@@ -23,7 +23,7 @@ const fixture = (install = true) => {
 };
 
 describe("scoped Phase 1 goldens", () => {
-  test.each(["src/projection/render.ts", "scripts/package.ts",
+  test.each(["src/projection/render.ts", "scripts/package.ts", "scripts/earlier-release-regions.ts",
     "docs/reference/15-stage-definition.md", "harness/kiro-ide/manifest.ts",
     "discipline-exceptions.json"])(
     "%s builds and judges both output and install goldens", async (path) => {
