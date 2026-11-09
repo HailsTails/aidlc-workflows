@@ -3,7 +3,12 @@ import { accept } from "../../kernel/fixtures/accept.ts";
 import { path } from "../../kernel/fixtures/values.fixture.ts";
 import { commandFilePath, nativeCommandName } from "../domain/native-command.ts";
 import { documentRenderingInputsFixture, stageDocumentFixture } from "./document-rendering.fixture.ts";
-import { scratchCommandPlacement, scratchDocumentRenderer } from "./scratch-host.fixture.ts";
+import {
+  SCRATCH_AGENT_INPUTS,
+  scratchAgentRenderer,
+  scratchCommandPlacement,
+  scratchDocumentRenderer,
+} from "./scratch-host.fixture.ts";
 
 describe("scratch host fixtures", () => {
   test("place a command inside the scratch folder", () => {
@@ -13,6 +18,11 @@ describe("scratch host fixtures", () => {
       content: { kind: "text", text: "status\n" },
       mode: "regular",
     })).toEqual({ ok: true, value: path(".scratch/commands/aidlc-status.md") });
+  });
+
+  test("render no conductor agent", () => {
+    expect(scratchAgentRenderer(SCRATCH_AGENT_INPUTS).renderConductorAgent({ knowledge: [] }))
+      .toEqual({ ok: true, value: [] });
   });
 
   test("place no neutral document", () => {
