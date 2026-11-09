@@ -8,12 +8,14 @@ export type RunTemp = {
 };
 
 export type TemporaryEnvironment = {
+  readonly AIDLC_TEST_TEMP_ROOT: string;
   readonly TEMP: string;
   readonly TMP: string;
   readonly TMPDIR: string;
 };
 
 export const temporaryEnvironment = (path: string): TemporaryEnvironment => ({
+  AIDLC_TEST_TEMP_ROOT: path,
   TEMP: path,
   TMP: path,
   TMPDIR: path,

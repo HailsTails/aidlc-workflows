@@ -5,7 +5,8 @@ import { processRunner } from "./process-runner.ts";
 import { runTemp } from "./run-temp.ts";
 
 const ROOT = join(import.meta.dir, "../../..");
-const PRINT = "console.log([process.env.TEMP, process.env.TMP, process.env.TMPDIR].join('|'))";
+const PRINT = "console.log([process.env.TEMP, process.env.TMP, " +
+  "process.env.TMPDIR, process.env.AIDLC_TEST_TEMP_ROOT].join('|'))";
 const PRINT_TEMPS = [process.execPath, "-e", PRINT];
 
 describe("the per-run temp folder", () => {
@@ -27,7 +28,7 @@ describe("the per-run temp folder", () => {
       env: { TEMP: "C:\\elsewhere", PATH: process.env["PATH"] ?? "" },
     });
     temp.dispose();
-    const expected = [temp.path, temp.path, temp.path].join("|");
+    const expected = [temp.path, temp.path, temp.path, temp.path].join("|");
     expect(inherited.output.trim()).toBe(expected);
     expect(explicit.output.trim()).toBe(expected);
   });
