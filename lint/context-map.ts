@@ -22,7 +22,9 @@ export const CONTEXT_MAP: Readonly<Record<ContextName, ContextRule>> = {
     dependsOn: [],
     readsFileFormatsOf: [],
     composesRootsOf: [],
-    instead: "The kernel holds shared identity values only; move anything richer into its context.",
+    instead:
+      "The kernel holds shared identity values and the one file-system implementer behind its " +
+      "node-free port; move anything richer into its context.",
   },
   "workflow-definition": {
     dependsOn: ["kernel"],
@@ -128,7 +130,7 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
       "the phase 1 freeze keeps in shipped bytes.",
   },
   shippedOwner("aidlc-tiers", "src/projection/adapters/legacy-tiers.ts"),
-  shippedOwner("aidlc-runner-gen", "src/projection/adapters/legacy-runners.ts"),
+  shippedOwner("aidlc-runner-gen", "src/cli/legacy-runner-child.ts"),
   shippedOwner("aidlc-utility", "src/projection/adapters/legacy-skill-tables.ts"),
   shippedOwner("aidlc-settings", "src/projection/adapters/legacy-settings-schema.ts"),
   shippedOwner("aidlc-command", "src/projection/adapters/legacy-trusted-commands.ts"),

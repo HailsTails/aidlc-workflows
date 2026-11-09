@@ -78,7 +78,7 @@ const EXPECTED_BRIDGES = [
   { module: "core/tools/aidlc-tiers.ts", readBy: "src/projection/adapters/legacy-tiers.ts", retiresWhen: OWNER_MOVES },
   {
     module: "core/tools/aidlc-runner-gen.ts",
-    readBy: "src/projection/adapters/legacy-runners.ts",
+    readBy: "src/cli/legacy-runner-child.ts",
     retiresWhen: OWNER_MOVES,
   },
   {

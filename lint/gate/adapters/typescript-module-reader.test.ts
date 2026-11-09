@@ -33,6 +33,10 @@ describe("typescriptModuleReader.membersOf", () => {
 
 const REFERENCES_SOURCE = [
   'import { a } from "./a.ts";',
+  'import type { T } from "./types.ts";',
+  'import { type U } from "./only-types.ts";',
+  'import { type V, w } from "./mixed.ts";',
+  'export type { X } from "./reexported-types.ts";',
   'export { b } from "node:fs/promises";',
   'export const load = () => import("./lazy.ts");',
   "export const run = Bun.spawn;",
@@ -46,8 +50,8 @@ describe("typescriptModuleReader.referencesOf", () => {
     text: REFERENCES_SOURCE,
   });
 
-  test("it lists static, re-exported and dynamically imported specifiers", () => {
-    expect(references.imports).toEqual(["./a.ts", "node:fs/promises", "./lazy.ts"]);
+  test("it lists runtime specifiers and leaves out type-only ones", () => {
+    expect(references.imports).toEqual(["./a.ts", "./mixed.ts", "node:fs/promises", "./lazy.ts"]);
   });
 
   test("it lists platform globals and dynamic imports, but not a property named like one", () => {

@@ -83,11 +83,25 @@ const PLATFORM_GLOBALS = new Set(["Bun", "process", "require", "fetch"]);
 
 const DYNAMIC_IMPORT = "import()";
 
+const bindingsAreAllTypes = (clause: ts.ImportClause | undefined): boolean => {
+  if (clause === undefined) {
+    return false;
+  }
+  const named = clause.namedBindings;
+  const onlyNamed = clause.name === undefined && named !== undefined && ts.isNamedImports(named);
+  return clause.isTypeOnly || (onlyNamed && named.elements.every((element) => element.isTypeOnly));
+};
+
+const isTypeOnlyModuleReference = (node: ts.Node): boolean =>
+  (ts.isImportDeclaration(node) && bindingsAreAllTypes(node.importClause)) ||
+  (ts.isExportDeclaration(node) && node.isTypeOnly);
+
 const specifierOf = (node: ts.Node): readonly string[] => {
   const isModuleSpecifier =
     (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
     node.moduleSpecifier !== undefined &&
-    ts.isStringLiteralLike(node.moduleSpecifier);
+    ts.isStringLiteralLike(node.moduleSpecifier) &&
+    !isTypeOnlyModuleReference(node);
   return isModuleSpecifier ? [(node.moduleSpecifier as ts.StringLiteralLike).text] : [];
 };
 
