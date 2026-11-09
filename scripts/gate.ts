@@ -163,6 +163,16 @@ const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
   },
   { command: tsc("src/tsconfig.json"), triggers: ["src/**"] },
   {
+    command: tsc("tsconfig.json"),
+    triggers: [
+      "core/**/*.ts",
+      "harness/**",
+      "scripts/**",
+      "plugins/*/tools/**",
+      "tsconfig.json",
+    ],
+  },
+  {
     command: tsc("lint/tsconfig.json"),
     triggers: ["lint/**", "eslint.config.ts", "scripts/gate.ts", "src/glossary.json"],
   },
