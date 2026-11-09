@@ -1,3 +1,4 @@
+import { CLEAN_ZONE, SCAFFOLDING_ZONE } from "../../zones.ts";
 import { testsCheck } from "../application/tests-check.ts";
 import { globMatcher } from "../domain/glob.ts";
 import type { TestReach } from "../domain/test-impact.ts";
@@ -224,15 +225,55 @@ test("uncovered changed legacy files use the repository runner and their levels"
 });
 
 
-test("the Q15 paths run their changed tests once without admitting the matrix", async () => {
-  expect(await selectedLegacy([
-    "docs/reference/15-stage-definition.md", "harness/kiro-ide/manifest.ts",
-    "tests/unit/t64.test.ts", "tests/unit/t248-steering-content-delivery.test.ts",
-  ], true)).toEqual([[
+const Q15_CHANGES = [
+  "discipline-exceptions.json",
+  "docs/reference/15-stage-definition.md",
+  "harness/kiro-ide/manifest.ts",
+  "lint/context-map.test.ts",
+  "lint/context-map.ts",
+  "lint/isolation-offenders.txt",
+  "scripts/package.ts",
+  "src/cli/core-build-root.test.ts",
+  "src/cli/core-build-root.ts",
+  "src/cli/main.test.ts",
+  "src/cli/main.ts",
+  "src/cli/package-build-root.test.ts",
+  "src/cli/package-build-root.ts",
+  "src/glossary.json",
+  "src/projection/adapters/compiled-method-file.ts",
+  "src/projection/adapters/host-source-files.test.ts",
+  "src/projection/adapters/host-source-files.ts",
+  "src/projection/adapters/legacy-runners.ts",
+  "src/projection/adapters/prepared-host-source.test.ts",
+  "src/projection/adapters/prepared-host-source.ts",
+  "src/projection/application/host-source-files.test.ts",
+  "src/projection/application/host-source-files.ts",
+  "src/projection/application/ports.ts",
+  "src/projection/application/prepared-host-source.test.ts",
+  "src/projection/application/prepared-host-source.ts",
+  "src/projection/core-root.test.ts",
+  "src/projection/core-root.ts",
+  "src/workflow-definition/application/core-admission.test.ts",
+  "src/workflow-definition/application/use-cases.ts",
+  "src/workflow-definition/core-root.test.ts",
+  "src/workflow-definition/core-root.ts",
+  "tests/unit/t248-steering-content-delivery.test.ts",
+  "tests/unit/t64.test.ts",
+];
+
+test("the complete Q15 diff runs only its changed legacy tests", async () => {
+  expect(await selectedLegacy(Q15_CHANGES, true)).toEqual([[
     "bun", "tests/run-tests.ts", "--unit", "--filter",
-    "^(t64|t248-steering-content-delivery)", "--no-llm",
+    "^(t248-steering-content-delivery|t64)", "--no-llm",
   ]]);
 });
+
+test.each([...CLEAN_ZONE.files, ...SCAFFOLDING_ZONE.files])(
+  "known gate input %s does not admit legacy suites", async (path) => {
+    expect(await selectedLegacy([path])).toEqual([]);
+  },
+);
+
 
 test("runtime plus a changed covered test still runs that test only once", async () => {
   expect(await selectedLegacy(["core/a.ts", "tests/unit/a.test.ts"], true)).toEqual(KNOWN_LEGACY);

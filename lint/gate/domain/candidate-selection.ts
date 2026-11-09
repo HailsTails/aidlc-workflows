@@ -1,7 +1,9 @@
+import { CLEAN_ZONE, SCAFFOLDING_ZONE } from "../../zones.ts";
 import { globMatcher } from "./glob.ts";
 
 const PHASE_ONE = [
-  "src/**", "lint/**", "scripts/gate.ts", "scripts/package.ts",
+  "src/**", "lint/**", "scripts/package.ts",
+  ...CLEAN_ZONE.files, ...SCAFFOLDING_ZONE.files,
   "docs/**/*.md", "harness/**",
   "tests/{unit,smoke,integration,e2e}/**/*.test.ts",
 ];
