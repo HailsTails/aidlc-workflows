@@ -18,8 +18,9 @@ import type {
 import type { Result } from "../../kernel/result.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
 import type { DistributionId, KernelRefusal, ProjectPath, SourcePath } from "../../kernel/values.ts";
-import type { Agent } from "../../workflow-definition/domain/agent.ts";
+import type { Agent, TieredModel } from "../../workflow-definition/domain/agent.ts";
 import type { HookDeclaration } from "../../workflow-definition/domain/hooks.ts";
+import type { AgentSlug } from "../../workflow-definition/domain/identities.ts";
 import type { KnowledgeDocument } from "../../workflow-definition/domain/knowledge.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { MethodSource } from "../../workflow-definition/domain/method-source.ts";
@@ -41,17 +42,28 @@ import type { HostTokenBindings, TokenBindings } from "../domain/template-token.
 
 export type Rendering = Result<readonly ProjectedFile[], ProjectionRefusal>;
 
-export type AgentRenderingInputs = {
-  readonly channel: DistributionChannel;
-};
-
-export type HostAgentRenderer = (inputs: AgentRenderingInputs) => Harness["renderAgent"];
-
 export type SkillTableVerb = "stage-table" | "scope-table";
 
 export type SkillTableRenderer = (verb: SkillTableVerb) => Result<string, string>;
 
 export type AuthoredFilePreparer = (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
+
+export type AgentModelPolicy = (request: {
+  readonly host: HostIdentity;
+  readonly agent: AgentSlug;
+  readonly model: TieredModel;
+}) => Result<string | undefined, ProjectionRefusal>;
+
+export type AgentRenderingInputs = {
+  readonly channel: DistributionChannel;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly models: AgentModelPolicy;
+};
+
+export type HostAgentRenderer = (
+  inputs: AgentRenderingInputs,
+) => Pick<Harness, "renderAgent" | "renderConductorAgent">;
 
 export type SkillRenderingInputs = {
   readonly files: readonly AuthoredHostFile[];
@@ -101,6 +113,7 @@ export interface Harness {
     readonly agent: Agent;
     readonly knowledge: readonly KnowledgeDocument[];
   }): Rendering;
+  renderConductorAgent(request: { readonly knowledge: readonly KnowledgeDocument[] }): Rendering;
   renderStageCommand(request: { readonly stage: Stage; readonly node: StageNode }): Rendering;
   renderScopeCommand(request: { readonly scope: Scope; readonly column: ScopeColumn }): Rendering;
   renderOrchestratorSkill(request: { readonly method: Method }): Rendering;

@@ -2,6 +2,7 @@ import { host } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { projectPath } from "../../kernel/values.ts";
 import type {
+  AgentRenderingInputs,
   CommandPlacement,
   HostAgentRenderer,
   HostDocumentRenderer,
@@ -27,19 +28,29 @@ export const SCRATCH_HOST_DATA: HostData = {
 
 const nothing = (): Rendering => accepted([]);
 
-export const scratchAgentRenderer: HostAgentRenderer = ({ channel }) => ({ agent }) => {
-  const destination = projectPath(`.scratch/agents/${agent.slug}.md`);
-  return destination.ok
-    ? accepted([{
-      path: destination.value,
-      content: { kind: "text", text: `${agent.slug} for the ${channel} channel\n` },
-      mode: "regular",
-      origin: { kind: "method-source", path: agent.source },
-      availability: "always",
-    }])
-    : refused({ kind: "render-failed", concept: "agent", name: agent.slug,
-      reason: "The scratch agent destination must be a project-relative path." });
+export const SCRATCH_AGENT_INPUTS: AgentRenderingInputs = {
+  channel: "copy",
+  files: [],
+  prepare: accepted,
+  models: () => accepted(undefined),
 };
+
+export const scratchAgentRenderer: HostAgentRenderer = ({ channel }) => ({
+  renderAgent: ({ agent }) => {
+    const destination = projectPath(`.scratch/agents/${agent.slug}.md`);
+    return destination.ok
+      ? accepted([{
+        path: destination.value,
+        content: { kind: "text", text: `${agent.slug} for the ${channel} channel\n` },
+        mode: "regular",
+        origin: { kind: "method-source", path: agent.source },
+        availability: "always",
+      }])
+      : refused({ kind: "render-failed", concept: "agent", name: agent.slug,
+        reason: "The scratch agent destination must be a project-relative path." });
+  },
+  renderConductorAgent: nothing,
+});
 
 export const scratchCommandPlacement: CommandPlacement = (file) =>
   projectPath(`.scratch/commands/${file.within}`);

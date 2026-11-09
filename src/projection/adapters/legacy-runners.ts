@@ -4,18 +4,15 @@ import { asFolder, type FileWriteError } from "../../kernel/file-system-port.ts"
 import { z } from "zod";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import type { CommandSource, LegacyRunnerProcess, LegacyRunnerScratch } from "../application/ports.ts";
+import type { CommandSourceRequest, CommandSource, LegacyRunnerProcess, LegacyRunnerScratch } from "../application/ports.ts";
 import { ENTRY_SHORTCUTS, nativeCommandName, commandFilePath, type NativeCommandFile,
   type CommandReading, type CommandSubject } from "../domain/native-command.ts";
-import type { Method } from "../../workflow-definition/domain/method.ts";
 import { scopeName, stageSlug } from "../../workflow-definition/domain/identities.ts";
 import { METHOD_SOURCE_FOLDERS, type MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 
 export type LegacyRunnerReply = { readonly status: number | null; readonly stdout: string; readonly stderr: string };
-export type LegacyRunnerRequest = { readonly method: Method; readonly sources: readonly MethodSource[];
-  readonly projectRoot: URL; readonly temporaryRoot: URL;
-  readonly harnessDir: string; readonly harnessName: string };
+type LegacyRunnerRequest = CommandSourceRequest & { readonly temporaryRoot: URL };
 const subjectSchema = z.object({ concept: z.enum(["stage-command", "scope-command", "orchestrator-skill"]), name: z.string() });
 const contentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("text"), text: z.string() }),
