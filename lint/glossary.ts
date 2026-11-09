@@ -9,6 +9,7 @@ const GlossaryEntrySchema = z.strictObject({
   definition: z.string().min(1),
   legacy: z.array(z.string().min(1)).optional(),
   of: z.string().optional(),
+  shippedOwner: z.string().min(1).optional(),
 });
 
 const GlossarySchema = z.array(GlossaryEntrySchema);

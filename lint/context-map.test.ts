@@ -7,7 +7,7 @@ import {
   LEGACY_BRIDGES,
   LEGACY_TERRITORY,
   MONOLITH_FILES,
-  type LegacyBridge,
+  SHIPPED_TYPE_BRIDGES,
 } from "./context-map.ts";
 
 describe("context arrows", () => {
@@ -62,19 +62,7 @@ describe("context arrows", () => {
 
 const OWNER_MOVES = "Phase 2: its owner moves into src and ships in the runtime bundle (R1).";
 
-const EXPECTED_BRIDGES: readonly LegacyBridge[] = [
-  {
-    module: "core/tools/aidlc-lib.ts",
-    readBy: "src/projection/domain/host-surface.ts",
-    retiresWhen: OWNER_MOVES,
-    typeOnly: true,
-  },
-  {
-    module: "core/tools/aidlc-runtime-paths.ts",
-    readBy: "src/projection/domain/host-surface.ts",
-    retiresWhen: OWNER_MOVES,
-    typeOnly: true,
-  },
+const EXPECTED_BRIDGES = [
   {
     module: "core/tools/aidlc-model-policy.ts",
     readBy: "src/projection/adapters/legacy-agent-surfaces.ts",
@@ -180,5 +168,12 @@ describe("host and legacy boundaries", () => {
 describe("legacy bridges", () => {
   test("each shipped tool the build reads has one named src reader until its owner moves", () => {
     expect(LEGACY_BRIDGES).toEqual(EXPECTED_BRIDGES);
+  });
+
+  test("host data reads the shipped owners' types through declarations until those owners move", () => {
+    expect(SHIPPED_TYPE_BRIDGES).toEqual([
+      { module: "core/tools/aidlc-lib.ts", readBy: "src/projection/domain/host-surface.ts", retiresWhen: OWNER_MOVES },
+      { module: "core/tools/aidlc-runtime-paths.ts", readBy: "src/projection/domain/host-surface.ts", retiresWhen: OWNER_MOVES },
+    ]);
   });
 });
