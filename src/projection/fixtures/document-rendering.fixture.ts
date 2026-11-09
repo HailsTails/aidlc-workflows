@@ -1,9 +1,8 @@
 import { source } from "../../kernel/fixtures/values.fixture.ts";
-import type { MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import type { DocumentRenderingInputs } from "../application/ports.ts";
 import type { NeutralDocument, OnboardingFills, OnboardingTemplates } from "../domain/neutral-surface.ts";
 import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
-import { methodPath, text } from "./values.fixture.ts";
+import { text } from "./values.fixture.ts";
 
 export const ONBOARDING_TEMPLATES_FIXTURE: OnboardingTemplates = {
   neutral: ["# AI-DLC in this project", "", "Your work is recorded under aidlc/.", ""].join("\n"),
@@ -65,16 +64,9 @@ export const knowledgeDocumentFixture: NeutralDocument = {
   content: text(["# Glossary", "", "A stage is a station on a line."]),
 };
 
-export const orgMemoryFixture: MethodSource = {
-  owner: { kind: "core" },
-  path: methodPath({ kind: "rule", within: "org.md" }),
-  content: text(["# Org rules", "", "Keep the person at the wheel."]),
-};
-
 export const documentRenderingInputsFixture = ({ harnessDir }: {
   readonly harnessDir: string;
 }): DocumentRenderingInputs => ({
   fills: ONBOARDING_FILLS_FIXTURE,
   tokens: tokenBindingsFixture({ harnessDir }),
-  memory: [orgMemoryFixture],
 });

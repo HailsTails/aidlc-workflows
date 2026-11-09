@@ -6,13 +6,11 @@ import {
   knowledgeDocumentFixture,
   ONBOARDING_FILLS_FIXTURE,
   ONBOARDING_TEMPLATES_FIXTURE,
-  orgMemoryFixture,
   protocolDocumentFixture,
   stageDocumentFixture,
   templateDocumentFixture,
 } from "./document-rendering.fixture.ts";
 import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
-import { methodPath } from "./values.fixture.ts";
 
 describe("onboarding fixtures", () => {
   test("keep the neutral template free of tokens", () => {
@@ -61,15 +59,10 @@ describe("neutral document fixtures", () => {
 });
 
 describe("documentRenderingInputsFixture", () => {
-  test("offers the fills, the host's tokens and the org memory rule", () => {
+  test("offers the fills and the host's tokens", () => {
     expect(documentRenderingInputsFixture({ harnessDir: ".kiro" })).toEqual({
       fills: ONBOARDING_FILLS_FIXTURE,
       tokens: tokenBindingsFixture({ harnessDir: ".kiro" }),
-      memory: [orgMemoryFixture],
     });
-  });
-
-  test("reads the org memory rule from the memory folder", () => {
-    expect(orgMemoryFixture.path).toEqual(methodPath({ kind: "rule", within: "org.md" }));
   });
 });
