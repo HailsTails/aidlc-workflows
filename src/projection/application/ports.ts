@@ -57,6 +57,10 @@ export interface NeutralSurfaceReader {
   read(): Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
 }
 
+export interface SessionSkillSource {
+  read(): Promise<Result<readonly SessionSkill[], readonly ProjectionRefusal[]>>;
+}
+
 export interface CommandSource {
   read(subject: CommandSubject): Result<CommandReading, ProjectionRefusal>;
 }
