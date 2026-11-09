@@ -9,7 +9,7 @@ import { nativeCommandName, commandFilePath, type CommandReading } from "../doma
 import { accepted, refused } from "../../kernel/result.ts";
 import { scope, stage } from "../../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
-import { decodeLegacyRunners, prepareLegacyRunners, runChild, runChildWithCapability } from "./legacy-runners.ts";
+import { decodeLegacyRunners, prepareLegacyRunners } from "./legacy-runners.ts";
 
 test("the boundary retains every companion and uses the requested typed stage subject", () => {
   const source = decodeLegacyRunners({ status: 0, stderr: "", stdout: `{"failure":null,"entries":[
@@ -108,10 +108,6 @@ test("a whole-run failure remains identical across scope and shortcut readers", 
     refusal: { kind: "command-source-failed", reason: "The runner frame is unavailable" } });
 });
 
-test("invalid child input returns failure data before any module or filesystem access", async () => {
-  expect(await runChild(null)).toEqual({ entries: [], failure: "The frozen runner request is invalid." });
-});
-
 test("companion bytes survive the legacy protocol without UTF-8 replacement", () => {
   const source = decodeLegacyRunners({ status: 0, stderr: "", stdout: `{"failure":null,"entries":[
     {"subject":{"concept":"scope-command","name":"feature"},"reason":null,"files":[
@@ -125,25 +121,6 @@ test("companion bytes survive the legacy protocol without UTF-8 replacement", ()
   }));
 });
 
-
-test("an absent selected scope is refused before child output is written", () => {
-  expect(runChildWithCapability({ module: "unused", output: "unused", stages: [], scopes: ["feature"] }, {
-    runnableStages: () => [],
-    discoverScopes: () => ({}),
-    defaultScopeBatch: () => ["feature"],
-    renderStageRunner: () => "Unused stage",
-    renderRunner: () => "Unused scope",
-    renderInitRunner: () => "---\nname: aidlc-init\n---\n",
-    renderComposeRunner: () => "---\nname: aidlc-compose\n---\n",
-    regenerateRunnerSurfaces: () => undefined,
-  })).toEqual({ failure: null, entries: [{ subject: { concept: "scope-command", name: "feature" },
-    files: null, reason: "The selected frozen scope is absent: feature" }] });
-});
-
-test("an invalid child capability API returns a whole-source failure", () => {
-  expect(runChildWithCapability({ module: "unused", output: "unused", stages: [], scopes: [] }, {}))
-    .toEqual({ entries: [], failure: "The frozen runner capability API is invalid." });
-});
 
 const scopeSources: readonly MethodSource[] = [
   { owner: { kind: "core" }, path: methodSource({ kind: "scope", within: "aidlc-classic.md" }),

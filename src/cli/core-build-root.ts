@@ -1,5 +1,3 @@
-import { createNodeFileSystem } from "../kernel/file-system.ts";
-import { createNodeProcessRunner } from "../kernel/process-runner.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { AuthoredHostFile } from "../projection/domain/host-surface.ts";
 import type { ProjectionRefusal } from "../projection/domain/projection.ts";
@@ -39,11 +37,8 @@ export const loadCoreBuild = async (request: {
   return accepted({ ...loaded.value, project });
 };
 
-const runnerPlatform = { scratch: createNodeFileSystem(), processRunner: createNodeProcessRunner(),
-  child: new URL("./legacy-runner-child.ts", import.meta.url) };
-
-export const prepareCoreCommandSource = (request: Parameters<typeof prepareLegacyRunners>[0]):
-  Promise<CommandSource> => prepareLegacyRunners(request, runnerPlatform);
+export const prepareCoreCommandSource = (request: Parameters<typeof prepareLegacyRunners>[0],
+  ports: Parameters<typeof prepareLegacyRunners>[1]): Promise<CommandSource> => prepareLegacyRunners(request, ports);
 
 export const projectCoreCommands = (request: {
   readonly method: CoreBuild["method"];

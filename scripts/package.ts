@@ -66,6 +66,11 @@ import {
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createNodeFileSystem } from "../src/kernel/file-system.ts";
+import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
+
+const runnerPlatform = { scratch: createNodeFileSystem(), processRunner: createNodeProcessRunner(),
+  child: new URL("../src/cli/legacy-runner-child.ts", import.meta.url) };
 import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName,
   projectCoreCommands, prepareCoreCommandSource,
   reviewerAgentSet, inlineAgentSet, loadHostBuildSources, prepareHostSource,
@@ -1041,7 +1046,7 @@ async function buildTree(
     method: coreBuild.method, sources: coreBuild.sources, projectRoot: pathToFileURL(outRoot),
     temporaryRoot: pathToFileURL(join(REPO_ROOT, ".cache", "runner-frames")),
     harnessDir, harnessName: m.name,
-  }) : { read: () => refused<ProjectionRefusal>({ kind: "command-source-failed",
+  }, runnerPlatform) : { read: () => refused<ProjectionRefusal>({ kind: "command-source-failed",
     reason: "This manifest selected standard runner production." }) };
   if (m.emit) {
     m.emit({

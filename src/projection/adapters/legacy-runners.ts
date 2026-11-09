@@ -1,32 +1,17 @@
-import { captureCommandScopes, duplicateNativeCommand, selectedScopeDescription, selectLegacyDocuments }
+import { captureCommandScopes }
   from "../application/legacy-command-plan.ts";
 import { asFolder, type FileWriteError } from "../../kernel/file-system-port.ts";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { CommandSource, LegacyRunnerProcess, LegacyRunnerScratch } from "../application/ports.ts";
 import { ENTRY_SHORTCUTS, nativeCommandName, commandFilePath, type NativeCommandFile,
-  type CommandReading, type CommandSubject, type EntryShortcut } from "../domain/native-command.ts";
+  type CommandReading, type CommandSubject } from "../domain/native-command.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import { scopeName, stageSlug } from "../../workflow-definition/domain/identities.ts";
 import { METHOD_SOURCE_FOLDERS, type MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 
-const frozenStageSchema = z.looseObject({ slug: z.string() });
-const frozenScopesSchema = z.record(z.string(), z.looseObject({ description: z.string() }));
-const generatorSchema = z.object({
-  runnableStages: z.function({ input: [], output: z.array(frozenStageSchema) }),
-  discoverScopes: z.function({ input: [], output: frozenScopesSchema }),
-  defaultScopeBatch: z.function({ input: [frozenScopesSchema], output: z.array(z.string()) }),
-  renderStageRunner: z.function({ input: [frozenStageSchema], output: z.string() }),
-  renderRunner: z.function({ input: [z.string(), z.string()], output: z.string() }),
-  renderInitRunner: z.function({ input: [], output: z.string() }),
-  renderComposeRunner: z.function({ input: [], output: z.string() }),
-  regenerateRunnerSurfaces: z.function({ input: [], output: z.void() }),
-});
-type Generator = z.infer<typeof generatorSchema>;
 export type LegacyRunnerReply = { readonly status: number | null; readonly stdout: string; readonly stderr: string };
 export type LegacyRunnerRequest = { readonly method: Method; readonly sources: readonly MethodSource[];
   readonly projectRoot: URL; readonly temporaryRoot: URL;
@@ -39,12 +24,7 @@ const contentSchema = z.discriminatedUnion("kind", [
 const fileSchema = z.object({ nativeName: z.string(), within: z.string(), content: contentSchema, mode: z.literal("regular") });
 const entrySchema = z.object({ subject: subjectSchema, files: z.array(fileSchema).nullable(), reason: z.string().nullable() });
 const replySchema = z.object({ entries: z.array(entrySchema), failure: z.string().nullable() });
-const childSchema = z.object({ module: z.string(), output: z.string(), stages: z.array(z.string()), scopes: z.array(z.string()) });
 type WireSubject = z.infer<typeof subjectSchema>;
-type WireEntry = z.infer<typeof entrySchema>;
-type ChildCommand = { readonly subject: WireSubject; readonly markdown: string | null;
-  readonly nativeName: string | null; readonly reason: string | null };
-const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
 const failure = (subject: CommandSubject, reason: string): ProjectionRefusal => ({ kind: "render-failed", ...subject, reason });
 const failedSource = (reason: string): CommandSource => ({
   read: () => refused({ kind: "command-source-failed", reason }),
@@ -108,73 +88,6 @@ export const decodeLegacyRunners = (reply: LegacyRunnerReply): CommandSource => 
   } catch {
     return failedSource("The frozen runner formatter returned invalid JSON.");
   }
-};
-
-const renderedCommand = (subject: WireSubject, render: () => string | null): ChildCommand => {
-  try {
-    const markdown = render();
-    const nativeName = markdown === null ? null : /^name: +([^\r\n]+)$/m.exec(markdown)?.[1];
-    return markdown === null || nativeName ? { subject, markdown, nativeName: nativeName ?? null, reason: null }
-      : { subject, markdown: null, nativeName: null, reason: "The frozen command has no native name." };
-  } catch (error) {
-    return { subject, markdown: null, nativeName: null, reason: message(error) };
-  }
-};
-const renderFrozenCommands = (generator: Generator, input: z.infer<typeof childSchema>): readonly ChildCommand[] => {
-  const runnable = generator.runnableStages();
-  const discovered = generator.discoverScopes();
-  const selected = generator.defaultScopeBatch(discovered);
-  const shortcuts: Record<EntryShortcut, () => string> = {
-    "aidlc-init": () => generator.renderInitRunner(),
-    "aidlc-compose": () => generator.renderComposeRunner(),
-  };
-  return [
-    ...input.stages.map((name) => renderedCommand({ concept: "stage-command", name }, () => {
-      const node = runnable.find((stage) => stage.slug === name);
-      return node ? generator.renderStageRunner(node) : null;
-    })),
-    ...input.scopes.map((name): ChildCommand => {
-      const subject: WireSubject = { concept: "scope-command", name };
-      const selection = selectedScopeDescription({ name, selected, scopes: discovered });
-      if (!selection.ok) return { subject, markdown: null, nativeName: null, reason: selection.refusal };
-      return renderedCommand(subject, () => selection.value === null ? null
-        : generator.renderRunner(name, selection.value));
-    }),
-    ...ENTRY_SHORTCUTS.map((name) => renderedCommand({ concept: "orchestrator-skill", name }, shortcuts[name])),
-  ];
-};
-const walk = (directory: string): readonly string[] => readdirSync(directory, { withFileTypes: true })
-  .flatMap((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]).sort();
-const commandDocuments = (command: ChildCommand, paths: readonly string[]): WireEntry => {
-  const nativeName = command.nativeName;
-  if (command.markdown === null || nativeName === null) return { subject: command.subject, files: null, reason: command.reason };
-  const selected = selectLegacyDocuments({ nativeName, paths });
-  if (!selected.ok) return { subject: command.subject, files: null, reason: selected.refusal };
-  return { subject: command.subject, reason: null, files: [
-    { nativeName, within: "SKILL.md", content: { kind: "text", text: command.markdown }, mode: "regular" },
-    ...selected.value.companions.map(({ path, within }): z.infer<typeof fileSchema> => ({
-      nativeName, within, content: { kind: "bytes", bytes: Array.from(readFileSync(path)) }, mode: "regular" })),
-  ] };
-};
-export const runChildWithCapability = (input: z.infer<typeof childSchema>, capability: unknown):
-  z.infer<typeof replySchema> => {
-  const admitted = generatorSchema.safeParse(capability);
-  if (!admitted.success) return { entries: [], failure: "The frozen runner capability API is invalid." };
-  const generator = admitted.data;
-  const commands = renderFrozenCommands(generator, input);
-  const collision = duplicateNativeCommand(commands);
-  if (collision) return { failure: null, entries: [collision] };
-  const broken = commands.find((command) => command.reason !== null);
-  if (broken) return { failure: null, entries: [{ subject: broken.subject, files: null, reason: broken.reason }] };
-  generator.regenerateRunnerSurfaces();
-  const paths = walk(input.output);
-  return { failure: null, entries: commands.map((command) => commandDocuments(command, paths)) };
-};
-
-export const runChild = async (raw: unknown): Promise<z.infer<typeof replySchema>> => {
-  const decoded = childSchema.safeParse(raw);
-  if (!decoded.success) return { entries: [], failure: "The frozen runner request is invalid." };
-  return runChildWithCapability(decoded.data, await import(Bun.pathToFileURL(decoded.data.module).href));
 };
 
 type RunnerPorts = {
@@ -242,7 +155,3 @@ export const prepareLegacyRunners = async (request: LegacyRunnerRequest,
   const removed = await ports.scratch.removeFolder({ folder: frame.value });
   return removed.ok ? source : failedSource(`The private runner frame could not be removed: ${removed.refusal.code}`);
 };
-if (import.meta.main && process.argv[2] === "--runner-child") {
-  try { process.stdout.write(JSON.stringify(await runChild(await Bun.stdin.json()))); }
-  catch (error) { process.stdout.write(JSON.stringify({ entries: [], failure: message(error) })); }
-}
