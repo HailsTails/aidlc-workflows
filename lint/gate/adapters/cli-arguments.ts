@@ -11,8 +11,10 @@ export type ArgumentDefaults = {
 };
 
 export const USAGE = [
-  "bun scripts/gate.ts --scope <lane-id>|<path>[,<path>...] [--base <ref>] [--record]",
-  "bun scripts/gate.ts --full [--lane <lane-id>] [--base <ref>] [--no-build] [--record]",
+  "bun scripts/gate.ts --scope <lane-id>[+<lane-id>...]|<path>[,<path>...]" +
+    " [--base <ref>] [--record]",
+  "bun scripts/gate.ts --full [--lane <lane-id>[+<lane-id>...]]" +
+    " [--base <ref>] [--no-build] [--record]",
   "                    [--all-tests] [--sweep]",
   "--sweep runs once on the clean current foundation, holds every slot and records its verdict.",
   "Candidate test gates name that sweep; a missing or red sweep blocks a green candidate.",
