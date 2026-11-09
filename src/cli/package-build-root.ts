@@ -100,7 +100,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
     projectHostSurface: (surface) => {
       const members = hostSurfaceMembers(surface.host);
       return members === null ? accepted([]) : projection.projectHostSurface({ ...surface,
-        data: members.data, placements: members.placements });
+        renderData: members.renderData, placements: members.placements });
     },
     projectSkills: async (skills) => {
       const members = hostSkillMembers(skills.host);

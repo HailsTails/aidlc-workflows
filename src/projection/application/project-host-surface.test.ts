@@ -2,12 +2,14 @@ import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { tokenBindingsFixture } from "../fixtures/token-bindings.fixture.ts";
-import type { HostSurfaceProjectionRequest } from "./ports.ts";
-import { projectHostSurface } from "./project-host-surface.ts";
+import type { HostDataInputs, HostSurfaceProjectionRequest } from "./ports.ts";
+import { createHostSurfaceProjection } from "./project-host-surface.ts";
+
+const projectHostSurface = createHostSurfaceProjection(() => ({ shellDeny: () => [], riskyForms: [] }));
 
 const identity = host({ name: "surface-host", directory: ".surface" });
 const request: HostSurfaceProjectionRequest = {
-  host: identity, data: { productName: "Surface", configNextStep: "Open", rulesFolder: null },
+  host: identity, renderData: () => ({ productName: "Surface", configNextStep: "Open", rulesFolder: null }),
   placements: [{ source: "notice.md", destination: ".surface/notice.md" }],
   files: [{ source: source("notice.md"), content: { kind: "text", text: "Captured" } },
     { source: source("other.md"), content: { kind: "text", text: "Other concept" } }],
@@ -56,4 +58,32 @@ test("host data and authored placement share the existing final-path collision o
     { kind: "rendered", concept: "host-data", name: "surface-host" },
     { kind: "harness-authored", source: source("notice.md") },
   ] }));
+});
+
+test("the native data renderer receives its directory policy once before the existing serializer", () => {
+  const shellDeny = mock(() => ["fixture delegate deny"]);
+  const delegateShell = { shellDeny, riskyForms: ["$"] };
+  const policy = mock(() => delegateShell);
+  const renderData = mock((inputs: HostDataInputs) => ({
+    productName: "Surface", configNextStep: "Open", rulesFolder: null,
+    pluginAgentFrontmatter: {
+      copy: ["name: delegate", ...inputs.delegateShell.shellDeny("aidlc-helper-agent")],
+      native: ["name: delegate"],
+    },
+  }));
+  expect(createHostSurfaceProjection(policy)({ ...request, placements: [], files: [], renderData })).toEqual(accepted([
+    { path: path(".surface/tools/data/harness.json"), content: { kind: "text", text: descriptor },
+      mode: "regular", availability: "always",
+      origin: { kind: "rendered", concept: "host-data", name: "surface-host" } },
+    { path: path(".surface/tools/data/plugin-agent.md"),
+      content: { kind: "text", text: "---\nname: delegate\nfixture delegate deny\n---\n" },
+      mode: "regular", availability: "always",
+      origin: { kind: "rendered", concept: "host-data", name: "surface-host" } },
+  ]));
+  expect(policy).toHaveBeenCalledTimes(1);
+  expect(policy).toHaveBeenCalledWith(".surface");
+  expect(renderData).toHaveBeenCalledTimes(1);
+  expect(renderData).toHaveBeenCalledWith({ delegateShell });
+  expect(shellDeny).toHaveBeenCalledTimes(1);
+  expect(shellDeny).toHaveBeenCalledWith("aidlc-helper-agent");
 });

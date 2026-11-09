@@ -1,10 +1,13 @@
 import { refused } from "../../kernel/result.ts";
-import type { HostSurfaceProjection, Rendering } from "./ports.ts";
+import type { DelegateShellPolicy, HostSurfaceProjection, Rendering } from "./ports.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 import { createHostSurfaceMembers } from "./host-surface-members.ts";
 
-export const projectHostSurface: HostSurfaceProjection = (request) => {
-  const members = createHostSurfaceMembers(request);
+export const createHostSurfaceProjection = (
+  delegateShell: (directory: string) => DelegateShellPolicy,
+): HostSurfaceProjection => (request) => {
+  const hostData = request.renderData({ delegateShell: delegateShell(request.host.directory) });
+  const members = createHostSurfaceMembers({ ...request, data: hostData });
   return collectCommandRenderings([
     members.renderHostData(),
     ...request.placements.map((placement): Rendering => {

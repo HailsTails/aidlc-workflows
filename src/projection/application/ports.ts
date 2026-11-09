@@ -97,6 +97,17 @@ export interface CopyChannelAllowSource {
   read(): Result<CopyChannelAllows, ProjectionRefusal>;
 }
 
+export type HookTrustIdentity = {
+  readonly event: string;
+  readonly command: string;
+  readonly timeoutSeconds: number;
+  readonly matcher: string | undefined;
+};
+
+export type HookTrustHash = (identity: HookTrustIdentity) => string;
+
+export type CliModelPolicy = (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
+
 export type SettingsRenderingInputs = {
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
@@ -255,7 +266,7 @@ export type AgentProjection = (request: AgentProjectionRequest) => Rendering;
 
 export type HostSurfaceProjectionRequest = {
   readonly host: HostIdentity;
-  readonly data: HostData;
+  readonly renderData: HostDataRenderer;
   readonly placements: readonly AuthoredPlacement[];
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;

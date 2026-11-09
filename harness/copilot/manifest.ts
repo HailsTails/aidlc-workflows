@@ -37,11 +37,12 @@
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
 import emit from "./emit.ts";
+import { COPILOT_HOST_DATA } from "../../src/hosts/copilot/host-data.ts";
 
 const manifest: HarnessManifest = {
   name: "copilot",
-  productName: "GitHub Copilot",
-  configNextStep: "start Copilot CLI or VS Code agent mode, then run `/aidlc --doctor`",
+  productName: COPILOT_HOST_DATA.productName,
+  configNextStep: COPILOT_HOST_DATA.configNextStep,
   // VS Code runs repo hooks only in a trusted workspace with Chat: Use Hooks
   // on, which an organization policy can switch off, and skips them without a
   // word in the chat; the CLI runs them only in a folder it trusts. The adapter
@@ -54,44 +55,12 @@ const manifest: HarnessManifest = {
   // message. The agent step reads any "fix it" as this setting, because a
   // person asked "can you fix it?" near the old notice and the agent changed
   // their project instead.
-  hookActivation: {
-    recovery:
-      'In VS Code, turn on Chat: Use Hooks for this folder ("chat.useHooks": true in ' +
-      ".vscode/settings.json), then send your next message in the same chat. If your " +
-      "organization has switched it off, ask your administrator to turn it on. In the Copilot " +
-      "CLI, start it again in this folder and trust the folder when it asks.",
-    notRunYet:
-      "This is expected before your first Copilot chat in this folder. If you already started " +
-      'one, turn on Chat: Use Hooks in VS Code for this folder ("chat.useHooks": true in ' +
-      ".vscode/settings.json; if your organization has switched it off, ask your administrator " +
-      "to turn it on), or in the Copilot CLI trust this folder when it asks, then send a " +
-      "message and run doctor again.",
-    notRunInWorkflow:
-      "Turn on Chat: Use Hooks in VS Code for this folder (in the Copilot CLI, trust this folder " +
-      "when it asks), then carry on.",
-    agentStepEdits: ".vscode/settings.json",
-    agentStep:
-      "Copilot is not running AI-DLC's hooks in this folder. In VS Code: open " +
-      "`.vscode/settings.json` by its path (VS Code's file search skips it, so do not search), " +
-      'set `"chat.useHooks": true`, keep every other key as it is, and create the file if it ' +
-      'does not exist. Then show the person this line: "Fixed. Send your next message here to ' +
-      'carry on." If a question was waiting for their answer, show this line instead, then that ' +
-      'question: "Fixed. Answer the question below to carry on." If the file already said ' +
-      '`true`, show this line instead: "Your organization has switched off Chat: Use Hooks in ' +
-      'VS Code. Ask your administrator to turn it on." In the Copilot CLI, change no file and ' +
-      'show this line instead: "Quit Copilot, start it again in this folder and trust the folder ' +
-      'when it asks, then type <entry> to carry on." In a headless `copilot -p` run, show this ' +
-      'line instead: "Start copilot in this folder once, trust the folder when it asks and ' +
-      'choose to remember it, then run copilot -p again." Until the person has done their step, ' +
-      'do not touch the project\'s files or the workflow, and read any "fix it" as this setting. ' +
-      "End your turn right after " +
-      "the line: your own next command in this turn would still run without the change.",
-  },
+  hookActivation: COPILOT_HOST_DATA.hookActivation,
   // Copilot CLI marks every process it starts with COPILOT_CLI=1 (#2921). VS
   // Code agent mode marks none, so beside another tool it is not told apart.
-  hostShell: { env: ["COPILOT_CLI"] },
+  hostShell: COPILOT_HOST_DATA.hostShell,
   // A clean chat for new work started beside other work.
-  newChatStep: { text: "open a new chat, then type <entry>" },
+  newChatStep: COPILOT_HOST_DATA.newChatStep,
   harnessDir: ".aidlc",
   orchestratorSkillPath: ".github/skills/aidlc/SKILL.md",
   tierFlavor: "copilot",
@@ -227,9 +196,6 @@ const manifest: HarnessManifest = {
   ],
 
   harnessFiles: [
-    // The hook adapter, beside the core hook bodies it pipes into.
-    { src: "hooks/aidlc-copilot-adapter.ts", dst: "hooks/aidlc-copilot-adapter.ts" },
-    { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
     // The VS Code settings AI-DLC adds when absent (the jsonc-settings integration).
     { src: "dot-vscode-settings.json", dst: ".vscode/settings.json", projectRoot: true },
   ],
@@ -238,13 +204,13 @@ const manifest: HarnessManifest = {
   onboarding: { dst: "AGENTS.md", projectRoot: true, fills: onboardingFills },
 
   // .aidlc/ is AIDLC's own dir; core's rules/ name has nothing to collide with.
-  rulesRename: null,
+  rulesRename: COPILOT_HOST_DATA.rulesFolder,
 
   // Runners are typed-only on both surfaces: a typed `/aidlc-<runner>` still
   // runs, the agent never starts one itself, and their descriptions stay out of
   // Copilot's skill list. A headless `copilot -p` run hands the typed line to
   // the agent as text, so the root AGENTS.md tells it to read the runner file.
-  runnerFrontmatterAdditions: ["disable-model-invocation: true"],
+  runnerFrontmatterAdditions: [...COPILOT_HOST_DATA.runnerFrontmatterAdditions],
 
   // VS Code's run_in_terminal tool keeps a result whole only up to 20,000
   // characters (MAX_OUTPUT_LENGTH in microsoft/vscode src/vs/workbench/contrib/
@@ -253,7 +219,7 @@ const manifest: HarnessManifest = {
   // preview and the tail, so the adapter cannot read the directive (#1411).
   // 19,000 bytes are never more than 19,000 characters, which leaves room for
   // the newline and anything the terminal adds.
-  directiveMaxBytes: 19000,
+  directiveMaxBytes: COPILOT_HOST_DATA.directiveMaxBytes,
 
   // Copilot discovers project skills at .github/skills/ (and .agents/skills/,
   // .claude/skills/) — never inside .aidlc/. emit.ts composes the full skill
