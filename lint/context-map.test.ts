@@ -64,11 +64,6 @@ const OWNER_MOVES = "Phase 2: its owner moves into src and ships in the runtime 
 
 const EXPECTED_BRIDGES = [
   {
-    module: "core/tools/aidlc-markdown.ts",
-    readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
-    retiresWhen: "Packaging's ToolBundler ships src; the interpreter then moves into src.",
-  },
-  {
     module: "core/tools/aidlc-model-policy.ts",
     readBy: "src/projection/adapters/legacy-agent-surfaces.ts",
     retiresWhen:

@@ -34,7 +34,7 @@ import {
 import {
   kiroIdePermissionLines,
 } from "../../src/hosts/kiro-ide/projection/agent-renderer.ts";
-import { inlineAgentSet } from "../../src/workflow-definition/core-root.ts";
+import { inlineAgentSet } from "../../src/workflow-definition/domain/method-participation.ts";
 import type { EmitContext, HarnessManifest } from "../../scripts/manifest-types.ts";
 import { kiroIdeCommandPath } from "../../src/hosts/kiro-ide/projection/command-renderer.ts";
 import {

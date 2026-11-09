@@ -65,29 +65,24 @@ import {
   sep,
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
-import { createMethodCompiler }
-  from "../src/workflow-definition/application/create-method-compiler.ts";
-import { createMethodContentDecoder }
-  from "../src/workflow-definition/adapters/method-content-decoder.ts";
-import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
 import { spawnSync } from "node:child_process";
+import { openPackageBuildRoot } from "../src/cli/main.ts";
 import { createNodeFileSystem } from "../src/kernel/file-system.ts";
 import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
-
-const runnerPlatform = { scratch: createNodeFileSystem(), processRunner: createNodeProcessRunner(),
-  child: new URL("../src/cli/legacy-runner-child.ts", import.meta.url) };
-import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName,
-  projectCoreCommands, prepareCoreCommandSource,
-  reviewerAgentSet, inlineAgentSet, loadHostBuildSources, prepareHostSource,
-  type PluginBuildCatalog, type PluginBuildTarget } from "../src/cli/core-build-root.ts";
+import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
+import { createPackageBuildRoot } from "../src/cli/package-build-root.ts";
+import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
-const authoredReader = createNodeFileSystem();
-const authoredOutliner = createMarkdownOutliner(markdownBlocks);
-const authoredDecoder = createMethodContentDecoder({
-  parser: createBunYamlParser({ yamlLib: Bun.YAML }),
-  outliner: authoredOutliner });
-const authoredCompiler = createMethodCompiler(authoredOutliner);
+const packageBuildRoot = openPackageBuildRoot({ createNodeFileSystem, createNodeProcessRunner,
+  createBunYamlParser, createPackageBuildRoot, outliner: createMarkdownOutliner(markdownBlocks) });
+import { pluginId as pluginBuildName } from "../src/workflow-definition/domain/identities.ts";
+import { reviewerAgentSet, inlineAgentSet }
+  from "../src/workflow-definition/domain/method-participation.ts";
+import { projectMethodCommands } from "../src/projection/application/project-method-commands.ts";
+import { createCommandRenderers } from "../src/projection/application/command-renderers.ts";
+import { prepareHostSource } from "../src/projection/application/prepared-host-source.ts";
+import type { AuthoredPluginBuild as PluginBuildCatalog, PluginBuildTarget }
+  from "../src/workflow-definition/application/ports.ts";
 import {
   runnerProducer, orchestratorSkillLocation, type HarnessManifest,
 } from "./manifest-types.ts";
@@ -1054,11 +1049,10 @@ async function buildTree(
   // 4. Per-shell emissions. These may live outside
   //    <harnessDir> (e.g. .agents/skills/ and .github/); the generated
   //    root inventory includes them automatically.
-  const commandSource = producer.value === "emit" ? await prepareCoreCommandSource({
-    method: coreBuild.method, sources: coreBuild.sources, projectRoot: pathToFileURL(outRoot),
-    temporaryRoot: pathToFileURL(join(REPO_ROOT, ".cache", "runner-frames")),
+  const commandSource = producer.value === "emit" ? await packageBuildRoot.prepareCommandSource({
+    core: coreBuild, projectRoot: pathToFileURL(outRoot),
     harnessDir, harnessName: m.name,
-  }, runnerPlatform) : { read: () => refused<ProjectionRefusal>({ kind: "command-source-failed",
+  }) : { read: () => refused<ProjectionRefusal>({ kind: "command-source-failed",
     reason: "This manifest selected standard runner production." }) };
   if (m.emit) {
     m.emit({
@@ -1691,11 +1685,13 @@ function rewriteNativeInvocations(
   }
 }
 
-function emitCommandProjection(request: Parameters<typeof projectCoreCommands>[0] & {
+function emitCommandProjection(request: Parameters<typeof createCommandRenderers>[0] & {
+  readonly method: typeof coreBuild.method;
   readonly substituteToken: (text: string) => string;
   readonly projectRoot: string;
 }): void {
-  const rendered = projectCoreCommands(request);
+  const rendered = projectMethodCommands({ method: request.method,
+    harness: createCommandRenderers(request) });
   if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
   for (const file of rendered.value) {
     const destination = join(request.projectRoot, file.path);
@@ -2143,15 +2139,12 @@ if (argv[0] === "plugin" && argv[1] === "build") {
       : `invalid plugin name "${identity.refusal.raw}"; use a lowercase kebab-case name.`);
     process.exit(1);
   }
-  const core = await loadCoreBuild({ coreRoot: pathToFileURL(CORE_ROOT),
-    reader: authoredReader, decoder: authoredDecoder });
+  const core = await packageBuildRoot.loadCore();
   if (!core.ok) {
     console.error(JSON.stringify(core.refusal));
     process.exit(1);
   }
-  const catalog = await loadPluginBuildCatalog({ core: core.value,
-    pluginsRoot: pathToFileURL(PLUGINS_ROOT),
-    reader: authoredReader, decoder: authoredDecoder, compiler: authoredCompiler });
+  const catalog = await packageBuildRoot.loadPlugins({ core: core.value });
   if (!catalog.ok) {
     console.error(JSON.stringify(catalog.refusal));
     process.exit(1);
@@ -2193,15 +2186,12 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
 }
 
 const builtFrom = packageInputsFingerprint(REPO_ROOT);
-const loadedBuild = await loadCoreBuild({ coreRoot: pathToFileURL(CORE_ROOT),
-    reader: authoredReader, decoder: authoredDecoder });
+const loadedBuild = await packageBuildRoot.loadCore();
 if (!loadedBuild.ok) {
   throw new Error(`Cannot load the fresh Method: ${JSON.stringify(loadedBuild.refusal)}`);
 }
 const coreBuild = loadedBuild.value;
-const loadedPlugins = await loadPluginBuildCatalog({ core: coreBuild,
-  pluginsRoot: pathToFileURL(PLUGINS_ROOT),
-    reader: authoredReader, decoder: authoredDecoder, compiler: authoredCompiler });
+const loadedPlugins = await packageBuildRoot.loadPlugins({ core: coreBuild });
 if (!loadedPlugins.ok) {
   throw new Error(`Cannot load the plugin Method: ${JSON.stringify(loadedPlugins.refusal)}`);
 }
@@ -2213,8 +2203,8 @@ const hostBuildInputs = new Map<string, {
 }>();
 for (const name of targets) {
   const manifest = loadManifest(name);
-  const captured = await loadHostBuildSources({ name, directory: manifest.harnessDir,
-    root: join(HARNESS_ROOT, name), copied: manifest.harnessFiles.map((file) => file.src),
+  const captured = await packageBuildRoot.readHostSources({ name, directory: manifest.harnessDir,
+    root: pathToFileURL(join(HARNESS_ROOT, name)), copied: manifest.harnessFiles.map((file) => file.src),
     required: manifest.emit?.authoredInputs ?? [] });
   if (!captured.ok) {
     console.error(JSON.stringify(captured.refusal));

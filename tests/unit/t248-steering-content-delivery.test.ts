@@ -38,7 +38,8 @@ import { parse } from "smol-toml";
 import {
   absorbReviewerKnowledge,
 } from "../../scripts/agent-knowledge.ts";
-import { inlineAgentSet, reviewerAgentSet } from "../../src/workflow-definition/core-root.ts";
+import { inlineAgentSet, reviewerAgentSet }
+  from "../../src/workflow-definition/domain/method-participation.ts";
 import { accept } from "../../src/kernel/fixtures/accept.ts";
 import {
   createMethodCompiler,
