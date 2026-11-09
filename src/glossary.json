@@ -412,7 +412,7 @@
 {"name":"HostTokenBindings","context":"projection","kind":"concept","definition":"A host's value, or null, for every HostBoundToken."},
 {"name":"HostTokenChoices","context":"projection","kind":"concept","definition":"The tokens a host chooses itself: how its skill is invoked and its option letters."},
 {"name":"ChannelTokens","context":"projection","kind":"concept","definition":"The tokens a DistributionChannel decides: the invoke command, the tool prefix and the trusted namespace."},
-{"name":"AgentRenderingInputs","context":"projection","kind":"concept","definition":"What every host's agent renderer gets from the build root: the captured host identity, the DistributionChannel it renders for, the authored agent files and their preparer, and the AgentModelPolicy."},
+{"name":"AgentRenderingInputs","context":"projection","kind":"concept","definition":"What every host's agent renderer gets from the build root: the captured host identity, the DistributionChannel it renders for, the authored agent files and their preparer, the AgentModelPolicy, and the shipped format documents a dispatched agent's shared knowledge leaves out."},
 {"name":"AgentModelPolicy","context":"projection","kind":"port","definition":"Port: the model a host pins for one tiered agent, or none when the host's own default applies; refused for a host the model policy does not know."},
 {"name":"HostAgentRenderer","context":"projection","kind":"technical","definition":"One host's factory for its agent and conductor-agent Harness members, built from the AgentRenderingInputs."},
 {"name":"ToolHookPoint","context":"workflow-definition","kind":"concept","definition":"A HookPoint around a tool call: before-tool or after-tool."},

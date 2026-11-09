@@ -58,6 +58,7 @@ export type AgentRenderingInputs = {
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
   readonly models: AgentModelPolicy;
+  readonly formatDocuments: ReadonlySet<string>;
 };
 
 export type HostAgentRenderer = (
