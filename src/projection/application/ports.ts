@@ -15,7 +15,7 @@ import type {
 } from "../../kernel/process-runner-port.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
-import type { DistributionId, KernelRefusal, ProjectPath } from "../../kernel/values.ts";
+import type { DistributionId, KernelRefusal, ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { Agent } from "../../workflow-definition/domain/agent.ts";
 import type { HookDeclaration } from "../../workflow-definition/domain/hooks.ts";
 import type { KnowledgeDocument } from "../../workflow-definition/domain/knowledge.ts";
@@ -28,14 +28,69 @@ import type { CommandReading, CommandSubject, NativeCommandFile } from "../domai
 import type {
   NeutralDocument,
   NeutralSurface,
+  OnboardingFills,
   OnboardingTemplates,
   SessionSkill,
 } from "../domain/neutral-surface.ts";
-import type { ProjectedFile } from "../domain/projected-file.ts";
+import type { DistributionChannel, ProjectedFile } from "../domain/projected-file.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
-import type { HostTokenBindings } from "../domain/template-token.ts";
+import type { HostTokenBindings, TokenBindings } from "../domain/template-token.ts";
 
 export type Rendering = Result<readonly ProjectedFile[], ProjectionRefusal>;
+
+export type AgentRenderingInputs = {
+  readonly channel: DistributionChannel;
+};
+
+export type HostAgentRenderer = (inputs: AgentRenderingInputs) => Harness["renderAgent"];
+
+export type SkillTableVerb = "stage-table" | "scope-table";
+
+export type SkillTableRenderer = (verb: SkillTableVerb) => Result<string, string>;
+
+export type AuthoredFilePreparer = (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
+
+export type SkillRenderingInputs = {
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly tables: SkillTableRenderer;
+};
+
+export type HostSkillRenderer = (
+  inputs: SkillRenderingInputs,
+) => Pick<Harness, "renderOrchestratorSkill" | "renderSessionSkill">;
+
+export type CopyChannelAllows = {
+  readonly dispatcherCommands: readonly string[];
+  readonly toolScripts: readonly string[];
+};
+
+export interface CopyChannelAllowSource {
+  read(): Result<CopyChannelAllows, ProjectionRefusal>;
+}
+
+export type SettingsRenderingInputs = {
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly allows: CopyChannelAllows;
+  readonly channel: DistributionChannel;
+  readonly entrypoints: readonly SourcePath[];
+};
+
+export type HostSettingsRenderer = (
+  inputs: SettingsRenderingInputs,
+) => Pick<Harness, "renderSettings" | "renderHookRegistrations">;
+
+export type DocumentRenderingInputs = {
+  readonly fills: OnboardingFills;
+  readonly tokens: TokenBindings;
+};
+
+export type HostDocumentRenderer = (
+  inputs: DocumentRenderingInputs,
+) => Pick<Harness, "renderOnboarding" | "placeNeutralDocument">;
 
 export interface Harness {
   readonly tokens: HostTokenBindings;

@@ -150,6 +150,7 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   shippedOwner("aidlc-distribution", "src/packaging/adapters/legacy-distribution.ts"),
   shippedOwner("aidlc-version", "src/packaging/adapters/legacy-version.ts"),
   shippedOwner("aidlc-channel", "src/packaging/adapters/legacy-channel.ts"),
+  shippedOwner("aidlc-archive", "src/packaging/adapters/legacy-archive.ts"),
 ];
 
 const tools = (...names: readonly string[]): readonly string[] =>

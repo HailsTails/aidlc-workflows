@@ -14,3 +14,7 @@ export type TokenBindings = Readonly<Record<TemplateToken, string | null>>;
 export type HostBoundToken = Exclude<TemplateToken, "HARNESS_DIR">;
 
 export type HostTokenBindings = Readonly<Record<HostBoundToken, string | null>>;
+
+export type HostTokenChoices = Pick<HostTokenBindings, "SKILL_INVOKE" | "OPTION_LETTERS">;
+
+export type ChannelTokens = Pick<HostTokenBindings, "INVOKE" | "TOOL_PREFIX" | "TRUSTED_NAMESPACE">;

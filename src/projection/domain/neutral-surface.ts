@@ -1,7 +1,7 @@
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 
-export const NEUTRAL_DOCUMENT_ROLES = ["protocol", "template"] as const;
+export const NEUTRAL_DOCUMENT_ROLES = ["protocol", "template", "conductor", "stage", "knowledge"] as const;
 
 export type NeutralDocumentRole = (typeof NEUTRAL_DOCUMENT_ROLES)[number];
 
@@ -19,6 +19,11 @@ export type SessionSkill = {
 export type OnboardingTemplates = {
   readonly neutral: string;
   readonly harnessSkeleton: string;
+};
+
+export type OnboardingFills = {
+  readonly invoke: string;
+  readonly slots: Readonly<Record<string, string>>;
 };
 
 export type NeutralSurface = {

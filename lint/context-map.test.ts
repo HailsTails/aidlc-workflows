@@ -140,6 +140,11 @@ const EXPECTED_BRIDGES = [
     readBy: "src/packaging/adapters/legacy-channel.ts",
     retiresWhen: OWNER_MOVES,
   },
+  {
+    module: "core/tools/aidlc-archive.ts",
+    readBy: "src/packaging/adapters/legacy-archive.ts",
+    retiresWhen: OWNER_MOVES,
+  },
 ];
 
 describe("host and legacy boundaries", () => {
