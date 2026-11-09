@@ -11,6 +11,8 @@ import { globMatcher } from "../domain/glob.ts";
 import { importsAnyOf } from "../domain/legacy-selection.ts";
 import { judged, skipped, type Finding } from "../domain/outcome.ts";
 import { fileTimings, slowestNote, type FileTiming } from "../domain/test-timing.ts";
+import { impactedTests, type TestReach } from "../domain/test-impact.ts";
+import { pathsOf } from "../domain/change.ts";
 import type { GateCheck } from "./gate-check.ts";
 import { touches, type GateScope } from "./gate-scope.ts";
 import type {
@@ -32,6 +34,7 @@ export type TestSuite = {
   readonly concurrency?: number;
   readonly sharesPackageBuild?: boolean;
   readonly heavy?: boolean;
+  readonly selectsByImpact?: boolean;
 };
 
 export type TestsDependencies = {
@@ -43,6 +46,7 @@ export type TestsDependencies = {
   readonly capabilities: Capabilities;
   readonly exclusions: readonly CapabilityExclusion[];
   readonly build: SharedBuild;
+  readonly reachOf: (tests: readonly string[]) => TestReach;
 };
 
 type Run = {
@@ -52,6 +56,7 @@ type Run = {
   readonly concurrency: number;
   readonly sharesPackageBuild: boolean;
   readonly heavy: boolean;
+  readonly available: number;
 };
 
 type RunVerdict = {
@@ -69,13 +74,32 @@ const CAPABILITIES: readonly CapabilityId[] = ["symlinks", "short-names", "lista
 const follows = (text: string, modules: readonly string[]): boolean =>
   importsAnyOf({ text, modules });
 
-const selectedFiles = (dependencies: TestsDependencies, suite: TestSuite): readonly string[] => {
+const followingFiles = (dependencies: TestsDependencies, suite: TestSuite): readonly string[] => {
   const { workspace } = dependencies;
   const files = workspace.filesMatching(suite.tests);
   const { following } = suite;
   return following === undefined
     ? files
     : files.filter((file) => follows(workspace.read(file) ?? "", following));
+};
+
+const impactedFiles = (
+  dependencies: TestsDependencies,
+  request: {
+    readonly suite: TestSuite;
+    readonly scope: GateScope;
+    readonly files: readonly string[];
+  },
+): readonly string[] => {
+  const { suite, scope, files } = request;
+  const selecting = suite.selectsByImpact === true && !scope.allTests && scope.base !== undefined;
+  return selecting
+    ? impactedTests({
+        tests: files,
+        reach: dependencies.reachOf(files),
+        changed: pathsOf(scope.changes),
+      })
+    : files;
 };
 
 const commandsOf = (
@@ -88,11 +112,17 @@ const commandsOf = (
 const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly Run[] =>
   dependencies.suites
     .filter((suite) => scope.everything || touches(scope, suite.triggers))
-    .map((suite) => ({ suite, files: selectedFiles(dependencies, suite) }))
+    .map((suite) => ({ suite, available: followingFiles(dependencies, suite) }))
+    .map(({ suite, available }) => ({
+      suite,
+      available: available.length,
+      files: impactedFiles(dependencies, { suite, scope, files: available }),
+    }))
     .filter(({ files }) => files.length > 0)
-    .map(({ suite, files }) => ({
+    .map(({ suite, files, available }) => ({
       name: suite.name,
       files,
+      available,
       commands: commandsOf(dependencies, suite, files),
       concurrency: suite.concurrency ?? 1,
       sharesPackageBuild: suite.sharesPackageBuild === true,
@@ -111,12 +141,18 @@ const looseRun = (dependencies: TestsDependencies, scope: GateScope): readonly R
           concurrency: 1,
           sharesPackageBuild: false,
           heavy: false,
+          available: files.length,
         },
       ];
 };
 
 const probesOf = (capabilities: Capabilities): Probes =>
   Object.fromEntries(CAPABILITIES.map((id) => [id, capabilities.probe(id)])) as Probes;
+
+const countOf = (run: Run): string =>
+  run.files.length === run.available
+    ? `${run.files.length}`
+    : `${run.files.length} of ${run.available}`;
 
 const hintOf = (command: Command): string => command.argv.slice(1).join(" ");
 
@@ -246,7 +282,7 @@ export const testsCheck = (dependencies: TestsDependencies): GateCheck => ({
       return skipped("tests", "no changed context has tests");
     }
     const verdicts = await Promise.all(runs.map((run) => judgeRun({ dependencies, run, scope })));
-    const ran = runs.map((run) => `${run.name} (${run.files.length})`).join(", ");
+    const ran = runs.map((run) => `${run.name} (${countOf(run)})`).join(", ");
     const excluded = verdicts.map((verdict) => verdict.excluded).filter((note) => note !== "");
     const slowest = slowestNote(verdicts.flatMap((verdict) => verdict.timings), SLOWEST_FILES);
     const note = [ran, ...excluded, slowest].filter((part) => part !== "").join("; ");

@@ -11,6 +11,7 @@ export type ScopeFacts = {
   readonly everything: boolean;
   readonly build: boolean;
   readonly record: boolean;
+  readonly allTests: boolean;
 };
 
 export type GateScope = ScopeFacts & { readonly heavy: HeavySlot };
@@ -54,7 +55,7 @@ const laneScope = (
   }
   const changes = sources.repository.changesSince(base.value);
   const scope = { lane, base: base.value, changes, everything: false, build: false };
-  return { ok: true, value: { ...scope, record: request.record } };
+  return { ok: true, value: { ...scope, record: request.record, allTests: request.allTests } };
 };
 
 export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<ScopeFacts> => {
@@ -65,7 +66,7 @@ export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<Sc
   const paths = request.target.split(",").filter((path) => path !== "");
   const changes = pathChanges(sources.workspace, paths);
   const scope = { lane: undefined, base: undefined, changes, everything: false, build: false };
-  return { ok: true, value: { ...scope, record: request.record } };
+  return { ok: true, value: { ...scope, record: request.record, allTests: request.allTests } };
 };
 
 export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded<ScopeFacts> => {
@@ -78,8 +79,12 @@ export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded
     return base;
   }
   const changes = sources.repository.changesSince(base.value);
-  const { build, record } = request;
-  return { ok: true, value: { lane, base: base.value, changes, everything: true, build, record } };
+  const { build, record, allTests } = request;
+  const everything = true;
+  return {
+    ok: true,
+    value: { lane, base: base.value, changes, everything, build, record, allTests },
+  };
 };
 
 export const touches = (scope: GateScope, globs: readonly string[]): boolean => {

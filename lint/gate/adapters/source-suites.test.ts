@@ -12,6 +12,7 @@ const hostOnlyChange: GateScope = {
   everything: false,
   build: false,
   record: false,
+  allTests: false,
   heavy: { ensure: async () => ({ acquired: true }) },
 };
 
@@ -33,6 +34,7 @@ const check = testsCheck({
   capabilities: { probe: () => ({ available: true, evidence: "present" }) },
   exclusions: [],
   build: { ensure: () => undefined },
+  reachOf: () => ({}),
   testCommand: (files) => {
     ranFiles.push([...files]);
     return { label: "bun test", argv: ["test", ...files] };

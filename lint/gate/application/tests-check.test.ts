@@ -11,6 +11,7 @@ const SCOPE: GateScope = {
   everything: true,
   build: false,
   record: false,
+  allTests: false,
   heavy: { ensure: async () => ({ acquired: true }) },
 };
 const SUITE: TestSuite = { name: "legacy", triggers: ["**"], tests: ["tests/**/*.test.ts"] };
@@ -49,6 +50,7 @@ const checkWith = (request: {
     },
     exclusions: [{ capability: "symlinks", cases: [LISTED] }],
     build: request.build ?? { ensure: () => undefined },
+    reachOf: () => ({}),
   });
 
 describe("the tests check tells capability reds from regressions", () => {
@@ -107,9 +109,10 @@ describe("the tests check tells capability reds from regressions", () => {
   });
 });
 
+const BUILT_SCOPE: GateScope = { ...SCOPE, build: true };
+
 describe("the tests check shares one package build", () => {
   const PACKAGED: TestSuite = { ...SUITE, sharesPackageBuild: true };
-  const BUILT_SCOPE: GateScope = { ...SCOPE, build: true };
 
   const captured = (commands: Command[]) => ({
     capture: (command: Command): CommandResult => {
@@ -130,6 +133,7 @@ describe("the tests check shares one package build", () => {
       capabilities: { probe: () => ({ available: true, evidence: "present" }) },
       exclusions: [],
       build: request.build,
+      reachOf: () => ({}),
     });
 
   test("the suite runs with the build marked ready, after asking for the build", async () => {
@@ -204,6 +208,7 @@ const check = (suite: TestSuite, commands: Command[]) =>
     capabilities: { probe: () => ({ available: true, evidence: "present" }) },
     exclusions: [],
     build: { ensure: () => undefined },
+    reachOf: () => ({}),
   });
 
 describe("the tests check takes a machine slot for the legacy suites only", () => {
@@ -267,6 +272,7 @@ describe("a parallel suite names the run that failed", () => {
       capabilities: { probe: () => ({ available: true, evidence: "present" }) },
       exclusions: [],
       build: { ensure: () => undefined },
+      reachOf: () => ({}),
     });
 
   test("the fix names the command of the run the case failed in", async () => {
@@ -274,5 +280,76 @@ describe("a parallel suite names the run that failed", () => {
 
     expect(outcome.findings[0]?.fix).toContain("second-shard");
     expect(outcome.findings[0]?.fix).not.toContain("first-shard");
+  });
+});
+
+const IDLE_RUNNER = {
+  capture: () => ({ exitCode: 0, output: "" }),
+  captureAll: async () => [],
+  attach: () => 0,
+};
+
+const MATRIX: TestSuite = {
+  ...SUITE,
+  tests: ["tests/unit/**/*.test.ts"],
+  selectsByImpact: true,
+};
+const FILES = ["tests/unit/a.test.ts", "tests/unit/b.test.ts"];
+const REACH = {
+  "tests/unit/a.test.ts": ["core/tools/a.ts"],
+  "tests/unit/b.test.ts": ["core/tools/b.ts"],
+};
+const BASE = { ref: "origin/rebuild/foundation", commit: "abc" };
+
+const changed = (path: string, allTests = false): GateScope => ({
+  ...SCOPE,
+  base: BASE,
+  changes: [{ path, kind: "modified" }],
+  allTests,
+});
+
+const recorded = (ran: (readonly string[])[], files: readonly string[]): Command => {
+  ran.push(files);
+  return { label: "m", argv: ["m"] };
+};
+
+const matrixCheck = (ran: (readonly string[])[]) =>
+  testsCheck({
+    runner: IDLE_RUNNER,
+    workspace: { read: () => "", write: () => undefined, filesMatching: () => FILES },
+    suites: [{ ...MATRIX, command: (files) => recorded(ran, files) }],
+    looseTests: [],
+    testCommand: () => ({ label: "bun test", argv: ["bun", "test"] }),
+    capabilities: { probe: () => ({ available: true, evidence: "present" }) },
+    exclusions: [],
+    build: { ensure: () => undefined },
+    reachOf: () => REACH,
+  });
+
+describe("the legacy matrix runs only what the change can reach", () => {
+
+  test("a change reaches one test file, so only that file runs, and the note says so", async () => {
+    const ran: (readonly string[])[] = [];
+
+    const outcome = await matrixCheck(ran).run(changed("core/tools/a.ts"));
+
+    expect(ran).toEqual([["tests/unit/a.test.ts"]]);
+    expect(outcome.note).toContain("1 of 2");
+  });
+
+  test("red: --all-tests runs every file whatever the change reaches", async () => {
+    const ran: (readonly string[])[] = [];
+
+    await matrixCheck(ran).run(changed("docs/guide/x.md", true));
+
+    expect(ran).toEqual([FILES]);
+  });
+
+  test("a change nothing reaches runs none of the matrix", async () => {
+    const ran: (readonly string[])[] = [];
+
+    await matrixCheck(ran).run(changed("docs/guide/x.md"));
+
+    expect(ran).toEqual([]);
   });
 });

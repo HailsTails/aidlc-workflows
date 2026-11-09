@@ -25,6 +25,7 @@ const scopeWith = (changes: readonly ChangedFile[]): GateScope => ({
   everything: false,
   build: false,
   record: false,
+  allTests: false,
   heavy: { ensure: async () => ({ acquired: true }) },
 });
 

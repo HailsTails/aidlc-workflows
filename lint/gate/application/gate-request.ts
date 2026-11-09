@@ -7,6 +7,7 @@ export type ScopeRequest = {
   readonly target: string;
   readonly baseRef: string;
   readonly record: boolean;
+  readonly allTests: boolean;
   readonly waitMs: number;
   readonly only: CheckSelection;
 };
@@ -17,6 +18,7 @@ export type FullRequest = {
   readonly baseRef: string;
   readonly build: boolean;
   readonly record: boolean;
+  readonly allTests: boolean;
   readonly waitMs: number;
   readonly only: CheckSelection;
 };

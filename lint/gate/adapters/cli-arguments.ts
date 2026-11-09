@@ -13,6 +13,7 @@ export type ArgumentDefaults = {
 export const USAGE = [
   "bun scripts/gate.ts --scope <lane-id>|<path>[,<path>...] [--base <ref>] [--record]",
   "bun scripts/gate.ts --full [--lane <lane-id>] [--base <ref>] [--no-build] [--record]",
+  "                    [--all-tests]",
   "                    [--wait <seconds> | --no-wait]",
   "bun scripts/gate.ts --update-goldens [--no-build] [--wait <seconds> | --no-wait]",
   "bun scripts/gate.ts --locked [--wait <seconds> | --no-wait] -- <command> [args...]",
@@ -51,6 +52,7 @@ const OPTIONS = {
   wait: { type: "string" },
   "no-wait": { type: "boolean" },
   "no-build": { type: "boolean" },
+  "all-tests": { type: "boolean" },
   record: { type: "boolean" },
   "update-goldens": { type: "boolean" },
   locked: { type: "boolean" },
@@ -71,6 +73,7 @@ const RawSchema = z.object({
   wait: z.coerce.number().int().nonnegative().optional(),
   "no-wait": z.boolean().optional(),
   "no-build": z.boolean().optional(),
+  "all-tests": z.boolean().optional(),
   record: z.boolean().optional(),
   "update-goldens": z.boolean().optional(),
   locked: z.boolean().optional(),
@@ -100,11 +103,21 @@ const requestFor = (parsed: Parsed, defaults: ArgumentDefaults): GateRequest => 
   const only = raw.only ?? "all";
   const wait = waitMs(raw, defaults);
   const build = raw["no-build"] !== true;
+  const allTests = raw["all-tests"] === true;
   if (raw.scope !== undefined) {
-    return { kind: "scope", target: raw.scope, baseRef, record, waitMs: wait, only };
+    return { kind: "scope", target: raw.scope, baseRef, record, allTests, waitMs: wait, only };
   }
   if (raw.full === true) {
-    return { kind: "full", laneId: raw.lane, baseRef, build, record, waitMs: wait, only };
+    return {
+      kind: "full",
+      laneId: raw.lane,
+      baseRef,
+      build,
+      record,
+      allTests,
+      waitMs: wait,
+      only,
+    };
   }
   return raw.locked === true
     ? { kind: "locked", command: positionals, waitMs: wait }

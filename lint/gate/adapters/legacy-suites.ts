@@ -116,6 +116,7 @@ export const legacySuites = (
     following: ["harness-matrix"],
     sharesPackageBuild: true,
     heavy: true,
+    selectsByImpact: true,
     command: (files) =>
       runnerCommand({
         runner,

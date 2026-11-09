@@ -37,6 +37,7 @@ import {
 } from "../lint/gate/adapters/record-locations.ts";
 import { capabilityProbes } from "../lint/gate/adapters/capability-probes.ts";
 import { environmentExclusions } from "../lint/gate/adapters/environment-exclusions.ts";
+import { testReach } from "../lint/gate/adapters/test-reach.ts";
 import { transpilerCacheFolder } from "../lint/gate/adapters/transpiler-cache.ts";
 import { legacyEnvironment, legacySuites } from "../lint/gate/adapters/legacy-suites.ts";
 import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
@@ -187,6 +188,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     exclusions: environmentExclusions(workspace),
     testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
     build: packageBuild,
+    reachOf: (tests) => testReach({ workspace, tests }),
   }),
 ];
 

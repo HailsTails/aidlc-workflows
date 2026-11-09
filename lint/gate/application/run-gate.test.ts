@@ -52,6 +52,7 @@ const scopeRequest = (only: ScopeRequest["only"]): ScopeRequest => ({
   target: "lint/x.ts",
   baseRef: "origin/rebuild/foundation",
   record: false,
+  allTests: false,
   waitMs: 0,
   only,
 });
@@ -136,6 +137,7 @@ describe("runGateRequest machine slot", () => {
       baseRef: "origin/rebuild/foundation",
       build: false,
       record: false,
+      allTests: false,
       waitMs: 0,
       only: ["tests" as const],
     };
