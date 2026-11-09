@@ -133,12 +133,54 @@ jobs:
               import { redactSecrets } from "./scripts/ci-sanitize-logs.ts";
               const started = Date.now();
               const emit = (line) => writeSync(1, line + "\n");
-              const heartbeat = setInterval(() => {
-                emit(`[milestone] ${Math.floor((Date.now() - started) / 1000)}s elapsed; waiting for runner output or exit, not a completion result.`);
-              }, 60000);
+              // This is an observation of the existing console contract, not
+              // a new test result or an estimate of remaining execution time.
+              let tier = "setup / not yet reported";
+              let completed = 0, failed = 0, skipped = 0;
+              let lastAdvance = started;
+              let lastEvent = "no file START/DONE observed yet";
+              const active = new Map();
+              const seconds = (since) => Math.floor((Date.now() - since) / 1000);
+              const progress = () => {
+                const running = [...active].flatMap(([name, starts]) =>
+                  starts.map((time) => `${name} (${seconds(time)}s since START)`));
+                const quiet = seconds(lastAdvance);
+                emit(`[milestone] ${seconds(started)}s elapsed; tier=${tier}; observed DONE=${completed} (FAIL=${failed}, SKIP=${skipped}); total=not reported by this runner, no percentage/ETA.`);
+                emit(`[milestone] Active observed START without DONE: ${running.join(", ") || "none; setup/transition or unreported work may be running"}`);
+                emit(`[milestone] Last file advancement: ${lastEvent}; ${quiet}s ago. ${quiet >= 300 ? "STALE OBSERVATION: no file START/DONE for 5+ minutes; a long file can be working normally, this does not prove a hang." : "Not a completion or liveness guarantee."}`);
+              };
+              const observe = (line) => {
+                const banner = line.match(/^## ((?:Smoke|Unit|Integration) Tests.*)$/);
+                if (banner) tier = banner[1];
+                const start = line.match(/^=== START (\S+\.test\.ts) ===$/);
+                const done = line.match(/^=== DONE (\S+\.test\.ts) \((PASS|FAIL|SKIP)\) ===$/);
+                if (start) {
+                  const starts = active.get(start[1]) ?? [];
+                  starts.push(Date.now());
+                  active.set(start[1], starts);
+                }
+                if (done) {
+                  completed++;
+                  failed += Number(done[2] === "FAIL");
+                  skipped += Number(done[2] === "SKIP");
+                  const starts = active.get(done[1]);
+                  if (starts) {
+                    starts.shift();
+                    if (!starts.length) active.delete(done[1]);
+                  }
+                }
+                if (start || done) {
+                  lastAdvance = Date.now();
+                  lastEvent = `${done ? "DONE" : "START"} ${(done ?? start)[1]}`;
+                }
+              };
+              progress();
+              const heartbeat = setInterval(progress, 60000);
               try {
                 for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
-                  emit(redactSecrets(line));
+                  const sanitized = redactSecrets(line);
+                  emit(sanitized);
+                  observe(sanitized);
                 }
               } catch {
                 // Never print an exception that might contain unsanitized input.
@@ -146,6 +188,7 @@ jobs:
                 process.exitCode = 1;
               } finally {
                 clearInterval(heartbeat);
+                progress();
               }
             '
           statuses=("${PIPESTATUS[@]}")
