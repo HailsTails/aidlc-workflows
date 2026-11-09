@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, parse } from "node:path";
 import { processRunner } from "./process-runner.ts";
 import { runTemp } from "./run-temp.ts";
 
@@ -117,5 +117,45 @@ describe("captureAll", () => {
     } finally {
       dispose();
     }
+  });
+});
+describe("fixture depth within the gate boundary", () => {
+  test("file fixtures keep a real project leaf short and independently removable", () => {
+    const temp = runTemp(ROOT);
+    const script = `
+      const { createE2eTemporaryRoot } = await import("./tests/lib/e2e-workers.ts");
+      const { mkdtempSync, rmSync, existsSync } = await import("node:fs");
+      const { join, dirname } = await import("node:path");
+      const first = await createE2eTemporaryRoot();
+      const second = await createE2eTemporaryRoot();
+      const leaf = mkdtempSync(join(first, "aidlc-t243-quiet-"));
+      const child = Bun.spawnSync([process.execPath, "-e",
+        'const {createE2eTemporaryRoot}=await import("./tests/lib/e2e-workers.ts");' +
+        'console.log(await createE2eTemporaryRoot());'],
+        {env:{...process.env,TEMP:first,TMP:first,TMPDIR:first}});
+      if (child.exitCode !== 0) throw Error(child.stderr.toString());
+      const nested = child.stdout.toString().trim();
+      rmSync(first, {recursive:true});
+      console.log(JSON.stringify({first,second,leaf,nested,
+        firstRemoved:!existsSync(first),nestedRemoved:!existsSync(nested),
+        secondSurvives:existsSync(second)}));
+    `;
+    try {
+      const result = processRunner(ROOT, temp.path).capture({
+        label: "fixture leaf", argv: [process.execPath, "-e", script],
+      });
+      expect(result.exitCode, result.output).toBe(0);
+      const paths = JSON.parse(result.output);
+      expect(dirname(paths.first)).toBe(temp.path);
+      expect(dirname(paths.second)).toBe(temp.path);
+      expect(paths.first).not.toBe(paths.second);
+      expect(dirname(paths.nested)).toBe(paths.first);
+      expect(parse(paths.leaf).root).toBe(parse(temp.path).root);
+      expect(paths.firstRemoved && paths.nestedRemoved && paths.secondSurvives).toBe(true);
+      if (process.platform === "win32") expect(paths.leaf.length).toBeLessThan(75);
+    } finally {
+      temp.dispose();
+    }
+    expect(existsSync(temp.path)).toBe(false);
   });
 });

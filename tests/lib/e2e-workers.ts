@@ -165,7 +165,7 @@ export async function createE2eTemporaryRoot(candidates?: string[]): Promise<str
     }
     if (insideRepository) continue;
     try {
-      return await mkdtemp(join(base, "aidlc-e2e-fixtures-"));
+      return await mkdtemp(join(base, "f-"));
     } catch (error) {
       if (!["EACCES", "EPERM", "ENOENT"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
     }
