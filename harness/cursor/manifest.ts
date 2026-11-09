@@ -117,24 +117,12 @@ const manifest: HarnessManifest = {
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
     { src: "hooks", dst: "hooks" },
-    { src: "skills/aidlc-session-cost", dst: "skills/aidlc-session-cost" },
-    { src: "skills/aidlc-replay", dst: "skills/aidlc-replay" },
-    { src: "skills/aidlc-outcomes-pack", dst: "skills/aidlc-outcomes-pack" },
-    { src: "skills/aidlc-issue-report", dst: "skills/aidlc-issue-report" },
-    { src: "skills/aidlc-knowledge", dst: "skills/aidlc-knowledge" },
   ],
 
   harnessFiles: [
     // The orchestrator skill — Cursor-native layout, /aidlc invocation.
-    { src: "skills/aidlc/SKILL.md", dst: "skills/aidlc/SKILL.md" },
-    { src: "skills/aidlc/question-rendering.md", dst: "skills/aidlc/question-rendering.md" },
-    { src: "skills/aidlc/composer.md", dst: "skills/aidlc/composer.md" },
-    { src: "skills/aidlc/tables.md", dst: "skills/aidlc/tables.md" },
     // Cursor-native shortcut skills. Cursor's commands/ surface is legacy;
     // skills are the current slash-invocation primitive.
-    { src: "skills/aidlc-status/SKILL.md", dst: "skills/aidlc-status/SKILL.md" },
-    { src: "skills/aidlc-jump/SKILL.md", dst: "skills/aidlc-jump/SKILL.md" },
-    { src: "skills/aidlc-scope/SKILL.md", dst: "skills/aidlc-scope/SKILL.md" },
     // AIDLC method pointers: standing layers always apply; phase guidance is
     // agent-decided. Cursor has no @-import expansion, so each carries a READ
     // instruction naming aidlc/active-memory/. /aidlc space refreshes that
