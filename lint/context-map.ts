@@ -147,6 +147,14 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
       "plugin build and plugin test still reach.",
   },
   shippedOwner("aidlc", "src/projection/adapters/legacy-dispatcher.ts"),
+  {
+    module: "harness/kiro-ide/delegate-shell-deny.ts",
+    readBy: "src/projection/adapters/legacy-delegate-shell.ts",
+    retiresWhen:
+      "Phase 2 delegate-shell cutover: the runtime guards, dispatcher routes and trusted-command " +
+      "owners it reads move into src and ship in the runtime bundle (R1), then the policy moves " +
+      "to src/hosts/kiro-ide beside kiroIdePermissionLines.",
+  },
   shippedOwner("aidlc-distribution", "src/packaging/adapters/legacy-distribution.ts"),
   shippedOwner("aidlc-version", "src/packaging/adapters/legacy-version.ts"),
   shippedOwner("aidlc-channel", "src/packaging/adapters/legacy-channel.ts"),
