@@ -299,6 +299,8 @@ export type RuntimeProjectionRequest = {
 export type RuntimeProjection = (request: RuntimeProjectionRequest) => Rendering;
 
 export interface BuildProjection {
+  readonly readRuntime: RuntimeReading;
+  readonly projectRuntime: RuntimeProjection;
   readonly projectHostSurface: HostSurfaceProjection;
   readonly readSessionSkills: SessionSkillReading;
   readonly projectSkills: SkillProjection;

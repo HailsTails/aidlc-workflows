@@ -16,7 +16,7 @@ import onboardingFills from "./onboarding.fills.ts";
 const manifest: HarnessManifest = {
   name: "codex",
   productName: CODEX_HOST_DATA.productName,
-  statusLine: CODEX_HOST_DATA.statusLine,
+  statusLine: { items: [...CODEX_HOST_DATA.statusLine.items] },
   configNextStep: CODEX_HOST_DATA.configNextStep,
   hookActivation: CODEX_HOST_DATA.hookActivation,
   hostShell: CODEX_HOST_DATA.hostShell,

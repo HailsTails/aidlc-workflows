@@ -2,7 +2,7 @@ import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import type { Projection } from "../domain/projection.ts";
 import { methodPath, text } from "./values.fixture.ts";
 
-export const claudeProjectionFixture: Projection = {
+export const claudeProjectionFixture = {
   host: host({ name: "claude", directory: ".claude" }),
   files: [
     {
@@ -119,4 +119,4 @@ export const claudeProjectionFixture: Projection = {
     },
   ],
   findings: [],
-};
+} as const satisfies Projection;

@@ -2,7 +2,7 @@ import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import type { Projection } from "../domain/projection.ts";
 import { text } from "./values.fixture.ts";
 
-export const codexProjectionFixture: Projection = {
+export const codexProjectionFixture = {
   host: host({ name: "codex", directory: ".codex" }),
   files: [
     {
@@ -71,4 +71,4 @@ export const codexProjectionFixture: Projection = {
     },
   ],
   findings: [],
-};
+} as const satisfies Projection;
