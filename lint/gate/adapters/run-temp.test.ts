@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { processRunner } from "./process-runner.ts";
@@ -33,18 +33,58 @@ describe("the per-run temp folder", () => {
   });
 });
 
+
+const controlledChild = (label: string, started: string[]) => {
+  const exit = Promise.withResolvers<number>();
+  const launch = Promise.withResolvers<undefined>();
+  return {
+    started: launch.promise,
+    finish: () => exit.resolve(0),
+    spawn: () => {
+      started.push(label);
+      launch.resolve(undefined);
+      return {
+        stdout: new Response(label).body,
+        stderr: new Response("").body,
+        exited: exit.promise,
+      } as ReturnType<typeof Bun.spawn>;
+    },
+  };
+};
+const controlledSpawns = () => {
+  const started: string[] = [];
+  const a = controlledChild("a", started);
+  const b = controlledChild("b", started);
+  const c = controlledChild("c", started);
+  const d = controlledChild("d", started);
+  const spawn = spyOn(Bun, "spawn")
+    .mockImplementationOnce(a.spawn)
+    .mockImplementationOnce(b.spawn)
+    .mockImplementationOnce(c.spawn)
+    .mockImplementationOnce(d.spawn);
+  return {
+    started, a, b, c, d,
+    dispose: () => {
+      a.finish();
+      b.finish();
+      c.finish();
+      d.finish();
+      spawn.mockRestore();
+    },
+  };
+};
 describe("captureAll", () => {
-  const SLEEP = "await Bun.sleep(700); console.log(process.argv[1])";
-  const sleeping = (label: string) => ({
+  const PRINT_LABEL = "console.log(process.argv[1])";
+  const printing = (label: string) => ({
     label,
-    argv: [process.execPath, "-e", SLEEP, label],
+    argv: [process.execPath, "-e", PRINT_LABEL, label],
   });
 
   test("results come back in command order whatever order they finish in", async () => {
     const temp = runTemp(ROOT);
     const runner = processRunner(ROOT, temp.path);
     const results = await runner.captureAll({
-      commands: [sleeping("a"), sleeping("b"), sleeping("c")],
+      commands: [printing("a"), printing("b"), printing("c")],
       concurrency: 3,
     });
     temp.dispose();
@@ -52,15 +92,29 @@ describe("captureAll", () => {
   });
 
   test("commands run side by side up to the limit", async () => {
-    const temp = runTemp(ROOT);
-    const runner = processRunner(ROOT, temp.path);
-    const started = Date.now();
-    await runner.captureAll({
-      commands: [sleeping("a"), sleeping("b"), sleeping("c"), sleeping("d")],
-      concurrency: 4,
-    });
-    const elapsed = Date.now() - started;
-    temp.dispose();
-    expect(elapsed).toBeLessThan(2200);
+    const { started, a, b, c, d, dispose } = controlledSpawns();
+    try {
+      const pending = processRunner(ROOT, ROOT).captureAll({
+        commands: [printing("a"), printing("b"), printing("c"), printing("d")],
+        concurrency: 2,
+      });
+      expect(started).toEqual(["a", "b"]);
+      b.finish();
+      await c.started;
+      expect(started).toEqual(["a", "b", "c"]);
+      c.finish();
+      await d.started;
+      expect(started).toEqual(["a", "b", "c", "d"]);
+      d.finish();
+      a.finish();
+      expect(await pending).toEqual([
+        { exitCode: 0, output: "a" },
+        { exitCode: 0, output: "b" },
+        { exitCode: 0, output: "c" },
+        { exitCode: 0, output: "d" },
+      ]);
+    } finally {
+      dispose();
+    }
   });
 });
