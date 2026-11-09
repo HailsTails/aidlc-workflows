@@ -11,7 +11,7 @@ import type { ProjectionRefusal } from "../src/projection/domain/projection.ts";
 import { accepted, refused, type Result } from "../src/kernel/result.ts";
 import type { OnboardingFills } from "../src/projection/domain/neutral-surface.ts";
 import type { Method } from "../src/workflow-definition/domain/method.ts";
-import type { CommandPlacement } from "../src/projection/application/ports.ts";
+import type { CommandPlacement } from "../src/projection/application/ports/commands.ts";
 import type { MethodSource } from "../src/workflow-definition/domain/method-source.ts";
 
 /** A single core dir projected from core/<src> into <harnessDir>/<dst>. */

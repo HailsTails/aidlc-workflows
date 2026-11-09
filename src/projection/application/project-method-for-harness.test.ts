@@ -6,7 +6,7 @@ import { methodSource } from "../../workflow-definition/fixtures/method-source.f
 import { claudeProjectionFixture } from "../fixtures/claude-projection.fixture.ts";
 import { codexProjectionFixture } from "../fixtures/codex-projection.fixture.ts";
 import { tokenBindingsFixture } from "../fixtures/token-bindings.fixture.ts";
-import type { Harness, HarnessRegistry, HostedHarness, Rendering } from "./ports.ts";
+import type { Harness, HarnessRegistry, HostedHarness, Rendering } from "./ports/harness.ts";
 import type { ProjectMethodRequest } from "./use-cases.ts";
 import { createProjectMethodForHarness } from "./project-method-for-harness.ts";
 

@@ -1,7 +1,8 @@
 import { asFolder } from "../../kernel/file-system-port.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { SkillTableRenderer, SkillTableVerb } from "../domain/neutral-surface.ts";
-import type { LegacyRunnerProcess, LegacyRunnerScratch, SkillProjectionRequest } from "../application/ports.ts";
+import type { LegacyRunnerProcess, LegacyRunnerScratch } from "../application/ports/legacy-runner.ts";
+import type { SkillProjectionRequest } from "../application/ports/skills.ts";
 import type { Depth } from "../../workflow-definition/domain/vocabulary.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import { scopeColumn } from "../../workflow-definition/domain/scope-grid.ts";

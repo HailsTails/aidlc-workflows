@@ -5,7 +5,8 @@ import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { tokenBindingsFixture } from "./fixtures/token-bindings.fixture.ts";
-import type { HostAgentRenderer, HostSettingsRenderer } from "./application/ports.ts";
+import type { HostAgentRenderer } from "./application/ports/agents.ts";
+import type { HostSettingsRenderer } from "./application/ports/settings.ts";
 import { createBuildProjection } from "./core-root.ts";
 
 const identity = host({ name: "claude", directory: ".claude" });

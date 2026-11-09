@@ -1,6 +1,6 @@
 import { source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
-import type { SkillRenderingInputs } from "../application/ports.ts";
+import type { SkillRenderingInputs } from "../application/ports/skills.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import type { SessionSkill, SkillTableVerb } from "../domain/neutral-surface.ts";
 import { tokenBindingsFixture } from "./token-bindings.fixture.ts";

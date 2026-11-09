@@ -12,18 +12,14 @@ import type { Result } from "../kernel/result.ts";
 import type { KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout, HostDistribution } from "../packaging/domain/payload.ts";
-import type {
-  AuthoredFilePreparer,
-  CommandPlacement,
-  CommandSource,
-  Harness,
-  HostAgentRenderer,
-  HostDataRenderer,
-  HostDocumentRenderer,
-  HostSettingsRenderer,
-  HostSkillRenderer,
-  Rendering,
-} from "../projection/application/ports.ts";
+import type { AuthoredFilePreparer } from "../projection/application/ports/host-sources.ts";
+import type { CommandPlacement, CommandSource } from "../projection/application/ports/commands.ts";
+import type { Harness, Rendering } from "../projection/application/ports/harness.ts";
+import type { HostAgentRenderer } from "../projection/application/ports/agents.ts";
+import type { HostDataRenderer } from "../projection/application/ports/host-surface.ts";
+import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
+import type { HostSettingsRenderer } from "../projection/application/ports/settings.ts";
+import type { HostSkillRenderer } from "../projection/application/ports/skills.ts";
 import type { AuthoredHostFile, AuthoredPlacement } from "../projection/domain/host-surface.ts";
 import type { DistributionChannel, ProjectedFile } from "../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";

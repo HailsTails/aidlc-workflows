@@ -14,7 +14,7 @@ import { accepted, refused } from "../../kernel/result.ts";
 import { createInMemoryFileSystem } from "../../kernel/fixtures/file-system.fake.ts";
 import { createScriptedProcessRunner } from "../../kernel/fixtures/process-runner.fake.ts";
 import { host } from "../../kernel/fixtures/values.fixture.ts";
-import type { LegacyRunnerScratch } from "../application/ports.ts";
+import type { LegacyRunnerScratch } from "../application/ports/legacy-runner.ts";
 import { prepareLegacySkillTables } from "./legacy-skill-tables.ts";
 
 const request = { method: methodSliceFixture, host: host({ name: "claude", directory: ".claude" }),

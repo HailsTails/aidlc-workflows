@@ -4,7 +4,8 @@ import { accepted, refused } from "../../kernel/result.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { Tier } from "../../workflow-definition/domain/vocabulary.ts";
-import type { AgentModelPolicy, CliModelPolicy } from "../application/ports.ts";
+import type { AgentModelPolicy } from "../application/ports/agents.ts";
+import type { CliModelPolicy } from "../application/ports/settings.ts";
 
 export const legacyAgentModelPolicy = (cap: Tier | null): AgentModelPolicy => (request) => {
   if (!isModelHarness(request.host.distribution)) return refused({

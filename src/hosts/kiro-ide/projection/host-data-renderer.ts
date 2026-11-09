@@ -1,4 +1,4 @@
-import type { HostDataRenderer } from "../../../projection/application/ports.ts";
+import type { HostDataRenderer } from "../../../projection/application/ports/host-surface.ts";
 import { KIRO_IDE_HOST_DATA } from "../host-data.ts";
 import { kiroIdePermissionLines } from "./agent-renderer.ts";
 

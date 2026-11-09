@@ -1,5 +1,5 @@
 import { source } from "../../kernel/fixtures/values.fixture.ts";
-import type { DocumentRenderingInputs } from "../application/ports.ts";
+import type { DocumentRenderingInputs } from "../application/ports/documents.ts";
 import type { NeutralDocument, OnboardingFills, OnboardingTemplates } from "../domain/neutral-surface.ts";
 import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
 import { text } from "./values.fixture.ts";

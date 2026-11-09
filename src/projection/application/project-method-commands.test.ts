@@ -1,7 +1,7 @@
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
-import type { Rendering } from "./ports.ts";
+import type { Rendering } from "./ports/harness.ts";
 import { projectMethodCommands } from "./project-method-commands.ts";
 
 test("the command substep visits the compiled stages, scopes and orchestrator exactly once", () => {

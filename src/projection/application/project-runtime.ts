@@ -6,7 +6,8 @@ import type { RuntimeFile } from "../domain/neutral-surface.ts";
 import type { RuntimeDataName } from "../domain/projected-file.ts";
 import type { TokenBindings } from "../domain/template-token.ts";
 import { bindCopiedSource } from "../domain/source-binding.ts";
-import type { Rendering, RuntimeProjection } from "./ports.ts";
+import type { Rendering } from "./ports/harness.ts";
+import type { RuntimeProjection } from "./ports/runtime.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 
 const runtimeFile = (request: {

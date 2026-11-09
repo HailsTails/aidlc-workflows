@@ -5,7 +5,8 @@ import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../domain/ho
 import type { DistributionChannel } from "../domain/projected-file.ts";
 import type { TokenBindings } from "../domain/template-token.ts";
 import { bindTemplateTokens } from "../domain/token-binding.ts";
-import type { AuthoredFilePreparer, Harness, Rendering } from "./ports.ts";
+import type { AuthoredFilePreparer } from "./ports/host-sources.ts";
+import type { Harness, Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 
 const hookStrings = (hookValue: unknown, tokens: TokenBindings): unknown => {
