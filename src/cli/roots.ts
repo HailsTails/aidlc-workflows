@@ -168,6 +168,18 @@ export type HostSurfaceRequest = {
 
 export type ProjectHostSurface = (request: HostSurfaceRequest) => Rendering;
 
+export type HostSettingsRequest = {
+  readonly host: HostIdentity;
+  readonly method: Method;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly channel: DistributionChannel;
+  readonly entrypoints: readonly SourcePath[];
+};
+
+export type ProjectSettings = (request: HostSettingsRequest) => Rendering;
+
 export type HostRuntimeRequest = {
   readonly host: HostIdentity;
   readonly method: Method;
