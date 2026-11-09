@@ -6,6 +6,7 @@ import type { HeavySlot, Loaded, Repository, Workspace } from "./ports.ts";
 
 export type ScopeFacts = {
   readonly lane: Lane | undefined;
+  readonly lanes?: readonly Lane[];
   readonly base: BaseRevision | undefined;
   readonly changes: readonly ChangedFile[];
   readonly everything: boolean;
@@ -39,6 +40,17 @@ const unknownLane = (plan: LanePlan, id: string): Loaded<never> => ({
   fix: `Use one of the lane ids in lanes.json: ${plan.lanes.map((lane) => lane.id).join(", ")}.`,
 });
 
+const declaredLanes = (plan: LanePlan, ids: string): Loaded<readonly Lane[]> => {
+  const names = [...new Set(ids.split("+"))];
+  const unknown = names.find((id) => laneById(plan, id) === undefined);
+  return unknown !== undefined
+    ? unknownLane(plan, unknown)
+    : { ok: true, value: plan.lanes.filter((lane) => names.includes(lane.id)) };
+};
+
+export const scopeLaneId = (scope: ScopeFacts): string | undefined =>
+  scope.lanes?.map((lane) => lane.id).join("+") ?? scope.lane?.id;
+
 const withoutTrailingSlash = (path: string): string => path.replace(/\/$/, "");
 
 const pathChanges = (workspace: Workspace, paths: readonly string[]): readonly ChangedFile[] => {
@@ -55,21 +67,24 @@ const pathChanges = (workspace: Workspace, paths: readonly string[]): readonly C
 const laneScope = (
   sources: ScopeSources,
   request: ScopeRequest,
-  lane: Lane,
+  lanes: readonly Lane[],
 ): Loaded<ScopeFacts> => {
   const base = baseFor(sources.repository, request.baseRef);
   if (!base.ok) {
     return base;
   }
   const changes = sources.repository.changesSince(base.value);
-  const scope = { lane, base: base.value, changes, everything: false, build: false };
+  const scope = {
+    lane: lanes[0], lanes, base: base.value, changes, everything: false, build: false,
+  };
   return { ok: true, value: { ...scope, record: request.record, allTests: request.allTests } };
 };
 
 export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<ScopeFacts> => {
   const lane = laneById(sources.plan, request.target);
-  if (lane !== undefined) {
-    return laneScope(sources, request, lane);
+  if (lane !== undefined || request.target.includes("+")) {
+    const lanes = declaredLanes(sources.plan, request.target);
+    return lanes.ok ? laneScope(sources, request, lanes.value) : lanes;
   }
   const paths = request.target.split(",").filter((path) => path !== "");
   const changes = pathChanges(sources.workspace, paths);
@@ -78,10 +93,13 @@ export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<Sc
 };
 
 export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded<ScopeFacts> => {
-  const lane = request.laneId === undefined ? undefined : laneById(sources.plan, request.laneId);
-  if (request.laneId !== undefined && lane === undefined) {
-    return unknownLane(sources.plan, request.laneId);
+  const lanes = request.laneId === undefined
+    ? { ok: true as const, value: [] }
+    : declaredLanes(sources.plan, request.laneId);
+  if (!lanes.ok) {
+    return lanes;
   }
+  const lane = lanes.value[0];
   const base = baseFor(sources.repository, request.baseRef);
   if (!base.ok) {
     return base;
@@ -91,7 +109,9 @@ export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded
   const everything = true;
   return {
     ok: true,
-    value: { lane, base: base.value, changes, everything, build, record, allTests },
+    value: {
+      lane, lanes: lanes.value, base: base.value, changes, everything, build, record, allTests,
+    },
   };
 };
 

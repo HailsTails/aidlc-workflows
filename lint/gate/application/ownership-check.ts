@@ -11,6 +11,7 @@ import {
   refusalFor,
   type Claim,
 } from "../domain/ownership.ts";
+import { scopeLaneId } from "./gate-scope.ts";
 import type { GateCheck } from "./gate-check.ts";
 import type { JsonReader, ModuleReader, Repository, Workspace } from "./ports.ts";
 
@@ -148,14 +149,22 @@ export const ownershipCheck = (dependencies: OwnershipDependencies): GateCheck =
     if (lane === undefined || base === undefined) {
       return skipped("ownership", "no lane named; pass --scope <lane-id> or --full --lane <id>");
     }
-    const shared = { records: dependencies.sharedRecords };
-    const claims = scope.changes.map((change) => ({
-      evidence: { dependencies, base, change },
-      claim: claimFor({ plan: dependencies.plan, lane, path: change.path }, shared),
-    }));
-    const movedNames = movedNamesOf(lane, claims);
-    const findings = claims.flatMap((claimed) => findingsFor({ claimed, lane, movedNames }));
-    const note = `${scope.changes.length} changed files against ${base.ref}, lane ${lane.id}`;
+    const lanes = scope.lanes ?? [lane];
+    const perLane = lanes.map((owner) => {
+      const shared = { records: dependencies.sharedRecords };
+      const claims = scope.changes.map((change) => ({
+        evidence: { dependencies, base, change },
+        claim: claimFor({ plan: dependencies.plan, lane: owner, path: change.path }, shared),
+      }));
+      const movedNames = movedNamesOf(owner, claims);
+      return claims.map((claimed) => findingsFor({ claimed, lane: owner, movedNames }));
+    });
+    const findings = scope.changes.flatMap((_, index) => {
+      const refusals = perLane.map((results) => results[index] ?? []);
+      return refusals.some((result) => result.length === 0) ? [] : refusals.flat();
+    });
+    const identity = scopeLaneId(scope);
+    const note = `${scope.changes.length} changed files against ${base.ref}, lane ${identity}`;
     return judged({ id: "ownership", findings, note });
   },
 });
