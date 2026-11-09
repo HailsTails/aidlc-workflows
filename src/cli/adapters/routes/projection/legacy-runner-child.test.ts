@@ -1,9 +1,14 @@
 import { expect, mock, test } from "bun:test";
-import { accepted } from "../../../../kernel/result.ts";
+import { accepted, refused } from "../../../../kernel/result.ts";
 import { createInMemoryFileSystem } from "../../../../kernel/fixtures/file-system.fake.ts";
-import type { LegacyRunnerOutputReader } from "../../../../projection/application/ports.ts";
+import type { FileSystem } from "../../../../kernel/file-system-port.ts";
 import { runChild, runChildWithCapability } from "./legacy-runner-child.ts";
 
+const plan = (): Parameters<typeof runChild>[0]["plan"] => ({
+  duplicateNativeCommand: () => null,
+  selectedScopeDescription: () => accepted(null),
+  selectLegacyDocuments: () => accepted({ skill: "", companions: [] }),
+});
 const input = { module: "file:///module.ts", output: "file:///output/", stages: [], scopes: [] };
 const generator = {
   runnableStages: () => [], discoverScopes: () => ({}), defaultScopeBatch: () => [],
@@ -15,8 +20,8 @@ const generator = {
 
 test("invalid child input returns failure data before loading a module or reading output", async () => {
   const load = mock(async () => generator);
-  const readTree = mock<LegacyRunnerOutputReader["readTree"]>(async () => accepted({ files: [], unreadable: [] }));
-  expect(await runChild({ raw: null, output: { readTree }, load }))
+  const readTree = mock<FileSystem["readTree"]>(async () => accepted({ files: [], unreadable: [] }));
+  expect(await runChild({ plan: plan(), raw: null, output: { readTree }, load }))
     .toEqual({ entries: [], failure: "The frozen runner request is invalid." });
   expect(load).not.toHaveBeenCalled();
   expect(readTree).not.toHaveBeenCalled();
@@ -24,21 +29,22 @@ test("invalid child input returns failure data before loading a module or readin
 
 test("the child refuses non-file module locations before loading", async () => {
   const load = mock(async () => generator);
-  expect(await runChild({ raw: { ...input, module: "https://example.invalid/module.ts" },
+  expect(await runChild({ plan: plan(), raw: { ...input, module: "https://example.invalid/module.ts" },
     output: createInMemoryFileSystem({ files: {} }), load }))
     .toEqual({ entries: [], failure: "The frozen runner request is invalid." });
   expect(load).not.toHaveBeenCalled();
 });
 
 test("an invalid child capability API returns a whole-source failure", async () => {
-  expect(await runChildWithCapability({ input, capability: {}, output: createInMemoryFileSystem({ files: {} }) }))
+  expect(await runChildWithCapability({ plan: plan(), input, capability: {}, output: createInMemoryFileSystem({ files: {} }) }))
     .toEqual({ entries: [], failure: "The frozen runner capability API is invalid." });
 });
 
 test("an absent selected scope is refused before child output is written or read", async () => {
   const regenerateRunnerSurfaces = mock(() => undefined);
-  const readTree = mock<LegacyRunnerOutputReader["readTree"]>(async () => accepted({ files: [], unreadable: [] }));
+  const readTree = mock<FileSystem["readTree"]>(async () => accepted({ files: [], unreadable: [] }));
   expect(await runChildWithCapability({ input: { ...input, scopes: ["feature"] },
+    plan: { ...plan(), selectedScopeDescription: () => refused("The selected frozen scope is absent: feature") },
     capability: { ...generator, defaultScopeBatch: () => ["feature"], regenerateRunnerSurfaces },
     output: { readTree } })).toEqual({ failure: null, entries: [
       { subject: { concept: "scope-command", name: "feature" }, files: null,
@@ -56,7 +62,12 @@ test("the real child boundary loads once and captures binary companions through 
     "file:///output/skills/aidlc-init/nested/asset.bin": new Uint8Array([0, 255, 195, 40]),
     "file:///output/skills/aidlc-compose/SKILL.md": "Captured compose file",
   } });
-  expect(await runChild({ raw: input, output, load })).toEqual({ failure: null, entries: [
+  expect(await runChild({ plan: { ...plan(), selectLegacyDocuments: mock()
+    .mockReturnValueOnce(accepted({ skill: "skills/aidlc-init/SKILL.md", companions: [
+      { path: "skills/aidlc-init/nested/asset.bin", within: "nested/asset.bin" },
+    ] }))
+    .mockReturnValueOnce(accepted({ skill: "skills/aidlc-compose/SKILL.md", companions: [] })) },
+    raw: input, output, load })).toEqual({ failure: null, entries: [
     { subject: { concept: "orchestrator-skill", name: "aidlc-init" }, reason: null, files: [
       { nativeName: "aidlc-init", within: "SKILL.md", mode: "regular",
         content: { kind: "text", text: "---\nname: aidlc-init\n---\nInit\n" } },
@@ -78,6 +89,18 @@ test("an output file fault remains subjectless and names the failed companion", 
     "file:///output/skills/aidlc-init/SKILL.md": "Init",
     "file:///output/skills/aidlc-compose/SKILL.md": "Compose",
   }, faults: { "file:///output/skills/aidlc-init/companion.bin": "permission-denied" } });
-  expect(await runChildWithCapability({ input, capability: generator, output })).toEqual({ entries: [],
+  expect(await runChildWithCapability({ plan: plan(), input, capability: generator, output })).toEqual({ entries: [],
     failure: "The frozen runner output could not be read: skills/aidlc-init/companion.bin: permission-denied" });
+});
+
+test("the injected collision decision stops generation before output is read", async () => {
+  const collision = { subject: { concept: "orchestrator-skill" as const, name: "aidlc-compose" },
+    files: null, reason: "The owning plan refused this destination." };
+  const regenerateRunnerSurfaces = mock(() => undefined);
+  const readTree = mock<FileSystem["readTree"]>(async () => accepted({ files: [], unreadable: [] }));
+  expect(await runChildWithCapability({ input, capability: { ...generator, regenerateRunnerSurfaces },
+    output: { readTree }, plan: { ...plan(), duplicateNativeCommand: () => collision } }))
+    .toEqual({ failure: null, entries: [collision] });
+  expect(regenerateRunnerSurfaces).not.toHaveBeenCalled();
+  expect(readTree).not.toHaveBeenCalled();
 });
