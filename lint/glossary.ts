@@ -13,6 +13,8 @@ const GlossaryEntrySchema = z.strictObject({
 
 const GlossarySchema = z.array(GlossaryEntrySchema);
 
+export const OWNER_REGISTRY_FILES: readonly string[] = ["src/glossary.json"];
+
 export type GlossaryEntry = z.infer<typeof GlossaryEntrySchema>;
 
 export const GLOSSARY: readonly GlossaryEntry[] = GlossarySchema.parse(glossaryDocument);

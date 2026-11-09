@@ -3,7 +3,7 @@
 // dist/kiro/.kiro/steering/aidlc-onboarding.md, loaded by agent resources.
 // The root AGENTS.md stays neutral, identical to the other sharing harnesses.
 
-import type { OnboardingFills } from "../../scripts/onboarding.ts";
+import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
 
 const fills: OnboardingFills = {
   invoke: "/aidlc",

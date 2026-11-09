@@ -50,5 +50,5 @@ export const kiroJsonAgentRenderer = (profile: KiroJsonAgentProfile): Harness["r
       hookCommandSuffix: profile.hookCommandSuffix,
     });
     return prepared.ok ? placed(file, prepared.value)
-      : refused(renderFailed(agent.slug, prepared.refusal.reason));
+      : refused(prepared.refusal);
   };

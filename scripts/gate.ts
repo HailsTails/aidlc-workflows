@@ -2,6 +2,7 @@ import { previousRelease } from "../lint/gate/adapters/previous-release.ts";
 import { sweepLedger } from "../lint/gate/adapters/sweep-ledger.ts";
 import { fileURLToPath } from "node:url";
 import { MONOLITH_FILES } from "../lint/context-map.ts";
+import { OWNER_REGISTRY_FILES } from "../lint/glossary.ts";
 import { CLEAN_ZONE } from "../lint/zones.ts";
 import { gateRequestFrom, slotPolicyFrom, USAGE } from "../lint/gate/adapters/cli-arguments.ts";
 import {
@@ -203,6 +204,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     linter: eslintLinter({ root: ROOT, roots: LINT_ROOTS, extensions: [".ts"] }),
     records,
     ruleInputs: RULE_INPUTS,
+    ownerInputs: OWNER_REGISTRY_FILES,
   }),
   disciplinesCheck({ audit, triggers: CLEAN_TRIGGERS }),
   typecheckCheck({ runner, projects: TYPECHECK_PROJECTS }),

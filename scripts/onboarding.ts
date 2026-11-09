@@ -16,16 +16,7 @@
 // package.ts renders both templates for every harness. Adding a harness means
 // authoring one fills file and declaring its onboarding destinations.
 
-export type OnboardingFills = {
-  /** The invoke command this harness uses, e.g. "/aidlc" or "$aidlc". */
-  invoke: string;
-  /**
-   * Slot name → markdown body. A slot listed in the skeleton but absent here
-   * renders to empty (the section is intentionally omitted for this harness).
-   * Bodies should NOT carry a trailing newline; the renderer manages spacing.
-   */
-  slots: Record<string, string>;
-};
+import type { OnboardingFills } from "../src/projection/domain/neutral-surface.ts";
 
 export function declaredSlots(skeleton: string): string[] {
   const out = new Set<string>();

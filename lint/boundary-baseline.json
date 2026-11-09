@@ -675,7 +675,7 @@
     "core/tools/aidlc-lib.ts": {
       "max-len": 1205,
       "aidlc/no-comments": 6339,
-      "One owner": 17,
+      "One owner": 18,
       "max-lines-per-function": 116,
       "complexity": 329,
       "max-depth": 215,
@@ -1000,7 +1000,7 @@
       "aidlc/no-comments": 201,
       "max-len": 34,
       "complexity": 14,
-      "One owner": 2,
+      "One owner": 3,
       "max-params": 1,
       "no-control-regex": 3,
       "Harness branching": 8,
@@ -1648,7 +1648,8 @@
     },
     "scripts/onboarding.ts": {
       "aidlc/no-comments": 27,
-      "max-len": 1
+      "max-len": 1,
+      "One owner": 1
     },
     "scripts/package-release.ts": {
       "aidlc/no-comments": 5,

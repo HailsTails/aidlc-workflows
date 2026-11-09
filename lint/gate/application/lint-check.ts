@@ -17,10 +17,16 @@ export type LintDependencies = {
   readonly linter: Linter;
   readonly records: RatchetRecords;
   readonly ruleInputs: readonly string[];
+  readonly ownerInputs: readonly string[];
 };
 
-const targetsOf = (scope: GateScope): LintTargets =>
-  scope.everything ? { kind: "all" } : { kind: "files", files: presentPaths(scope.changes) };
+const targetsOf = (request: {
+  readonly scope: GateScope;
+  readonly ownerInputs: readonly string[];
+}): LintTargets =>
+  request.scope.everything || touches(request.scope, request.ownerInputs)
+    ? { kind: "all" }
+    : { kind: "files", files: presentPaths(request.scope.changes) };
 
 const RULES_CHANGED =
   "; lint rules changed, so only --full re-measures every file against the baseline";
@@ -58,7 +64,7 @@ const noteFor = (recorded: CountsByFile, measurement: LintMeasurement): string =
 export const lintCheck = (dependencies: LintDependencies): GateCheck => ({
   id: "lint",
   run: async (scope) => {
-    const targets = targetsOf(scope);
+    const targets = targetsOf({ scope, ownerInputs: dependencies.ownerInputs });
     if (targets.kind === "files" && targets.files.length === 0) {
       return skipped("lint", "no changed files to lint");
     }
