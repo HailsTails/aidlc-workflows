@@ -15,7 +15,9 @@ export const runChecks = async (request: {
   const outcomes: CheckOutcome[] = [];
   for (const check of request.checks) {
     request.progress.started(check.id);
-    const outcome = await check.run(request.scope);
+    const startedAt = Date.now();
+    const ran = await check.run(request.scope);
+    const outcome = { ...ran, durationMs: Date.now() - startedAt };
     request.progress.finished(outcome);
     outcomes.push(outcome);
   }

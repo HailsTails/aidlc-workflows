@@ -1,3 +1,4 @@
+import { formatDuration } from "../domain/duration.ts";
 import { distinctFixes, type CheckOutcome } from "../domain/outcome.ts";
 import type { Progress } from "../application/ports.ts";
 import type { GateProblem, GateReport } from "../application/run-gate.ts";
@@ -28,7 +29,8 @@ export const consoleProgress: Progress = {
   started: (id) => toStderr(`gate · ${id} …`),
   finished: (outcome) => {
     const count = outcome.findings.length;
-    toStderr(`gate · ${outcome.id} · ${outcome.status} · ${count} findings · ${outcome.note}`);
+    const took = outcome.durationMs === undefined ? "" : ` · ${formatDuration(outcome.durationMs)}`;
+    toStderr(`gate · ${outcome.id} · ${outcome.status}${took} · ${count} findings · ${outcome.note}`);
     printFindings(outcome);
   },
   note: toStderr,
@@ -53,6 +55,7 @@ export const summaryLine = ({ report, debt }: ReportedRun): string => {
     id: outcome.id,
     result: outcome.status,
     violations: outcome.findings.length,
+    durationMs: outcome.durationMs ?? null,
     fix: distinctFixes(outcome.findings),
   }));
   const summary = {

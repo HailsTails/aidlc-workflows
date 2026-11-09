@@ -71,6 +71,17 @@ describe("the tests check tells capability reds from regressions", () => {
     expect(outcome.findings).toHaveLength(1);
   });
 
+  test("the note names the slowest files with their durations", async () => {
+    const output = [
+      "=== START a.test.ts ===",
+      "Ran 1 test across 1 file. [900.00ms]",
+      "=== START b.test.ts ===",
+      "Ran 1 test across 1 file. [4.00s]",
+    ].join("\n");
+    const outcome = await checkWith({ result: { exitCode: 0, output }, symlinks: true }).run(SCOPE);
+    expect(outcome.note).toContain("slowest files: b.test.ts 4.0s, a.test.ts 0.9s");
+  });
+
   test("a suite that follows a module runs only the files that import it", async () => {
     const ran: (readonly string[])[] = [];
     const suite: TestSuite = {

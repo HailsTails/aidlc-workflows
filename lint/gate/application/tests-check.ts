@@ -10,6 +10,7 @@ import {
 import { globMatcher } from "../domain/glob.ts";
 import { importsAnyOf } from "../domain/legacy-selection.ts";
 import { judged, skipped, type Finding } from "../domain/outcome.ts";
+import { fileTimings, slowestNote, type FileTiming } from "../domain/test-timing.ts";
 import type { GateCheck } from "./gate-check.ts";
 import { touches, type GateScope } from "./gate-scope.ts";
 import type { Capabilities, Command, CommandRunner, Workspace } from "./ports.ts";
@@ -41,7 +42,10 @@ type Run = {
 type RunVerdict = {
   readonly findings: readonly Finding[];
   readonly excluded: string;
+  readonly timings: readonly FileTiming[];
 };
+
+const SLOWEST_FILES = 10;
 
 const CAPABILITIES: readonly CapabilityId[] = ["symlinks", "short-names", "listable-system-temp"];
 
@@ -99,12 +103,17 @@ const regression = (run: Run, name: string): Finding => ({
 
 const judgeRun = (dependencies: TestsDependencies, run: Run): RunVerdict => {
   const result = dependencies.runner.capture(run.command);
+  const timings = fileTimings(result.output);
   if (result.exitCode === 0) {
-    return { findings: [], excluded: "" };
+    return { findings: [], excluded: "", timings };
   }
   const failed = failedCases(result.output);
   if (failed.length === 0) {
-    return { findings: [unnamedFailure(run, result.output, result.exitCode)], excluded: "" };
+    return {
+      findings: [unnamedFailure(run, result.output, result.exitCode)],
+      excluded: "",
+      timings,
+    };
   }
   const probes = probesOf(dependencies.capabilities);
   const classification = classifyFailures({
@@ -115,6 +124,7 @@ const judgeRun = (dependencies: TestsDependencies, run: Run): RunVerdict => {
   return {
     findings: classification.regressions.map((name) => regression(run, name)),
     excluded: excludedNote(classification.excluded),
+    timings,
   };
 };
 
@@ -128,7 +138,8 @@ export const testsCheck = (dependencies: TestsDependencies): GateCheck => ({
     const verdicts = runs.map((run) => judgeRun(dependencies, run));
     const ran = runs.map((run) => `${run.name} (${run.files.length})`).join(", ");
     const excluded = verdicts.map((verdict) => verdict.excluded).filter((note) => note !== "");
-    const note = excluded.length === 0 ? ran : `${ran}; ${excluded.join("; ")}`;
+    const slowest = slowestNote(verdicts.flatMap((verdict) => verdict.timings), SLOWEST_FILES);
+    const note = [ran, ...excluded, slowest].filter((part) => part !== "").join("; ");
     return judged({ id: "tests", findings: verdicts.flatMap((v) => v.findings), note });
   },
 });

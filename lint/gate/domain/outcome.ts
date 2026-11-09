@@ -26,6 +26,7 @@ export type CheckOutcome = {
   readonly status: CheckStatus;
   readonly findings: readonly Finding[];
   readonly note: string;
+  readonly durationMs?: number;
 };
 
 export type GateVerdict = "green" | "red" | "error" | "busy";
