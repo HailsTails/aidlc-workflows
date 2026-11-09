@@ -10,7 +10,7 @@ Unknown properties and nested values are opaque retained fields, represented as 
 
 Model, resource and hook preparation consume tagged states without schema calls or narrowing unknown values. Model selection remains with the existing policy owner. A `preserve` decision supports conductor documents without applying persona policy.
 
-Expected failures are named local refusal values. The public result uses the existing `host-source-unreadable` member of `ProjectionRefusal`, carrying the caller's host and source. Diagnostic wording names the preparation stage and deliberately does not copy JavaScript engine crash messages. The unused renderer retains its previous outer refusal mapping until cutover.
+Expected failures are named local refusal values. The public result uses the existing `host-source-unreadable` member of `ProjectionRefusal`, carrying the caller's host and source. Diagnostic wording names the preparation stage and deliberately does not copy JavaScript engine crash messages. The renderer preserves preparation refusals unchanged; its own missing-file and invalid-path refusals remain `render-failed`.
 
 ## Recorded legacy intermediate-serialization quirk
 

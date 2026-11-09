@@ -53,9 +53,12 @@ test("policy refusal precedes malformed JSON preparation", () => {
   })({ agent, knowledge: [] })).toEqual(refused(failure));
 });
 
-test("unused renderer keeps its refusal mapping until the production cutover", () => {
+test("preparation refusal preserves its host, source and stage reason", () => {
   expect(kiroJsonAgentRenderer({ host,
     files: [{ ...file, content: { kind: "text", text: "null" } }], formatDocuments,
     modelDecision: () => accepted({ kind: "preserve" }), hookCommandSuffix: undefined,
-  })({ agent, knowledge: [] })).toMatchObject({ ok: false, refusal: { kind: "render-failed" } });
+  })({ agent, knowledge: [] })).toEqual(refused({
+    kind: "host-source-unreadable", host, source: file.source,
+    reason: "Kiro shared-resource preparation: the document cannot be null.",
+  }));
 });
