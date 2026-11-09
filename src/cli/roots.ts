@@ -11,7 +11,12 @@ import type { ProcessRunner } from "../kernel/process-runner-port.ts";
 import type { SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout } from "../packaging/domain/payload.ts";
-import type { Harness, HostSettingsRenderer, HostSkillRenderer } from "../projection/application/ports.ts";
+import type {
+  Harness,
+  HostDocumentRenderer,
+  HostSettingsRenderer,
+  HostSkillRenderer,
+} from "../projection/application/ports.ts";
 import type { MarkdownOutliner } from "../workflow-definition/application/ports.ts";
 
 export type ExitStatus = 0 | 1 | 2;
@@ -36,6 +41,8 @@ export type HostConceptMembers<Render> = {
 export type HostSkillMembers = HostConceptMembers<HostSkillRenderer>;
 
 export type HostSettingsMembers = HostConceptMembers<HostSettingsRenderer>;
+
+export type HostDocumentMembers = HostConceptMembers<HostDocumentRenderer>;
 
 export type RuntimeHost = {
   readonly host: HostIdentity;

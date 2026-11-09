@@ -20,6 +20,7 @@ import type { Agent } from "../../workflow-definition/domain/agent.ts";
 import type { HookDeclaration } from "../../workflow-definition/domain/hooks.ts";
 import type { KnowledgeDocument } from "../../workflow-definition/domain/knowledge.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
+import type { MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import type { Scope } from "../../workflow-definition/domain/scope.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ScopeColumn, StageNode } from "../../workflow-definition/domain/stage-graph.ts";
@@ -28,6 +29,7 @@ import type { CommandReading, CommandSubject, NativeCommandFile } from "../domai
 import type {
   NeutralDocument,
   NeutralSurface,
+  OnboardingFills,
   OnboardingTemplates,
   SessionSkill,
 } from "../domain/neutral-surface.ts";
@@ -74,6 +76,16 @@ export type SettingsRenderingInputs = {
 export type HostSettingsRenderer = (
   inputs: SettingsRenderingInputs,
 ) => Pick<Harness, "renderSettings" | "renderHookRegistrations">;
+
+export type DocumentRenderingInputs = {
+  readonly fills: OnboardingFills;
+  readonly tokens: TokenBindings;
+  readonly memory: readonly MethodSource[];
+};
+
+export type HostDocumentRenderer = (
+  inputs: DocumentRenderingInputs,
+) => Pick<Harness, "renderOnboarding" | "placeNeutralDocument">;
 
 export interface Harness {
   readonly tokens: HostTokenBindings;
