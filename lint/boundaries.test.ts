@@ -274,3 +274,60 @@ describe("boundaryConfig in colocated tests", () => {
     expect(messages).toEqual([]);
   });
 });
+
+describe("boundaryConfig for registered kernel implementers", () => {
+  const FILE_SYSTEM = "src/kernel/file-system.ts";
+
+  test("lets the file-system implementer import its registered modules", () => {
+    const code = 'import { readFile } from "node:fs/promises";\nexport const read = readFile;\n';
+
+    expect(findingsFor(code, FILE_SYSTEM)).toEqual([]);
+  });
+
+  test("refuses a node module the implementer did not register", () => {
+    const code = 'import { spawn } from "node:child_process";\nexport const run = spawn;\n';
+
+    expect(findingsFor(code, FILE_SYSTEM)).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports", line: 1 }),
+    );
+  });
+
+  test("refuses a global the implementer did not register", () => {
+    const code = "export const open = (): unknown => fetch;\n";
+
+    expect(findingsFor(code, "src/kernel/yaml-parser.ts")).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-globals" }),
+    );
+  });
+
+  test("lets the process runner use Bun, which it registered", () => {
+    const code = "export const spawn = Bun.spawn;\n";
+
+    expect(findingsFor(code, "src/kernel/process-runner.ts")).toEqual([]);
+  });
+
+  test("refuses a dynamic import in an implementer", () => {
+    const code = 'export const load = () => import("node:fs");\n';
+
+    expect(findingsFor(code, FILE_SYSTEM)).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-syntax" }),
+    );
+  });
+
+  test("keeps every other kernel file pure", () => {
+    const code = 'import { readFile } from "node:fs/promises";\nexport const read = readFile;\n';
+
+    expect(findingsFor(code, "src/kernel/other.ts")).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports", line: 1 }),
+    );
+  });
+
+  test("lets only the hermetic test touch the real disk", () => {
+    const code = 'import { mkdtemp } from "node:fs/promises";\nexport const make = mkdtemp;\n';
+
+    expect(findingsFor(code, "src/kernel/file-system.hermetic.test.ts")).toEqual([]);
+    expect(findingsFor(code, "src/kernel/file-system.test.ts")).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports", line: 1 }),
+    );
+  });
+});

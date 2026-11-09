@@ -11,6 +11,7 @@ import {
   type LegacyBridge,
 } from "./context-map.ts";
 import { GLOSSARY } from "./glossary.ts";
+import { IMPLEMENTERS, registeredGlobalRoots, type Implementer } from "./implementers.ts";
 import {
   domainClock,
   dynamicImport,
@@ -249,6 +250,54 @@ const knowledgeConfig: Linter.Config = {
   rules: KNOWLEDGE_FS_READS,
 };
 
+const globalsWithout = (allowed: readonly string[]): Linter.RulesRecord => ({
+  "no-restricted-globals": [
+    "error",
+    ...EFFECT_GLOBALS.filter((name) => !allowed.includes(name)).map((name) => ({
+      name,
+      message: `Domain purity: ${name} is an effect; reach it through a port.`,
+    })),
+  ],
+});
+
+const withoutProtocol = (module: string): string => module.replace(/^node:/, "");
+
+const unregisteredModules = (implementer: Implementer): ImportRestriction => ({
+  regex: `^node:(?!(?:${implementer.modules.map(withoutProtocol).join("|")})$)`,
+  message:
+    `Implementer: ${implementer.file} registers only ${implementer.modules.join(", ") || "no node: module"} ` +
+    "in lint/implementers.json; a module outside that list is another way to reach the platform.",
+});
+
+const implementerConfig = (implementer: Implementer): Linter.Config => ({
+  name: `aidlc/src/kernel/implementer/${implementer.capability}`,
+  files: [implementer.file],
+  rules: {
+    ...restrict({
+      imports: [
+        ...srcImportRestrictions({ context: "kernel", layer: "adapters" }),
+        unregisteredModules(implementer),
+      ],
+      syntax: [...productionSyntax("kernel", "adapters"), dynamicImport],
+    }),
+    ...globalsWithout(registeredGlobalRoots(implementer)),
+  },
+});
+
+const hermeticTestConfig = (implementer: Implementer): Linter.Config => ({
+  name: `aidlc/src/kernel/implementer/${implementer.capability}/hermetic-test`,
+  files: [implementer.hermeticTest],
+  rules: restrict({
+    imports: testImportRestrictions({ context: "kernel", layer: "adapters" }),
+    syntax: sampleSyntax("kernel", "adapters"),
+  }),
+});
+
+const implementerConfigs: Linter.Config[] = IMPLEMENTERS.flatMap((implementer) => [
+  implementerConfig(implementer),
+  hermeticTestConfig(implementer),
+]);
+
 export const boundaryConfig: Linter.Config[] = [
   unassignedLegacyConfig,
   knowledgeConfig,
@@ -260,6 +309,7 @@ export const boundaryConfig: Linter.Config[] = [
   ...CONTEXTS.flatMap((context) =>
     testedLayersOf(context).map((layer) => srcTestConfig(context, layer)),
   ),
+  ...implementerConfigs,
   undeclaredSrcConfig,
   hostBundleConfig,
   hostTestConfig,
