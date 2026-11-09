@@ -64,6 +64,8 @@ describe("planItems", () => {
     weightOf: (file: string) => (file === "big.test.ts" ? 100 : 1),
     describesOf: (file: string) => (file === "big.test.ts" ? ["one", "two"] : []),
     hasOtherTests: () => true,
+    casesOf: () => [],
+    targetSeconds: 150,
     splitAtOrAbove: 60,
     groups: 1,
   };
@@ -89,5 +91,38 @@ describe("planItems", () => {
     const files = new Set(planItems(request).flatMap((item) => item.files));
 
     expect([...files].sort()).toEqual([...request.files].sort());
+  });
+});
+
+describe("planItems with recorded cases", () => {
+  const cases = [
+    { name: "slow one", seconds: 100 },
+    { name: "slow two", seconds: 100 },
+    { name: "fast three", seconds: 10 },
+  ];
+  const request = {
+    files: ["big.test.ts", "small.test.ts"],
+    weightOf: (file: string) => (file === "big.test.ts" ? 300 : 1),
+    describesOf: () => [],
+    hasOtherTests: () => false,
+    splitAtOrAbove: 60,
+    groups: 1,
+    casesOf: (file: string) => (file === "big.test.ts" ? cases : []),
+    targetSeconds: 100,
+  };
+
+  test("a file whose recorded time exceeds the target splits by case with a catch-all last", () => {
+    const items = planItems(request).filter((item) => item.files.includes("big.test.ts"));
+
+    const flags = items.map((item) => item.canBeEmpty ?? false).sort();
+
+    expect(flags).toEqual([false, false, false, true]);
+    expect(items.every((item) => item.pattern !== undefined)).toBe(true);
+  });
+
+  test("a file under the target or with no record is left whole", () => {
+    const items = planItems(request).filter((item) => item.files.includes("small.test.ts"));
+
+    expect(items.map((item) => item.pattern)).toEqual([undefined]);
   });
 });

@@ -14,6 +14,7 @@ export interface ParsedArgs {
   debug: boolean;
   filter: string;
   testNamePattern: string;
+  allowEmptyShard: boolean;
   /** Files to leave out of every tier, matched like `filter`; empty leaves none out. */
   exclude: string;
   parallel: number;
@@ -62,6 +63,7 @@ export function parseRunnerArgs(
     debug: false,
     filter: "",
     testNamePattern: "",
+    allowEmptyShard: false,
     exclude: "",
     parallel: 1,
     shard: null,
@@ -151,6 +153,9 @@ export function parseRunnerArgs(
         if (!out.testNamePattern) {
           throw new RunnerArgsError("ERROR: --test-name-pattern requires a non-empty regex");
         }
+        break;
+      case "--allow-empty-shard":
+        out.allowEmptyShard = true;
         break;
       case "--exclude":
         out.exclude = argv[++i] ?? "";
