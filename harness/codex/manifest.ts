@@ -1,18 +1,10 @@
 // harness/codex/manifest.ts — the Codex CLI distribution row.
 //
-// Projects core/ into dist/codex/.codex/ (rules prose -> aidlc-rules, D-10)
-// and defers native shell surfaces to emit.ts (config.toml, hooks.json,
-// trust-seed, 14 agent TOMLs, the .agents/skills/ tree). Onboarding uses the
-// shared renderer.
-//
 // Codex specifics vs Claude/Kiro:
 //   - token → .codex
 //   - rules/ prose -> aidlc-rules/ (Codex's native .codex/rules/ is Starlark
 //     permission rules; the AIDLC markdown layers live in
 //     aidlc/spaces/<space>/memory/)
-//   - skills are NOT shipped in .codex/skills/ — Codex discovers skills at
-//     <project>/.agents/skills/, so skipRunnerGen is set and emit() composes
-//     the whole skill set (orchestrator + runners + session skills) there.
 //   - the only authored .codex/ file is the aidlc-codex-adapter.ts stdin shim
 //     (a harnessFile); the agent TOMLs in .codex/agents/ are emitted.
 

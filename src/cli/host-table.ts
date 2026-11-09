@@ -1,3 +1,4 @@
+import { CODEX_SKILL_INPUTS, createCodexSkillRenderer } from "../hosts/codex/projection/skill-renderer.ts";
 import { createClaudeSkillRenderer } from "../hosts/claude/projection/skill-renderer.ts";
 import { CLAUDE_SKILL_INPUTS } from "../hosts/claude/projection/skill-renderer.ts";
 import type { HostIdentity } from "../kernel/host.ts";
@@ -23,6 +24,7 @@ Result<HostAgentMembers | null, ProjectionRefusal> => {
   return accepted({ host, render: entry.render, inputs: paths.flatMap((path) => path.ok ? [path.value] : []) });
 };
 const HOST_SKILL_MEMBERS = [
+  { name: "codex", inputs: CODEX_SKILL_INPUTS, render: createCodexSkillRenderer },
   { name: "claude", inputs: CLAUDE_SKILL_INPUTS, render: createClaudeSkillRenderer },
 ] as const;
 
