@@ -222,6 +222,7 @@ test("the standalone surface route omits an unregistered host without IO or prep
 });
 
 const surfaceFiles = {
+  "file:///host/settings.json": '{"permissions":{"allow":["Bash(bun .claude/tools/aidlc-*)"]}}',
   "file:///host/skills/aidlc/SKILL.md": "Door",
   "file:///host/skills/aidlc/question-rendering.md": "Question",
   "file:///host/skills/aidlc/composer.md": "Composer",
@@ -250,12 +251,12 @@ test("the real surface route uses one captured snapshot and preserves exact nati
     { path: path(".gitignore"), content: { kind: "bytes", bytes: new Uint8Array([71]) } },
     { path: path(".claude/rules/aidlc.md"), content: { kind: "bytes", bytes: new Uint8Array([82]) } },
   ] });
-  expect(readFile).toHaveBeenCalledTimes(8);
+  expect(readFile).toHaveBeenCalledTimes(9);
   expect(prepare).toHaveBeenCalledTimes(4);
   accept(await fileSystem.writeFile({ file: new URL("file:///host/dot-gitignore"),
     content: { kind: "text", text: "Changed after capture" } }));
   expect(root.projectHostSurface(surfaceRequest)).toEqual(projected);
-  expect(readFile).toHaveBeenCalledTimes(8);
+  expect(readFile).toHaveBeenCalledTimes(9);
 });
 
 test("native placement inputs are required by capture even after their old copy rows retire", async () => {
@@ -314,4 +315,69 @@ test("the runtime route preserves capture failures across hosts without re-readi
       { kind: "neutral-source-unreadable", source: source("hooks/hook.ts"), reason: "permission-denied" },
     ]));
   expect(readTree).toHaveBeenCalledTimes(4);
+});
+
+test("an unregistered settings host performs no source read or preparation", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const readFile = mock<Platform["fileSystem"]["readFile"]>(fileSystem.readFile);
+  const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
+  const prepare = mock(accepted);
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readFile, readTree },
+    processRunner, yaml }, outliner, sources, runnerFrames });
+  expect(root.projectSettings({ host: host({ name: "fixture-host", directory: ".fixture" }),
+    method: methodSliceFixture, files: [], prepare, tokens: skillTokens, channel: "copy", entrypoints: [] }))
+    .toEqual(accepted([]));
+  expect(readFile).not.toHaveBeenCalled();
+  expect(readTree).not.toHaveBeenCalled();
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+test("the real settings route uses the captured file once, with shipped allows and no second hook file", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: surfaceFiles });
+  const readFile = mock<Platform["fileSystem"]["readFile"]>(fileSystem.readFile);
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readFile }, processRunner, yaml },
+    outliner, sources, runnerFrames });
+  const captured = accept(await root.readHostSources({ name: "claude", directory: ".claude",
+    root: new URL("file:///host/"), copied: [], required: [] }));
+  const prepare = mock(accepted);
+  const settingsRequest = { host: captured.host, method: methodSliceFixture, files: captured.files,
+    prepare, tokens: skillTokens, channel: "copy", entrypoints: [] } as const;
+  const settings = root.projectSettings(settingsRequest);
+  expect(settings).toHaveProperty("value.length", 1);
+  expect(settings).toHaveProperty("value.0.path", path(".claude/settings.json"));
+  expect(settings).toHaveProperty("value.0.origin", {
+    kind: "rendered", concept: "settings", name: "settings.json",
+  });
+  expect(settings).toHaveProperty("value.0.content", { kind: "text",
+    text: expect.stringContaining('"Bash(bun .claude/tools/aidlc.ts doctor)"'),
+  });
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(readFile).toHaveBeenCalledTimes(9);
+  await fileSystem.writeFile({ file: new URL("file:///host/settings.json"),
+    content: { kind: "text", text: "changed after capture" } });
+  expect(root.projectSettings(settingsRequest)).toEqual(settings);
+  expect(readFile).toHaveBeenCalledTimes(9);
+});
+
+test("settings remain required by the shared snapshot after the legacy copy row retires", async () => {
+  const root = createPackageBuildRoot({ platform: { fileSystem: createInMemoryFileSystem({
+    files: surfaceFiles, faults: { "file:///host/settings.json": "permission-denied" },
+  }), processRunner, yaml }, outliner, sources, runnerFrames });
+  expect(await root.readHostSources({ name: "claude", directory: ".claude",
+    root: new URL("file:///host/"), copied: [], required: [] })).toEqual(refused([{
+      kind: "host-source-unreadable", host: host({ name: "claude", directory: ".claude" }),
+      source: source("settings.json"), reason: "Host source is unreadable: permission-denied.",
+    }]));
+});
+
+test("the actual settings route preserves the missing-glob failure instead of shipping partial settings", () => {
+  const root = createPackageBuildRoot({ platform: { fileSystem: createInMemoryFileSystem({ files: {} }),
+    processRunner, yaml }, outliner, sources, runnerFrames });
+  expect(root.projectSettings({ host: host({ name: "claude", directory: ".claude" }),
+    method: methodSliceFixture, files: [{ source: source("settings.json"),
+      content: { kind: "text", text: '{"permissions":{"allow":["Edit(/**)"]}}' } }],
+    prepare: accepted, tokens: skillTokens, channel: "copy", entrypoints: [] })).toEqual(refused({
+      kind: "render-failed", concept: "settings", name: "settings.json",
+      reason: "settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand",
+    }));
 });

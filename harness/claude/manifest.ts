@@ -135,7 +135,7 @@ const manifest: HarnessManifest = {
 
   // Authored harness surfaces copied verbatim (with token substitution on .md)
   // from harness/claude/<src> → <harnessDir>/<dst>.
-  harnessFiles: [{ src: "settings.json", dst: "settings.json" }],
+  harnessFiles: [],
 
   // Claude keeps neutral guidance and native setup together in its always-on file.
   onboarding: { dst: "CLAUDE.md", fills: onboardingFills },
