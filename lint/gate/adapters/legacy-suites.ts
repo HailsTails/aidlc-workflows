@@ -95,6 +95,19 @@ const matrixCommands = (
     targetSeconds: planning.targetSeconds,
   }).map((item) => itemCommand(runner, item));
 
+const harnessStartupSuite = (runner: LegacyRunner): TestSuite => ({
+    name: "harness matrix startup",
+    triggers: ["harness/*/manifest.ts"],
+    tests: ["tests/harness/harness-matrix.ts"],
+    sharesPackageBuild: true,
+    heavy: true,
+    command: () => ({
+      label: "harness matrix startup",
+      argv: [runner.bun, "tests/harness/harness-matrix.ts"],
+      env: runner.environment,
+    }),
+  });
+
 export const legacySuites = (
   runner: LegacyRunner,
   planning?: LegacyPlanning,
@@ -133,6 +146,7 @@ export const legacySuites = (
           concurrency: planning.workers,
         }),
   },
+  harnessStartupSuite(runner),
 ];
 
 

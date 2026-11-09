@@ -20,7 +20,8 @@ describe("legacy suites", () => {
   test("both legacy suites run the repository runner with the explicit environment", () => {
     const environment = { PATH: "/bin" };
     const suites = legacySuites({ bun: "bun", environment });
-    const commands = suites.map((suite) => suite.command?.(["tests/unit/t177.test.ts"]));
+    const commands = suites.filter((suite) => suite.foundationLegacy)
+      .map((suite) => suite.command?.(["tests/unit/t177.test.ts"]));
     expect(commands.map((command) => command?.env)).toEqual([environment, environment]);
     expect(commands[0]?.argv).toEqual([
       "bun", "tests/run-tests.ts", "--smoke", "--filter", "^(t177)", "--no-llm",
@@ -84,6 +85,9 @@ describe("legacy transpiler cache", () => {
   });
 });
 
+const STARTUP_FILE = "tests/harness/harness-matrix.ts";
+const STARTUP_COMMAND = ["bun", STARTUP_FILE];
+
 const LEGACY_FILES = [
   "tests/smoke/s.test.ts", "tests/unit/a.test.ts", "tests/unit/b.test.ts",
   "tests/unit/uncovered.test.ts",
@@ -99,7 +103,9 @@ const KNOWN_LEGACY = [
 
 const selectedLegacy = async (
   changed: readonly string[], loose = false,
-  smoke: { readonly reach?: TestReach; readonly files?: readonly string[] } = {},
+  smoke: {
+    readonly reach?: TestReach; readonly files?: readonly string[]; readonly everything?: boolean;
+  } = {},
 ): Promise<readonly string[][]> => {
   const commands: string[][] = [];
   const capture = (command: Command) => {
@@ -112,7 +118,8 @@ const selectedLegacy = async (
       read: (path) =>
         path.includes("uncovered") ? "" : 'import { x } from "../harness/harness-matrix.ts";',
       write: () => undefined,
-      filesMatching: (globs) => (smoke.files ?? LEGACY_FILES).filter(globMatcher(globs)),
+      filesMatching: (globs) => [...(smoke.files ?? LEGACY_FILES), STARTUP_FILE]
+        .filter(globMatcher(globs)),
     },
     suites: legacySuites({ bun: "bun", environment: {} }),
     looseTests: loose ? ["tests/**/*.test.ts"] : [],
@@ -129,7 +136,7 @@ const selectedLegacy = async (
   await check.run({
     lane: undefined, base: { ref: "foundation", commit: "abc" },
     changes: changed.map((path) => ({ path, kind: "modified" })),
-    everything: false, build: false, record: false, allTests: false,
+    everything: smoke.everything ?? false, build: false, record: false, allTests: false,
     heavy: { ensure: async () => ({ acquired: true }) },
   });
   return commands;
@@ -199,7 +206,7 @@ describe("smoke impact uses the existing conservative selector", () => {
 
 describe("Phase 1 candidates rely on the enforced foundation sweep", () => {
   test.each(["src/projection/render.ts", "scripts/package.ts", "lint/gate/domain/x.ts",
-    "docs/reference/15-stage-definition.md", "harness/kiro-ide/manifest.ts"])(
+    "docs/reference/15-stage-definition.md"])(
     "%s defers legacy suites", async (path) => {
       expect(await selectedLegacy([path])).toEqual([]);
     },
@@ -262,7 +269,7 @@ const Q15_CHANGES = [
 ];
 
 test("the complete Q15 diff runs only its changed legacy tests", async () => {
-  expect(await selectedLegacy(Q15_CHANGES, true)).toEqual([[
+  expect(await selectedLegacy(Q15_CHANGES, true)).toEqual([STARTUP_COMMAND, [
     "bun", "tests/run-tests.ts", "--unit", "--filter",
     "^(t248-steering-content-delivery|t64)", "--no-llm",
   ]]);
@@ -278,3 +285,98 @@ test.each([...CLEAN_ZONE.files, ...SCAFFOLDING_ZONE.files])(
 test("runtime plus a changed covered test still runs that test only once", async () => {
   expect(await selectedLegacy(["core/a.ts", "tests/unit/a.test.ts"], true)).toEqual(KNOWN_LEGACY);
 });
+
+const C1_CHANGES = [
+  "harness/claude/manifest.ts",
+  "scripts/earlier-release-regions.ts",
+  "scripts/package.ts",
+  "src/cli/host-table.ts",
+  "src/cli/main.test.ts",
+  "src/cli/package-build-root.test.ts",
+  "src/cli/package-build-root.ts",
+  "src/cli/roots.ts",
+  "src/hosts/claude/projection/skill-renderer.test.ts",
+  "src/hosts/claude/projection/skill-renderer.ts",
+  "src/projection/adapters/legacy-skill-tables.test.ts",
+  "src/projection/adapters/legacy-skill-tables.ts",
+  "src/projection/adapters/session-skill-files.test.ts",
+  "src/projection/adapters/session-skill-files.ts",
+  "src/projection/application/ports.ts",
+  "src/projection/application/project-method-skills.test.ts",
+  "src/projection/application/project-method-skills.ts",
+  "src/projection/core-root.test.ts",
+  "src/projection/core-root.ts",
+  "src/projection/domain/skill-regions.test.ts",
+  "src/projection/domain/skill-regions.ts",
+  "src/projection/domain/token-binding.test.ts",
+  "src/projection/domain/token-binding.ts"
+];
+
+const REGION_TESTS = [
+  "tests/unit/t-earlier-release-refresh-regions.test.ts",
+  "tests/unit/t-earlier-skill-tables-refresh.test.ts",
+  "tests/unit/t-skill-body-carriers.test.ts",
+];
+const REGION_FILTER = "^(t-earlier-release-refresh-regions|" +
+  "t-earlier-skill-tables-refresh|t-skill-body-carriers)";
+const REGION_INPUT = "scripts/earlier-release-regions.ts";
+const REGION_COMMAND = [
+  "bun", "tests/run-tests.ts", "--unit", "--filter", REGION_FILTER, "--no-llm",
+];
+
+test("the exact build adapter runs three compatibility tests, not smoke or matrix", async () => {
+  expect(await selectedLegacy([REGION_INPUT], true)).toEqual([REGION_COMMAND]);
+});
+
+test("the complete immutable C1 diff selects only three legacy compatibility files", async () => {
+  expect(await selectedLegacy(C1_CHANGES, true)).toEqual([STARTUP_COMMAND, REGION_COMMAND]);
+});
+
+test("a changed mapped compatibility test still runs once", async () => {
+  expect(await selectedLegacy([REGION_INPUT, ...REGION_TESTS], true)).toEqual([REGION_COMMAND]);
+});
+
+test("an unrelated changed test is retained alongside the mapped build tests", async () => {
+  const commands = await selectedLegacy([REGION_INPUT, "tests/unit/uncovered.test.ts"], true);
+  expect(commands).toEqual([[
+    "bun", "tests/run-tests.ts", "--unit", "--filter",
+    "^(uncovered|t-earlier-release-refresh-regions|" +
+      "t-earlier-skill-tables-refresh|t-skill-body-carriers)",
+    "--no-llm",
+  ]]);
+});
+
+test("runtime plus build adapter keeps conservative matrix coverage once", async () => {
+  const commands = await selectedLegacy([REGION_INPUT, "core/a.ts"], true, {
+    files: [...LEGACY_FILES, ...REGION_TESTS],
+  });
+  expect(commands).toEqual([
+    ["bun", "tests/run-tests.ts", "--smoke", "--filter", "^(s)", "--no-llm"],
+    ["bun", "tests/run-tests.ts", "--unit", "--filter",
+      "^(a|b|t-earlier-release-refresh-regions|" +
+        "t-earlier-skill-tables-refresh|t-skill-body-carriers)",
+      "--no-llm"],
+  ]);
+});
+
+test("an unclassified script still admits the full conservative selection", async () => {
+  expect(await selectedLegacy(["scripts/unknown.ts"], true)).toEqual(ALL_LEGACY);
+});
+
+
+test("full runs do not add a mapped-test command beside selected suites", async () => {
+  const files = [...LEGACY_FILES, ...REGION_TESTS];
+  const full = { files, everything: true };
+  const commands = await selectedLegacy([REGION_INPUT], true, full);
+  expect(commands).toHaveLength(3);
+  expect(commands[2]).toEqual(STARTUP_COMMAND);
+  expect(commands[0]).toEqual(ALL_LEGACY[0]);
+  expect(commands[1]?.join(" ")).toContain("^(a|b|t-earlier-release-refresh-regions|");
+});
+
+
+test.each(["claude", "codex", "copilot", "cursor", "kiro", "kiro-ide", "opencode"])(
+  "%s manifest selects existing startup validation, not matrix scenarios", async (host) => {
+    expect(await selectedLegacy([`harness/${host}/manifest.ts`], true)).toEqual([STARTUP_COMMAND]);
+  },
+);
