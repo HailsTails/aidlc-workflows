@@ -44,3 +44,17 @@ export type NeutralSurface = {
   readonly skills: readonly SessionSkill[];
   readonly onboarding: OnboardingTemplates;
 };
+
+export const RUNTIME_FOLDERS = ["tools", "hooks", "sensors", "scopes"] as const;
+
+export type RuntimeFile = {
+  readonly source: SourcePath;
+  readonly content: FileContent;
+};
+
+export type SharedRuntime = {
+  readonly files: readonly RuntimeFile[];
+  readonly version: FileContent;
+  readonly agentTiers: FileContent;
+  readonly settingsSchema: FileContent;
+};
