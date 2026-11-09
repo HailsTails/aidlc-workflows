@@ -245,7 +245,9 @@
       "name": "Projection for kiro, kiro-ide, cursor and copilot (supervised, one ticket at a time)",
       "agent": "codex/dot",
       "owns": [
-        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**"
+        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**",
+        "tests/lib/e2e-workers.ts",
+        "tests/unit/t-e2e-temporary-root.test.ts"
       ],
       "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
