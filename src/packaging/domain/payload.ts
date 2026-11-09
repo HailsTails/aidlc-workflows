@@ -8,7 +8,7 @@ import type {
 } from "../../kernel/values.ts";
 import type { ProjectionOrigin } from "../../projection/domain/projected-file.ts";
 import type { ManagedDirectory } from "./managed-directory.ts";
-import type { ReleaseHistory } from "./release-history.ts";
+import type { PriorIntegrationShapes, ReleaseHistory } from "./release-history.ts";
 import type { RootIntegration } from "./root-integration.ts";
 
 export const CHANNELS = ["copy", "native"] as const;
@@ -37,6 +37,46 @@ export type PayloadFile = {
 export type DistributionLayout = {
   readonly rootIntegrations: readonly RootIntegration[];
   readonly managedDirectories: readonly ManagedDirectory[];
+};
+
+export type CliFirstSetup = {
+  readonly env: readonly string[];
+  readonly configNextStep: string;
+  readonly firstRunSteps: readonly string[];
+};
+
+export type HostListing = {
+  readonly choiceName?: string;
+  readonly choiceNote?: string;
+  readonly firstRunSteps?: readonly string[];
+  readonly editorTerminalApp?: string;
+  readonly cliFirst?: CliFirstSetup;
+};
+
+export type NativeReplacement = {
+  readonly from: string;
+  readonly to: string;
+};
+
+export type NativeRelease = {
+  readonly replacements: readonly NativeReplacement[];
+  readonly copyOnly: readonly ProjectPath[];
+};
+
+export type HostPluginTarget = {
+  readonly format: string;
+  readonly manifestDir: string;
+  readonly marketplaceDir: string;
+  readonly catalogue: "written" | "none";
+  readonly installRoots: readonly string[];
+};
+
+export type HostDistribution = {
+  readonly layout: DistributionLayout;
+  readonly priorIntegrations: readonly PriorIntegrationShapes[];
+  readonly listing: HostListing;
+  readonly native: NativeRelease;
+  readonly plugin: HostPluginTarget;
 };
 
 export type DistributionDescriptor = {

@@ -8,9 +8,10 @@ import type { HostShell } from "../installation/application/boundary-ports.ts";
 import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { ProcessRunner } from "../kernel/process-runner-port.ts";
-import type { SourcePath } from "../kernel/values.ts";
+import type { Result } from "../kernel/result.ts";
+import type { KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
-import type { DistributionLayout } from "../packaging/domain/payload.ts";
+import type { DistributionLayout, HostDistribution } from "../packaging/domain/payload.ts";
 import type {
   CommandPlacement,
   Harness,
@@ -60,7 +61,10 @@ export type HostBuildMembers = {
   readonly skills: ConceptMembers<HostSkillRenderer>;
   readonly settings: ConceptMembers<HostSettingsRenderer>;
   readonly documents: ConceptMembers<HostDocumentRenderer>;
+  readonly distribution?: HostDistributionReader;
 };
+
+export type HostDistributionReader = () => Result<HostDistribution, KernelRefusal>;
 
 export type RuntimeHost = {
   readonly host: HostIdentity;
