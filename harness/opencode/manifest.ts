@@ -135,20 +135,9 @@ const manifest: HarnessManifest = {
     { src: "scopes", dst: "scopes" },
     { src: "agents", dst: "agents" },
     { src: "hooks", dst: "hooks" },
-    { src: "skills/aidlc-session-cost", dst: "skills/aidlc-session-cost" },
-    { src: "skills/aidlc-replay", dst: "skills/aidlc-replay" },
-    { src: "skills/aidlc-outcomes-pack", dst: "skills/aidlc-outcomes-pack" },
-    { src: "skills/aidlc-issue-report", dst: "skills/aidlc-issue-report" },
-    { src: "skills/aidlc-knowledge", dst: "skills/aidlc-knowledge" },
   ],
 
   harnessFiles: [
-    // The orchestrator skill, inside .aidlc/skills/ (discovered via the
-    // opencode.json skills.paths glob, like every generated runner).
-    { src: "skills/aidlc/SKILL.md", dst: "skills/aidlc/SKILL.md" },
-    { src: "skills/aidlc/question-rendering.md", dst: "skills/aidlc/question-rendering.md" },
-    { src: "skills/aidlc/composer.md", dst: "skills/aidlc/composer.md" },
-    { src: "skills/aidlc/tables.md", dst: "skills/aidlc/tables.md" },
     // Project config at the dist ROOT (opencode reads ./opencode.json):
     // skills.paths (skill discovery), instructions glob (the method include),
     // and the native aidlc command permissions.
