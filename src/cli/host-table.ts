@@ -1,3 +1,4 @@
+import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS } from "../hosts/copilot/host-data.ts";
 import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
@@ -57,6 +58,7 @@ export const hostSkillMembers = (host: HostIdentity): Result<HostSkillMembers | 
   return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
 };
 const HOST_SURFACE_MEMBERS = [
+  { name: "copilot", data: COPILOT_HOST_DATA, placements: COPILOT_AUTHORED_PLACEMENTS },
   { name: "cursor", data: CURSOR_HOST_DATA, placements: CURSOR_AUTHORED_PLACEMENTS },
   { name: "opencode", data: OPENCODE_HOST_DATA, placements: OPENCODE_AUTHORED_PLACEMENTS },
   { name: "kiro", data: KIRO_HOST_DATA, placements: KIRO_AUTHORED_PLACEMENTS },
