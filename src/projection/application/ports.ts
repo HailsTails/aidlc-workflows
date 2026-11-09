@@ -27,6 +27,7 @@ import type { MethodSource } from "../../workflow-definition/domain/method-sourc
 import type { Scope } from "../../workflow-definition/domain/scope.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ScopeColumn, StageNode } from "../../workflow-definition/domain/stage-graph.ts";
+import type { Tier } from "../../workflow-definition/domain/vocabulary.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import type { CommandReading, CommandSubject, NativeCommandFile } from "../domain/native-command.ts";
 import type {
@@ -35,16 +36,13 @@ import type {
   OnboardingFills,
   OnboardingTemplates,
   SessionSkill,
+  SkillTableRenderer,
 } from "../domain/neutral-surface.ts";
 import type { DistributionChannel, ProjectedFile } from "../domain/projected-file.ts";
 import type { CompiledMethodFiles, ProjectionRefusal } from "../domain/projection.ts";
 import type { HostTokenBindings, TokenBindings } from "../domain/template-token.ts";
 
 export type Rendering = Result<readonly ProjectedFile[], ProjectionRefusal>;
-
-export type SkillTableVerb = "stage-table" | "scope-table";
-
-export type SkillTableRenderer = (verb: SkillTableVerb) => Result<string, string>;
 
 export type AuthoredFilePreparer = (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
 
@@ -55,6 +53,7 @@ export type AgentModelPolicy = (request: {
 }) => Result<string | undefined, ProjectionRefusal>;
 
 export type AgentRenderingInputs = {
+  readonly host: HostIdentity;
   readonly channel: DistributionChannel;
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
@@ -204,6 +203,40 @@ export type CommandSourceRequest = {
   readonly harnessDir: string;
   readonly harnessName: string;
 };
+
+export type SessionSkillCapture = {
+  readonly folder: URL;
+  readonly source: SourcePath;
+};
+
+export type SessionSkillReading = (
+  capture: SessionSkillCapture,
+) => Promise<Result<readonly SessionSkill[], readonly ProjectionRefusal[]>>;
+
+export type SkillProjectionRequest = {
+  readonly method: Method;
+  readonly render: HostSkillRenderer;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly commands: CommandSource;
+  readonly place: CommandPlacement;
+  readonly sessions: readonly SessionSkill[];
+};
+
+export type SkillProjection = (request: SkillProjectionRequest) => Rendering;
+
+export type AgentProjectionRequest = {
+  readonly method: Method;
+  readonly render: HostAgentRenderer;
+  readonly host: HostIdentity;
+  readonly channel: DistributionChannel;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly modelCap: Tier | null;
+};
+
+export type AgentProjection = (request: AgentProjectionRequest) => Rendering;
 
 export interface BuildProjection {
   serializeMethod(request: CompiledMethodRequest): CompiledMethodFiles;

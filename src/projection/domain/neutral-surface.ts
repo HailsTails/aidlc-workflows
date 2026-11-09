@@ -1,4 +1,5 @@
 import type { FileContent } from "../../kernel/file-content.ts";
+import type { Result } from "../../kernel/result.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 
 export const NEUTRAL_DOCUMENT_ROLES = ["protocol", "template", "conductor", "stage", "knowledge"] as const;
@@ -15,6 +16,10 @@ export type SessionSkill = {
   readonly name: string;
   readonly files: readonly { readonly source: SourcePath; readonly content: FileContent }[];
 };
+
+export type SkillTableVerb = "stage-table" | "scope-table";
+
+export type SkillTableRenderer = (verb: SkillTableVerb) => Result<string, string>;
 
 export type OnboardingTemplates = {
   readonly neutral: string;
