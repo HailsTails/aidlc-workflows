@@ -238,3 +238,41 @@ describe("the tests check takes a machine slot for the legacy suites only", () =
     expect(commands).toHaveLength(1);
   });
 });
+
+describe("a parallel suite names the run that failed", () => {
+  const FIRST: Command = { label: "first", argv: ["bun", "first-shard"] };
+  const SECOND: Command = { label: "second", argv: ["bun", "second-shard"] };
+  const SPLIT: TestSuite = {
+    ...SUITE,
+    commands: () => [FIRST, SECOND],
+    concurrency: 2,
+  };
+
+  const results: readonly CommandResult[] = [
+    { exitCode: 0, output: "" },
+    { exitCode: 1, output: "(fail) t9 > broke [3.2ms]" },
+  ];
+
+  const splitCheck = () =>
+    testsCheck({
+      runner: {
+        capture: () => results[0] as CommandResult,
+        captureAll: async () => results,
+        attach: () => 0,
+      },
+      workspace: workspaceOf({ "tests/a.test.ts": "" }),
+      suites: [SPLIT],
+      looseTests: [],
+      testCommand: () => FIRST,
+      capabilities: { probe: () => ({ available: true, evidence: "present" }) },
+      exclusions: [],
+      build: { ensure: () => undefined },
+    });
+
+  test("the fix names the command of the run the case failed in", async () => {
+    const outcome = await splitCheck().run(SCOPE);
+
+    expect(outcome.findings[0]?.fix).toContain("second-shard");
+    expect(outcome.findings[0]?.fix).not.toContain("first-shard");
+  });
+});

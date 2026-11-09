@@ -118,26 +118,27 @@ const looseRun = (dependencies: TestsDependencies, scope: GateScope): readonly R
 const probesOf = (capabilities: Capabilities): Probes =>
   Object.fromEntries(CAPABILITIES.map((id) => [id, capabilities.probe(id)])) as Probes;
 
-const hintOf = (run: Run): string =>
-  (run.commands[0]?.argv ?? []).slice(1).join(" ");
+const hintOf = (command: Command): string => command.argv.slice(1).join(" ");
 
-const unnamedFailure = (run: Run, output: string, exitCode: number): Finding => {
-  const summary = output.split(/\r?\n/).filter((line) => /^\s*\d+ fail/.test(line));
+const NEVER_SKIP = "never skip, loosen or delete a test to get green.";
+
+type Execution = { readonly command: Command; readonly result: CommandResult };
+
+const unnamedFailure = (run: Run, execution: Execution): Finding => {
+  const { command, result } = execution;
+  const lines = result.output.split(String.fromCharCode(10));
+  const summary = lines.filter((line) => /^[ ]*[0-9]+ fail/.test(line));
   return {
     subject: run.name,
-    violation: `bun test failed (${summary.join(" ").trim() || `exit ${exitCode}`})`,
-    fix:
-      `Run ${hintOf(run)} and fix the code or the failing test; ` +
-      "never skip, loosen or delete a test to get green.",
+    violation: `bun test failed (${summary.join(" ").trim() || `exit ${result.exitCode}`})`,
+    fix: `Run ${hintOf(command)} and fix the code or the failing test; ${NEVER_SKIP}`,
   };
 };
 
-const regression = (run: Run, name: string): Finding => ({
-  subject: `${run.name} · ${name}`,
+const regression = (run: Run, failure: { readonly name: string; readonly command: Command }) => ({
+  subject: `${run.name} · ${failure.name}`,
   violation: "failed, and no capability this machine lacks accounts for it",
-  fix:
-    `Run ${hintOf(run)} and fix the code or the failing test; ` +
-    "never skip, loosen or delete a test to get green.",
+  fix: `Run ${hintOf(failure.command)} and fix the code or the failing test; ${NEVER_SKIP}`,
 });
 
 const PACKAGE_READY = { AIDLC_TEST_PACKAGE_READY: "1" } as const;
@@ -159,19 +160,51 @@ const buildFailureVerdict = (finding: Finding): RunVerdict => ({
   timings: [],
 });
 
-const resultOf = async (dependencies: TestsDependencies, run: Run): Promise<CommandResult> => {
+const executionsOf = async (
+  dependencies: TestsDependencies,
+  run: Run,
+): Promise<readonly Execution[]> => {
   const [only] = run.commands;
   if (run.commands.length === 1 && only !== undefined) {
-    return dependencies.runner.capture(only);
+    return [{ command: only, result: dependencies.runner.capture(only) }];
   }
   const results = await dependencies.runner.captureAll({
     commands: run.commands,
     concurrency: run.concurrency,
   });
-  const failing = results.find((result) => result.exitCode !== 0);
+  return run.commands.map((command, index) => ({
+    command,
+    result: results[index] ?? { exitCode: 1, output: "" },
+  }));
+};
+
+const judgeExecutions = (request: {
+  readonly dependencies: TestsDependencies;
+  readonly run: Run;
+  readonly executions: readonly Execution[];
+}): RunVerdict => {
+  const { dependencies, run, executions } = request;
+  const timings = fileTimings(
+    executions.map((execution) => execution.result.output).join(OUTPUT_SEPARATOR),
+  );
+  const failing = executions.filter((execution) => execution.result.exitCode !== 0);
+  const named = failing.flatMap((execution) =>
+    failedCases(execution.result.output).map((name) => ({ name, command: execution.command })),
+  );
+  const unnamed = failing.filter((execution) => failedCases(execution.result.output).length === 0);
+  const classification = classifyFailures({
+    failed: [...new Set(named.map(({ name }) => name))],
+    exclusions: dependencies.exclusions,
+    probes: probesOf(dependencies.capabilities),
+  });
+  const regressions = classification.regressions.flatMap((name) => {
+    const failure = named.find((candidate) => candidate.name === name);
+    return failure === undefined ? [] : [regression(run, failure)];
+  });
   return {
-    exitCode: failing?.exitCode ?? 0,
-    output: results.map((result) => result.output).join(OUTPUT_SEPARATOR),
+    findings: [...unnamed.map((execution) => unnamedFailure(run, execution)), ...regressions],
+    excluded: excludedNote(classification.excluded),
+    timings,
   };
 };
 
@@ -201,30 +234,8 @@ const judgeRun = async (request: {
   const sharing = request.run.sharesPackageBuild && scope.build;
   const commands = sharing ? request.run.commands.map(withPackageReady) : request.run.commands;
   const run = { ...request.run, commands };
-  const result = await resultOf(dependencies, run);
-  const timings = fileTimings(result.output);
-  if (result.exitCode === 0) {
-    return { findings: [], excluded: "", timings };
-  }
-  const failed = failedCases(result.output);
-  if (failed.length === 0) {
-    return {
-      findings: [unnamedFailure(run, result.output, result.exitCode)],
-      excluded: "",
-      timings,
-    };
-  }
-  const probes = probesOf(dependencies.capabilities);
-  const classification = classifyFailures({
-    failed,
-    exclusions: dependencies.exclusions,
-    probes,
-  });
-  return {
-    findings: classification.regressions.map((name) => regression(run, name)),
-    excluded: excludedNote(classification.excluded),
-    timings,
-  };
+  const executions = await executionsOf(dependencies, run);
+  return judgeExecutions({ dependencies, run, executions });
 };
 
 export const testsCheck = (dependencies: TestsDependencies): GateCheck => ({

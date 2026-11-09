@@ -174,6 +174,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     record: nameListFile({ workspace, path: "lint/kernel-exports.txt" }),
     sources: ["src/kernel/*.ts"],
   }),
+  goldensCheck(goldens),
   testsCheck({
     runner,
     workspace,
@@ -184,7 +185,6 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
     build: packageBuild,
   }),
-  goldensCheck(goldens),
 ];
 
 const EXIT_CODES: Readonly<Record<GateReport["verdict"], number>> = {
