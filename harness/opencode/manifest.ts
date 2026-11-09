@@ -27,34 +27,16 @@
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
+import { OPENCODE_HOST_DATA } from "../../src/hosts/opencode/host-data.ts";
 import emit from "./emit.ts";
 
 const manifest: HarnessManifest = {
   name: "opencode",
-  productName: "opencode",
-  configNextStep: "run `opencode`, then `/aidlc --doctor`",
-  // Its tool.execute.before hooks for bash beat in the record before each
-  // engine command, review-freeze and plan-approval-guard before their own off
-  // switches. Measured live: the plugin does not load under `--pure` or from a
-  // start in a subfolder, and a plain `opencode` in the project folder loads it.
-  hookActivation: {
-    recovery:
-      "Quit opencode and start it again with just `opencode` in <folder>, then type <entry> to carry on.",
-    // The plugin's human-turn hook leaves a heartbeat on every message, before
-    // the first workflow too.
-    notRunYet:
-      "This is expected before your first opencode chat in this folder. If you already started one, quit " +
-      "opencode and start it again with just `opencode` in <folder>, then run doctor again.",
-    agentStep:
-      "AI-DLC's opencode plugin is not loaded in this session. Do not retry and do not ask the " +
-      "person to answer again. Show the person this line and end your turn: " +
-      '"Quit opencode and start it again with just `opencode` in <folder>, then type <entry> to carry on."',
-  },
-  // opencode marks the commands its agent runs with OPENCODE=1, the mark
-  // hostRunsThisChat (aidlc-rules-held.ts) reads for an opencode chat.
-  hostShell: { env: ["OPENCODE"] },
-  // A clean chat for new work started beside other work.
-  newChatStep: { text: "start a new session, then type <entry>" },
+  productName: OPENCODE_HOST_DATA.productName,
+  configNextStep: OPENCODE_HOST_DATA.configNextStep,
+  hookActivation: OPENCODE_HOST_DATA.hookActivation,
+  hostShell: OPENCODE_HOST_DATA.hostShell,
+  newChatStep: OPENCODE_HOST_DATA.newChatStep,
   harnessDir: ".aidlc",
   orchestratorSkillPath: ".aidlc/skills/aidlc/SKILL.md",
   tierFlavor: "opencode",
@@ -142,14 +124,13 @@ const manifest: HarnessManifest = {
     // skills.paths (skill discovery), instructions glob (the method include),
     // and the native aidlc command permissions.
     { src: "opencode.json", dst: "opencode.json", projectRoot: true },
-    { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
   ],
 
   // Neutral root guidance is shared; opencode.json loads the native setup separately.
   onboarding: { dst: "AGENTS.md", projectRoot: true, harnessDst: "onboarding.md", fills: onboardingFills },
 
   // .aidlc/ is AIDLC's own dir; core's rules/ name has nothing to collide with.
-  rulesRename: null,
+  rulesRename: OPENCODE_HOST_DATA.rulesFolder,
   skipRunnerGen: true,
 
   emit,
