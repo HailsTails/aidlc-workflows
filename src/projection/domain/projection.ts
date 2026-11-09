@@ -43,3 +43,8 @@ export type Projection = {
   readonly files: readonly ProjectedFile[];
   readonly findings: readonly ProjectionFinding[];
 };
+
+export type CompiledMethodFiles = {
+  readonly graph: string;
+  readonly grid: string;
+};

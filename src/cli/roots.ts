@@ -14,16 +14,23 @@ import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout, HostDistribution } from "../packaging/domain/payload.ts";
 import type {
   CommandPlacement,
+  CommandSource,
   Harness,
   HostAgentRenderer,
   HostDocumentRenderer,
   HostSettingsRenderer,
   HostSkillRenderer,
 } from "../projection/application/ports.ts";
-import type { AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
+import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
 import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
+import type { CompiledMethodFiles, ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostTokenChoices } from "../projection/domain/template-token.ts";
-import type { MarkdownOutliner } from "../workflow-definition/application/ports.ts";
+import type {
+  AuthoredCoreMethod,
+  AuthoredPluginBuild,
+  MarkdownOutliner,
+  MethodReading,
+} from "../workflow-definition/application/ports.ts";
 
 export type ExitStatus = 0 | 1 | 2;
 
@@ -98,6 +105,52 @@ export type CreateBuildRoot = (createBuildRootArgs: {
   readonly outliner: MarkdownOutliner;
   readonly sources: BuildSources;
 }) => BuildRoot;
+
+export type CoreBuildTarget = {
+  readonly name: string;
+  readonly directory: string;
+  readonly memoryRoot: string;
+};
+
+export type CoreBuild = AuthoredCoreMethod & {
+  project(target: CoreBuildTarget): Result<CompiledMethodFiles, KernelRefusal>;
+};
+
+export type CoreCommandRequest = {
+  readonly core: CoreBuild;
+  readonly projectRoot: URL;
+  readonly harnessDir: string;
+  readonly harnessName: string;
+};
+
+export type HostSourcesRequest = {
+  readonly name: string;
+  readonly directory: string;
+  readonly root: URL;
+  readonly copied: readonly string[];
+  readonly required: readonly string[];
+};
+
+export type CapturedHostSources = {
+  readonly host: HostIdentity;
+  readonly files: readonly AuthoredHostFile[];
+};
+
+export interface PackageBuildRoot {
+  loadCore(): MethodReading<CoreBuild>;
+  loadPlugins(request: { readonly core: CoreBuild }): MethodReading<AuthoredPluginBuild>;
+  prepareCommandSource(request: CoreCommandRequest): Promise<CommandSource>;
+  readHostSources(
+    request: HostSourcesRequest,
+  ): Promise<Result<CapturedHostSources, readonly (KernelRefusal | ProjectionRefusal)[]>>;
+}
+
+export type CreatePackageBuildRoot = (createPackageBuildRootArgs: {
+  readonly platform: Platform;
+  readonly outliner: MarkdownOutliner;
+  readonly sources: BuildSources;
+  readonly runnerFrames: URL;
+}) => PackageBuildRoot;
 
 export interface RuntimeRoot {
   routes(request: {
