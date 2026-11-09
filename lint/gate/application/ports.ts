@@ -39,7 +39,16 @@ export type Workspace = {
   readonly filesMatching: (globs: readonly string[]) => readonly string[];
 };
 
+export type SourceReferenceSet = {
+  readonly imports: readonly string[];
+  readonly globals: readonly string[];
+};
+
 export type ModuleReader = {
+  readonly referencesOf: (request: {
+    readonly path: string;
+    readonly text: string;
+  }) => SourceReferenceSet;
   readonly shapeOf: (request: { readonly path: string; readonly text: string }) => ModuleShape;
   readonly membersOf: (request: {
     readonly path: string;

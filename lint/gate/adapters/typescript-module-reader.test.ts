@@ -30,3 +30,27 @@ describe("typescriptModuleReader.membersOf", () => {
     expect(membersOf("Missing")).toEqual([]);
   });
 });
+
+const REFERENCES_SOURCE = [
+  'import { a } from "./a.ts";',
+  'export { b } from "node:fs/promises";',
+  'export const load = () => import("./lazy.ts");',
+  "export const run = Bun.spawn;",
+  "export const home = settings.process;",
+  "export const read = fetch;",
+].join("\n");
+
+describe("typescriptModuleReader.referencesOf", () => {
+  const references = typescriptModuleReader.referencesOf({
+    path: "x.ts",
+    text: REFERENCES_SOURCE,
+  });
+
+  test("it lists static, re-exported and dynamically imported specifiers", () => {
+    expect(references.imports).toEqual(["./a.ts", "node:fs/promises", "./lazy.ts"]);
+  });
+
+  test("it lists platform globals and dynamic imports, but not a property named like one", () => {
+    expect([...references.globals].sort()).toEqual(["Bun", "fetch", "import()"]);
+  });
+});
