@@ -28,6 +28,7 @@ import type { HostTokenChoices } from "../projection/domain/template-token.ts";
 import type {
   AuthoredCoreMethod,
   AuthoredPluginBuild,
+  MarkdownOutliner,
   MethodReading,
 } from "../workflow-definition/application/ports.ts";
 
@@ -101,6 +102,7 @@ export type BuildSources = {
 
 export type CreateBuildRoot = (createBuildRootArgs: {
   readonly platform: Platform;
+  readonly outliner: MarkdownOutliner;
   readonly sources: BuildSources;
 }) => BuildRoot;
 
@@ -145,6 +147,7 @@ export interface PackageBuildRoot {
 
 export type CreatePackageBuildRoot = (createPackageBuildRootArgs: {
   readonly platform: Platform;
+  readonly outliner: MarkdownOutliner;
   readonly sources: BuildSources;
   readonly runnerFrames: URL;
 }) => PackageBuildRoot;
