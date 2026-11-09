@@ -151,6 +151,13 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   shippedOwner("aidlc-version", "src/packaging/adapters/legacy-version.ts"),
   shippedOwner("aidlc-channel", "src/packaging/adapters/legacy-channel.ts"),
   shippedOwner("aidlc-archive", "src/packaging/adapters/legacy-archive.ts"),
+  {
+    module: "harness/kiro-ide/delegate-shell-deny.ts",
+    readBy: "src/projection/adapters/legacy-delegate-shell.ts",
+    retiresWhen:
+      "Phase 2 Kiro IDE cutover: the delegate shell policy moves into src/projection and ships " +
+      "in the runtime bundle (R1), deleting the harness-side owner.",
+  },
 ];
 
 const tools = (...names: readonly string[]): readonly string[] =>

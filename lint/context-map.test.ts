@@ -141,6 +141,13 @@ const EXPECTED_BRIDGES = [
     readBy: "src/packaging/adapters/legacy-archive.ts",
     retiresWhen: OWNER_MOVES,
   },
+  {
+    module: "harness/kiro-ide/delegate-shell-deny.ts",
+    readBy: "src/projection/adapters/legacy-delegate-shell.ts",
+    retiresWhen:
+      "Phase 2 Kiro IDE cutover: the delegate shell policy moves into src/projection and ships " +
+      "in the runtime bundle (R1), deleting the harness-side owner.",
+  },
 ];
 
 describe("host and legacy boundaries", () => {
