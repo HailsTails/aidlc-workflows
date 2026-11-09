@@ -28,13 +28,12 @@ import {
 } from "../../core/tools/aidlc-model-policy.ts";
 import { accepted, refused } from "../../src/kernel/result.ts";
 import {
-  KIRO_PROMPT_LINES, kiroCliAgentRenderer, type KiroModelSurface,
+  kiroCliAgentRenderer, type KiroModelSurface,
 } from "../../src/hosts/kiro/projection/agent-renderer.ts";
 import { kiroCommandPath } from "../../src/hosts/kiro/projection/command-renderer.ts";
 import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
 import onboardingFills from "./onboarding.fills.ts";
-
-const PERSONA_PROMPT_LINES = [...KIRO_PROMPT_LINES];
+import { KIRO_HOST_DATA } from "../../src/hosts/kiro/host-data.ts";
 
 const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKeys }) => {
   if (agent.model.kind !== "tier") return refused({
@@ -80,22 +79,13 @@ const emitAgents = (ctx: EmitContext): void => {
   }
 };
 
-// The person's ways back when Kiro CLI runs on v3 with this tree's agent files
-// not upgraded (hookActivation's comment says what was measured).
-const KIRO_V3_WAYS_BACK =
-  "type /upgrade-agent and choose the workspace agents, then quit Kiro and start `kiro-cli --v3` again " +
-  "in this folder; or, to switch this project to Kiro, quit Kiro, run `{{INVOKE}} config --harness kiro` " +
-  "in a terminal in this folder and, once it has finished, start `kiro-cli --v3`; or quit Kiro and start " +
-  "it again in this folder with: kiro-cli --v2 --agent aidlc (Kiro CLI 2.21.4 or later; for an older one, " +
-  "see the AI-DLC Kiro CLI guide)";
-
 const manifest: HarnessManifest = {
   name: "kiro",
-  productName: "Kiro CLI",
+  productName: KIRO_HOST_DATA.productName,
   // This tree's agents are built for Kiro CLI's v2 engine; the kiro-ide tree,
   // listed as Kiro, is the one for Kiro IDE and Kiro CLI on v3.
   choiceName: "Kiro CLI (V2)",
-  configNextStep: "run `kiro-cli --v2` (Kiro CLI 2.21.4 or later; for an older one, see the AI-DLC Kiro CLI guide), then `/aidlc --doctor`",
+  configNextStep: KIRO_HOST_DATA.configNextStep,
   // This tree registers its hooks in the agent JSON `hooks` block, which Kiro
   // CLI's v2 engine runs while the aidlc agent is active. The v3 engine (KAS)
   // does not run that file as shipped: measured on kiro-cli 2.21.1 over ACP for
@@ -131,41 +121,16 @@ const manifest: HarnessManifest = {
   // switches.
   // The prompt adapter runs the human-turn hook on every message, which leaves
   // a heartbeat before the first workflow too.
-  hookActivation: {
-    recovery:
-      "In Kiro CLI, type /agent and pick aidlc, then carry on. If aidlc is not in that list, Kiro is on its " +
-      `v3 engine with this project's agent files not upgraded: ${KIRO_V3_WAYS_BACK}. From an ACP client, start ` +
-      "`kiro-cli acp --agent-engine v2`; or switch this project to Kiro with `{{INVOKE}} config --harness kiro` " +
-      "in a terminal in this folder and start `kiro-cli acp --agent-engine v3` with Kiro's client hooks " +
-      "turned on (the AI-DLC guide for Kiro names them).",
-    // A session without the aidlc agent runs none of these hooks, even after
-    // an earlier session did, so the person's reply can go unrecorded. Measured
-    // live: with the hooks running, a reply typed to another agent picked in
-    // /agent is never recorded, and `/agent` and aidlc are the way back. On v3
-    // with the agent files not upgraded, an earlier v2 session's heartbeat
-    // sends this text, not agentStep, and the ways back are those of agentStep.
-    missedReply:
-      "If the person already replied, that reply was not recorded for this question. Tell them exactly this, " +
-      "with nothing about why: \"Your answer didn't reach AI-DLC. Type /agent and pick aidlc, then give it once " +
-      `more. If aidlc is not in that list, ${KIRO_V3_WAYS_BACK}, and give it there."`,
-    notRunYet:
-      "This is expected before your first Kiro CLI chat in this folder. If you already started one, type /agent " +
-      `and pick aidlc; if aidlc is not in that list, ${KIRO_V3_WAYS_BACK}. Then run doctor again.`,
-    agentStep:
-      "Kiro is not running this project's aidlc agent in this session. You cannot change that " +
-      "from inside it: do not approve, retry, or ask the person to answer again. Show the person this " +
-      `line: "Type /agent and pick aidlc, then carry on. If aidlc is not in that list, ${KIRO_V3_WAYS_BACK}, ` +
-      'and type <entry> there to carry on." Then end your turn.',
-  },
+  hookActivation: KIRO_HOST_DATA.hookActivation,
   // Kiro CLI names the chat in every command its agent runs (KIRO_SESSION_ID).
-  hostShell: { env: ["KIRO_SESSION_ID"] },
+  hostShell: KIRO_HOST_DATA.hostShell,
   // A clean chat for new work started beside other work: Kiro CLI's own
   // command, which keeps the old chat for /chat resume (the Kiro CLI guide).
-  newChatStep: { text: "type /chat new, then <entry>" },
+  newChatStep: KIRO_HOST_DATA.newChatStep,
   harnessDir: ".kiro",
   orchestratorSkillPath: ".kiro/skills/aidlc/SKILL.md",
   tierFlavor: "kiro",
-  kiroLayout: "agent-v1",
+  kiroLayout: KIRO_HOST_DATA.kiroLayout,
   // Kiro CLI starts a hook as `"powershell" -Command "<command>"` on Windows and
   // `/bin/bash -c "<command>"` on Linux (measured on kiro-cli 2.34.0), and it
   // stops a tool call only on exit 2. Windows PowerShell's -Command hands back
@@ -249,28 +214,18 @@ const manifest: HarnessManifest = {
   // by construction); they are .md/.json/.ts copied verbatim (the .md token
   // substitution is a no-op on them — no {{HARNESS_DIR}} token present).
   harnessFiles: [
-    { src: "hooks/aidlc-kiro-adapter.ts", dst: "hooks/aidlc-kiro-adapter.ts" },
     { src: "hooks/aidlc-record-human-turn.kiro.hook", dst: "hooks/aidlc-record-human-turn.kiro.hook" },
     { src: "hooks/aidlc-plan-approval-guard.kiro.hook", dst: "hooks/aidlc-plan-approval-guard.kiro.hook" },
     { src: "settings/cli.json", dst: "settings/cli.json" },
-    { src: "settings/mcp.json", dst: "settings/mcp.json" },
-    // Project-root .gitignore (beside .kiro/, not inside it) — re-rooted under
-    // aidlc/spaces/* for the workspace layout (SEED): cursors + machine-local
-    // runtime ignored, the shared work (memory/codekb/registry/state/audit
-    // shards/artifacts) committed. Net-new for Kiro — it shipped none before.
-    // Authored as dot-gitignore so it does not act as a live ignore inside
-    // harness/kiro/. projectRoot routes it to dist/kiro/.gitignore + the --check
-    // determinism guard.
-    { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
   ],
 
-  pluginAgentFrontmatter: PERSONA_PROMPT_LINES,
+  pluginAgentFrontmatter: KIRO_HOST_DATA.pluginAgentFrontmatter.copy,
 
   // Neutral root guidance is shared; native setup is loaded through agent resources.
   onboarding: { dst: "AGENTS.md", projectRoot: true, harnessDst: "steering/aidlc-onboarding.md", fills: onboardingFills },
 
   // rules/ → steering/ (applied after the token substitution, anchored).
-  rulesRename: "steering",
+  rulesRename: KIRO_HOST_DATA.rulesFolder,
 
   skipRunnerGen: true,
 
