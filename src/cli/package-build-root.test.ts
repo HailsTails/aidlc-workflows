@@ -72,9 +72,9 @@ test("host path refusal precedes IO and a valid capture retains its host", async
     { kind: "invalid-path", base: "source", raw: "../outside" },
   ] });
   expect(readFile).not.toHaveBeenCalled();
-  expect(await root.readHostSources({ name: "kiro", directory: ".kiro", root: new URL("file:///host/"),
+  expect(await root.readHostSources({ name: "fixture-host", directory: ".fixture", root: new URL("file:///host/"),
     copied: [], required: [] })).toEqual({ ok: true, value: {
-      host: host({ name: "kiro", directory: ".kiro" }), files: [],
+      host: host({ name: "fixture-host", directory: ".fixture" }), files: [],
     } });
 });
 
@@ -150,7 +150,7 @@ test("the skill route omits unregistered hosts without reading neutral sources",
   const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
   const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml },
     outliner, sources, runnerFrames });
-  expect(await root.projectSkills({ host: host({ name: "kiro", directory: ".kiro" }),
+  expect(await root.projectSkills({ host: host({ name: "fixture-host", directory: ".fixture" }),
     projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
     commands: { read: () => accepted({ kind: "declined" }) }, place: claudeCommandPath, tokens: skillTokens }))
     .toEqual(accepted([]));
@@ -197,4 +197,13 @@ test("the real skill route composes B and C once and captures neutral skills onc
     content: { kind: "text", text: "Changed after capture" } }));
   expect(accept(await root.projectSkills(skillRequest))).toEqual(expected);
   expect(readTree).toHaveBeenCalledTimes(1);
+});
+test("registered Kiro skills refuse the actual missing captured orchestrator input", async () => {
+  const root = createPackageBuildRoot({ platform: { fileSystem: createInMemoryFileSystem({ files: {} }),
+    processRunner, yaml }, outliner, sources, runnerFrames });
+  expect(await root.projectSkills({ host: host({ name: "kiro", directory: ".kiro" }),
+    projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
+    commands: { read: () => accepted({ kind: "declined" }) }, place: claudeCommandPath, tokens: skillTokens }))
+    .toEqual(refused({ kind: "render-failed", concept: "orchestrator-skill", name: "skills/aidlc/SKILL.md",
+      reason: "The authored orchestrator document was not captured." }));
 });
