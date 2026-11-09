@@ -1,3 +1,4 @@
+import { KIRO_PROMPT_LINES } from "../host-data.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { Harness, Rendering } from "../../../projection/application/ports.ts";
@@ -18,11 +19,6 @@ export type KiroAgentProfile = {
   readonly promptLines: (agent: Agent) => readonly string[];
   readonly inlineReading: (agent: Agent) => InlineReading;
 };
-
-export const KIRO_PROMPT_LINES: readonly string[] = [
-  `tools: ["read", "write", "shell"]`,
-  "includeMcpJson: true",
-];
 
 const renderFailed = (agent: Agent, reason: string): ProjectionRefusal => ({
   kind: "render-failed",
