@@ -16,11 +16,14 @@ export const RENDERED_CONCEPTS = [
 
 export type RenderedConcept = (typeof RENDERED_CONCEPTS)[number];
 
+export type RuntimeDataName = "agent-tiers" | "settings-schema";
+
 export type ProjectionOrigin =
   | { readonly kind: "method-source"; readonly path: MethodSourcePath }
   | { readonly kind: "neutral"; readonly source: SourcePath }
   | { readonly kind: "harness-authored"; readonly source: SourcePath }
-  | { readonly kind: "rendered"; readonly concept: RenderedConcept; readonly name: string };
+  | { readonly kind: "rendered"; readonly concept: RenderedConcept; readonly name: string }
+  | { readonly kind: "runtime-data"; readonly name: RuntimeDataName };
 
 export type DistributionChannel = "copy" | "native";
 

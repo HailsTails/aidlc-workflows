@@ -20,8 +20,8 @@
 // it never replaces the directory. All emissions are aidlc-prefixed so the
 // merge is collision-free.
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
 import {
   modelAgentName, resolveModelPolicy, writeMarkdownAgentSurface,
@@ -70,26 +70,9 @@ function emitHooksJson(harnessDir: string): string {
   return `${JSON.stringify({ version: 1, hooks }, null, 2)}\n`;
 }
 
-export const authoredInputs: readonly string[] = [
-  "skills/aidlc/SKILL.md", "skills/aidlc/question-rendering.md",
-  "skills/aidlc/composer.md", "skills/aidlc/tables.md",
-];
-
 function emit(ctx: EmitContext): void {
   const { coreRoot, distRoot, harnessDir, substituteToken } = ctx;
   const SHELL = join(distRoot, ".github");
-  const SKILLS_DST = join(SHELL, "skills");
-
-  function walk(dir: string): string[] {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir).sort()) {
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) out.push(...walk(full));
-      else out.push(full);
-    }
-    return out;
-  }
-
   const emissions: Array<{ path: string; content: () => string }> = [];
 
   // The packager rendered AGENTS.md (onboarding) before emit runs; its
@@ -165,28 +148,6 @@ function emit(ctx: EmitContext): void {
     }
   }
 
-  // (a) authored orchestrator shell — token-substituted from harness/copilot/.
-  for (const authored of ctx.hostSources.filter((file) => authoredInputs.includes(file.source))) {
-    const f = authored.source.slice("skills/aidlc/".length);
-    emissions.push({
-      path: join(SKILLS_DST, "aidlc", f),
-      content: () => substituteToken(ctx.hostSourceText(authored)),
-    });
-  }
-  // (d) session skills — copied from core/ with token substitution (the
-  // engine dir ships NO skills/ — Copilot never scans it).
-  for (const skill of ["aidlc-session-cost", "aidlc-replay", "aidlc-outcomes-pack", "aidlc-knowledge", "aidlc-issue-report"]) {
-    const srcDir = join(coreRoot, "skills", skill);
-    if (!existsSync(srcDir)) continue;
-    for (const file of walk(srcDir)) {
-      const rel = relative(srcDir, file);
-      emissions.push({
-        path: join(SKILLS_DST, skill, rel),
-        content: () => substituteToken(readFileSync(file, "utf-8")),
-      });
-    }
-  }
-
   // Clean-sweep the shell so a removed persona/runner cannot linger. In
   // --check mode the packager supplies an isolated distRoot, then compares
   // the complete generated tree with the independently generated counterpart.
@@ -204,4 +165,4 @@ function emit(ctx: EmitContext): void {
   ctx.emitCommands(copilotCommandPath);
 }
 
-export default Object.assign(emit, { authoredInputs });
+export default emit;
