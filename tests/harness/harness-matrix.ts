@@ -5,7 +5,7 @@ import {
   runnerProducer, orchestratorSkillLocation, type HarnessManifest,
 } from "../../scripts/manifest-types.ts";
 import { frontmatterBlock } from "../../core/tools/aidlc-lib.ts";
-import { hostAgentMembers } from "../../src/cli/host-table.ts";
+import { hostAgentMembers, hostSurfaceMembers } from "../../src/cli/host-table.ts";
 import { distributionId, projectPath } from "../../src/kernel/values.ts";
 import { accepted, refused } from "../../src/kernel/result.ts";
 
@@ -330,6 +330,19 @@ export function validateManifest(
     fail(name, `project-root onboarding "${onboarding.dst}" is absent from rootFiles metadata`);
   }
 
+  const distribution = distributionId(name);
+  const directory = projectPath(manifest.harnessDir);
+  if (!distribution.ok || !directory.ok) fail(name, "surface producer needs a valid host identity");
+  const surface = hostSurfaceMembers({
+    distribution: distribution.value, directory: directory.value,
+  });
+  const placements = surface?.placements ?? [];
+  for (const placement of placements) {
+    const atRoot = !placement.destination.includes("/");
+    if (atRoot && !capabilities.rootFiles.includes(placement.destination)) {
+      fail(name, `project-root placement "${placement.destination}" is absent from rootFiles`);
+    }
+  }
   const hasKiroAgentJson = producesConductorAgent(name, manifest);
   if (hasKiroAgentJson !== capabilities.kiroAgentJson) {
     fail(name, "kiroAgentJson does not agree with the registered conductor producer");
@@ -341,7 +354,9 @@ export function validateManifest(
         (file) => file.dst === "steering/aidlc-active-memory.md",
       ) ||
     (capabilities.memoryInclude === "claude-import") !==
-      manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.md") ||
+      (manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.md") ||
+        placements.some((placement) =>
+          placement.destination === `${manifest.harnessDir}/rules/aidlc.md`)) ||
     (capabilities.memoryInclude === "codex-engine") !==
       (orchestratorLocation === ".agents/skills/aidlc/SKILL.md") ||
     (capabilities.memoryInclude === "opencode-instructions") !==
@@ -354,7 +369,7 @@ export function validateManifest(
     (capabilities.memoryInclude === "cursor-rule") !==
       manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.mdc")
   ) {
-    fail(name, "memoryInclude does not agree with manifest-owned include surfaces");
+    fail(name, "memoryInclude does not agree with the registered include surfaces");
   }
   validateEmittedAgentTools(name, manifest, capabilities);
   if (

@@ -10,6 +10,7 @@
 // same {{HARNESS_DIR}} token as every other harness; the packager substitutes
 // `.claude` here.
 
+import { CLAUDE_HOST_DATA } from "../../src/hosts/claude/host-data.ts";
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -27,97 +28,37 @@ import { claudeCommandPath } from "../../src/hosts/claude/projection/command-ren
 
 const manifest: HarnessManifest = {
   name: "claude",
-  productName: "Claude Code",
+  productName: CLAUDE_HOST_DATA.productName,
   // AI-DLC's status line. It ships here, not in .claude/settings.json: the
   // team file outranks the person's own status line, so the engine writes this
   // into their .claude/settings.local.json only when they choose it (#1407).
-  statusLine: {
-    type: "command",
-    command: 'bun "$CLAUDE_PROJECT_DIR/.claude/tools/aidlc.ts" engine statusline',
-  },
+  statusLine: CLAUDE_HOST_DATA.statusLine,
   // SubagentStop runs before a foreground agent's result comes back (it can
   // keep the agent running), and a background dispatch is counted in the
   // in-flight ledger until its SubagentStop. Claude Code sets
   // CLAUDE_CODE_SESSION_ID in its agent's shell.
-  agentFinishRecorded: { env: ["CLAUDE_CODE_SESSION_ID"] },
+  agentFinishRecorded: CLAUDE_HOST_DATA.agentFinishRecorded,
   // AskUserQuestion takes four options besides its own "Type something" row
   // (question-rendering.md, "Batching limits"), so a question is lettered A-D.
   questionOptions: 4,
   // A Claude Code session open before setup has no /aidlc and runs none of
   // its hooks until it starts again.
   configNextStep:
-    "open Claude Code in this project (if it is already open in this folder, exit it and start it again) " +
-    "and run `/aidlc --doctor`",
+    CLAUDE_HOST_DATA.configNextStep,
   // Its Bash PreToolUse hooks beat in the record before each engine command,
   // and reviewer-scope beats before its own off switch. Measured live: a
   // project's .claude/settings.local.json outranks the project and user files,
   // so one `"disableAllHooks": false` there covers a switch-off in any of them
   // without touching the person's user settings, and it takes effect in the
   // same chat (no restart; /hooks is not the step).
-  hookActivation: {
-    recovery:
-      'Set "disableAllHooks": false in this project\'s .claude/settings.local.json; it works in ' +
-      "the same chat. If you started Claude Code with a setting that turns hooks off, start it " +
-      "again without that setting. If your organization's Claude Code settings block this " +
-      "project, ask your Claude Code administrator to allow project hooks. If AI-DLC was set up " +
-      "while Claude Code was open, exit Claude Code and start it again in this folder, then type " +
-      "<entry>.",
-    agentStepEdits: ".claude/settings.local.json",
-    // Measured live: Claude Code runs none of the hooks in a settings.json it
-    // cannot parse as strict JSON, and config stops on such a file, so that
-    // case names the file. A file that registers none of AI-DLC's hooks gets
-    // them back from config, which keeps the person's own. The restart matches
-    // what config itself says.
-    registration: {
-      file: ".claude/settings.json",
-      missing:
-        ".claude/settings.json is missing from this project, so Claude Code runs none of AI-DLC's hooks here. " +
-        "In a terminal in this folder, <repair>, then exit Claude Code and start it again in this folder, " +
-        "and type <entry>.",
-      invalid:
-        "Claude Code cannot read this project's .claude/settings.json because it is not valid JSON, so it runs " +
-        "none of AI-DLC's hooks here. Correct the file, then exit Claude Code and start it again in this folder, " +
-        "and type <entry>.",
-      unwired:
-        ".claude/settings.json in this project does not register AI-DLC's hooks, so Claude Code runs none of them " +
-        "here. In a terminal in this folder, <repair>, then exit Claude Code and start it again in this folder, " +
-        "and type <entry>.",
-    },
-    // The human-turn hook leaves a heartbeat on every message, before the
-    // first workflow too.
-    notRunYet:
-      "This is expected before your first Claude Code chat in this folder. If you already started one, set " +
-      '"disableAllHooks": false in this project\'s .claude/settings.local.json (it works in the same chat). If ' +
-      "you started Claude Code with a setting that turns hooks off, start it again without that setting; if " +
-      "AI-DLC was set up while Claude Code was open, exit Claude Code and start it again in this folder. Then " +
-      "run doctor again.",
-    agentStep:
-      "Claude Code is not running AI-DLC's hooks in this project. First show the person this " +
-      'line: "Choose Yes when Claude Code asks to change this project\'s settings, then answer ' +
-      'the question below." Then set `"disableAllHooks": false` in this project\'s ' +
-      "`.claude/settings.local.json`, keep every other key as it is, and create the file if it " +
-      "does not exist; Claude Code asks the person before it changes its settings. It works in " +
-      "this chat: do not ask for a restart and do not mention /hooks. Then run <next> and act " +
-      "on what it returns, so the waiting question shows again. If it brings back this same " +
-      "message, the hooks are still off from outside this project: show this line instead and " +
-      'end your turn: "Claude Code is still starting with its hooks off. If AI-DLC was set up while ' +
-      "Claude Code was open, exit Claude Code and start it again in this folder, then type <entry>. " +
-      "If you started it with a setting that turns hooks off, start it again without that setting; " +
-      'otherwise ask your Claude Code administrator to allow project hooks."',
-    // Measured live (2.1.278, 2.1.310): started in a folder inside the
-    // project, Claude Code offers /aidlc there but runs none of the project's
-    // hooks, whatever the settings say.
-    startedInsideProject:
-      "Claude Code runs this project's hooks only when it is started in the project folder. Exit Claude Code, " +
-      "start it again in <folder>, then type <entry>.",
-  },
+  hookActivation: CLAUDE_HOST_DATA.hookActivation,
   // Claude Code marks every command its agent runs (measured in its Bash tool,
   // 2.1.318); a native engine with several tools set up reads this to know it
   // runs for Claude Code.
-  hostShell: { env: ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID"] },
+  hostShell: CLAUDE_HOST_DATA.hostShell,
   // A clean chat for new work started beside other work: /clear starts a new
   // conversation and keeps the old one for /resume.
-  newChatStep: { text: "type /clear, then <entry>" },
+  newChatStep: CLAUDE_HOST_DATA.newChatStep,
   harnessDir: ".claude",
   orchestratorSkillPath: ".claude/skills/aidlc/SKILL.md",
   tierFlavor: "claude",
@@ -194,33 +135,14 @@ const manifest: HarnessManifest = {
 
   // Authored harness surfaces copied verbatim (with token substitution on .md)
   // from harness/claude/<src> → <harnessDir>/<dst>.
-  harnessFiles: [
-    // The AIDLC method @-import stub: .claude/rules/aidlc.md pulls the method
-    // into Claude's ambient context by reference (explicit @-imports of the
-    // engine's git-ignored copy of the active space's memory,
-    // aidlc/active-memory/*). The rules/ dir is not a core projection; this stub
-    // is the only file in it.
-    { src: "rules-aidlc.md", dst: "rules/aidlc.md" },
-    { src: "settings.json", dst: "settings.json" },
-    { src: "settings.local.json.example", dst: "settings.local.json.example" },
-    // Project-root install files (beside .claude/, not inside it). The
-    // copy-channel projection includes them at its root. Authored here
-    // (not core/) because they are Claude-Code-specific: .mcp.json is the
-    // Claude MCP-server registry (Kiro/Codex configure MCP differently and ship
-    // none), and the .gitignore names `.claude/settings.local.json`. projectRoot
-    // routes them to dist/claude/<dst> and brings them under the whole-tree
-    // determinism comparison. dot-gitignore is the authored name so it does not
-    // act as a live ignore inside harness/claude/.
-    { src: ".mcp.json", dst: ".mcp.json", projectRoot: true },
-    { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
-  ],
+  harnessFiles: [{ src: "settings.json", dst: "settings.json" }],
 
   // Claude keeps neutral guidance and native setup together in its always-on file.
   onboarding: { dst: "CLAUDE.md", fills: onboardingFills },
 
-  rulesRename: null,
+  rulesRename: CLAUDE_HOST_DATA.rulesFolder,
 
-  runnerFrontmatterAdditions: ["disable-model-invocation: true"],
+  runnerFrontmatterAdditions: CLAUDE_HOST_DATA.runnerFrontmatterAdditions,
 
   skipRunnerGen: true,
 

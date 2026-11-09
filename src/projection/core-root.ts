@@ -1,3 +1,4 @@
+import { projectHostSurface } from "./application/project-host-surface.ts";
 import { createSessionSkillSource } from "./adapters/session-skill-files.ts";
 import { prepareLegacySkillTables } from "./adapters/legacy-skill-tables.ts";
 import { projectMethodSkills } from "./application/project-method-skills.ts";
@@ -19,6 +20,7 @@ export const createBuildProjection = (request: {
   readonly runnerFrames: URL;
   readonly runnerChild: URL;
 }): BuildProjection => ({
+  projectHostSurface,
   serializeMethod: serializeCompiledMethod,
   readSessionSkills: (capture) => createSessionSkillSource({ ...capture, tree: request.sessionFiles }).read(),
   projectSkills: async (skills) => {

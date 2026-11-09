@@ -1,6 +1,6 @@
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports.ts";
-import { hostAgentMembers, hostSkillMembers, hostSkillInputs } from "./host-table.ts";
+import { hostAgentMembers, hostSkillMembers, hostSkillInputs, hostSurfaceMembers } from "./host-table.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
@@ -27,28 +27,33 @@ const projectFor = (request: { readonly authored: AuthoredCoreMethod; readonly t
   };
 
 
+const captureHost = async (capture: HostSourcesRequest,
+  projection: Pick<BuildProjection, "readHostSources">):
+    Promise<Result<CapturedHostSources, readonly (KernelRefusal | ProjectionRefusal)[]>> => {
+    const distribution = distributionId(capture.name);
+    if (!distribution.ok) return refused([distribution.refusal]);
+    const directory = projectPath(capture.directory);
+    if (!directory.ok) return refused([directory.refusal]);
+    const host = { distribution: distribution.value, directory: directory.value };
+    const surface = hostSurfaceMembers(host);
+    const required = [...capture.required, ...hostSkillInputs(capture.name),
+      ...(surface?.placements.map((placement) => placement.source) ?? [])];
+    const paths = [...new Set([...capture.copied, ...required])].map(sourcePath);
+    const failures = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
+    if (failures.length > 0) return refused(failures);
+    const sources = paths.flatMap((path) => path.ok ? [path.value] : []);
+    const files = await projection.readHostSources({ root: capture.root, host, sources,
+      required: sources.filter((path) => required.includes(path)) });
+    return files.ok ? accepted({ host, files: files.value }) : files;
+  };
+
+
 export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const loading = createAuthoredMethodLoading({ reader: request.platform.fileSystem,
     parser: request.platform.yaml, outliner: request.outliner });
   const projection = createBuildProjection({ hostFiles: request.platform.fileSystem, sessionFiles: request.platform.fileSystem,
     runnerProcess: request.platform.processRunner, runnerScratch: request.platform.fileSystem,
     runnerFrames: request.runnerFrames, runnerChild: new URL("./legacy-runner-child.ts", import.meta.url) });
-  const captureHost = async (capture: HostSourcesRequest):
-    Promise<Result<CapturedHostSources, readonly (KernelRefusal | ProjectionRefusal)[]>> => {
-    const distribution = distributionId(capture.name);
-    if (!distribution.ok) return refused([distribution.refusal]);
-    const directory = projectPath(capture.directory);
-    if (!directory.ok) return refused([directory.refusal]);
-    const paths = [...new Set([...capture.copied, ...capture.required, ...hostSkillInputs(capture.name)])].map(sourcePath);
-    const failures = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
-    if (failures.length > 0) return refused(failures);
-    const sources = paths.flatMap((path) => path.ok ? [path.value] : []);
-    const host = { distribution: distribution.value, directory: directory.value };
-    const files = await projection.readHostSources({ root: capture.root, host, sources,
-      required: sources.filter((path) => capture.required.includes(path) || hostSkillInputs(capture.name).includes(path)) });
-    return files.ok ? accepted({ host, files: files.value }) : files;
-  };
-
   let sessions: Promise<Result<readonly SessionSkill[], readonly ProjectionRefusal[]>> | undefined;
   let core: MethodReading<CoreBuild> | undefined;
   const loadCore = async (): MethodReading<CoreBuild> => {
@@ -62,7 +67,12 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
       pluginsRoot: request.sources.plugins }),
     prepareCommandSource: ({ core: loaded, ...command }) => projection.prepareCommandSource({ ...command,
       method: loaded.method, sources: loaded.sources }),
-    readHostSources: (host) => captureHost(host),
+    readHostSources: (host) => captureHost(host, projection),
+    projectHostSurface: (surface) => {
+      const members = hostSurfaceMembers(surface.host);
+      return members === null ? accepted([]) : projection.projectHostSurface({ ...surface,
+        data: members.data, placements: members.placements });
+    },
     projectSkills: async (skills) => {
       const members = hostSkillMembers(skills.host);
       if (!members.ok) return members;

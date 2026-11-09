@@ -254,6 +254,7 @@ export type HostSurfaceProjectionRequest = {
 export type HostSurfaceProjection = (request: HostSurfaceProjectionRequest) => Rendering;
 
 export interface BuildProjection {
+  readonly projectHostSurface: HostSurfaceProjection;
   readonly readSessionSkills: SessionSkillReading;
   readonly projectSkills: SkillProjection;
   readonly projectAgents: AgentProjection;
