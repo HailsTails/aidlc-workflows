@@ -1,16 +1,26 @@
 import { expect, test } from "bun:test";
-import { accepted } from "../../../kernel/result.ts";
-import { withSharedKnowledge } from "./shared-knowledge.ts";
+import { brand } from "../../../kernel/brand.ts";
+import type { MethodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
+import type { KnowledgeDocument } from "../../../workflow-definition/domain/knowledge.ts";
+import type { PluginId } from "../../../workflow-definition/domain/identities.ts";
+import { sharedKnowledgeResources } from "./shared-knowledge.ts";
 
-test("unchanged JSON preserves authored key order and formatting", () => {
-  const text = '{ "custom": true, "resources": [], "name": "aidlc" }\n';
-  expect(withSharedKnowledge(text, { documents: [], formatDocuments: new Set() }))
-    .toEqual(accepted(text));
+const document = (source: string): KnowledgeDocument => ({
+  source: brand<MethodSourcePath>(source), owner: { kind: "core" }, audience: { kind: "shared" },
 });
 
-test("expanded JSON retains key order and non-resource fields", () => {
-  expect(withSharedKnowledge(
-    '{"custom":true,"resources":["file://.kiro/knowledge/aidlc-shared/*.md"],"name":"aidlc"}',
-    { documents: [], formatDocuments: new Set() },
-  )).toEqual(accepted('{\n  "custom": true,\n  "resources": [],\n  "name": "aidlc"\n}\n'));
+test("shared resources select sorted direct core markdown and exclude format documents", () => {
+  expect(sharedKnowledgeResources({ documents: [
+    document("knowledge/aidlc-shared/z.md"), document("knowledge/aidlc-shared/a.md"),
+    document("knowledge/aidlc-shared/nested/ignored.md"), document("knowledge/aidlc-shared/no.txt"),
+    document("knowledge/aidlc-shared/format.md"),
+    { ...document("knowledge/aidlc-shared/plugin.md"),
+      owner: { kind: "plugin", plugin: brand<PluginId>("example") } },
+  ], formatDocuments: new Set(["format.md"]) })).toEqual([
+    "file://.kiro/knowledge/aidlc-shared/a.md", "file://.kiro/knowledge/aidlc-shared/z.md",
+  ]);
+});
+
+test("empty shared knowledge stays empty", () => {
+  expect(sharedKnowledgeResources({ documents: [], formatDocuments: new Set() })).toEqual([]);
 });
