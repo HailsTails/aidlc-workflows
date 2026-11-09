@@ -24,7 +24,9 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import { sharedKnowledgeWithoutFormatDocs } from "../core/tools/aidlc-inline-context.ts";
+import { inlineAgentsFor, sharedKnowledgeWithoutFormatDocs } from "../core/tools/aidlc-inline-context.ts";
+import { parseStageFrontmatter } from "../core/tools/aidlc-lib.ts";
+import { validateStageFrontmatter } from "../core/tools/aidlc-stage-schema.ts";
 
 // Walk core and owned-plugin stages and collect every frontmatter `reviewer:`
 // value. Cached per coreRoot - the packager calls this once per projected
@@ -42,8 +44,8 @@ export function reviewerAgentSet(coreRoot: string): Set<string> {
       if (statSync(full).isDirectory()) {
         walk(full);
       } else if (entry.endsWith(".md")) {
-        const m = readFileSync(full, "utf-8").match(/^reviewer:\s*(\S+)\s*$/m);
-        if (m) set.add(m[1]);
+        const { reviewer } = parseStageFrontmatter(readFileSync(full, "utf-8"));
+        if (typeof reviewer === "string") set.add(reviewer);
       }
     }
   };
@@ -76,13 +78,9 @@ export function inlineAgentSet(coreRoot: string): Set<string> {
         continue;
       }
       if (!entry.endsWith(".md")) continue;
-      const fm = readFileSync(full, "utf-8").replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
-      const mode = fm.match(/^mode:\s*(\S+)/m)?.[1];
-      const lead = fm.match(/^lead_agent:\s*(\S+)/m)?.[1];
-      const supports = [...(fm.match(/^support_agents:\n((?:[ \t]+-[ \t]+\S+\n?)*)/m)?.[1] ?? "").matchAll(/-[ \t]+(\S+)/g)]
-        .map((m) => m[1]);
-      const agents = mode === "inline" ? [lead, ...supports] : mode === "mob" ? [lead] : [];
-      for (const agent of agents) if (agent && agent !== "orchestrator") set.add(agent);
+      const stage = validateStageFrontmatter(parseStageFrontmatter(readFileSync(full, "utf-8")));
+      if (!stage.valid) throw new Error(`${full}: ${stage.errors.join("; ")}`);
+      for (const agent of inlineAgentsFor(stage.data)) set.add(agent);
     }
   };
   walk(join(coreRoot, "aidlc-common", "stages"));

@@ -27,6 +27,7 @@ import {
 } from "../../scripts/agent-knowledge.ts";
 import type { Tier } from "../../core/tools/aidlc-tiers.ts";
 import {
+  agentTiersFromAuthoredDirectory,
   modelAgentName,
   resolveModelPolicy,
   writeMarkdownAgentSurface,
@@ -40,13 +41,16 @@ import {
 // can return a summary but cannot make tool calls, so the persona's Turn
 // Budget prose still carries the write-early instruction). A disallowedTools
 // value without Task fails the build.
-function emitSubagentMd(raw: string, srcPath: string, tierCap: EmitContext["tierCap"]): string {
+function emitSubagentMd(
+  raw: string,
+  srcPath: string,
+  tier: Tier,
+  tierCap: EmitContext["tierCap"],
+): string {
   if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   if (!m) throw new Error(`${srcPath}: agent .md has no closed frontmatter block.`);
   const fm = m[1];
-  const tierMatch = fm.match(/^tier:\s*(\S+)\s*$/m);
-  if (!tierMatch) throw new Error(`${srcPath}: agent frontmatter has no tier: line.`);
   const disallowedMatch = fm.match(/^disallowedTools:\s*(.*?)\s*$/m);
   if (disallowedMatch && !/\bTask\b/i.test(disallowedMatch[1])) {
     throw new Error(
@@ -56,7 +60,7 @@ function emitSubagentMd(raw: string, srcPath: string, tierCap: EmitContext["tier
   const effective = resolveModelPolicy(
     null,
     modelAgentName(srcPath),
-    tierMatch[1] as Tier,
+    tier,
     "opencode",
     tierCap,
   );
@@ -135,7 +139,8 @@ export default function emit(ctx: EmitContext): void {
 
   // Persona subagents from core/agents/*.md (tier-projected, body → .aidlc).
   const agentsDir = join(coreRoot, "agents");
-  for (const f of readdirSync(agentsDir).filter((x) => x.endsWith(".md")).sort()) {
+  const agentTiers = agentTiersFromAuthoredDirectory(agentsDir);
+  for (const f of readdirSync(agentsDir).filter((x) => x.endsWith("-agent.md")).sort()) {
     emissions.push({
       path: join(SHELL, "agents", f),
       content: () => {
@@ -154,7 +159,7 @@ export default function emit(ctx: EmitContext): void {
           harnessDir,
         );
         const projected = substituteToken(
-          emitSubagentMd(raw, join(agentsDir, f), tierCap),
+          emitSubagentMd(raw, join(agentsDir, f), agentTiers[modelAgentName(f)], tierCap),
         );
         return projectActiveMemoryReferences(projected);
       },

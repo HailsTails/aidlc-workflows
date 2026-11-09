@@ -28,6 +28,7 @@ import { codexHookTrustHash } from "../../core/tools/aidlc-command.ts";
 import type { Tier } from "../../core/tools/aidlc-tiers.ts";
 import { EXTENDED_SUBPROCESS_TIMEOUT_MS } from "../../core/tools/aidlc-runtime-budget.ts";
 import {
+  agentTiersFromAuthoredDirectory,
   modelAgentName,
   resolveModelPolicy,
   writeCodexAgentSurface,
@@ -306,7 +307,7 @@ export function emitTrustSeed(
 // effort.
 
 function parseAgentMd(raw: string): { fm: Record<string, string>; body: string } {
-  // BOM tolerance, matching the packager's agent reader and the rule parser.
+  // BOM tolerance, matching the rule parser.
   if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!m) return { fm: {}, body: raw };
@@ -361,7 +362,7 @@ export default function emit(ctx: EmitContext): void {
     substituteToken(s).replaceAll(`${harnessDir}/rules/`, `${harnessDir}/aidlc-rules/`);
 
 
-  function emitAgentToml(mdPath: string): string {
+  function emitAgentToml(mdPath: string, tier: Tier): string {
     const raw = readFileSync(mdPath, "utf-8");
     const { fm, body } = parseAgentMd(raw);
     const name = fm.name ?? "";
@@ -374,19 +375,10 @@ export default function emit(ctx: EmitContext): void {
       harnessDir,
     );
     const description = (fm.description ?? "").replace(/\s+/g, " ").trim();
-    // The authored source of truth is `tier:` on the core .md; the packager's
-    // frontmatter transform doesn't run against emit.ts (Codex reads directly
-    // from core), so project tier -> {model, effort} here. An agent .md
-    // without a tier: line is an authoring bug - fail the build loudly.
-    // parseAgentMd's value capture keeps trailing whitespace; trim so an
-    // invisible trailing space cannot fail the codex leg alone (the
-    // packager's own reader strips it for the other harnesses).
-    const tier = fm.tier?.trim();
-    if (!tier) throw new Error(`${mdPath}: agent frontmatter has no tier: line.`);
     const effective = resolveModelPolicy(
       null,
       modelAgentName(mdPath),
-      tier as Tier,
+      tier,
       "codex",
       tierCap,
     );
@@ -473,10 +465,11 @@ export default function emit(ctx: EmitContext): void {
 
   // agent TOMLs from core/agents/*.md (one per shipped persona)
   const agentsDir = join(coreRoot, "agents");
-  for (const f of readdirSync(agentsDir).filter((x) => x.endsWith(".md")).sort()) {
+  const agentTiers = agentTiersFromAuthoredDirectory(agentsDir);
+  for (const f of readdirSync(agentsDir).filter((x) => x.endsWith("-agent.md")).sort()) {
     emissions.push({
       path: join(CODEX_ROOT, "agents", f.replace(/\.md$/, ".toml")),
-      content: () => emitAgentToml(join(agentsDir, f)),
+      content: () => emitAgentToml(join(agentsDir, f), agentTiers[modelAgentName(f)]),
     });
   }
 
