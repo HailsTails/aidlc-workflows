@@ -12,11 +12,14 @@ import type { SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout } from "../packaging/domain/payload.ts";
 import type {
+  CommandPlacement,
   Harness,
   HostDocumentRenderer,
   HostSettingsRenderer,
   HostSkillRenderer,
 } from "../projection/application/ports.ts";
+import type { AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
+import type { HostTokenBindings } from "../projection/domain/template-token.ts";
 import type { MarkdownOutliner } from "../workflow-definition/application/ports.ts";
 
 export type ExitStatus = 0 | 1 | 2;
@@ -32,10 +35,13 @@ export type BuildHost = {
   readonly layout: DistributionLayout;
 };
 
-export type HostConceptMembers<Render> = {
-  readonly host: HostIdentity;
+export type ConceptMembers<Render> = {
   readonly inputs: readonly SourcePath[];
   readonly render: Render;
+};
+
+export type HostConceptMembers<Render> = ConceptMembers<Render> & {
+  readonly host: HostIdentity;
 };
 
 export type HostSkillMembers = HostConceptMembers<HostSkillRenderer>;
@@ -43,6 +49,18 @@ export type HostSkillMembers = HostConceptMembers<HostSkillRenderer>;
 export type HostSettingsMembers = HostConceptMembers<HostSettingsRenderer>;
 
 export type HostDocumentMembers = HostConceptMembers<HostDocumentRenderer>;
+
+export type HostBuildMembers = {
+  readonly host: HostIdentity;
+  readonly tokens: HostTokenBindings;
+  readonly data: HostData;
+  readonly placements: readonly AuthoredPlacement[];
+  readonly agents: Harness["renderAgent"];
+  readonly commands: CommandPlacement;
+  readonly skills: ConceptMembers<HostSkillRenderer>;
+  readonly settings: ConceptMembers<HostSettingsRenderer>;
+  readonly documents: ConceptMembers<HostDocumentRenderer>;
+};
 
 export type RuntimeHost = {
   readonly host: HostIdentity;
