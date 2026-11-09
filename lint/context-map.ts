@@ -104,6 +104,7 @@ export type LegacyBridge = {
   readonly module: string;
   readonly readBy: string;
   readonly retiresWhen: string;
+  readonly typeOnly?: true;
 };
 
 const SHIPPED_OWNER_MOVES =
@@ -115,12 +116,14 @@ const shippedOwner = (name: string, readBy: string): LegacyBridge => ({
   retiresWhen: SHIPPED_OWNER_MOVES,
 });
 
-export const SHIPPED_TYPE_BRIDGES: readonly LegacyBridge[] = [
-  shippedOwner("aidlc-lib", "src/projection/domain/host-surface.ts"),
-  shippedOwner("aidlc-runtime-paths", "src/projection/domain/host-surface.ts"),
-];
+const shippedTypes = (name: string, readBy: string): LegacyBridge => ({
+  ...shippedOwner(name, readBy),
+  typeOnly: true,
+});
 
 export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
+  shippedTypes("aidlc-lib", "src/projection/domain/host-surface.ts"),
+  shippedTypes("aidlc-runtime-paths", "src/projection/domain/host-surface.ts"),
   {
     module: "core/tools/aidlc-model-policy.ts",
     readBy: "src/projection/adapters/legacy-agent-surfaces.ts",

@@ -116,6 +116,7 @@ const selectedLegacy = async (
     suites: legacySuites({ bun: "bun", environment: {} }),
     looseTests: loose ? ["tests/**/*.test.ts"] : [],
     testCommand: (files) => ({ label: "loose tests", argv: ["bun", "test", ...files] }),
+    looseCommand: (files) => changedLegacyCommand({ bun: "bun", environment: {} }, files),
     capabilities: { probe: () => ({ available: true, evidence: "fixture" }) },
     exclusions: [], build: { ensure: () => undefined },
     reachOf: () => ({
@@ -139,6 +140,7 @@ describe("legacy admission preserves conservative impact selection", () => {
     "tsconfig.json", "tsconfig.tests.json", "tests/run-tests.ts",
     "tests/unit-shard-weights.json", "tests/lib/shared.ts", "tests/golden/kiro.json",
     "tests/harness/shared.ts", "tests/fixtures/input.json",
+    "tests/fixtures/input.test.ts", "tests/unit/support.ts", "docs/tool.ts",
   ])("global input %s admits every legacy test", async (path) => {
     expect(await selectedLegacy([path])).toEqual(ALL_LEGACY);
   });
@@ -163,14 +165,18 @@ describe("legacy admission preserves conservative impact selection", () => {
 describe("selected legacy files run once", () => {
   test("a changed matrix file is not also a loose test", async () => {
     const commands = await selectedLegacy(["tests/unit/a.test.ts"], true);
-    expect(commands).toEqual(KNOWN_LEGACY);
+    expect(commands).toEqual([
+      ["bun", "tests/run-tests.ts", "--unit", "--filter", "^(a)", "--no-llm"],
+    ]);
   });
   test("a changed smoke file is not also a loose test", async () => {
-    expect(await selectedLegacy(["tests/smoke/s.test.ts"], true)).toEqual(ALL_LEGACY);
+    expect(await selectedLegacy(["tests/smoke/s.test.ts"], true)).toEqual([
+      ["bun", "tests/run-tests.ts", "--smoke", "--filter", "^(s)", "--no-llm"],
+    ]);
   });
   test("a changed unit outside the actual matrix followers stays loose", async () => {
     expect(await selectedLegacy(["tests/unit/uncovered.test.ts"], true)).toEqual([
-      ["bun", "test", "tests/unit/uncovered.test.ts"], ...ALL_LEGACY,
+      ["bun", "tests/run-tests.ts", "--unit", "--filter", "^(uncovered)", "--no-llm"],
     ]);
   });
 });
@@ -191,7 +197,8 @@ describe("smoke impact uses the existing conservative selector", () => {
 
 
 describe("Phase 1 candidates rely on the enforced foundation sweep", () => {
-  test.each(["src/projection/render.ts", "scripts/package.ts", "lint/gate/domain/x.ts"])(
+  test.each(["src/projection/render.ts", "scripts/package.ts", "lint/gate/domain/x.ts",
+    "docs/reference/15-stage-definition.md", "harness/kiro-ide/manifest.ts"])(
     "%s defers legacy suites", async (path) => {
       expect(await selectedLegacy([path])).toEqual([]);
     },
@@ -214,4 +221,19 @@ test("uncovered changed legacy files use the repository runner and their levels"
     "--filter", "^(uncovered|contract)", "--no-llm",
   ]);
   expect(command.env).toEqual({ PATH: "native" });
+});
+
+
+test("the Q15 paths run their changed tests once without admitting the matrix", async () => {
+  expect(await selectedLegacy([
+    "docs/reference/15-stage-definition.md", "harness/kiro-ide/manifest.ts",
+    "tests/unit/t64.test.ts", "tests/unit/t248-steering-content-delivery.test.ts",
+  ], true)).toEqual([[
+    "bun", "tests/run-tests.ts", "--unit", "--filter",
+    "^(t64|t248-steering-content-delivery)", "--no-llm",
+  ]]);
+});
+
+test("runtime plus a changed covered test still runs that test only once", async () => {
+  expect(await selectedLegacy(["core/a.ts", "tests/unit/a.test.ts"], true)).toEqual(KNOWN_LEGACY);
 });
