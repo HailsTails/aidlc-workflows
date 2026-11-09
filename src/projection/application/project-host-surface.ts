@@ -1,5 +1,7 @@
 import { refused } from "../../kernel/result.ts";
-import type { DelegateShellPolicy, HostSurfaceProjection, Rendering } from "./ports.ts";
+import type { DelegateShellPolicy } from "./ports/delegate-shell.ts";
+import type { HostSurfaceProjection } from "./ports/host-surface.ts";
+import type { Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 import { createHostSurfaceMembers } from "./host-surface-members.ts";
 

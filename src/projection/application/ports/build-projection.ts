@@ -1,0 +1,26 @@
+import type { Result } from "../../../kernel/result.ts";
+import type { AuthoredHostFile } from "../../domain/host-surface.ts";
+import type { CompiledMethodFiles, ProjectionRefusal } from "../../domain/projection.ts";
+import type { AgentProjection } from "./agents.ts";
+import type { CommandSource, CommandSourceRequest } from "./commands.ts";
+import type { CompiledMethodRequest } from "./compiled-method.ts";
+import type { HostSourceCapture } from "./host-sources.ts";
+import type { HostSurfaceProjection } from "./host-surface.ts";
+import type { RuntimeProjection, RuntimeReading } from "./runtime.ts";
+import type { SettingsProjection } from "./settings.ts";
+import type { SessionSkillReading, SkillProjection } from "./skills.ts";
+
+export interface BuildProjection {
+  readonly projectSettings: SettingsProjection;
+  readonly readRuntime: RuntimeReading;
+  readonly projectRuntime: RuntimeProjection;
+  readonly projectHostSurface: HostSurfaceProjection;
+  readonly readSessionSkills: SessionSkillReading;
+  readonly projectSkills: SkillProjection;
+  readonly projectAgents: AgentProjection;
+  serializeMethod(request: CompiledMethodRequest): CompiledMethodFiles;
+  readHostSources(
+    capture: HostSourceCapture,
+  ): Promise<Result<readonly AuthoredHostFile[], readonly ProjectionRefusal[]>>;
+  prepareCommandSource(request: CommandSourceRequest): Promise<CommandSource>;
+}

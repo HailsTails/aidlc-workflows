@@ -5,7 +5,7 @@ import { projectPath } from "../../kernel/values.ts";
 import type { MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import { bindCopiedSource } from "../domain/source-binding.ts";
 import type { TokenBindings } from "../domain/template-token.ts";
-import type { HarnessRegistry, Rendering } from "./ports.ts";
+import type { HarnessRegistry, Rendering } from "./ports/harness.ts";
 import type { ProjectMethodForHarness } from "./use-cases.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 import { renderMethodAgents } from "./project-method-agents.ts";

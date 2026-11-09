@@ -4,7 +4,8 @@ import { asFolder, type FileWriteError } from "../../kernel/file-system-port.ts"
 import { z } from "zod";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import type { CommandSourceRequest, CommandSource, LegacyRunnerProcess, LegacyRunnerScratch } from "../application/ports.ts";
+import type { CommandSourceRequest, CommandSource } from "../application/ports/commands.ts";
+import type { LegacyRunnerProcess, LegacyRunnerScratch } from "../application/ports/legacy-runner.ts";
 import { ENTRY_SHORTCUTS, nativeCommandName, commandFilePath, type NativeCommandFile,
   type CommandReading, type CommandSubject } from "../domain/native-command.ts";
 import { scopeName, stageSlug } from "../../workflow-definition/domain/identities.ts";

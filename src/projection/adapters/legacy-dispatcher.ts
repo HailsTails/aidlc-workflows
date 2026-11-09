@@ -1,6 +1,6 @@
 import { copyChannelDispatcherCommands, copyChannelToolScripts } from "../../../core/tools/aidlc.ts";
 import { accepted, refused } from "../../kernel/result.ts";
-import type { CopyChannelAllowSource } from "../application/ports.ts";
+import type { CopyChannelAllowSource } from "../application/ports/copy-channel.ts";
 
 export const createCopyChannelAllowSource = (): CopyChannelAllowSource => ({
   read: () => {

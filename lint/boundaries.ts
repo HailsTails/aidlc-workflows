@@ -156,11 +156,12 @@ const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   },
 });
 
-const PORT_FILES = ["ports", "boundary-ports"];
+const PORT_FILES = ["ports", "ports/*", "boundary-ports"];
 
 const srcPortsConfig = (context: ContextName): Linter.Config => ({
   name: `aidlc/src/${context}/application/ports`,
   files: PORT_FILES.map((file) => `src/${context}/application/${file}.ts`),
+  ignores: [`src/${context}/application/ports/*.test.ts`],
   rules: {
     ...restrict({
       imports: srcImportRestrictions({ context, layer: "application" }),

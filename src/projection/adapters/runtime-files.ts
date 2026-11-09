@@ -5,7 +5,8 @@ import { sourcePath, type SourcePath } from "../../kernel/values.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import { RUNTIME_FOLDERS, type RuntimeFile } from "../domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
-import type { RuntimeReading, SessionSkillTreeReader } from "../application/ports.ts";
+import type { RuntimeReading } from "../application/ports/runtime.ts";
+import type { SessionSkillTreeReader } from "../application/ports/skills.ts";
 
 const copiedContent = (content: FileContent): FileContent => content.kind === "text" ? content
   : { kind: "bytes", bytes: new Uint8Array(content.bytes) };

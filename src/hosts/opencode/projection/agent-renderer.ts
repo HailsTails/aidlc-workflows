@@ -1,7 +1,7 @@
 import type { Result } from "../../../kernel/result.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
-import type { Harness } from "../../../projection/application/ports.ts";
+import type { Harness } from "../../../projection/application/ports/harness.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 

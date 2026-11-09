@@ -1,7 +1,8 @@
 import { source } from "../../kernel/fixtures/values.fixture.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 import { accepted } from "../../kernel/result.ts";
-import type { CopyChannelAllows, SettingsRenderingInputs } from "../application/ports.ts";
+import type { CopyChannelAllows } from "../application/ports/copy-channel.ts";
+import type { SettingsRenderingInputs } from "../application/ports/settings.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
 import { text } from "./values.fixture.ts";

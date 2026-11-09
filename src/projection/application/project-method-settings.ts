@@ -1,5 +1,5 @@
 import type { Method } from "../../workflow-definition/domain/method.ts";
-import type { Harness, Rendering } from "./ports.ts";
+import type { Harness, Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 
 export const renderMethodSettings = (request: {

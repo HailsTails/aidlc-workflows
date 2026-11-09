@@ -2,7 +2,7 @@ import type { FileContent } from "../../kernel/file-content.ts";
 import type { TreeFile, UnreadableTreeFile, TreeSelection } from "../../kernel/file-system-port.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { sourcePath, type SourcePath } from "../../kernel/values.ts";
-import type { SessionSkillSource, SessionSkillTreeReader } from "../application/ports.ts";
+import type { SessionSkillSource, SessionSkillTreeReader } from "../application/ports/skills.ts";
 import { SESSION_SKILL_NAMES, type SessionSkill } from "../domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 

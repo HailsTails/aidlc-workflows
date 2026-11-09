@@ -8,7 +8,7 @@ import { COLLABORATION_MODES, PHASES, PROJECT_TYPES, UNIT_KINDS }
 
 import type { CompiledMethodFiles } from "../domain/projection.ts";
 
-import type { CompiledMethodRequest } from "../application/ports.ts";
+import type { CompiledMethodRequest } from "../application/ports/compiled-method.ts";
 
 const resolvedRuleSchema = z.strictObject({
   path: z.string(), scope: z.enum(["org", "team", "project", "phase"]),
