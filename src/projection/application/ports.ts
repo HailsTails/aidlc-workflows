@@ -254,6 +254,19 @@ export type HostSurfaceProjectionRequest = {
 
 export type HostSurfaceProjection = (request: HostSurfaceProjectionRequest) => Rendering;
 
+export type SettingsProjectionRequest = {
+  readonly method: Method;
+  readonly host: HostIdentity;
+  readonly render: HostSettingsRenderer;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly channel: DistributionChannel;
+  readonly entrypoints: readonly SourcePath[];
+};
+
+export type SettingsProjection = (request: SettingsProjectionRequest) => Rendering;
+
 export type VersionStamp = (module: FileContent) => Result<FileContent, ProjectionRefusal>;
 
 export type RuntimeCapture = {
