@@ -2,6 +2,10 @@
 
 ## Overview
 
+For a rare, explicitly requested milestone unblock on this fork, see
+[Manual milestone slow checks](manual-milestone-checks.md). This separate lane
+never runs on a push or PR and does not replace the qualification tiers below.
+
 The AI-DLC test suite is **entirely TypeScript** — every test is a
 `t*.test.ts` file run under `bun`, with zero shell (`.sh`) test files. This is
 the platform-invariance guarantee by construction: the same files run
