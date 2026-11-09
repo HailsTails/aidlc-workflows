@@ -1632,9 +1632,6 @@
       "max-depth": 2,
       "max-len": 1
     },
-    "scripts/earlier-release-regions.ts": {
-      "aidlc/no-comments": 9
-    },
     "scripts/harness-bindings.ts": {
       "aidlc/no-comments": 16,
       "complexity": 1,
