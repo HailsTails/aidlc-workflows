@@ -35,7 +35,8 @@ export type ProjectionRefusal =
       readonly host: HostIdentity;
       readonly source: SourcePath;
       readonly reason: string;
-    };
+    }
+  | { readonly kind: "neutral-source-unreadable"; readonly source: SourcePath; readonly reason: string };
 
 export type Projection = {
   readonly host: HostIdentity;
