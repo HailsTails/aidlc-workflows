@@ -24,10 +24,10 @@ import type {
   HostSkillRenderer,
   Rendering,
 } from "../projection/application/ports.ts";
-import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
+import type { AuthoredHostFile, AuthoredPlacement } from "../projection/domain/host-surface.ts";
 import type { DistributionChannel, ProjectedFile } from "../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
-import type { CompiledMethodFiles, ProjectionRefusal } from "../projection/domain/projection.ts";
+import type { CompiledMethodFiles, Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostTokenChoices, TokenBindings } from "../projection/domain/template-token.ts";
 import type { Method } from "../workflow-definition/domain/method.ts";
 import type { Tier } from "../workflow-definition/domain/vocabulary.ts";
@@ -71,7 +71,7 @@ export type HostDocumentMembers = HostConceptMembers<HostDocumentRenderer>;
 export type HostBuildMembers = {
   readonly host: HostIdentity;
   readonly tokens: HostTokenChoices;
-  readonly data: HostData;
+  readonly renderData: HostDataRenderer;
   readonly placements: readonly AuthoredPlacement[];
   readonly agents: ConceptMembers<HostAgentRenderer>;
   readonly commands: CommandPlacement;
@@ -83,6 +83,30 @@ export type HostBuildMembers = {
 };
 
 export type HostDistributionReader = () => Result<HostDistribution, KernelRefusal>;
+
+export type HostBuildTable = readonly HostBuildMembers[];
+
+export type HostBuildRequest = {
+  readonly host: HostIdentity;
+  readonly core: CoreBuild;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly channel: DistributionChannel;
+  readonly modelCap: Tier | null;
+  readonly entrypoints: readonly SourcePath[];
+  readonly projectRoot: URL;
+  readonly commands: CommandSource;
+};
+
+export type HostBuild = {
+  readonly host: BuildHost;
+  readonly projection: Projection;
+};
+
+export type ProjectHost = (
+  request: HostBuildRequest,
+) => Promise<Result<HostBuild, readonly (KernelRefusal | ProjectionRefusal)[]>>;
 
 export type RuntimeHost = {
   readonly host: HostIdentity;

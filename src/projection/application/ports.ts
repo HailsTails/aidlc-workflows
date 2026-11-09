@@ -379,6 +379,36 @@ export type DocumentProjectionRequest = {
 
 export type DocumentProjection = (request: DocumentProjectionRequest) => Rendering;
 
+export type HarnessRenderers = {
+  readonly agents: HostAgentRenderer;
+  readonly skills: HostSkillRenderer;
+  readonly settings: HostSettingsRenderer;
+  readonly documents: HostDocumentRenderer;
+  readonly data: HostDataRenderer;
+  readonly placements: readonly AuthoredPlacement[];
+  readonly commandPlacement: CommandPlacement;
+};
+
+export type HarnessAssemblyRequest = {
+  readonly method: Method;
+  readonly sources: readonly MethodSource[];
+  readonly host: HostIdentity;
+  readonly renderers: HarnessRenderers;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly channel: DistributionChannel;
+  readonly modelCap: Tier | null;
+  readonly entrypoints: readonly SourcePath[];
+  readonly fills: OnboardingFills;
+  readonly projectRoot: URL;
+  readonly commands: CommandSource;
+};
+
+export type HarnessAssembly = (
+  request: HarnessAssemblyRequest,
+) => Promise<Result<Harness, readonly ProjectionRefusal[]>>;
+
 export interface BuildProjection {
   readonly projectSettings: SettingsProjection;
   readonly readRuntime: RuntimeReading;
