@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { disciplineCore, INSTALL_LINK } from "./discipline-core.ts";
+import { disciplineCore, INSTALL_LINK, installedCommit } from "./discipline-core.ts";
 
 const SANDBOX = join(import.meta.dir, "../../../.cache/gate-tests", randomUUID());
 const INSTALL = join(SANDBOX, "install");
@@ -69,5 +69,18 @@ describe("discipline-core toolchain", () => {
     const ready = disciplineCore({ root, install: absent, pin, runner: IDLE_RUNNER }).ready();
 
     expect(ready).toMatchObject({ ok: false, problem: `no discipline-core install at ${absent}` });
+  });
+});
+
+describe("installedCommit", () => {
+  test("it reads the install's own commit, not the repository a git hook is running for", () => {
+    const hookEnvironment = {
+      PATH: process.env["PATH"],
+      SystemRoot: process.env["SystemRoot"],
+      GIT_DIR: join(SANDBOX, "another-repository", ".git"),
+      GIT_INDEX_FILE: join(SANDBOX, "another-index"),
+    };
+
+    expect(installedCommit(INSTALL, hookEnvironment)).toBe(pin);
   });
 });

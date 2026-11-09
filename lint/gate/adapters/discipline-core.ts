@@ -78,8 +78,35 @@ const MISSING_INSTALL_FIX =
   "<parent>/aidlc-discipline-core-main origin/main), run bun install --production " +
   "--no-save in its plugins/discipline-core, or point AIDLC_DISCIPLINE_CORE at an install.";
 
-const installedCommit = (install: string): string =>
-  Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: install, stdout: "pipe", stderr: "pipe" })
+const GIT_INHERITED_NAMES = [
+  "PATH",
+  "SystemRoot",
+  "HOME",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+] as const;
+
+const ownRepositoryEnvironment = (
+  source: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    GIT_INHERITED_NAMES.flatMap((name) => {
+      const value = source[name];
+      return value === undefined ? [] : [[name, value] as const];
+    }),
+  );
+
+export const installedCommit = (
+  install: string,
+  source: Readonly<Record<string, string | undefined>> = process.env,
+): string =>
+  Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+    cwd: install,
+    env: ownRepositoryEnvironment(source),
+    stdout: "pipe",
+    stderr: "pipe",
+  })
     .stdout.toString()
     .trim();
 

@@ -1,0 +1,5 @@
+#!/bin/sh
+base="${AIDLC_GATE_BASE:-origin/rebuild/foundation}"
+paths=$(git diff --name-only --diff-filter=ACMR "$base"...HEAD | paste -sd, -)
+[ -z "$paths" ] && exit 0
+exec bun scripts/gate.ts --scope "$paths" --only zones,records,lint,disciplines,typecheck,monolith,kernel,isolation
