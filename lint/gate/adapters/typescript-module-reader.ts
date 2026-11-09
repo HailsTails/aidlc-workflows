@@ -63,7 +63,24 @@ export const parseModule = (request: {
 export const declaredNames = (source: ts.SourceFile): readonly string[] =>
   source.statements.flatMap(declaredBy);
 
+const literalsIn = (node: ts.Node): readonly ts.TypeLiteralNode[] =>
+  ts.isTypeLiteralNode(node) ? [node] : node.getChildren().flatMap(literalsIn);
+
+const memberName = (member: ts.TypeElement): readonly string[] =>
+  member.name === undefined ? [] : [member.name.getText()];
+
+const membersOfNamed = (source: ts.SourceFile, type: string): readonly string[] =>
+  source.statements.flatMap((statement) => {
+    if (ts.isInterfaceDeclaration(statement) && statement.name.text === type) {
+      return statement.members.flatMap(memberName);
+    }
+    return ts.isTypeAliasDeclaration(statement) && statement.name.text === type
+      ? literalsIn(statement.type).flatMap((literal) => literal.members.flatMap(memberName))
+      : [];
+  });
+
 export const typescriptModuleReader: ModuleReader = {
+  membersOf: (request) => membersOfNamed(parseModule(request), request.type),
   shapeOf: (request): ModuleShape => {
     const source = parseModule(request);
     return {

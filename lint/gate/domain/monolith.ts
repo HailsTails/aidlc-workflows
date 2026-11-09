@@ -10,14 +10,20 @@ const MOVE_OUT =
   "Monoliths only shrink. Put the code in its context under src/ (see src/glossary.json " +
   "for the owner) and import it from there; never add to the monolith.";
 
+const PASS_THROUGH_PORT =
+  "Recorded types only shrink. Pass the input through the Harness port " +
+  "instead of widening this type.";
+
 const newDeclarations = (recorded: MonolithShape, measured: MonolithShape): readonly Finding[] => {
   const listed = new Set(recorded.declarations);
   return [...new Set(measured.declarations)]
     .filter((name) => !listed.has(name))
     .map((name) => ({
       subject: `${measured.file} · ${name}`,
-      violation: "is a new top-level declaration in a monolith",
-      fix: MOVE_OUT,
+      violation: name.includes(".")
+        ? "is a new member of a type the monolith record holds"
+        : "is a new top-level declaration in a monolith",
+      fix: name.includes(".") ? PASS_THROUGH_PORT : MOVE_OUT,
     }));
 };
 

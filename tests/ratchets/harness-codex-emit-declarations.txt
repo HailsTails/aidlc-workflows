@@ -1,0 +1,12 @@
+HOOK_WIRING
+SNAKE
+adapterCmd
+authoredInputs
+default
+emit
+emitConfigToml
+emitDefaultRules
+emitHooksJson
+emitTrustSeed
+hookTimeoutSeconds
+trustEntries

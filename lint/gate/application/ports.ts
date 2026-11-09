@@ -41,6 +41,11 @@ export type Workspace = {
 
 export type ModuleReader = {
   readonly shapeOf: (request: { readonly path: string; readonly text: string }) => ModuleShape;
+  readonly membersOf: (request: {
+    readonly path: string;
+    readonly text: string;
+    readonly type: string;
+  }) => readonly string[];
 };
 
 export type JsonReader = {

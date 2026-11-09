@@ -32,6 +32,7 @@ import { runTemp } from "../lint/gate/adapters/run-temp.ts";
 import { ratchetRecords } from "../lint/gate/adapters/ratchet-records.ts";
 import {
   LIB_DECLARATIONS,
+  MEMBER_TYPES,
   MONOLITH_TEST,
   RECORD_LOCATIONS,
 } from "../lint/gate/adapters/record-locations.ts";
@@ -156,7 +157,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
   }),
   disciplinesCheck({ audit, triggers: CLEAN_TRIGGERS }),
   typecheckCheck({ runner, projects: TYPECHECK_PROJECTS }),
-  monolithCheck({ records, workspace, modules: typescriptModuleReader }),
+  monolithCheck({ records, workspace, modules: typescriptModuleReader, memberTypes: MEMBER_TYPES }),
   kernelCheck({
     workspace,
     modules: typescriptModuleReader,
