@@ -1,5 +1,14 @@
 #!/bin/sh
 base="${AIDLC_GATE_BASE:-origin/rebuild/foundation}"
+zero=0000000000000000000000000000000000000000
+head=$(git rev-parse HEAD)
+while read -r _ local_sha _ _; do
+  [ "$local_sha" = "$zero" ] && continue
+  if [ "$local_sha" != "$head" ]; then
+    echo "pre-push: $local_sha is not the checked-out commit; check it out in this worktree, then push again" >&2
+    exit 1
+  fi
+done
 paths=$(git diff --name-only --diff-filter=ACMR "$base"...HEAD | paste -sd, -)
 [ -z "$paths" ] && exit 0
 exec bun scripts/gate.ts --scope "$paths" --only zones,records,lint,disciplines,typecheck,monolith,kernel,isolation
