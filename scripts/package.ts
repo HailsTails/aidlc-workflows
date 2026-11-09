@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import type { FileContent } from "../src/kernel/file-content.ts";
 import type { HostIdentity } from "../src/kernel/host.ts";
-import { type Result } from "../src/kernel/result.ts";
+import { refused, type Result } from "../src/kernel/result.ts";
 import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts";
 import type { ProjectionRefusal } from "../src/projection/domain/projection.ts";
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
@@ -64,9 +64,10 @@ import {
   relative,
   sep,
 } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName, projectCoreCommands,
+import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName,
+  projectCoreCommands, prepareCoreCommandSource,
   reviewerAgentSet, inlineAgentSet, loadHostBuildSources, prepareHostSource,
   type PluginBuildCatalog, type PluginBuildTarget } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
@@ -844,11 +845,11 @@ function prepareAuthoredHostFile(request: {
   return prepareHostSource({ host, file, steps });
 }
 
-function buildTree(
+async function buildTree(
   m: HarnessManifest,
   outRoot: string,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
-): string[] {
+): Promise<string[]> {
   const producer = runnerProducer(m);
   if (!producer.ok) throw new Error(`packager: ${m.name}: ${producer.refusal}`);
   const harnessDir = m.harnessDir;
@@ -1036,11 +1037,16 @@ function buildTree(
   // 4. Per-shell emissions. These may live outside
   //    <harnessDir> (e.g. .agents/skills/ and .github/); the generated
   //    root inventory includes them automatically.
+  const commandSource = producer.value === "emit" ? await prepareCoreCommandSource({
+    method: coreBuild.method, sources: coreBuild.sources, projectRoot: pathToFileURL(outRoot),
+    temporaryRoot: pathToFileURL(join(REPO_ROOT, ".cache", "runner-frames")),
+    harnessDir, harnessName: m.name,
+  }) : { read: () => refused<ProjectionRefusal>({ kind: "command-source-failed",
+    reason: "This manifest selected standard runner production." }) };
   if (m.emit) {
     m.emit({
-      emitCommands: (place) => emitCommandProjection({ method: coreBuild.method, sources: coreBuild.sources,
-        projectRoot: outRoot, temporaryRoot: join(REPO_ROOT, ".cache", "runner-frames"),
-        harnessDir, harnessName: m.name, place,
+      emitCommands: (place) => emitCommandProjection({ method: coreBuild.method,
+        source: commandSource, place, projectRoot: outRoot,
         substituteToken: (text) => substituteToken(text, harnessDir, invoke, letters) }),
       method: coreBuild.method,
       reviewerAgents,
@@ -1670,6 +1676,7 @@ function rewriteNativeInvocations(
 
 function emitCommandProjection(request: Parameters<typeof projectCoreCommands>[0] & {
   readonly substituteToken: (text: string) => string;
+  readonly projectRoot: string;
 }): void {
   const rendered = projectCoreCommands(request);
   if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
@@ -1789,7 +1796,7 @@ function loadManifest(name: string): HarnessManifest {
 // ---------------------------------------------------------------------------
 // write mode: regenerate dist/<name> in place (clean-sweep).
 // ---------------------------------------------------------------------------
-function writeHarness(name: string): void {
+async function writeHarness(name: string): Promise<void> {
   const m = loadManifest(name);
   const distDir = join(REPO_ROOT, "dist", name);
   // dist/<name>/ is one generated root. Sweep that root, not selected
@@ -1797,16 +1804,16 @@ function writeHarness(name: string): void {
   // Siblings at dist/ (plugins and unrelated local assets) remain outside this
   // harness-owned boundary.
   if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
-  buildTree(m, distDir);
+  await buildTree(m, distDir);
   console.log(`[${name}] regenerated dist/${name}/${m.harnessDir}`);
 }
 
-function writeReleaseHarness(name: string): void {
+async function writeReleaseHarness(name: string): Promise<void> {
   const m = loadManifest(name);
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  buildTree(m, releaseDir, "aidlc");
+  await buildTree(m, releaseDir, "aidlc");
   rewriteNativeInvocations(releaseDir, m, copyRoot);
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
@@ -2054,9 +2061,9 @@ function assertIdenticalRootIntegrations(root: string, harnesses: string[]): voi
   }
 }
 
-function buildCheckPass(request: {
+async function buildCheckPass(request: {
   root: string; harnesses: string[]; plugins: PluginBuildCatalog;
-}): void {
+}): Promise<void> {
   const { root, harnesses, plugins } = request;
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
@@ -2064,8 +2071,8 @@ function buildCheckPass(request: {
     const manifest = loadManifest(name);
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
-    buildTree(manifest, copyRoot);
-    buildTree(manifest, nativeRoot, "aidlc");
+    await buildTree(manifest, copyRoot);
+    await buildTree(manifest, nativeRoot, "aidlc");
     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
@@ -2073,12 +2080,14 @@ function buildCheckPass(request: {
   emitPlugins({ harnesses, plugins, distRoot, output: "silent" });
 }
 
-function checkPackageDeterminism(harnesses: string[], plugins: PluginBuildCatalog): string[] {
+async function checkPackageDeterminism(
+  harnesses: string[], plugins: PluginBuildCatalog,
+): Promise<string[]> {
   const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
   const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
   try {
-    buildCheckPass({ root: first, harnesses, plugins });
-    buildCheckPass({ root: second, harnesses, plugins });
+    await buildCheckPass({ root: first, harnesses, plugins });
+    await buildCheckPass({ root: second, harnesses, plugins });
     return [
       ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
       ...diffTrees(
@@ -2193,7 +2202,7 @@ for (const name of targets) {
   hostBuildInputs.set(name, captured.value);
 }
 if (check) {
-  const problems = checkPackageDeterminism(targets, pluginBuilds);
+  const problems = await checkPackageDeterminism(targets, pluginBuilds);
   if (problems.length > 0) {
     console.error(`\npackage --check FAILED (${problems.length} problem(s)):`);
     for (const p of problems.slice(0, 40)) console.error("  " + p);
@@ -2211,8 +2220,8 @@ if (check) {
   cleanWriteOutputs({ harnesses: targets, kind: named === undefined ? "full" : "named",
     plugins: pluginBuilds });
   for (const n of targets) {
-    writeHarness(n);
-    writeReleaseHarness(n);
+    await writeHarness(n);
+    await writeReleaseHarness(n);
   }
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);

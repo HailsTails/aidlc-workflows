@@ -1,3 +1,5 @@
+import { createNodeFileSystem } from "../kernel/file-system.ts";
+import { createNodeProcessRunner } from "../kernel/process-runner.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { AuthoredHostFile } from "../projection/domain/host-surface.ts";
 import type { ProjectionRefusal } from "../projection/domain/projection.ts";
@@ -5,7 +7,7 @@ import { accepted, refused, type Result } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import { serializeCompiledMethod, createCommandRenderers, prepareLegacyRunners, projectMethodCommands,
   createHostSurfaceReader, type CompiledMethodFiles } from "../projection/core-root.ts";
-import type { CommandPlacement, Rendering } from "../projection/application/ports.ts";
+import type { CommandPlacement, CommandSource, Rendering } from "../projection/application/ports.ts";
 import { loadAuthoredCoreMethod, type AuthoredCoreMethod } from "../workflow-definition/core-root.ts";
 import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
 
@@ -37,10 +39,18 @@ export const loadCoreBuild = async (request: {
   return accepted({ ...loaded.value, project });
 };
 
-export const projectCoreCommands = (request: Parameters<typeof prepareLegacyRunners>[0] & {
+const runnerPlatform = { scratch: createNodeFileSystem(), processRunner: createNodeProcessRunner(),
+  child: new URL("./legacy-runner-child.ts", import.meta.url) };
+
+export const prepareCoreCommandSource = (request: Parameters<typeof prepareLegacyRunners>[0]):
+  Promise<CommandSource> => prepareLegacyRunners(request, runnerPlatform);
+
+export const projectCoreCommands = (request: {
+  readonly method: CoreBuild["method"];
+  readonly source: CommandSource;
   readonly place: CommandPlacement;
 }): Rendering => projectMethodCommands({ method: request.method,
-  harness: createCommandRenderers({ source: prepareLegacyRunners(request), place: request.place }) });
+  harness: createCommandRenderers({ source: request.source, place: request.place }) });
 
 export { loadAuthoredPluginBuild as loadPluginBuildCatalog, reviewerAgentSet, inlineAgentSet,
   type AuthoredPluginBuild as PluginBuildCatalog, type PluginBuildTarget }
