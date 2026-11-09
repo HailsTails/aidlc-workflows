@@ -1,3 +1,4 @@
+import { KIRO_IDE_HOST_DATA, KIRO_IDE_AGENT_SHELL, KIRO_IDE_OPEN_REST, KIRO_CLI_START, KIRO_CLI_START_REST } from "../../src/hosts/kiro-ide/host-data.ts";
 // harness/kiro-ide/manifest.ts — the Kiro distribution row for Kiro's unified
 // agent harness, which Kiro IDE 1.x and Kiro CLI v3 both run and both read
 // from the same .kiro/ tree.
@@ -75,68 +76,6 @@ const permissionPolicy = {
   riskyForms: RISKY_SHELL_FORMS,
 };
 
-// The one Kiro IDE step for AI-DLC that is not running in this window, word
-// for word wherever it appears (doctor, the refusals, the missed-reply line).
-const KIRO_IDE_TRUST_STEP =
-  "In Kiro IDE, trust this folder: choose Trust Folder & Continue when Kiro asks whether you " +
-  "trust it, or select Manage on the Restricted Mode banner, then Trust. Then run Developer: " +
-  "Reload Window from the Command Palette (Ctrl+Shift+P, or Cmd+Shift+P on macOS), and say " +
-  "carry on.";
-
-// The same step outside Kiro IDE, for Kiro CLI and an ACP client on this tree.
-// A restart after a start on the wrong engine can be the folder's first v3
-// start, where Kiro CLI 2.33.0 or later first asks whether to trust it. Single
-// quotes: the agent shows this step inside a double-quoted line.
-const KIRO_CLI_RESTART =
-  "In Kiro CLI, quit Kiro and start `kiro-cli --v3` again in this folder (if Kiro asks whether you " +
-  "trust this workspace and you know what is in this folder, choose 'Trust, continue')";
-const KIRO_ACP_CLIENT = "If you drive Kiro from an ACP client, the Kiro IDE guide names what that client must send.";
-const KIRO_CLI_ACP_STEP = `${KIRO_CLI_RESTART}. ${KIRO_ACP_CLIENT}`;
-
-// A restarted Kiro CLI is a new chat, where the entry carries the work on, so
-// the person is told to type it there. In the agent's own step when the hooks
-// never ran, the engine fills it with the id it kept the stopped command under
-// (`<entry> --request <id>`), before a workflow or inside one; doctor and the
-// Plan Approval refusal fill the bare entry. The missed-reply line is shown
-// unfilled, so <entry> stays out of the constant it shares.
-const KIRO_CLI_ACP_RESTART_STEP = `${KIRO_CLI_RESTART}, then type <entry> to carry on. ${KIRO_ACP_CLIENT}`;
-
-// The words the agent relays when the person's answer was not recorded. Nothing
-// brings that answer back after the step the line names, so the question can
-// come again; a message sent after the step can still answer it.
-const ANSWER_NOT_RECORDED = "Your answer was not recorded, so you may be asked for it again.";
-
-// Inside Kiro IDE: its agent's own commands carry TERM_PROGRAM=kiro, its hooks
-// VSCODE_IPC_HOOK and VSCODE_PID and no TERM_PROGRAM (measured live on Kiro IDE
-// 1.2.37, #2167). Another TERM_PROGRAM rules Kiro IDE out: Kiro CLI started from
-// VS Code's terminal has TERM_PROGRAM=vscode beside VS Code's own VSCODE_PID.
-const KIRO_IDE_AGENT_SHELL = ["TERM_PROGRAM=kiro", "VSCODE_IPC_HOOK", "VSCODE_PID"];
-
-// The next step `aidlc config` prints, in two parts per host so both orders
-// (Kiro IDE first, or Kiro CLI first in cliFirst) say the same words.
-const KIRO_IDE_OPEN_REST =
-  "; if the Restricted Mode banner shows at the top of the window and you know what is in this folder, " +
-  "select Manage on it, then Trust; run `Developer: Reload Window` from the Command Palette (Ctrl+Shift+P, " +
-  "or Cmd+Shift+P on macOS), choose the aidlc agent in the chat panel's agent picker, then run `/aidlc --doctor`";
-const KIRO_IDE_OPEN = `open this project in Kiro IDE${KIRO_IDE_OPEN_REST}`;
-const KIRO_CLI_START = "start `kiro-cli --v3` in the project";
-const KIRO_CLI_START_REST =
-  "; if Kiro asks whether you trust this workspace and you know what is in this folder, choose " +
-  '"Trust, continue"; then run `/aidlc --doctor`';
-
-// Doctor's Kiro IDE step when no hook has run yet, in both orders of notRunYet.
-const KIRO_IDE_NOT_RUN_YET_TRUST =
-  "choose Trust Folder & Continue when Kiro asks whether you trust it, or select Manage on the " +
-  "Restricted Mode banner, then Trust. Then run Developer: Reload Window from the Command Palette " +
-  "(Ctrl+Shift+P, or Cmd+Shift+P on macOS), send a message and run doctor again. If AI-DLC was " +
-  "installed while Kiro IDE was open, quit Kiro IDE fully and reopen it instead: it keeps the PATH " +
-  "it started with, so its hooks cannot find aidlc, and Reload Window does not change that.";
-
-// What the agent does when Kiro is not running AI-DLC's hooks, before the one line it shows.
-const KIRO_HOOKS_OFF_AGENT =
-  "Kiro is not running AI-DLC's hooks in this folder. You cannot change that from inside the chat: " +
-  "do not approve, retry, or ask the person to answer again.";
-
 const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKeys }) => {
   if (agent.model.kind !== "tier") return refused({
     kind: "render-failed", concept: "agent", name: agent.slug,
@@ -191,9 +130,9 @@ const emitAgents = (ctx: EmitContext): void => {
 const manifest: HarnessManifest = {
   name: "kiro-ide",
   // One tree for Kiro IDE and Kiro CLI, so it is named after neither.
-  productName: "Kiro",
+  productName: KIRO_IDE_HOST_DATA.productName,
   choiceNote: "Kiro IDE and Kiro CLI on its v3 engine",
-  configNextStep: `${KIRO_IDE_OPEN} (in Kiro CLI, ${KIRO_CLI_START} instead${KIRO_CLI_START_REST})`,
+  configNextStep: KIRO_IDE_HOST_DATA.configNextStep,
   // Kiro IDE runs a folder's hooks and loads its aidlc agent only after the
   // folder is trusted and the window reloads; until then the first approval
   // gate cannot see the human's reply, so those steps come before the first
@@ -251,69 +190,19 @@ const manifest: HarnessManifest = {
   // and Trust Folder & Continue), so every copy of the step names both.
   // Another agent in the picker did not stop the hooks. What an ACP client
   // must send to run hooks is in the Kiro IDE guide.
-  hookActivation: {
-    recovery: `${KIRO_IDE_TRUST_STEP} ${KIRO_CLI_ACP_RESTART_STEP}`,
-    // Says what happened, that the question may come again, and gives the
-    // person the step for the tool they are in, in fixed words the agent relays
-    // without explaining why. Inside Kiro IDE that is the Kiro IDE step alone;
-    // elsewhere Kiro CLI and an ACP client, which nothing tells apart, each get
-    // their line. Kiro IDE's hooks carry VSCODE_IPC_HOOK and VSCODE_PID, but the
-    // agent's own commands, where this refusal comes from, carry neither: they
-    // carry TERM_PROGRAM=kiro (measured live on Kiro IDE 1.2.37, #2167).
-    missedReply:
-      "If the person already replied, that reply was not recorded. Do not ask them to answer again now. " +
-      "Tell them exactly this, with nothing about why, then only the line below for the tool they are in: " +
-      `"${ANSWER_NOT_RECORDED}" ${KIRO_CLI_ACP_STEP}`,
-    missedReplyInHost: {
-      env: KIRO_IDE_AGENT_SHELL,
-      text:
-        "If the person already replied, that reply was not recorded. Do not ask them to answer again now. " +
-        `Tell them exactly this, with nothing about why: "${ANSWER_NOT_RECORDED} ${KIRO_IDE_TRUST_STEP}"`,
-    },
-    // hooks/aidlc-kiro-adapter.ts leaves a heartbeat on every chat message
-    // before the first workflow, so doctor warns only while none exists.
-    notRunYet:
-      "This is expected before your first chat message here. If you already sent one, trust this " +
-      `folder in Kiro IDE: ${KIRO_IDE_NOT_RUN_YET_TRUST} ${KIRO_CLI_RESTART}.`,
-    notRunYetCliFirst: {
-      env: KIRO_IDE_AGENT_SHELL,
-      text:
-        "This is expected before your first chat message here. If you already sent one in Kiro CLI, quit " +
-        "Kiro and start `kiro-cli --v3` again in this folder (if Kiro asks whether you trust this " +
-        "workspace and you know what is in this folder, choose 'Trust, continue'), then send a message " +
-        `and run doctor again. If you sent it in Kiro IDE, trust this folder there: ${KIRO_IDE_NOT_RUN_YET_TRUST}`,
-    },
-    // A second cause, measured live on Kiro IDE 1.2.37 (#2167): a folder
-    // trusted after Kiro opened it runs the agent's commands, but Kiro's agent
-    // started with hooks off for the untrusted folder ("hooks.v2.execution
-    // DisabledUntrustedWorkspace") and runs none, and offers no aidlc agent,
-    // until Developer: Reload Window. The guard hook on the agent's own shell
-    // command beats before the engine runs, even with its fence switched off,
-    // so a record with no heartbeat proves it, and `next` stops with the step
-    // instead of the person finding out at the first approval. Given both
-    // lines, Kiro IDE's agent showed the Kiro CLI one there (live, 1.2.37), so
-    // inside Kiro IDE, by the missed-reply line's signal, it gets its own alone.
-    agentStep: `${KIRO_HOOKS_OFF_AGENT} Show the person this line: "${KIRO_CLI_ACP_RESTART_STEP}" Then end your turn.`,
-    agentStepInHost: {
-      env: KIRO_IDE_AGENT_SHELL,
-      text: `${KIRO_HOOKS_OFF_AGENT} Show the person this line: "${KIRO_IDE_TRUST_STEP}" Then end your turn.`,
-    },
-  },
+  hookActivation: KIRO_IDE_HOST_DATA.hookActivation,
   // Kiro CLI v3 and Kiro IDE name the chat in the commands their agent runs
   // (KIRO_SESSION_ID; measured on Kiro IDE 1.2.37, #2167). Not TERM_PROGRAM=kiro:
   // Kiro IDE's own terminal sets it too, so a tool started there would read as Kiro.
-  hostShell: { env: ["KIRO_SESSION_ID"] },
+  hostShell: KIRO_IDE_HOST_DATA.hostShell,
   // A clean chat for new work started beside other work. Kiro CLI has its own
   // command and opens on the aidlc agent; Kiro IDE opens a new chat on its
   // Default agent, so its step picks aidlc, told apart as the hook lines are.
-  newChatStep: {
-    text: "type /chat new, then <entry>",
-    inHost: { env: KIRO_IDE_AGENT_SHELL, text: "open a new chat, pick the aidlc agent, then type <entry>" },
-  },
+  newChatStep: KIRO_IDE_HOST_DATA.newChatStep,
   harnessDir: ".kiro",
   orchestratorSkillPath: ".kiro/skills/aidlc/SKILL.md",
   tierFlavor: "kiro",
-  kiroLayout: "kas",
+  kiroLayout: KIRO_IDE_HOST_DATA.kiroLayout,
   rootIntegrations: [
     {
       path: ".gitignore",
@@ -388,20 +277,7 @@ const manifest: HarnessManifest = {
 
   // Authored surfaces. Persona Markdown files are core projections.
   harnessFiles: [
-    // The reference form; the packager writes the shipped memory's text over
-    // it, as the engine does with the project's own memory for every chat.
-    { src: "steering/aidlc-active-memory.md", dst: "steering/aidlc-active-memory.md" },
-    // The conductor file sorts before the aidlc-*-agent.md helpers ("aidlc-ai"
-    // before "aidlc-ar"): Kiro lists agents in file-name order, agents before
-    // skills, so Kiro's `/` menu and the picker show `aidlc` first and a bare
-    // `/aidlc` + Enter stays `/aidlc`. It ends in no -agent.md, so nothing that
-    // selects the personas by that suffix takes it for one; its `display_name:`
-    // is for the 2.11.0 agent loader, which claims every aidlc-*.md file and
-    // validates a refresh's projection before the new tools are in place.
-    { src: "agents/aidlc-aidlc.md", dst: "agents/aidlc-aidlc.md" },
     { src: "settings/cli.json", dst: "settings/cli.json" },
-    { src: "hooks/aidlc-kiro-adapter.ts", dst: "hooks/aidlc-kiro-adapter.ts" },
-    { src: "hooks/aidlc-kiro-tool-names.ts", dst: "hooks/aidlc-kiro-tool-names.ts" },
     // Kiro IDE shows a card for every hook run, so one registration runs the two
     // hooks for each message and another the four tool-call checks (#2022). What
     // ran after a write or a command is done by the next card (catch-up).
@@ -415,19 +291,9 @@ const manifest: HarnessManifest = {
     // event.
     { src: "hooks/aidlc-session-start.json", dst: "hooks/aidlc-session-start.json" },
     { src: "hooks/aidlc-continue-workflow.json", dst: "hooks/aidlc-continue-workflow.json" },
-    // Project-root .gitignore (beside .kiro/, not inside it) — same workspace-layout
-    // committed-vs-ignored split as the Kiro CLI tree: per-user cursors + machine-local
-    // runtime ignored, the shared work (memory/codekb/registry/state/audit shards/
-    // artifacts) committed. Authored as dot-gitignore so it does not act as a live
-    // ignore inside harness/kiro-ide/; projectRoot routes it to dist/kiro-ide/.gitignore
-    // + the --check determinism guard. (Kiro IDE DOES support a promptSubmit seam (the
-    // human-turn mint hook) and a preToolUse seam (the exit-2 human-presence hard
-    // block) - both spike-proven on the IDE; the latch lines describe what is wired,
-    // not a platform limit.)
-    { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
   ],
 
-  pluginAgentFrontmatter: kiroIdePermissionLines(permissionPolicy)(PLUGIN_AGENT),
+
   // The native release keys the persona shell deny on the `aidlc engine`
   // routes its conductor allow covers (delegate-shell-deny.ts), one rule per
   // distinct persona deny.
@@ -442,7 +308,7 @@ const manifest: HarnessManifest = {
 
   onboarding: { dst: "AGENTS.md", projectRoot: true, harnessDst: "steering/aidlc-onboarding.md", fills: onboardingFills },
 
-  rulesRename: "steering",
+  rulesRename: KIRO_IDE_HOST_DATA.rulesFolder,
 
   skipRunnerGen: true,
 

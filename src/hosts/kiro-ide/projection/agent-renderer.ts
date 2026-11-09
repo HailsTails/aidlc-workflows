@@ -1,13 +1,10 @@
-export type KiroIdePermissions = {
-  readonly shellDeny: (agent: string) => readonly string[];
-  readonly riskyForms: readonly string[];
-};
+import type { DelegateShellPolicy } from "../../../projection/application/ports.ts";
 
 const composerProposalPath = "aidlc/spaces/*/intents/.aidlc-engine/composer-proposal.json";
 const spacePaths = ["aidlc/spaces/**", ".aidlc/worktrees/*/aidlc/spaces/**"];
 const quoted = (paths: readonly string[]) => paths.map((path) => `        - "${path}"`);
 
-export const kiroIdePermissionLines = (policy: KiroIdePermissions) => (agent: string): string[] => {
+export const kiroIdePermissionLines = (policy: DelegateShellPolicy) => (agent: string): string[] => {
   const writePaths = agent === "aidlc-composer-agent" ? [composerProposalPath] : spacePaths;
   return [
     `tools: ["read", "write", "shell"]`,

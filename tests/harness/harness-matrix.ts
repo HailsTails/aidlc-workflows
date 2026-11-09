@@ -350,9 +350,10 @@ export function validateManifest(
   if (
     (capabilities.memoryInclude === "kiro-resources") !== hasKiroAgentJson ||
     (capabilities.memoryInclude === "kiro-steering") !==
-      manifest.harnessFiles.some(
+      (manifest.harnessFiles.some(
         (file) => file.dst === "steering/aidlc-active-memory.md",
-      ) ||
+      ) || placements.some((placement) =>
+        placement.destination === `${manifest.harnessDir}/steering/aidlc-active-memory.md`)) ||
     (capabilities.memoryInclude === "claude-import") !==
       (manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.md") ||
         placements.some((placement) =>

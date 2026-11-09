@@ -1,3 +1,5 @@
+import { KIRO_IDE_AUTHORED_PLACEMENTS } from "../hosts/kiro-ide/host-data.ts";
+import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
 import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS } from "../hosts/copilot/host-data.ts";
 import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
@@ -58,6 +60,7 @@ export const hostSkillMembers = (host: HostIdentity): Result<HostSkillMembers | 
   return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
 };
 const HOST_SURFACE_MEMBERS = [
+  { name: "kiro-ide", renderData: kiroIdeHostData, placements: KIRO_IDE_AUTHORED_PLACEMENTS },
   { name: "copilot", renderData: () => COPILOT_HOST_DATA, placements: COPILOT_AUTHORED_PLACEMENTS },
   { name: "cursor", renderData: () => CURSOR_HOST_DATA, placements: CURSOR_AUTHORED_PLACEMENTS },
   { name: "opencode", renderData: () => OPENCODE_HOST_DATA, placements: OPENCODE_AUTHORED_PLACEMENTS },
