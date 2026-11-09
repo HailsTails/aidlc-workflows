@@ -7,6 +7,7 @@ import {
   LEGACY_BRIDGES,
   LEGACY_TERRITORY,
   MONOLITH_FILES,
+  SHIPPED_TYPE_BRIDGES,
 } from "./context-map.ts";
 
 describe("context arrows", () => {
@@ -167,5 +168,12 @@ describe("host and legacy boundaries", () => {
 describe("legacy bridges", () => {
   test("each shipped tool the build reads has one named src reader until its owner moves", () => {
     expect(LEGACY_BRIDGES).toEqual(EXPECTED_BRIDGES);
+  });
+
+  test("host data reads the shipped owners' types through declarations until those owners move", () => {
+    expect(SHIPPED_TYPE_BRIDGES).toEqual([
+      { module: "core/tools/aidlc-lib.ts", readBy: "src/projection/domain/host-surface.ts", retiresWhen: OWNER_MOVES },
+      { module: "core/tools/aidlc-runtime-paths.ts", readBy: "src/projection/domain/host-surface.ts", retiresWhen: OWNER_MOVES },
+    ]);
   });
 });
