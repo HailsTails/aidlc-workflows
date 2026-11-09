@@ -29,12 +29,34 @@ describe("impactedTests", () => {
     expect(impacted(["tests/unit/b.test.ts"])).toEqual(["tests/unit/b.test.ts"]);
   });
 
-  test("a change nothing reaches selects nothing", () => {
-    expect(impacted(["docs/guide/x.md", "src/other/y.ts"])).toEqual([]);
+  test("an unknown changed path falls back to every test", () => {
+    expect(impacted(["docs/guide/x.md", "src/other/y.ts"])).toEqual(TESTS);
   });
 
   test("red: a golden or runner change selects every test, whatever it reaches", () => {
     expect(impacted(["tests/golden/kiro.json"])).toEqual(TESTS);
     expect(impacted(["tests/run-tests.ts"])).toEqual(TESTS);
+  });
+});
+
+describe("conservative impact fallback", () => {
+  test("an unknown path alongside a known change cannot be dropped", () => {
+    expect(impacted(["core/tools/init.ts", "src/new.ts"])).toEqual(TESTS);
+  });
+
+  test("a test with no reach record remains selected", () => {
+    expect(
+      impactedTests({ tests: TESTS, reach: {}, changed: ["tests/unit/a.test.ts"] }),
+    ).toEqual(TESTS);
+  });
+
+  test("no changes select no tests when every reach record is present", () => {
+    expect(impacted([])).toEqual([]);
+  });
+
+  test("global build and compiler inputs select every test", () => {
+    expect(impacted(["scripts/package.ts"])).toEqual(TESTS);
+    expect(impacted(["tsconfig.tests.json"])).toEqual(TESTS);
+    expect(impacted(["bunfig.toml"])).toEqual(TESTS);
   });
 });

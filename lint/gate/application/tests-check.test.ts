@@ -345,11 +345,11 @@ describe("the legacy matrix runs only what the change can reach", () => {
     expect(ran).toEqual([FILES]);
   });
 
-  test("a change nothing reaches runs none of the matrix", async () => {
+  test("an unknown change runs the entire matrix conservatively", async () => {
     const ran: (readonly string[])[] = [];
 
     await matrixCheck(ran).run(changed("docs/guide/x.md"));
 
-    expect(ran).toEqual([]);
+    expect(ran).toEqual([FILES]);
   });
 });

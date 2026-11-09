@@ -11,7 +11,9 @@ export const EVERY_TEST_MOVES_WITH: readonly string[] = [
   "tests/lib/**",
   "package.json",
   "bun.lock",
-  "tsconfig.json",
+  "tsconfig*.json",
+  "bunfig.toml",
+  "scripts/package.ts",
 ];
 
 export type ImpactRequest = {
@@ -32,7 +34,12 @@ export const impactedTests = (request: ImpactRequest): readonly string[] => {
   if (changed.some((path) => forcing(path))) {
     return tests;
   }
+  const known = globMatcher([...tests, ...tests.flatMap((test) => reach[test] ?? [])]);
+  if (changed.some((path) => !known(path))) {
+    return tests;
+  }
   return tests.filter(
-    (test) => changed.includes(test) || reachedBy(reach[test] ?? [test], changed),
+    (test) =>
+      reach[test] === undefined || changed.includes(test) || reachedBy(reach[test], changed),
   );
 };
