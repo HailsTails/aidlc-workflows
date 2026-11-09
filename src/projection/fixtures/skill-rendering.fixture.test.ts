@@ -6,6 +6,7 @@ import {
   SKILL_TABLES_FIXTURE,
   skillRenderingInputsFixture,
 } from "./skill-rendering.fixture.ts";
+import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
 import { text } from "./values.fixture.ts";
 
 const inputs = skillRenderingInputsFixture({ harnessDir: ".kiro" });
@@ -37,14 +38,7 @@ describe("sessionSkillFixture", () => {
 
 describe("skillRenderingInputsFixture", () => {
   test("binds every token from the harness folder", () => {
-    expect(inputs.tokens).toEqual({
-      ["HARNESS_DIR"]: ".kiro",
-      ["INVOKE"]: "bun .kiro/tools/aidlc.ts",
-      ["SKILL_INVOKE"]: null,
-      ["OPTION_LETTERS"]: "A-E",
-      ["TRUSTED_NAMESPACE"]: "aidlc",
-      ["TOOL_PREFIX"]: "bun .kiro/tools/",
-    });
+    expect(inputs.tokens).toEqual(tokenBindingsFixture({ harnessDir: ".kiro" }));
   });
 
   test("prepares an authored file unchanged", () => {

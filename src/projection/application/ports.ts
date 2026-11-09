@@ -15,7 +15,7 @@ import type {
 } from "../../kernel/process-runner-port.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
-import type { DistributionId, KernelRefusal, ProjectPath } from "../../kernel/values.ts";
+import type { DistributionId, KernelRefusal, ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { Agent } from "../../workflow-definition/domain/agent.ts";
 import type { HookDeclaration } from "../../workflow-definition/domain/hooks.ts";
 import type { KnowledgeDocument } from "../../workflow-definition/domain/knowledge.ts";
@@ -53,6 +53,27 @@ export type SkillRenderingInputs = {
 export type HostSkillRenderer = (
   inputs: SkillRenderingInputs,
 ) => Pick<Harness, "renderOrchestratorSkill" | "renderSessionSkill">;
+
+export type CopyChannelAllows = {
+  readonly dispatcherCommands: readonly string[];
+  readonly toolScripts: readonly string[];
+};
+
+export interface CopyChannelAllowSource {
+  read(): Result<CopyChannelAllows, ProjectionRefusal>;
+}
+
+export type SettingsRenderingInputs = {
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly allows: CopyChannelAllows;
+  readonly entrypoints: readonly SourcePath[];
+};
+
+export type HostSettingsRenderer = (
+  inputs: SettingsRenderingInputs,
+) => Pick<Harness, "renderSettings" | "renderHookRegistrations">;
 
 export interface Harness {
   readonly tokens: HostTokenBindings;

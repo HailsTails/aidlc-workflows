@@ -3,6 +3,7 @@ import { accepted } from "../../kernel/result.ts";
 import type { SkillRenderingInputs, SkillTableVerb } from "../application/ports.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import type { SessionSkill } from "../domain/neutral-surface.ts";
+import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
 import { text } from "./values.fixture.ts";
 
 export const orchestratorSkillFilesFixture: readonly AuthoredHostFile[] = [
@@ -76,13 +77,6 @@ export const SKILL_TABLES_FIXTURE: Readonly<Record<SkillTableVerb, string>> = {
 export const skillRenderingInputsFixture = ({ harnessDir }: { readonly harnessDir: string }): SkillRenderingInputs => ({
   files: orchestratorSkillFilesFixture,
   prepare: (file) => accepted(file),
-  tokens: {
-    ["HARNESS_DIR"]: harnessDir,
-    ["INVOKE"]: `bun ${harnessDir}/tools/aidlc.ts`,
-    ["SKILL_INVOKE"]: null,
-    ["OPTION_LETTERS"]: "A-E",
-    ["TRUSTED_NAMESPACE"]: "aidlc",
-    ["TOOL_PREFIX"]: `bun ${harnessDir}/tools/`,
-  },
+  tokens: tokenBindingsFixture({ harnessDir }),
   tables: (verb) => accepted(SKILL_TABLES_FIXTURE[verb]),
 });
