@@ -11,6 +11,7 @@ export const RENDERED_CONCEPTS = [
   "settings",
   "hook-registration",
   "onboarding",
+  "neutral-document",
   "host-data",
 ] as const;
 

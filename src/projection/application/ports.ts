@@ -162,10 +162,6 @@ export interface HarnessRegistry {
   all(): readonly HostedHarness[];
 }
 
-export interface NeutralSurfaceReader {
-  read(): Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
-}
-
 export interface SessionSkillTreeReader {
   readTree(readTreeArgs: ReadTreeArgs): Promise<Result<TreeReading, FileSystemError>>;
 }
@@ -308,6 +304,26 @@ export type RuntimeProjectionRequest = {
 };
 
 export type RuntimeProjection = (request: RuntimeProjectionRequest) => Rendering;
+
+export type NeutralCapture = {
+  readonly core: URL;
+  readonly sources: readonly MethodSource[];
+};
+
+export type NeutralReading = (
+  capture: NeutralCapture,
+) => Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
+
+export type DocumentProjectionRequest = {
+  readonly method: Method;
+  readonly host: HostIdentity;
+  readonly render: HostDocumentRenderer;
+  readonly surface: NeutralSurface;
+  readonly fills: OnboardingFills;
+  readonly tokens: TokenBindings;
+};
+
+export type DocumentProjection = (request: DocumentProjectionRequest) => Rendering;
 
 export interface BuildProjection {
   readonly projectSettings: SettingsProjection;
