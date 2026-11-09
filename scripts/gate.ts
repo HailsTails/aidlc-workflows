@@ -150,7 +150,17 @@ const goldens: GoldensDependencies = {
 const tsc = (project: string): Command =>
   bun(`tsc -p ${project}`, ["node_modules/typescript/bin/tsc", "--noEmit", "-p", project]);
 
+const SHIPPED_TYPES_PROJECT = "src/tsconfig.shipped-types.json";
+
 const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
+  {
+    command: bun(`tsc -b ${SHIPPED_TYPES_PROJECT}`, [
+      "node_modules/typescript/bin/tsc",
+      "-b",
+      SHIPPED_TYPES_PROJECT,
+    ]),
+    triggers: ["src/**", "core/**/*.ts"],
+  },
   { command: tsc("src/tsconfig.json"), triggers: ["src/**"] },
   {
     command: tsc("lint/tsconfig.json"),

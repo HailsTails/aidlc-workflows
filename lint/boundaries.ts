@@ -7,6 +7,7 @@ import {
   LEGACY_BRIDGES,
   LEGACY_TERRITORY,
   MONOLITH_FILES,
+  SHIPPED_TYPE_BRIDGES,
   type ContextName,
   type LegacyBridge,
 } from "./context-map.ts";
@@ -24,6 +25,8 @@ import {
   legacyOwnership,
   methodAssertion,
   methodSyntaxFor,
+  typeBridgeImportRestrictions,
+  typeOnlyBridge,
   ownershipInSrc,
   purityOf,
   hermeticTestImportRestrictions,
@@ -213,6 +216,28 @@ const bridgeConfig = (bridge: LegacyBridge, context: ContextName): Linter.Config
   }),
 });
 
+const layerOfReader = (path: string): Layer =>
+  LAYERS.find((layer) => path.split("/").includes(layer)) ?? "adapters";
+
+export const typeBridgeConfigs = (bridges: readonly LegacyBridge[]): Linter.Config[] =>
+  [...new Set(bridges.map((bridge) => bridge.readBy))].flatMap((readBy) => {
+    const context = contextOf(readBy);
+    const bridgedModules = bridges.filter((bridge) => bridge.readBy === readBy).map((b) => b.module);
+    const layer = layerOfReader(readBy);
+    return context === undefined
+      ? []
+      : [
+          {
+            name: `aidlc/src/type-bridge/${readBy}`,
+            files: [readBy],
+            rules: restrict({
+              imports: typeBridgeImportRestrictions({ placement: { context, layer }, bridgedModules }),
+              syntax: [...productionSyntax(context, layer), ...typeOnlyBridge(bridgedModules)],
+            }),
+          },
+        ];
+  });
+
 const legacyBridgeConfigs = (bridge: LegacyBridge): Linter.Config[] => {
   const context = contextOf(bridge.readBy);
   return context === undefined ? [] : [bridgeConfig(bridge, context)];
@@ -238,6 +263,18 @@ const monolithConfig: Linter.Config = {
   files: [...MONOLITH_FILES],
   rules: restrict({ imports: [], syntax: legacySyntax() }),
 };
+
+const shippedOwnerConfig = (file: string): Linter.Config => ({
+  name: `aidlc/legacy/shipped-owner/${file}`,
+  files: [file],
+  rules: {
+    "no-restricted-syntax": ["error", ...harnessBranching, ...legacyOwnership(GLOSSARY, file)],
+  },
+});
+
+const SHIPPED_OWNER_FILES = [
+  ...new Set(GLOSSARY.flatMap((entry) => (entry.shippedOwner === undefined ? [] : [entry.shippedOwner]))),
+];
 
 const harnessTreeConfig: Linter.Config = {
   name: "aidlc/legacy/harness-tree",
@@ -315,6 +352,8 @@ export const boundaryConfig: Linter.Config[] = [
   hostBundleConfig,
   hostTestConfig,
   ...LEGACY_BRIDGES.flatMap(legacyBridgeConfigs),
+  ...typeBridgeConfigs(SHIPPED_TYPE_BRIDGES),
+  ...SHIPPED_OWNER_FILES.map(shippedOwnerConfig),
   {
     name: "aidlc/lint-tooling/pure",
     files: ["lint/gate/domain/**/*.ts", "lint/gate/application/**/*.ts"],
