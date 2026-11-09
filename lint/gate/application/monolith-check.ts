@@ -7,6 +7,7 @@ export type MonolithDependencies = {
   readonly records: RatchetRecords;
   readonly workspace: Workspace;
   readonly modules: ModuleReader;
+  readonly memberTypes?: Readonly<Record<string, readonly string[]>>;
 };
 
 type Pair = {
@@ -18,7 +19,10 @@ type Pair = {
 const measure = (dependencies: MonolithDependencies, file: string): MonolithShape => {
   const text = dependencies.workspace.read(file) ?? "";
   const { declarations } = dependencies.modules.shapeOf({ path: file, text });
-  return { file, declarations, lines: countLines(text) };
+  const members = (dependencies.memberTypes?.[file] ?? []).flatMap((type) =>
+    dependencies.modules.membersOf({ path: file, text, type }).map((member) => `${type}.${member}`),
+  );
+  return { file, declarations: [...declarations, ...members], lines: countLines(text) };
 };
 
 const unrecorded = (file: string): Finding => ({
