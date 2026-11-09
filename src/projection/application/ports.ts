@@ -28,7 +28,7 @@ import type { Scope } from "../../workflow-definition/domain/scope.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ScopeColumn, StageNode } from "../../workflow-definition/domain/stage-graph.ts";
 import type { Tier } from "../../workflow-definition/domain/vocabulary.ts";
-import type { AuthoredHostFile } from "../domain/host-surface.ts";
+import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../domain/host-surface.ts";
 import type { CommandReading, CommandSubject, NativeCommandFile } from "../domain/native-command.ts";
 import type {
   NeutralDocument,
@@ -240,6 +240,18 @@ export type AgentProjectionRequest = {
 };
 
 export type AgentProjection = (request: AgentProjectionRequest) => Rendering;
+
+export type HostSurfaceProjectionRequest = {
+  readonly host: HostIdentity;
+  readonly data: HostData;
+  readonly placements: readonly AuthoredPlacement[];
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly channel: DistributionChannel;
+};
+
+export type HostSurfaceProjection = (request: HostSurfaceProjectionRequest) => Rendering;
 
 export interface BuildProjection {
   readonly readSessionSkills: SessionSkillReading;
