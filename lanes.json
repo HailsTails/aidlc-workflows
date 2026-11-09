@@ -101,6 +101,7 @@
         "src/projection/**",
         "src/hosts/claude/projection/**",
         "src/hosts/claude/build.ts",
+        "src/hosts/claude/host-data{,.test}.ts",
         "src/cli/adapters/routes/projection/**",
         "harness/*/**",
         "src/packaging/**",
