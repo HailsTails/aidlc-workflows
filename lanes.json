@@ -263,6 +263,7 @@
       "owns": [
         "src/hosts/{codex,opencode}/projection/**",
         "src/hosts/{codex,opencode}/build.ts",
+        "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "harness/codex/manifest.ts",
         "harness/opencode/manifest.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts"
