@@ -1,3 +1,4 @@
+import type { FrontmatterParser } from "../application/ports.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { MethodSourceLocation } from "../domain/method-source.ts";
 import { sensorId, ruleId } from "../domain/identities.ts";
@@ -14,6 +15,7 @@ const pairingOf = (pairing: string | undefined): RulePairing => {
 
 export const readRule = (request: {
   readonly source: MethodSourceLocation; readonly raw: string; readonly layer: RuleLayer;
+  readonly parser: FrontmatterParser;
 }): Result<Rule, readonly MethodRefusal[]> => {
   const decoded = decodeMarkdown({ ...request, schema: RuleFileSchema, header: "optional",
     strings: ["pairing", "status", "stale_after"] });

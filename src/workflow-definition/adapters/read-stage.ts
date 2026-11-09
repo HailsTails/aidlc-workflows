@@ -1,4 +1,4 @@
-import type { MarkdownOutliner } from "../application/ports.ts";
+import type { MarkdownOutliner, FrontmatterParser } from "../application/ports.ts";
 import type { AuthoredBody } from "../domain/outline.ts";
 import type { ScopeMembership } from "../domain/scope.ts";
 import { refused, type Result } from "../../kernel/result.ts";
@@ -99,10 +99,11 @@ const stageOf = (request: { readonly file: StageFile; readonly body: AuthoredBod
 export const readStage = (request: {
   readonly source: MethodSourceLocation;
   readonly raw: string;
+  readonly parser: FrontmatterParser;
   readonly outliner: MarkdownOutliner;
 }): Result<StageReading, readonly MethodRefusal[]> => {
   const { source, raw, outliner } = request;
-  const decoded = decodeMarkdown({ source, raw, schema: StageFileSchema,
+  const decoded = decodeMarkdown({ source, raw, parser: request.parser, schema: StageFileSchema,
     reserved: STAGE_RESERVED_KEYS,
     strings: ["slug", "number", "name", "plugin", "phase", "execution", "condition",
       "lead_agent", "mode", "for_each", "reviewer", "review_artifact", "review_class",

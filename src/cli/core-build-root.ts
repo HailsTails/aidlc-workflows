@@ -8,6 +8,7 @@ import { serializeCompiledMethod, createCommandRenderers, prepareLegacyRunners, 
 import type { CommandPlacement, CommandSource, Rendering } from "../projection/application/ports.ts";
 import { loadAuthoredCoreMethod, type AuthoredCoreMethod } from "../workflow-definition/core-root.ts";
 import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
+import type { AuthoredTreeReader, MethodContentDecoder } from "../workflow-definition/application/ports.ts";
 
 export type CoreBuildTarget = { readonly name: string; readonly directory: string;
   readonly memoryRoot: string };
@@ -17,8 +18,9 @@ export type CoreBuild = AuthoredCoreMethod & {
 };
 
 export const loadCoreBuild = async (request: {
-  readonly coreRoot: string | URL;
-  readonly markdownBlocks: Parameters<typeof loadAuthoredCoreMethod>[0]["markdownBlocks"];
+  readonly coreRoot: URL;
+  readonly reader: AuthoredTreeReader;
+  readonly decoder: MethodContentDecoder;
 }): Promise<Result<CoreBuild, readonly MethodRefusal[]>> => {
   const loaded = await loadAuthoredCoreMethod(request);
   if (!loaded.ok) return loaded;

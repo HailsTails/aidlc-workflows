@@ -1,17 +1,14 @@
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { sourcePath } from "../../kernel/values.ts";
-import type { MarkdownOutliner } from "../application/ports.ts";
-import type { CapturedPluginFiles } from "../application/source-files.ts";
+import type { MarkdownOutliner, FrontmatterParser, ContributionReading } from "../application/ports.ts";
+import type { CapturedPluginFiles } from "../application/ports.ts";
 import type { Contribution, ContributionDependency } from "../domain/contribution.ts";
 import { pluginId } from "../domain/identities.ts";
-import { methodSourcePath, type MethodSource } from "../domain/method-source.ts";
+import { methodSourcePath } from "../domain/method-source.ts";
 import type { MethodRefusal } from "../domain/refusals.ts";
 import { authoredValue, translated } from "./authored-markdown.ts";
 import { readOverlay } from "./read-overlay.ts";
 import { readPluginContent, type PluginContentReading } from "./read-plugin-content.ts";
-
-export type ContributionReading = { readonly contribution: Contribution;
-  readonly files: readonly MethodSource[] };
 
 const toolsOf = (request: { readonly capture: CapturedPluginFiles;
   readonly reading: PluginContentReading }): Contribution["tools"] => {
@@ -38,7 +35,7 @@ const dependenciesOf = (reading: PluginContentReading):
 };
 
 export const readContribution = async (request: { readonly capture: CapturedPluginFiles;
-  readonly outliner: MarkdownOutliner }):
+  readonly outliner: MarkdownOutliner; readonly parser: FrontmatterParser }):
   Promise<Result<ContributionReading, readonly MethodRefusal[]>> => {
   const reading = await readPluginContent(request);
   if (!reading.ok) return reading;
@@ -50,7 +47,7 @@ export const readContribution = async (request: { readonly capture: CapturedPlug
     const raw = translated(source, () => file.content.kind === "text" ? file.content.text
       : new TextDecoder("utf-8", { fatal: true }).decode(file.content.bytes));
     if (!raw.ok) return raw;
-    const overlay = readOverlay({ source, raw: raw.value, outliner: request.outliner });
+    const overlay = readOverlay({ source, raw: raw.value, outliner: request.outliner, parser: request.parser });
     return overlay.ok ? accepted({ overlay: overlay.value,
       file: { ...source, content: file.content } }) : overlay;
   });

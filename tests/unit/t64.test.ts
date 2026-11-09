@@ -34,14 +34,15 @@ import { accept } from "../../src/kernel/fixtures/accept.ts";
 import { distributionId, projectPath } from "../../src/kernel/values.ts";
 import { serializeCompiledMethod }
   from "../../src/projection/adapters/compiled-method-file.ts";
-import { readAuthoredCore }
-  from "../../src/workflow-definition/adapters/authored-core-reader.ts";
+import { loadAuthoredCoreMethod } from "../../src/workflow-definition/core-root.ts";
+import { createMethodContentDecoder }
+  from "../../src/workflow-definition/adapters/method-content-decoder.ts";
+import { createNodeFileSystem } from "../../src/kernel/file-system.ts";
+import { createBunYamlParser } from "../../src/kernel/yaml-parser.ts";
+import { pathToFileURL } from "node:url";
 import { createMarkdownOutliner }
   from "../../src/workflow-definition/adapters/markdown-outliner.ts";
 import { readStage } from "../../src/workflow-definition/adapters/read-stage.ts";
-import { createSourceFiles } from "../../src/workflow-definition/adapters/source-files.ts";
-import { compileCoreMethod }
-  from "../../src/workflow-definition/domain/compile-core-method.ts";
 import { methodSource } from "../../src/workflow-definition/fixtures/method-source.fixture.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 import {
@@ -1084,11 +1085,12 @@ describe("ars block layout (blank lines, comments)", () => {
 const stageParitySource = { owner: { kind: "core" } as const,
   path: methodSource({ kind: "stage", within: "ideation/scope-definition.md" }) };
 const stageParityOutliner = createMarkdownOutliner(markdownBlocks);
+const stageParityParser = createBunYamlParser({ yamlLib: Bun.YAML });
 
 test("absent non-graph declarations preserve the frozen parser's absence", () => {
   const frozen = frozenStageFrontmatter(WORKED);
   const reading = accept(readStage({ source: stageParitySource, raw: WORKED,
-    outliner: stageParityOutliner }));
+    outliner: stageParityOutliner, parser: stageParityParser }));
   expect(frozen).not.toHaveProperty("when");
   expect(frozen).not.toHaveProperty("required_sections");
   expect(reading.stage.activation).toEqual({ kind: "always" });
@@ -1107,7 +1109,7 @@ required_sections:
 `);
   const frozen = frozenStageFrontmatter(raw);
   const reading = accept(readStage({ source: stageParitySource, raw,
-    outliner: stageParityOutliner }));
+    outliner: stageParityOutliner, parser: stageParityParser }));
   expect(frozen.when).toEqual({ "producer-in-plan": "design" });
   expect(reading.stage.activation).toMatchObject({ kind: "producer-in-plan", artifact: "design" });
   expect(frozen.required_sections).toEqual(reading.stage.requiredSections);
@@ -1121,9 +1123,10 @@ test("a fresh unpinned frozen compile matches the new Method graph and grid", as
   const gridPath = join(REPO_ROOT, ".cache", `t64-fresh-grid-${process.pid}.json`);
   expect(existsSync(graphPath)).toBe(false);
   expect(existsSync(gridPath)).toBe(false);
-  const authored = accept(await readAuthoredCore({
-    sourceFiles: createSourceFiles(coreRoot), outliner: stageParityOutliner, hooks: [] }));
-  const rendered = serializeCompiledMethod({ method: accept(compileCoreMethod(authored.core)),
+  const authored = accept(await loadAuthoredCoreMethod({ coreRoot: pathToFileURL(coreRoot),
+    reader: createNodeFileSystem(), decoder: createMethodContentDecoder({ parser: stageParityParser,
+      outliner: stageParityOutliner }) }));
+  const rendered = serializeCompiledMethod({ method: authored.method,
     host: { distribution: accept(distributionId("claude")),
       directory: accept(projectPath(".claude")) },
     memoryRoot: accept(projectPath("aidlc/spaces/default/memory")) });

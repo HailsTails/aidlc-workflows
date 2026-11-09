@@ -1,5 +1,5 @@
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import type { MarkdownOutliner } from "../application/ports.ts";
+import type { MarkdownOutliner, FrontmatterParser } from "../application/ports.ts";
 import type { Overlay, OverlayAnchor, OverlayFragment, StageAdditions } from "../domain/contribution.ts";
 import { agentSlug, artifactName, scopeName, sensorId, stageSlug } from "../domain/identities.ts";
 import type { MethodSourceLocation } from "../domain/method-source.ts";
@@ -55,7 +55,7 @@ const additionsOf = (file: OverlayFile): StageAdditions => ({
 });
 
 export const readOverlay = (request: { readonly source: MethodSourceLocation;
-  readonly raw: string; readonly outliner: MarkdownOutliner }): OverlayReading => {
+  readonly raw: string; readonly outliner: MarkdownOutliner; readonly parser: FrontmatterParser }): OverlayReading => {
   const decoded = decodeMarkdown({ ...request, schema: OverlayFileSchema,
     strings: ["target", "plugin"] });
   if (!decoded.ok) return decoded;

@@ -1,3 +1,4 @@
+import type { FrontmatterParser } from "../application/ports.ts";
 import { z } from "zod";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { MethodSourceLocation } from "../domain/method-source.ts";
@@ -25,8 +26,9 @@ const protectStrings = (header: string, keys: readonly string[]): string =>
     return `${field[1]}: ${stringScalar(field[2] ?? "")}`;
   }).join("\n");
 
-const parseHeader = (header: string, strings: readonly string[]): unknown =>
-  header ? Bun.YAML.parse(protectStrings(header, strings)) : {};
+const parseHeader = (request: { readonly header: string; readonly strings: readonly string[];
+  readonly parser: FrontmatterParser }) => request.header
+  ? request.parser.parse({ text: protectStrings(request.header, request.strings) }) : accepted({});
 
 const reservedIssues = (request: {
   readonly parsed: unknown; readonly source: MethodSourceLocation;
@@ -43,8 +45,9 @@ const reservedIssues = (request: {
 
 export const decodeMarkdown = <Value>(request: {
   readonly source: MethodSourceLocation;
+  readonly parser: FrontmatterParser;
   readonly raw: string;
-  readonly schema: z.ZodType<Value>;
+  readonly schema: Pick<z.ZodType<Value>, "safeParse">;
   readonly strings: readonly string[];
   readonly header?: "required" | "optional";
   readonly reserved?: Readonly<Record<string, string>>;
@@ -55,7 +58,11 @@ export const decodeMarkdown = <Value>(request: {
       issues: ["Missing YAML frontmatter"] }]);
   }
   try {
-    const parsed = parseHeader(markdown.header, request.strings);
+    const parsedHeader = parseHeader({ header: markdown.header, strings: request.strings,
+      parser: request.parser });
+    if (!parsedHeader.ok) return refused([{ kind: "invalid-file",
+      location: { kind: "method-source", ...request.source }, issues: [parsedHeader.refusal.reason] }]);
+    const parsed = parsedHeader.value;
 
     const reserved = reservedIssues({ parsed, source: request.source,
       reserved: request.reserved ?? {} });

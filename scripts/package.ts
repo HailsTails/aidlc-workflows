@@ -65,6 +65,12 @@ import {
   sep,
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
+import { createMethodCompiler }
+  from "../src/workflow-definition/application/create-method-compiler.ts";
+import { createMethodContentDecoder }
+  from "../src/workflow-definition/adapters/method-content-decoder.ts";
+import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
 import { spawnSync } from "node:child_process";
 import { createNodeFileSystem } from "../src/kernel/file-system.ts";
 import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
@@ -76,6 +82,12 @@ import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName,
   reviewerAgentSet, inlineAgentSet, loadHostBuildSources, prepareHostSource,
   type PluginBuildCatalog, type PluginBuildTarget } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
+const authoredReader = createNodeFileSystem();
+const authoredOutliner = createMarkdownOutliner(markdownBlocks);
+const authoredDecoder = createMethodContentDecoder({
+  parser: createBunYamlParser({ yamlLib: Bun.YAML }),
+  outliner: authoredOutliner });
+const authoredCompiler = createMethodCompiler(authoredOutliner);
 import {
   runnerProducer, orchestratorSkillLocation, type HarnessManifest,
 } from "./manifest-types.ts";
@@ -2131,13 +2143,15 @@ if (argv[0] === "plugin" && argv[1] === "build") {
       : `invalid plugin name "${identity.refusal.raw}"; use a lowercase kebab-case name.`);
     process.exit(1);
   }
-  const core = await loadCoreBuild({ coreRoot: CORE_ROOT, markdownBlocks });
+  const core = await loadCoreBuild({ coreRoot: pathToFileURL(CORE_ROOT),
+    reader: authoredReader, decoder: authoredDecoder });
   if (!core.ok) {
     console.error(JSON.stringify(core.refusal));
     process.exit(1);
   }
-  const catalog = await loadPluginBuildCatalog({ core: core.value, pluginsRoot: PLUGINS_ROOT,
-    markdownBlocks });
+  const catalog = await loadPluginBuildCatalog({ core: core.value,
+    pluginsRoot: pathToFileURL(PLUGINS_ROOT),
+    reader: authoredReader, decoder: authoredDecoder, compiler: authoredCompiler });
   if (!catalog.ok) {
     console.error(JSON.stringify(catalog.refusal));
     process.exit(1);
@@ -2179,13 +2193,15 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
 }
 
 const builtFrom = packageInputsFingerprint(REPO_ROOT);
-const loadedBuild = await loadCoreBuild({ coreRoot: CORE_ROOT, markdownBlocks });
+const loadedBuild = await loadCoreBuild({ coreRoot: pathToFileURL(CORE_ROOT),
+    reader: authoredReader, decoder: authoredDecoder });
 if (!loadedBuild.ok) {
   throw new Error(`Cannot load the fresh Method: ${JSON.stringify(loadedBuild.refusal)}`);
 }
 const coreBuild = loadedBuild.value;
-const loadedPlugins = await loadPluginBuildCatalog({ core: coreBuild, pluginsRoot: PLUGINS_ROOT,
-  markdownBlocks });
+const loadedPlugins = await loadPluginBuildCatalog({ core: coreBuild,
+  pluginsRoot: pathToFileURL(PLUGINS_ROOT),
+    reader: authoredReader, decoder: authoredDecoder, compiler: authoredCompiler });
 if (!loadedPlugins.ok) {
   throw new Error(`Cannot load the plugin Method: ${JSON.stringify(loadedPlugins.refusal)}`);
 }

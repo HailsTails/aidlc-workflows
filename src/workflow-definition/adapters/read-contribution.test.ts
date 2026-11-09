@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { accepted } from "../../kernel/result.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { sourcePath } from "../../kernel/values.ts";
 import { readContribution } from "./read-contribution.ts";
@@ -6,7 +7,9 @@ import { readContribution } from "./read-contribution.ts";
 const outliner = { outline: (text: string) => ({ text, headings: [] }) };
 const manifest = { within: accept(sourcePath("plugin.json")), content: { kind: "text" as const,
   text: '{"name":"metrics","version":"1","description":"Metrics","dependencies":["core","reports"],"aidlc":{"contributes":{},"commands":{"inspect":{"script":"tools/inspect.ts","description":"Inspect"}}}}' } };
-const capture = { directory: "metrics", manifest, files: [
+const parser = { parse: () => accepted({}) };
+const methodFiles = { stages: [], agents: [], scopes: [], sensors: [], rules: [], knowledge: [] };
+const capture = { methodFiles, directory: "metrics", manifest, files: [
   { within: accept(sourcePath("tools/metrics-doctor.ts")),
     content: { kind: "text" as const, text: "doctor" } },
   { within: accept(sourcePath("tools/inspect.ts")),
@@ -14,7 +17,7 @@ const capture = { directory: "metrics", manifest, files: [
 ] };
 
 test("contribution admission retains dependencies and declared tool ownership", async () => {
-  const reading = accept(await readContribution({ capture, outliner }));
+  const reading = accept(await readContribution({ capture, outliner, parser }));
   expect(reading.contribution.dependsOn).toEqual<readonly { kind: string; plugin?: string }[]>([
     { kind: "core" }, { kind: "plugin", plugin: "reports" },
   ]);
@@ -29,9 +32,18 @@ test("contribution admission retains dependencies and declared tool ownership", 
 test("invalid dependency identity refuses at the plugin manifest", async () => {
   const invalid = { ...capture, manifest: { ...manifest, content: { kind: "text" as const,
     text: '{"name":"metrics","version":"1","description":"","dependencies":["Bad Name"],"aidlc":{"contributes":{}}}' } } };
-  expect(await readContribution({ capture: invalid, outliner })).toEqual({
+  expect(await readContribution({ capture: invalid, outliner, parser })).toEqual({
     ok: false, refusal: [{ kind: "invalid-file",
       location: { kind: "plugin-manifest", plugin: "metrics" },
       issues: ["Invalid plugin dependency: Bad Name"] }],
+  });
+});
+
+test("an invalid native command path refuses at the captured plugin manifest", async () => {
+  const invalid = { ...capture, manifest: { ...manifest, content: { kind: "text" as const,
+    text: '{"name":"metrics","version":"1","description":"","aidlc":{"contributes":{},"commands":{"report":{"script":"tools/con.ts","description":"Report"}}}}' } } };
+  expect(await readContribution({ capture: invalid, outliner, parser })).toEqual({ ok: false,
+    refusal: [{ kind: "invalid-file", location: { kind: "plugin-manifest", plugin: "metrics" },
+      issues: ["aidlc.commands.report.script: Command script must be a portable source path."] }],
   });
 });

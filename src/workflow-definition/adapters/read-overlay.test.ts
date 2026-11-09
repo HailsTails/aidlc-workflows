@@ -1,3 +1,4 @@
+import { accepted } from "../../kernel/result.ts";
 import { expect, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { pluginId } from "../domain/identities.ts";
@@ -28,8 +29,13 @@ const outliner = { outline: (text: string) => {
   return instructions;
 } };
 
+const parser = { parse: () => accepted({
+  target: "aidlc-quality-agent", plugin: "test-pro",
+  fragments: [{ anchor: "after-preflight", order: 90 }, { anchor: "in:Collaboration", order: 100 }],
+}) };
+
 test("a persona overlay retains both native anchor meanings and exact fragment text", () => {
-  expect(readOverlay({ source, raw, outliner })).toEqual({ ok: true, value: {
+  expect(readOverlay({ source, raw, parser, outliner })).toEqual({ ok: true, value: {
     kind: "agent", agent: agent("aidlc-quality-agent"), fragments: [
       { anchor: { kind: "after-preflight" }, order: 90, text: "First instruction." },
       { anchor: { kind: "in-section", section: "Collaboration" }, order: 100,
@@ -40,7 +46,7 @@ test("a persona overlay retains both native anchor meanings and exact fragment t
 
 test("a missing declared fragment refuses at its actual overlay source", () => {
   const missing = { outline: () => ({ text: instructions.text, headings: [] }) };
-  expect(readOverlay({ source, raw, outliner: missing })).toEqual({ ok: false, refusal: [
+  expect(readOverlay({ source, raw, parser, outliner: missing })).toEqual({ ok: false, refusal: [
     { kind: "invalid-file", location: { kind: "method-source", ...source },
       issues: ["Declared fragment after-preflight occurrence 1 has no body."] },
     { kind: "invalid-file", location: { kind: "method-source", ...source },

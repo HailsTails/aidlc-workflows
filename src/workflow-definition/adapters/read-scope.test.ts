@@ -1,3 +1,4 @@
+import { accepted } from "../../kernel/result.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { expect, test } from "bun:test";
 import { methodSource } from "../fixtures/method-source.fixture.ts";
@@ -18,8 +19,13 @@ freeform_default: true
 # feature
 `;
 
+const parser = { parse: () => accepted({
+  name: "feature", depth: "Standard", keywords: [], description: "Full lifecycle",
+  runner: "true", ["summary_confirmation"]: "on", ["include_stages"]: ["requirements-analysis"], ["freeform_default"]: "true",
+}) };
+
 test("scope defaults and memberships are separate from scope metadata", () => {
-  const admission = accept(readScope(source, raw));
+  const admission = accept(readScope({ source, raw, parser }));
   expect(admission.scope.runner).toBe("generated");
   expect(admission.scope.ceremony).toEqual({ "summary-confirmation": "on" });
   expect(admission.memberships).toEqual<readonly { scope: string; stage: string; declaredBy: {kind: string} }[]>([{ scope: "feature", stage: "requirements-analysis",

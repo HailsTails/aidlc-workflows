@@ -1,3 +1,4 @@
+import type { FrontmatterParser } from "../application/ports.ts";
 import type { Result } from "../../kernel/result.ts";
 import { pluginId, scopeName, stageSlug } from "../domain/identities.ts";
 import type { MethodSourceLocation } from "../domain/method-source.ts";
@@ -40,9 +41,11 @@ const scopeOf = (request: { readonly file: ScopeFile; readonly guidance: string;
   };
 };
 
-export const readScope = (source: MethodSourceLocation, raw: string):
+export const readScope = (request: { readonly source: MethodSourceLocation; readonly raw: string;
+  readonly parser: FrontmatterParser }):
   Result<ScopeReading, readonly MethodRefusal[]> => {
-  const decoded = decodeMarkdown({ source, raw, schema: ScopeFileSchema,
+  const { source, raw } = request;
+  const decoded = decodeMarkdown({ source, raw, parser: request.parser, schema: ScopeFileSchema,
     strings: ["name", "depth", "description", "plugin", "testStrategy", "runner", "skeleton",
       "existing_code", "freeform_default", "review_cap", "guard_policy", "sensors", "learnings",
       "summary_confirmation", "plan_approval", "collaborators"] });

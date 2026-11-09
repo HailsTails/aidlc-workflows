@@ -1,17 +1,15 @@
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import { sourcePath } from "../../kernel/values.ts";
-import type { MarkdownOutliner } from "../application/ports.ts";
-import type { CapturedSourceFile, SourceFiles } from "../application/source-files.ts";
+import type { AuthoredContent, CapturedMethodFiles, CapturedSourceFile,
+  FrontmatterParser, MarkdownOutliner } from "../application/ports.ts";
 import { agentSlug, type Owner } from "../domain/identities.ts";
 import type { HookDeclaration } from "../domain/hooks.ts";
 import type { KnowledgeDocument } from "../domain/knowledge.ts";
-import type { CoreContent } from "../domain/method.ts";
 import { methodSourcePath, type MethodSource, type MethodSourceKind,
   type MethodSourceLocation } from "../domain/method-source.ts";
 import type { MethodRefusal } from "../domain/refusals.ts";
+import { ruleLayerFor } from "../domain/method-rule-layer.ts";
 import type { RuleLayer } from "../domain/rule.ts";
-import { PHASES } from "../domain/vocabulary.ts";
 import { authoredValue, translated } from "./authored-markdown.ts";
 import { readAgent } from "./read-agent.ts";
 import { readRule } from "./read-rule.ts";
@@ -21,9 +19,6 @@ import { readStage } from "./read-stage.ts";
 
 type Decoder<Definition> = (source: MethodSourceLocation, text: string) =>
   Result<Definition, readonly MethodRefusal[]>;
-
-export type AuthoredContent = { readonly core: CoreContent;
-  readonly files: readonly MethodSource[] };
 
 type Group<Definition> = { readonly definitions: readonly Definition[];
   readonly files: readonly MethodSource[] };
@@ -43,24 +38,16 @@ const capture = <Definition>(request: { readonly file: CapturedSourceFile;
     file: { ...source, content: request.file.content } }) : decoded;
 };
 
-const readGroup = async <Definition>(request: { readonly sourceFiles: SourceFiles;
-  readonly directory: string; readonly kind: MethodSourceKind; readonly owner: Owner;
-  readonly decode: Decoder<Definition> }):
-  Promise<Result<Group<Definition>, readonly MethodRefusal[]>> => {
-  const captured = await request.sourceFiles.read(authoredValue(sourcePath(request.directory)));
-  const decoded = captured.map((file) => capture({ file, kind: request.kind, owner: request.owner, decode: request.decode }));
+const decodeGroup = <Definition>(request: { readonly files: readonly CapturedSourceFile[];
+  readonly kind: MethodSourceKind; readonly owner: Owner; readonly decode: Decoder<Definition> }):
+  Result<Group<Definition>, readonly MethodRefusal[]> => {
+  const decoded = request.files.map((file) => capture({ file, kind: request.kind,
+    owner: request.owner, decode: request.decode }));
   const issues = decoded.flatMap((admission) => admission.ok ? [] : admission.refusal);
   return issues.length > 0 ? refused(issues) : accepted({
     definitions: decoded.flatMap((admission) => admission.ok ? [admission.value.definition] : []),
     files: decoded.flatMap((admission) => admission.ok ? [admission.value.file] : []),
   });
-};
-
-const ruleLayer = (path: string): RuleLayer | null => {
-  const name = path.replace(/^memory\//, "").replace(/\.md$/, "");
-  if (name === "org" || name === "team" || name === "project") return { kind: name };
-  const phase = PHASES.find((candidate) => name === `phases/${candidate}`);
-  return phase ? { kind: "phase", phase } : null;
 };
 
 const knowledgeDecoder: Decoder<KnowledgeDocument> = (source) => translated(source, () => {
@@ -71,24 +58,27 @@ const knowledgeDecoder: Decoder<KnowledgeDocument> = (source) => translated(sour
   };
 });
 
-export const readAuthoredContent = async (request: { readonly sourceFiles: SourceFiles;
-  readonly outliner: MarkdownOutliner; readonly hooks: readonly HookDeclaration[];
-  readonly owner: Owner; readonly ruleLayer: (path: string) => RuleLayer | null }):
-  Promise<Result<AuthoredContent, readonly MethodRefusal[]>> => {
-  const read = <Definition>(captureRequest: { readonly directory: string;
+export const decodeAuthoredContent = (request: { readonly files: CapturedMethodFiles;
+  readonly outliner: MarkdownOutliner; readonly parser: FrontmatterParser;
+  readonly hooks: readonly HookDeclaration[]; readonly owner: Owner;
+  readonly ruleLayer: (path: MethodSource["path"]) => RuleLayer | null }):
+  Result<AuthoredContent, readonly MethodRefusal[]> => {
+  const decode = <Definition>(group: { readonly files: readonly CapturedSourceFile[];
     readonly kind: MethodSourceKind; readonly decode: Decoder<Definition> }) =>
-    readGroup({ sourceFiles: request.sourceFiles, owner: request.owner, ...captureRequest });
-  const stages = await read({ directory: "aidlc-common/stages", kind: "stage", decode: (source, raw) =>
-    readStage({ source, raw, outliner: request.outliner }) });
-  const agents = await read({ directory: "agents", kind: "agent", decode: (source, raw) =>
-    readAgent({ source, raw, outliner: request.outliner }) });
-  const scopes = await read({ directory: "scopes", kind: "scope", decode: readScope });
-  const sensors = await read({ directory: "sensors", kind: "sensor", decode: readSensor });
-  const rules = await read({ directory: "memory", kind: "rule", decode: (source, raw) => {
+    decodeGroup({ owner: request.owner, ...group });
+  const stages = decode({ files: request.files.stages, kind: "stage", decode: (source, raw) =>
+    readStage({ source, raw, outliner: request.outliner, parser: request.parser }) });
+  const agents = decode({ files: request.files.agents, kind: "agent", decode: (source, raw) =>
+    readAgent({ source, raw, outliner: request.outliner, parser: request.parser }) });
+  const scopes = decode({ files: request.files.scopes, kind: "scope", decode: (source, raw) =>
+    readScope({ source, raw, parser: request.parser }) });
+  const sensors = decode({ files: request.files.sensors, kind: "sensor", decode: (source, raw) =>
+    readSensor({ source, raw, parser: request.parser }) });
+  const rules = decode({ files: request.files.rules, kind: "rule", decode: (source, raw) => {
     const layer = request.ruleLayer(source.path);
-    return layer ? readRule({ source, raw, layer }) : accepted(null);
+    return layer ? readRule({ source, raw, layer, parser: request.parser }) : accepted(null);
   } });
-  const knowledge = await read({ directory: "knowledge", kind: "knowledge", decode: knowledgeDecoder });
+  const knowledge = decode({ files: request.files.knowledge, kind: "knowledge", decode: knowledgeDecoder });
   const groups = [stages, agents, scopes, sensors, rules, knowledge];
   const issues = groups.flatMap((admission) => admission.ok ? [] : admission.refusal);
   if (!stages.ok || !agents.ok || !scopes.ok || !sensors.ok || !rules.ok || !knowledge.ok) {
@@ -105,7 +95,8 @@ export const readAuthoredContent = async (request: { readonly sourceFiles: Sourc
   }, files: groups.flatMap((admission) => admission.ok ? admission.value.files : []) });
 };
 
-export const readAuthoredCore = (request: { readonly sourceFiles: SourceFiles;
-  readonly outliner: MarkdownOutliner; readonly hooks: readonly HookDeclaration[] }):
-  Promise<Result<AuthoredContent, readonly MethodRefusal[]>> =>
-  readAuthoredContent({ ...request, owner: { kind: "core" }, ruleLayer });
+export const decodeAuthoredCore = (request: { readonly files: CapturedMethodFiles;
+  readonly outliner: MarkdownOutliner; readonly parser: FrontmatterParser;
+  readonly hooks: readonly HookDeclaration[] }): Result<AuthoredContent, readonly MethodRefusal[]> =>
+  decodeAuthoredContent({ ...request, owner: { kind: "core" },
+    ruleLayer: (path) => ruleLayerFor({ path, policy: { kind: "core" } }) });

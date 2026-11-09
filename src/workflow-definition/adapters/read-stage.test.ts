@@ -1,3 +1,4 @@
+import { accepted } from "../../kernel/result.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { expect, test } from "bun:test";
 import { methodSource } from "../fixtures/method-source.fixture.ts";
@@ -24,8 +25,14 @@ outputs: Requirements
 `;
 const outliner = { outline: (text: string) => ({ text, headings: [] }) };
 
+const parser = { parse: () => accepted({
+  slug: "requirements-analysis", phase: "inception", execution: "ALWAYS", condition: "A new feature",
+  ["lead_agent"]: "aidlc-product-agent", ["support_agents"]: [], mode: "inline", produces: ["requirements"],
+  consumes: [], ["requires_stage"]: [], scopes: ["feature"], inputs: "Intent", outputs: "Requirements",
+}) };
+
 test("a stage has one method source and emits membership declarations separately", () => {
-  const admission = accept(readStage({ source, raw, outliner }));
+  const admission = accept(readStage({ source, raw, outliner, parser }));
   expect(admission.stage.source).toBe(source.path);
   expect(admission.stage.workspace).toBe("read-only");
   expect(admission.stage.briefing.instructions.text).toBe("# Requirements\n");
@@ -36,7 +43,7 @@ test("a stage has one method source and emits membership declarations separately
 test("a mismatched source filename refuses the stage identity", () => {
   const otherSource = { ...source,
     path: methodSource({ kind: "stage", within: "inception/other.md" }) };
-  expect(readStage({ source: otherSource, raw, outliner })).toMatchObject({
+  expect(readStage({ source: otherSource, raw, outliner, parser })).toMatchObject({
     ok: false, refusal: [{ kind: "slug-differs-from-file", source: otherSource,
       slug: "requirements-analysis" }],
   });

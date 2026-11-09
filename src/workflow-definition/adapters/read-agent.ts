@@ -1,5 +1,5 @@
 import { refused, type Result } from "../../kernel/result.ts";
-import type { MarkdownOutliner } from "../application/ports.ts";
+import type { MarkdownOutliner, FrontmatterParser } from "../application/ports.ts";
 import type { Agent } from "../domain/agent.ts";
 import { agentSlug, pluginId } from "../domain/identities.ts";
 import type { MethodSourceLocation } from "../domain/method-source.ts";
@@ -10,10 +10,11 @@ import { authoredValue, decodeMarkdown, translated } from "./authored-markdown.t
 export const readAgent = (request: {
   readonly source: MethodSourceLocation;
   readonly raw: string;
+  readonly parser: FrontmatterParser;
   readonly outliner: MarkdownOutliner;
 }): Result<Agent, readonly MethodRefusal[]> => {
   const { source, raw, outliner } = request;
-  const decoded = decodeMarkdown({ source, raw, schema: AgentFileSchema,
+  const decoded = decodeMarkdown({ source, raw, parser: request.parser, schema: AgentFileSchema,
     strings: ["name", "display_name", "description", "disallowedTools", "tier", "plugin"] });
   if (!decoded.ok) return decoded;
   const { file, body: authoredText } = decoded.value;

@@ -1,3 +1,4 @@
+import type { FrontmatterParser } from "../application/ports.ts";
 import { refused, type Result } from "../../kernel/result.ts";
 import type { MethodSourceLocation } from "../domain/method-source.ts";
 import { sensorId } from "../domain/identities.ts";
@@ -14,9 +15,11 @@ const fieldShapes = (fields: SensorFieldShapesFile): SensorFieldShapes =>
     return [name, { kind: "list-of", fields: fieldShapes(record) }];
   }));
 
-export const readSensor = (source: MethodSourceLocation, raw: string):
+export const readSensor = (request: { readonly source: MethodSourceLocation; readonly raw: string;
+  readonly parser: FrontmatterParser }):
   Result<SensorDeclaration, readonly MethodRefusal[]> => {
-  const decoded = decodeMarkdown({ source, raw, schema: SensorFileSchema,
+  const { source, raw } = request;
+  const decoded = decodeMarkdown({ source, raw, parser: request.parser, schema: SensorFileSchema,
     strings: ["id", "kind", "command", "default_severity", "description", "category",
       "fire_on", "matches"] });
   if (!decoded.ok) return decoded;
