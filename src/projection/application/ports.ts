@@ -36,6 +36,7 @@ import type {
   OnboardingFills,
   OnboardingTemplates,
   SessionSkill,
+  SharedRuntime,
   SkillTableRenderer,
 } from "../domain/neutral-surface.ts";
 import type { DistributionChannel, ProjectedFile } from "../domain/projected-file.ts";
@@ -252,6 +253,26 @@ export type HostSurfaceProjectionRequest = {
 };
 
 export type HostSurfaceProjection = (request: HostSurfaceProjectionRequest) => Rendering;
+
+export type VersionStamp = (module: FileContent) => Result<FileContent, ProjectionRefusal>;
+
+export type RuntimeCapture = {
+  readonly core: URL;
+  readonly method: Method;
+  readonly stamp: VersionStamp;
+};
+
+export type RuntimeReading = (
+  capture: RuntimeCapture,
+) => Promise<Result<SharedRuntime, readonly ProjectionRefusal[]>>;
+
+export type RuntimeProjectionRequest = {
+  readonly host: HostIdentity;
+  readonly runtime: SharedRuntime;
+  readonly tokens: TokenBindings;
+};
+
+export type RuntimeProjection = (request: RuntimeProjectionRequest) => Rendering;
 
 export interface BuildProjection {
   readonly projectHostSurface: HostSurfaceProjection;
