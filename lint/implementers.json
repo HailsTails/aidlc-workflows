@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "implementers": [
+    {
+      "capability": "file-system",
+      "file": "src/kernel/file-system.ts",
+      "port": "src/kernel/file-system-port.ts",
+      "modules": ["node:fs", "node:fs/promises", "node:url"],
+      "globals": [],
+      "factory": "createNodeFileSystem",
+      "fakeSeam": "src/kernel/fixtures/file-system.fake.ts",
+      "hermeticTest": "src/kernel/file-system.hermetic.test.ts"
+    },
+    {
+      "capability": "process-runner",
+      "file": "src/kernel/process-runner.ts",
+      "port": "src/kernel/process-runner-port.ts",
+      "modules": [],
+      "globals": ["Bun.spawn", "Bun.fileURLToPath", "Bun.pathToFileURL", "process.execPath"],
+      "factory": "createNodeProcessRunner",
+      "fakeSeam": "src/kernel/fixtures/process-runner.fake.ts",
+      "hermeticTest": "src/kernel/process-runner.hermetic.test.ts"
+    },
+    {
+      "capability": "yaml-parser",
+      "file": "src/kernel/yaml-parser.ts",
+      "port": "src/kernel/yaml-parser-port.ts",
+      "modules": [],
+      "globals": ["Bun.YAML"],
+      "factory": "createBunYamlParser",
+      "fakeSeam": "src/kernel/fixtures/yaml-parser.fake.ts",
+      "hermeticTest": "src/kernel/yaml-parser.hermetic.test.ts"
+    }
+  ]
+}
