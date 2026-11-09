@@ -106,6 +106,7 @@
         "src/hosts/{claude,codex,opencode}/{packaging,installation}/**",
         "src/cli/adapters/routes/{packaging,installation}/**",
         "src/cli/core-build-root{,.test}.ts",
+        "src/cli/legacy-runner-child{,.test}.ts",
         "docs/reference/15-stage-definition.md",
         "docs/harness-engineering/09-porting-to-a-new-harness.md",
         "scripts/package.ts",
