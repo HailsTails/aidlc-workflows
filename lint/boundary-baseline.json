@@ -1648,8 +1648,7 @@
     },
     "scripts/onboarding.ts": {
       "aidlc/no-comments": 27,
-      "max-len": 1,
-      "One owner": 1
+      "max-len": 1
     },
     "scripts/package-release.ts": {
       "aidlc/no-comments": 5,

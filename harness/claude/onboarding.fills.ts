@@ -2,7 +2,7 @@
 // The packager concatenates onboarding-harness.md, filled here, then neutral
 // onboarding in dist/claude/.claude/CLAUDE.md before transforming tokens.
 
-import type { OnboardingFills } from "../../scripts/onboarding.ts";
+import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
 
 const fills: OnboardingFills = {
   invoke: "/aidlc",
