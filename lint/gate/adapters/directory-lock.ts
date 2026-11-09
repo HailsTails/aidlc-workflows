@@ -1,6 +1,7 @@
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import {
   describeOwner,
@@ -9,6 +10,8 @@ import {
   megabytesOf,
   memoryAdmits,
   slotNames,
+  ticketName,
+  ticketsAhead,
   type LockObservation,
   type LockOwner,
   type SlotPolicy,
@@ -34,6 +37,8 @@ const LockOwnerSchema = z.object({
 });
 
 const OWNER_FILE = "owner.json";
+
+const QUEUE_FOLDER = "queue";
 
 const SHARED_LOCK_FOLDER = ".aidlc-gate";
 
@@ -110,7 +115,7 @@ const holdUntilExit = (lockPath: string): void => {
 const ownerFor = (placement: LockPlacement, request: LockRequest): LockOwner => ({
   pid: process.pid,
   host: hostname(),
-  lane: request.lane,
+  lane: request.lane ?? basename(placement.cwd),
   command: request.command,
   cwd: placement.cwd,
   startedAt: Date.now(),
@@ -151,28 +156,74 @@ const attempt = (placement: LockPlacement, owner: LockOwner): Attempt => {
     : { kind: "held", slot };
 };
 
+const queueOf = (placement: LockPlacement): string => join(placement.directory, QUEUE_FOLDER);
+
+const enqueue = (placement: LockPlacement, owner: LockOwner): string => {
+  mkdirSync(queueOf(placement), { recursive: true });
+  const ticket = join(queueOf(placement), ticketName(owner.startedAt, randomUUID()));
+  tryCreate(ticket, owner);
+  return ticket;
+};
+
+const liveTicketsAhead = (placement: LockPlacement, ticket: string): readonly string[] =>
+  ticketsAhead(readdirSync(queueOf(placement)), basename(ticket))
+    .map((name) => join(queueOf(placement), name))
+    .filter((path) => {
+      if (!isStale(observe(path))) {
+        return true;
+      }
+      rmSync(path, { recursive: true, force: true });
+      return false;
+    });
+
+const turnOf = (placement: LockPlacement, ticket: string, owner: LockOwner): Attempt => {
+  const ahead = liveTicketsAhead(placement, ticket);
+  return ahead.length === 0
+    ? attempt(placement, owner)
+    : { kind: "waiting", reason: "waiting for its turn", detail: holders(ahead) };
+};
+
+type Waiting = { readonly deadline: number; readonly ticket: string; readonly owner: LockOwner };
+
+const awaitTurn = async (
+  placement: LockPlacement,
+  waiting: Waiting,
+): Promise<{ readonly slot: string } | { readonly reason: WaitReason }> => {
+  let announced: WaitReason | undefined;
+  for (;;) {
+    const result = turnOf(placement, waiting.ticket, waiting.owner);
+    if (result.kind === "held") {
+      return { slot: result.slot };
+    }
+    if (Date.now() >= waiting.deadline) {
+      return { reason: result.reason };
+    }
+    if (announced !== result.reason) {
+      placement.onWait(`waiting for a machine lock slot: ${result.reason} (${result.detail})`);
+      announced = result.reason;
+    }
+    await Bun.sleep(LOCK_POLL_MS);
+  }
+};
+
 export const directoryLock = (placement: LockPlacement): MachineLock => {
   let held: string | undefined;
   return {
     acquire: async (request) => {
       mkdirSync(placement.directory, { recursive: true });
-      const deadline = Date.now() + request.waitMs;
-      let announced: WaitReason | undefined;
-      for (;;) {
-        const result = attempt(placement, ownerFor(placement, request));
-        if (result.kind === "held") {
-          held = result.slot;
-          holdUntilExit(result.slot);
-          return { acquired: true };
+      const owner = ownerFor(placement, request);
+      const ticket = enqueue(placement, owner);
+      try {
+        const deadline = Date.now() + request.waitMs;
+        const outcome = await awaitTurn(placement, { deadline, ticket, owner });
+        if ("reason" in outcome) {
+          return { acquired: false, reason: outcome.reason };
         }
-        if (Date.now() >= deadline) {
-          return { acquired: false, reason: result.reason };
-        }
-        if (announced !== result.reason) {
-          placement.onWait(`waiting for a machine lock slot: ${result.reason} (${result.detail})`);
-          announced = result.reason;
-        }
-        await Bun.sleep(LOCK_POLL_MS);
+        held = outcome.slot;
+        holdUntilExit(outcome.slot);
+        return { acquired: true };
+      } finally {
+        rmSync(ticket, { recursive: true, force: true });
       }
     },
     release: () => {

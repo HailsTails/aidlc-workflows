@@ -2,16 +2,19 @@ import { globMatcher } from "../domain/glob.ts";
 import type { BaseRevision, ChangedFile } from "../domain/change.ts";
 import { laneById, type Lane, type LanePlan } from "../domain/lane-plan.ts";
 import type { FullRequest, ScopeRequest } from "./gate-request.ts";
-import type { Loaded, Repository, Workspace } from "./ports.ts";
+import type { HeavySlot, Loaded, Repository, Workspace } from "./ports.ts";
 
-export type GateScope = {
+export type ScopeFacts = {
   readonly lane: Lane | undefined;
   readonly base: BaseRevision | undefined;
   readonly changes: readonly ChangedFile[];
   readonly everything: boolean;
   readonly build: boolean;
   readonly record: boolean;
+  readonly allTests: boolean;
 };
+
+export type GateScope = ScopeFacts & { readonly heavy: HeavySlot };
 
 export type ScopeSources = {
   readonly plan: LanePlan;
@@ -41,17 +44,21 @@ const pathChanges = (workspace: Workspace, paths: readonly string[]): readonly C
   return workspace.filesMatching(asGlobs).map((path) => ({ path, kind: "modified" as const }));
 };
 
-const laneScope = (sources: ScopeSources, request: ScopeRequest, lane: Lane): Loaded<GateScope> => {
+const laneScope = (
+  sources: ScopeSources,
+  request: ScopeRequest,
+  lane: Lane,
+): Loaded<ScopeFacts> => {
   const base = baseFor(sources.repository, request.baseRef);
   if (!base.ok) {
     return base;
   }
   const changes = sources.repository.changesSince(base.value);
   const scope = { lane, base: base.value, changes, everything: false, build: false };
-  return { ok: true, value: { ...scope, record: request.record } };
+  return { ok: true, value: { ...scope, record: request.record, allTests: request.allTests } };
 };
 
-export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<GateScope> => {
+export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<ScopeFacts> => {
   const lane = laneById(sources.plan, request.target);
   if (lane !== undefined) {
     return laneScope(sources, request, lane);
@@ -59,10 +66,10 @@ export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<Ga
   const paths = request.target.split(",").filter((path) => path !== "");
   const changes = pathChanges(sources.workspace, paths);
   const scope = { lane: undefined, base: undefined, changes, everything: false, build: false };
-  return { ok: true, value: { ...scope, record: request.record } };
+  return { ok: true, value: { ...scope, record: request.record, allTests: request.allTests } };
 };
 
-export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded<GateScope> => {
+export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded<ScopeFacts> => {
   const lane = request.laneId === undefined ? undefined : laneById(sources.plan, request.laneId);
   if (request.laneId !== undefined && lane === undefined) {
     return unknownLane(sources.plan, request.laneId);
@@ -72,8 +79,12 @@ export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded
     return base;
   }
   const changes = sources.repository.changesSince(base.value);
-  const { build, record } = request;
-  return { ok: true, value: { lane, base: base.value, changes, everything: true, build, record } };
+  const { build, record, allTests } = request;
+  const everything = true;
+  return {
+    ok: true,
+    value: { lane, base: base.value, changes, everything, build, record, allTests },
+  };
 };
 
 export const touches = (scope: GateScope, globs: readonly string[]): boolean => {

@@ -12,6 +12,8 @@ const hostOnlyChange: GateScope = {
   everything: false,
   build: false,
   record: false,
+  allTests: false,
+  heavy: { ensure: async () => ({ acquired: true }) },
 };
 
 const ranFiles: string[][] = [];
@@ -19,6 +21,7 @@ const ranFiles: string[][] = [];
 const check = testsCheck({
   runner: {
     capture: () => ({ exitCode: 0, output: "" }),
+    captureAll: async () => [],
     attach: () => 0,
   },
   workspace: {
@@ -30,6 +33,8 @@ const check = testsCheck({
   looseTests: [],
   capabilities: { probe: () => ({ available: true, evidence: "present" }) },
   exclusions: [],
+  build: { ensure: () => undefined },
+  reachOf: () => ({}),
   testCommand: (files) => {
     ranFiles.push([...files]);
     return { label: "bun test", argv: ["test", ...files] };

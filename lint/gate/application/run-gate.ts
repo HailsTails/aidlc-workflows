@@ -14,12 +14,15 @@ import type {
   ScopeRequest,
   UpdateGoldensRequest,
 } from "./gate-request.ts";
-import { fullScopeOf, scopeOf, type GateScope, type ScopeSources } from "./gate-scope.ts";
+import { fullScopeOf, scopeOf, type ScopeFacts, type ScopeSources } from "./gate-scope.ts";
 import { updateGoldens, type GoldensDependencies } from "./goldens-check.ts";
 import type {
+  Clock,
   CommandRunner,
+  HeavySlot,
   LanePlanSource,
   Loaded,
+  LockOutcome,
   MachineLock,
   Progress,
   Repository,
@@ -47,6 +50,7 @@ export type GateServices = {
   readonly workspace: Workspace;
   readonly lock: MachineLock;
   readonly progress: Progress;
+  readonly clock: Clock;
   readonly runner: CommandRunner;
   readonly goldens: GoldensDependencies;
   readonly checksFor: (plan: LanePlan) => readonly GateCheck[];
@@ -86,7 +90,7 @@ const locked = async (
   request: FullRequest | UpdateGoldensRequest | LockedRequest,
   action: () => Promise<GateReport>,
 ): Promise<GateReport> => {
-  const lane = request.kind === "full" ? (request.laneId ?? "none") : "none";
+  const lane = request.kind === "full" ? request.laneId : undefined;
   const command = `gate ${request.kind}`;
   const outcome = await services.lock.acquire({ lane, command, waitMs: request.waitMs });
   if (!outcome.acquired) {
@@ -99,10 +103,29 @@ const locked = async (
   }
 };
 
+const alreadyHeld: HeavySlot = { ensure: async () => ({ acquired: true }) };
+
+const heavySlotFor = (services: GateServices, request: ScopeRequest | FullRequest): HeavySlot => {
+  if (request.kind === "full") {
+    return alreadyHeld;
+  }
+  let outcome: Promise<LockOutcome> | undefined;
+  return {
+    ensure: () => {
+      outcome ??= services.lock.acquire({
+        lane: undefined,
+        command: "gate scope",
+        waitMs: request.waitMs,
+      });
+      return outcome;
+    },
+  };
+};
+
 type CheckedRun = {
   readonly request: ScopeRequest | FullRequest;
   readonly plan: LanePlan;
-  readonly scope: Loaded<GateScope>;
+  readonly scope: Loaded<ScopeFacts>;
 };
 
 const checked = async (services: GateServices, run: CheckedRun): Promise<GateReport> => {
@@ -118,7 +141,12 @@ const checked = async (services: GateServices, run: CheckedRun): Promise<GateRep
   if (!toolchain.ok) {
     return failed(request, toolchain);
   }
-  const outcomes = await runChecks({ scope: scope.value, checks, progress: services.progress });
+  const outcomes = await runChecks({
+    scope: { ...scope.value, heavy: heavySlotFor(services, request) },
+    checks,
+    progress: services.progress,
+    clock: services.clock,
+  });
   const lane = scope.value.lane?.id;
   const base = scope.value.base?.ref;
   return report(request, { lane, base, verdict: verdictOf(outcomes), outcomes });
@@ -136,7 +164,11 @@ const runScope = async (services: GateServices, request: ScopeRequest): Promise<
     return failed(request, plan);
   }
   const scope = scopeOf(sourcesFor(services, plan.value), request);
-  return checked(services, { request, plan: plan.value, scope });
+  try {
+    return await checked(services, { request, plan: plan.value, scope });
+  } finally {
+    services.lock.release();
+  }
 };
 
 const runFull = (services: GateServices, request: FullRequest): Promise<GateReport> =>

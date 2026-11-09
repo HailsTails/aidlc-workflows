@@ -38,12 +38,16 @@ import {
 } from "../lint/gate/adapters/record-locations.ts";
 import { capabilityProbes } from "../lint/gate/adapters/capability-probes.ts";
 import { environmentExclusions } from "../lint/gate/adapters/environment-exclusions.ts";
+import { testReach } from "../lint/gate/adapters/test-reach.ts";
+import { transpilerCacheFolder } from "../lint/gate/adapters/transpiler-cache.ts";
 import { legacyEnvironment, legacySuites } from "../lint/gate/adapters/legacy-suites.ts";
 import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
+import { systemClock } from "../lint/gate/adapters/system-clock.ts";
 import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
 import { disciplinesCheck } from "../lint/gate/application/disciplines-check.ts";
 import type { GateCheck } from "../lint/gate/application/gate-check.ts";
+import { sharedBuild } from "../lint/gate/application/shared-build.ts";
 import { goldensCheck, type GoldensDependencies } from "../lint/gate/application/goldens-check.ts";
 import { lintCheck } from "../lint/gate/application/lint-check.ts";
 import { kernelCheck } from "../lint/gate/application/kernel-check.ts";
@@ -106,11 +110,13 @@ const goldenLayout: GoldenLayout = {
 
 const bun = (label: string, args: readonly string[]): Command => ({ label, argv: [BUN, ...args] });
 
+const packageBuild = sharedBuild(runner, bun("bun scripts/package.ts", ["scripts/package.ts"]));
+
 const goldens: GoldensDependencies = {
   runner,
   source: goldenSource(goldenLayout),
   store: goldenStore({ layout: goldenLayout, workspace }),
-  build: bun("bun scripts/package.ts", ["scripts/package.ts"]),
+  build: packageBuild,
 };
 
 const tsc = (project: string): Command =>
@@ -124,9 +130,18 @@ const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
   },
 ];
 
+const TRANSPILER_CACHE = transpilerCacheFolder(ROOT);
+
+const LEGACY_SPLIT_SECONDS = 60;
+
+const LEGACY_WORKERS = Math.max(1, Number(process.env["AIDLC_GATE_TEST_WORKERS"]) || 8);
+
 const TEST_SUITES: readonly TestSuite[] = [
   ...SOURCE_SUITES,
-  ...legacySuites({ bun: BUN, environment: legacyEnvironment(process.env) }),
+  ...legacySuites(
+    { bun: BUN, environment: legacyEnvironment(process.env, TRANSPILER_CACHE) },
+    { workspace, workers: LEGACY_WORKERS, splitAtOrAbove: LEGACY_SPLIT_SECONDS },
+  ),
   {
     name: "lint",
     triggers: ["lint/**", "scripts/gate.ts", "eslint.config.ts", "eslint.config.test.ts"],
@@ -164,6 +179,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     record: nameListFile({ workspace, path: "lint/kernel-exports.txt" }),
     sources: ["src/kernel/*.ts"],
   }),
+  goldensCheck(goldens),
   testsCheck({
     runner,
     workspace,
@@ -172,8 +188,9 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     capabilities: capabilityProbes(temp.path),
     exclusions: environmentExclusions(workspace),
     testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
+    build: packageBuild,
+    reachOf: (tests) => testReach({ workspace, tests }),
   }),
-  goldensCheck(goldens),
 ];
 
 const EXIT_CODES: Readonly<Record<GateReport["verdict"], number>> = {
@@ -207,7 +224,7 @@ const main = async (): Promise<number> => {
   }
   const lock = directoryLock({
     directory: process.env["AIDLC_GATE_LOCK_DIR"] ?? lockDirectoryBesideMainCheckout(ROOT),
-    cwd: ROOT,
+    cwd: process.cwd(),
     onWait: consoleProgress.note,
     policy: policy.value,
     memory: systemMemory,
@@ -218,6 +235,7 @@ const main = async (): Promise<number> => {
     repository,
     workspace,
     lock,
+    clock: systemClock,
     runner,
     goldens,
     checksFor,

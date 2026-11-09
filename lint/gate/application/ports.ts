@@ -80,6 +80,10 @@ export type CommandResult = {
 
 export type CommandRunner = {
   readonly capture: (command: Command) => CommandResult;
+  readonly captureAll: (request: {
+    readonly commands: readonly Command[];
+    readonly concurrency: number;
+  }) => Promise<readonly CommandResult[]>;
   readonly attach: (command: Command) => number;
 };
 
@@ -114,7 +118,7 @@ export type GoldenStore = {
 };
 
 export type LockRequest = {
-  readonly lane: string;
+  readonly lane: string | undefined;
   readonly command: string;
   readonly waitMs: number;
 };
@@ -122,6 +126,10 @@ export type LockRequest = {
 export type LockOutcome =
   | { readonly acquired: true }
   | { readonly acquired: false; readonly reason: WaitReason };
+
+export type HeavySlot = {
+  readonly ensure: () => Promise<LockOutcome>;
+};
 
 export type MachineLock = {
   readonly acquire: (request: LockRequest) => Promise<LockOutcome>;
@@ -160,6 +168,10 @@ export type Toolchain = {
 export type DisciplineAudit = {
   readonly project: () => Loaded<string>;
   readonly run: () => AuditReport;
+};
+
+export type Clock = {
+  readonly nowMs: () => number;
 };
 
 export type Progress = {

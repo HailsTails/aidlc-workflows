@@ -19,7 +19,7 @@ export type SlotPolicy = {
   readonly minFreeMb: number;
 };
 
-export type WaitReason = "no free slot" | "free memory below floor";
+export type WaitReason = "no free slot" | "free memory below floor" | "waiting for its turn";
 
 export const DEFAULT_SLOT_POLICY: SlotPolicy = { slots: 3, minFreeMb: 4096 };
 
@@ -51,3 +51,11 @@ export const describeOwner = (owner: LockOwner | undefined): string =>
   owner === undefined
     ? "an unknown holder"
     : `pid ${owner.pid} on ${owner.host} (lane ${owner.lane}: ${owner.command}) in ${owner.cwd}`;
+
+const TICKET_DIGITS = 15;
+
+export const ticketName = (arrivedAt: number, unique: string): string =>
+  `${String(arrivedAt).padStart(TICKET_DIGITS, "0")}-${unique}`;
+
+export const ticketsAhead = (names: readonly string[], mine: string): readonly string[] =>
+  [...names].sort().filter((name) => name < mine);
