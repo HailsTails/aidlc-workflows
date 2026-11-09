@@ -34,7 +34,8 @@ import { accept } from "../../src/kernel/fixtures/accept.ts";
 import { distributionId, projectPath } from "../../src/kernel/values.ts";
 import { serializeCompiledMethod }
   from "../../src/projection/adapters/compiled-method-file.ts";
-import { loadAuthoredCoreMethod } from "../../src/workflow-definition/core-root.ts";
+import { loadCoreMethod as loadAuthoredCoreMethod }
+  from "../../src/workflow-definition/application/load-authored-method.ts";
 import { createMethodContentDecoder }
   from "../../src/workflow-definition/adapters/method-content-decoder.ts";
 import { createNodeFileSystem } from "../../src/kernel/file-system.ts";

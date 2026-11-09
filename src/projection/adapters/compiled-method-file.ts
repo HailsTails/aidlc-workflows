@@ -1,17 +1,14 @@
 import { z } from "zod";
-import type { HostIdentity } from "../../kernel/host.ts";
-import type { ProjectPath } from "../../kernel/values.ts";
-import { graphEntries, type GraphEntry, type Method } from "../../workflow-definition/domain/method.ts";
+import { graphEntries, type GraphEntry } from "../../workflow-definition/domain/method.ts";
 import { scopeColumn } from "../../workflow-definition/domain/scope-grid.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { StageNode } from "../../workflow-definition/domain/stage-graph.ts";
 import { COLLABORATION_MODES, PHASES, PROJECT_TYPES, UNIT_KINDS }
   from "../../workflow-definition/domain/vocabulary.ts";
 
-export type CompiledMethodFiles = { readonly graph: string; readonly grid: string };
+import type { CompiledMethodFiles } from "../domain/projection.ts";
 
-type RenderingRequest = { readonly method: Method; readonly host: HostIdentity;
-  readonly memoryRoot: ProjectPath };
+import type { CompiledMethodRequest } from "../application/ports.ts";
 
 const resolvedRuleSchema = z.strictObject({
   path: z.string(), scope: z.enum(["org", "team", "project", "phase"]),
@@ -96,13 +93,13 @@ const priorFields = (stage: Stage): Pick<CompiledStageFile, "ars"> => {
   } } : {};
 };
 
-const resolvedRules = (request: RenderingRequest, node: StageNode):
+const resolvedRules = (request: CompiledMethodRequest, node: StageNode):
   CompiledStageFile["rules_in_context"] => node.rulesInContext.flatMap((identity) => {
     const rule = request.method.rules.find((candidate) => candidate.id === identity);
     return rule ? [{ path: `${request.memoryRoot}/${identity}.md`, scope: rule.layer.kind }] : [];
   });
 
-const resolvedSensors = (request: RenderingRequest, node: StageNode):
+const resolvedSensors = (request: CompiledMethodRequest, node: StageNode):
   CompiledStageFile["sensors_applicable"] => node.activeSensors.flatMap((identity) => {
     const sensor = request.method.sensors.find((candidate) => candidate.id === identity);
     return sensor ? [{ id: sensor.id, path: `${request.host.directory}/${sensor.source}`,
@@ -111,7 +108,7 @@ const resolvedSensors = (request: RenderingRequest, node: StageNode):
     }] : [];
   });
 
-const stageFile = (request: RenderingRequest, entry: GraphEntry): CompiledStageFile => {
+const stageFile = (request: CompiledMethodRequest, entry: GraphEntry): CompiledStageFile => {
   const { stage, node } = entry;
   return {
     slug: stage.slug, number: node.number, name: stage.displayName,
@@ -137,7 +134,7 @@ const stageFile = (request: RenderingRequest, entry: GraphEntry): CompiledStageF
   };
 };
 
-export const serializeCompiledMethod = (request: RenderingRequest): CompiledMethodFiles => {
+export const serializeCompiledMethod = (request: CompiledMethodRequest): CompiledMethodFiles => {
   const graph: z.infer<typeof CompiledGraphFileSchema> = graphEntries(request.method)
     .map((entry) => stageFile(request, entry));
   const scopes = request.method.scopes.toSorted((left, right) =>

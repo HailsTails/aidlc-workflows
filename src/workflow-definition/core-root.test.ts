@@ -1,40 +1,32 @@
-import { expect, mock, test } from "bun:test";
+const outliner = { outline: (text: string) => ({ text, headings: [] }) };
+import { expect, test } from "bun:test";
+import { accepted, refused } from "../kernel/result.ts";
 import { accept } from "../kernel/fixtures/accept.ts";
 import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
-import { accepted, refused } from "../kernel/result.ts";
-import type { CoreContent } from "./domain/method.ts";
-import type { MethodContentDecoder } from "./application/ports.ts";
-import { loadAuthoredCoreMethod } from "./core-root.ts";
+import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
+import { createAuthoredMethodLoading } from "./core-root.ts";
 
-const core: CoreContent = { stages: [], agents: [], scopes: [], memberships: [],
-  freeformDefaults: [], sensors: [], rules: [], knowledge: [], hooks: [] };
 const files = {
   "file:///core/aidlc-common/stages/.keep": "", "file:///core/agents/.keep": "",
   "file:///core/scopes/.keep": "", "file:///core/sensors/.keep": "",
   "file:///core/memory/.keep": "", "file:///core/knowledge/.keep": "",
 };
 
-test("the Definition root composes injected captures with core admission", async () => {
-  const decodeCore = mock<MethodContentDecoder["decodeCore"]>(async () => accepted({ core, files: [] }));
-  const decodeContribution = mock<MethodContentDecoder["decodeContribution"]>(async () =>
-    refused([{ kind: "core-namespace-claimed", plugin: "unused" }]));
-  const reader = createInMemoryFileSystem({ files });
-  const loaded = accept(await loadAuthoredCoreMethod({ coreRoot: new URL("file:///core/"), reader,
-    decoder: { decodeCore, decodeContribution } }));
-  expect(loaded.method.graph.nodes).toEqual([]);
-  expect(loaded.authored).toBe(core);
-  expect(loaded.sources).toEqual([]);
-  expect(decodeCore).toHaveBeenCalledWith({ stages: [], agents: [], scopes: [], sensors: [], rules: [], knowledge: [] });
-  expect(decodeContribution).not.toHaveBeenCalled();
+test("Definition wires its decoder and compiler around the injected file and parser ports", async () => {
+  const loading = createAuthoredMethodLoading({ reader: createInMemoryFileSystem({ files }),
+    parser: createInMemoryYamlParser({ documents: {} }), outliner });
+  const core = accept(await loading.loadCore(new URL("file:///core/")));
+  expect(core.method.graph.nodes).toEqual([]);
+  expect(core.sources).toEqual([]);
+  expect(await loading.loadPlugins({ core, pluginsRoot: new URL("file:///plugins/") }))
+    .toEqual(accepted({ method: core.method, plugins: [] }));
 });
 
-test("the Definition root returns a decoder refusal without partial admission", async () => {
-  const decodeCore = mock<MethodContentDecoder["decodeCore"]>(async () =>
-    refused([{ kind: "invalid-file", location: { kind: "stage-pins" }, issues: ["decoder refused"] }]));
-  const decodeContribution = mock<MethodContentDecoder["decodeContribution"]>(async () =>
-    refused([{ kind: "core-namespace-claimed", plugin: "unused" }]));
-  expect(await loadAuthoredCoreMethod({ coreRoot: new URL("file:///core/"),
-    reader: createInMemoryFileSystem({ files }), decoder: { decodeCore, decodeContribution } }))
-    .toEqual({ ok: false, refusal: [{ kind: "invalid-file", location: { kind: "stage-pins" },
-      issues: ["decoder refused"] }] });
+test("the injected frontmatter parser's refusal crosses the composition unchanged", async () => {
+  const loading = createAuthoredMethodLoading({ reader: createInMemoryFileSystem({ files: {
+    ...files, "file:///core/aidlc-common/stages/inception/example.md": "---\nslug: example\n---\nBody",
+  } }), parser: { parse: () => refused({ kind: "invalid-yaml", reason: "Parser unavailable" }) }, outliner });
+  expect(await loading.loadCore(new URL("file:///core/"))).toMatchObject({ ok: false, refusal: [
+    { kind: "invalid-file", issues: ["Parser unavailable"] },
+  ] });
 });

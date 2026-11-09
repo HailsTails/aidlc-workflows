@@ -122,11 +122,6 @@ export const SHIPPED_TYPE_BRIDGES: readonly LegacyBridge[] = [
 
 export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   {
-    module: "core/tools/aidlc-markdown.ts",
-    readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
-    retiresWhen: "Packaging's ToolBundler ships src; the interpreter then moves into src.",
-  },
-  {
     module: "core/tools/aidlc-model-policy.ts",
     readBy: "src/projection/adapters/legacy-agent-surfaces.ts",
     retiresWhen:

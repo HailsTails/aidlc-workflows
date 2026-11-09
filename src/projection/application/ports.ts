@@ -22,6 +22,7 @@ import type { Agent } from "../../workflow-definition/domain/agent.ts";
 import type { HookDeclaration } from "../../workflow-definition/domain/hooks.ts";
 import type { KnowledgeDocument } from "../../workflow-definition/domain/knowledge.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
+import type { MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import type { Scope } from "../../workflow-definition/domain/scope.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ScopeColumn, StageNode } from "../../workflow-definition/domain/stage-graph.ts";
@@ -35,7 +36,7 @@ import type {
   SessionSkill,
 } from "../domain/neutral-surface.ts";
 import type { DistributionChannel, ProjectedFile } from "../domain/projected-file.ts";
-import type { ProjectionRefusal } from "../domain/projection.ts";
+import type { CompiledMethodFiles, ProjectionRefusal } from "../domain/projection.ts";
 import type { HostTokenBindings, TokenBindings } from "../domain/template-token.ts";
 
 export type Rendering = Result<readonly ProjectedFile[], ProjectionRefusal>;
@@ -168,4 +169,33 @@ export interface HostSurfaceReader {
   read(request: {
     readonly host: HostIdentity;
   }): Promise<Result<readonly AuthoredHostFile[], readonly ProjectionRefusal[]>>;
+}
+
+export type CompiledMethodRequest = {
+  readonly method: Method;
+  readonly host: HostIdentity;
+  readonly memoryRoot: ProjectPath;
+};
+
+export type HostSourceCapture = {
+  readonly host: HostIdentity;
+  readonly root: URL;
+  readonly sources: readonly SourcePath[];
+  readonly required: readonly SourcePath[];
+};
+
+export type CommandSourceRequest = {
+  readonly method: Method;
+  readonly sources: readonly MethodSource[];
+  readonly projectRoot: URL;
+  readonly harnessDir: string;
+  readonly harnessName: string;
+};
+
+export interface BuildProjection {
+  serializeMethod(request: CompiledMethodRequest): CompiledMethodFiles;
+  readHostSources(
+    capture: HostSourceCapture,
+  ): Promise<Result<readonly AuthoredHostFile[], readonly ProjectionRefusal[]>>;
+  prepareCommandSource(request: CommandSourceRequest): Promise<CommandSource>;
 }

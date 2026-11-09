@@ -511,45 +511,6 @@
     {
       "kind": "authorised-location",
       "clause": "CD-19#import-boundaries",
-      "file": "src/projection/adapters/host-source-files.ts",
-      "reason": "The single read-only adapter through which Projection reads the captured host sources from disk.",
-      "whyChain": {
-        "whys": [
-          {
-            "why": "Why does src/projection/adapters/host-source-files.ts import node:fs/promises and node:path?",
-            "because": "The captured host-source reader reads the captured host source files from disk, read-only, and this adapter is the one place Projection does that.",
-            "evidence": "Coordinator forwarding of integration's request in the AIDLC pace and parallel lanes note at 21:17 UTC: a read-only adapter wrapping node:fs/promises and node:path, the same kind as the approved Definition source-files adapter."
-          },
-          {
-            "why": "Why does Projection read the captured host source files from disk?",
-            "because": "Host surfaces are rendered from the captured source's bytes, so no second parser re-reads the authored files for each host.",
-            "evidence": "git log 56c987f80 use captured Method sources for agent surfaces; src/projection/domain/projection.ts defines the host-source-unreadable refusal"
-          },
-          {
-            "why": "Why are host surfaces rendered from the captured source's bytes, with no second parser re-reading the authored files?",
-            "because": "Rendering is then a pure function of the values the captured source hands it, which keeps the render deterministic and testable with in-memory fakes.",
-            "evidence": "lint/restrictions.ts testDiscipline refuses adapters and real IO in domain and application tests"
-          },
-          {
-            "why": "Why must rendering stay a pure function of the values handed to it, testable with in-memory fakes?",
-            "because": "Domain and application code stay pure, so any real disk read is an effect placed behind a port in adapters/ and never inside the rendering decisions.",
-            "evidence": "lint/restrictions.ts purityRestriction refuses package, node: and Bun imports in domain and application layers"
-          },
-          {
-            "why": "Why is a real disk read an effect placed behind a port in one named adapter?",
-            "because": "Each context that does real IO registers each reach as one named adapter, so its whole IO surface is reviewed in a few files and every other adapter stays a decoder of values it is handed.",
-            "evidence": "discipline-exceptions.json registers src/workflow-definition/adapters/source-files.ts for Workflow Definition and src/projection/adapters/legacy-runners.ts for Projection's runner reach"
-          }
-        ],
-        "rootCause": "The rebuild keeps domain and application pure and registers each real IO reach as one named adapter, so Projection's reads of the captured host sources live in host-source-files.ts alone.",
-        "rootCheck": "Read lint/restrictions.ts and the existing exception entries on 2026-11-09: purityRestriction still refuses node: imports in domain and application, and Projection has no other registered disk-read location.",
-        "readback": "Each context registers every real IO reach as one named adapter, therefore Projection's disk reads sit in one file, therefore the renderers receive the captured source's values from a port, therefore host-source-files.ts alone imports node:fs/promises and node:path as a read-only reach to disk.",
-        "owner": "Lane G (Guardrails) in lanes.json; the file is codex/integration's; the coordinator approved the location in the AIDLC pace and parallel lanes note at 21:18 UTC"
-      }
-    },
-    {
-      "kind": "authorised-location",
-      "clause": "CD-19#import-boundaries",
       "file": "src/kernel/file-system.ts",
       "reason": "The one implementer of the kernel FileSystem port: the single place the rebuild reaches the disk through node:fs/promises and node:url.",
       "whyChain": {

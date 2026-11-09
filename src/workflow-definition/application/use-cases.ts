@@ -4,6 +4,7 @@ import type { Method, CoreContent, PluginSelection } from "../domain/method.ts";
 import type { MethodRefusal } from "../domain/refusals.ts";
 import type { SavedScope } from "../domain/scope.ts";
 import type { StagePin } from "../domain/stage-graph.ts";
+import type { AuthoredCoreMethod, AuthoredPluginBuild, MethodReading } from "./ports.ts";
 
 export type CompileMethodRequest = {
   readonly core: CoreContent;
@@ -19,4 +20,14 @@ export interface CompileMethod {
 
 export interface LoadMethod {
   loadAuthored(): Promise<Result<Method, readonly MethodRefusal[]>>;
+}
+
+export type PluginBuildRequest = {
+  readonly core: AuthoredCoreMethod;
+  readonly pluginsRoot: URL;
+};
+
+export interface AuthoredMethodLoading {
+  loadCore(coreRoot: URL): MethodReading<AuthoredCoreMethod>;
+  loadPlugins(request: PluginBuildRequest): MethodReading<AuthoredPluginBuild>;
 }
