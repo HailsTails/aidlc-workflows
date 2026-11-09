@@ -12,6 +12,14 @@ export type NeutralDocument = {
   readonly content: FileContent;
 };
 
+export const SESSION_SKILL_NAMES = [
+  "aidlc-session-cost",
+  "aidlc-replay",
+  "aidlc-outcomes-pack",
+  "aidlc-knowledge",
+  "aidlc-issue-report",
+] as const;
+
 export type SessionSkill = {
   readonly name: string;
   readonly files: readonly { readonly source: SourcePath; readonly content: FileContent }[];

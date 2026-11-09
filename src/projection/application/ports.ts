@@ -216,6 +216,8 @@ export type SessionSkillReading = (
 
 export type SkillProjectionRequest = {
   readonly method: Method;
+  readonly host: HostIdentity;
+  readonly projectRoot: URL;
   readonly render: HostSkillRenderer;
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
@@ -225,7 +227,7 @@ export type SkillProjectionRequest = {
   readonly sessions: readonly SessionSkill[];
 };
 
-export type SkillProjection = (request: SkillProjectionRequest) => Rendering;
+export type SkillProjection = (request: SkillProjectionRequest) => Promise<Rendering>;
 
 export type AgentProjectionRequest = {
   readonly method: Method;
