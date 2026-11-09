@@ -7,6 +7,7 @@ import {
   LEGACY_BRIDGES,
   LEGACY_TERRITORY,
   MONOLITH_FILES,
+  type LegacyBridge,
 } from "./context-map.ts";
 
 describe("context arrows", () => {
@@ -61,7 +62,19 @@ describe("context arrows", () => {
 
 const OWNER_MOVES = "Phase 2: its owner moves into src and ships in the runtime bundle (R1).";
 
-const EXPECTED_BRIDGES = [
+const EXPECTED_BRIDGES: readonly LegacyBridge[] = [
+  {
+    module: "core/tools/aidlc-lib.ts",
+    readBy: "src/projection/domain/host-surface.ts",
+    retiresWhen: OWNER_MOVES,
+    typeOnly: true,
+  },
+  {
+    module: "core/tools/aidlc-runtime-paths.ts",
+    readBy: "src/projection/domain/host-surface.ts",
+    retiresWhen: OWNER_MOVES,
+    typeOnly: true,
+  },
   {
     module: "core/tools/aidlc-markdown.ts",
     readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
