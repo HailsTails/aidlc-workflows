@@ -5,6 +5,9 @@ import {
   runnerProducer, orchestratorSkillLocation, type HarnessManifest,
 } from "../../scripts/manifest-types.ts";
 import { frontmatterBlock } from "../../core/tools/aidlc-lib.ts";
+import { hostAgentMembers } from "../../src/cli/host-table.ts";
+import { distributionId, projectPath } from "../../src/kernel/values.ts";
+import { accepted, refused } from "../../src/kernel/result.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const HARNESS_ROOT = join(REPO_ROOT, "harness");
@@ -254,6 +257,31 @@ function validateEmittedAgentTools(name: ShippedHarnessName, manifest: HarnessMa
   }
 }
 
+function producesConductorAgent(name: ShippedHarnessName, manifest: HarnessManifest): boolean {
+  const distribution = distributionId(name);
+  const directory = projectPath(manifest.harnessDir);
+  if (!distribution.ok || !directory.ok) fail(name, "agent producer needs a valid host identity");
+  const host = { distribution: distribution.value, directory: directory.value };
+  const member = hostAgentMembers(host);
+  if (!member.ok) fail(name, `agent producer was refused: ${JSON.stringify(member.refusal)}`);
+  if (member.value === null) return false;
+  const conductor = member.value.inputs.find((source) => source === "agents/aidlc.json");
+  if (conductor === undefined) return false;
+  const authored = join(HARNESS_ROOT, name, conductor);
+  if (!existsSync(authored)) fail(name, "agent producer's captured conductor source is missing");
+  const rendered = member.value.render({ host, channel: "copy",
+    files: [{ source: conductor,
+      content: { kind: "text", text: readFileSync(authored, "utf8") } }],
+    prepare: accepted, formatDocuments: new Set(),
+    models: () => refused({ kind: "render-failed", concept: "agent", name: "aidlc",
+      reason: "The conductor must preserve its model without persona model policy." }),
+  }).renderConductorAgent({ knowledge: [] });
+  if (!rendered.ok) {
+    fail(name, `conductor producer was refused: ${JSON.stringify(rendered.refusal)}`);
+  }
+  return rendered.value.some((file) => file.path === `${manifest.harnessDir}/agents/aidlc.json`);
+}
+
 export function validateManifest(
   name: ShippedHarnessName,
   manifest: HarnessManifest,
@@ -302,11 +330,9 @@ export function validateManifest(
     fail(name, `project-root onboarding "${onboarding.dst}" is absent from rootFiles metadata`);
   }
 
-  const hasKiroAgentJson = manifest.harnessFiles.some(
-    (file) => file.dst === "agents/aidlc.json",
-  );
+  const hasKiroAgentJson = producesConductorAgent(name, manifest);
   if (hasKiroAgentJson !== capabilities.kiroAgentJson) {
-    fail(name, "kiroAgentJson does not agree with manifest harnessFiles");
+    fail(name, "kiroAgentJson does not agree with the registered conductor producer");
   }
   if (
     (capabilities.memoryInclude === "kiro-resources") !== hasKiroAgentJson ||

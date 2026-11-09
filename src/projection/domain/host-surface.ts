@@ -15,6 +15,11 @@ export type StatusLine =
   | { readonly type: "command"; readonly command: string }
   | { readonly items: readonly string[] };
 
+export type NewChatStep = {
+  readonly text: string;
+  readonly inHost?: { readonly env: readonly string[]; readonly text: string };
+};
+
 export type HostData = {
   readonly productName: string;
   readonly configNextStep: string;
@@ -22,6 +27,7 @@ export type HostData = {
   readonly runnerFrontmatterAdditions?: readonly string[];
   readonly documentExtractors?: Readonly<Record<string, DocumentExtractorSpec>>;
   readonly hookActivation?: HookActivation;
+  readonly newChatStep?: NewChatStep;
   readonly kiroLayout?: KiroLayout;
   readonly directiveMaxBytes?: number;
   readonly statusLine?: StatusLine;

@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
+import { refreshSkillRegions, finishEarlierReleaseSkill }
+  from "../src/projection/domain/skill-regions.ts";
 import type { FileContent } from "../src/kernel/file-content.ts";
 import type { HostIdentity } from "../src/kernel/host.ts";
-import { refused, type Result } from "../src/kernel/result.ts";
+import { accepted, refused, type Result } from "../src/kernel/result.ts";
 import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts";
 import type { ProjectionRefusal } from "../src/projection/domain/projection.ts";
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
@@ -66,6 +68,10 @@ import {
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { hostAgentInputs, hostSkillInputs } from "../src/cli/host-table.ts";
+import type {
+  DistributionChannel, ProjectedFile,
+} from "../src/projection/domain/projected-file.ts";
 import { openPackageBuildRoot } from "../src/cli/main.ts";
 import { createNodeFileSystem } from "../src/kernel/file-system.ts";
 import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
@@ -79,6 +85,7 @@ import { pluginId as pluginBuildName } from "../src/workflow-definition/domain/i
 import { reviewerAgentSet, inlineAgentSet }
   from "../src/workflow-definition/domain/method-participation.ts";
 import { projectMethodCommands } from "../src/projection/application/project-method-commands.ts";
+import type { CommandPlacement } from "../src/projection/application/ports.ts";
 import { createCommandRenderers } from "../src/projection/application/command-renderers.ts";
 import { prepareHostSource } from "../src/projection/application/prepared-host-source.ts";
 import type { AuthoredPluginBuild as PluginBuildCatalog, PluginBuildTarget }
@@ -93,7 +100,7 @@ import {
 } from "./agent-knowledge.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
-import { EARLIER_RELEASE_REGIONS, earlierReleasesReadSkill } from "./earlier-release-regions.ts";
+import { earlierReleasesReadSkill } from "./earlier-release-regions.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
 import {
   buildPluginProjection as emitPluginProjection,
@@ -110,7 +117,7 @@ import {
   modelAgentName,
   resolveModelPolicy,
   serializeAgentTiers,
-  writeKiroAgentSurface,
+
   writeKiroCliSurface,
   writeMarkdownAgentSurface,
 } from "../core/tools/aidlc-model-policy.ts";
@@ -126,7 +133,6 @@ import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
 import { kiroIdeSteering } from "../core/tools/aidlc-includes.ts";
-import { SHIPPED_FORMAT_DOCS } from "../core/tools/aidlc-inline-context.ts";
 import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -194,20 +200,6 @@ const INVOKE_TOKEN = /\{\{INVOKE\}\}/g;
 const TOOL_PREFIX_TOKEN = /\{\{TOOL_PREFIX\}\}/g;
 const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
 const OPTION_LETTERS_TOKEN = /\{\{OPTION_LETTERS\}\}/g;
-// Matched by PREFIX (mirroring aidlc-init.ts's marker scan): the begin marker
-// embeds the harness-projected invocation, so its tail varies per channel.
-const GENERATED_SKILL_REGIONS = [
-  {
-    verb: "stage-table",
-    begin: "<!-- BEGIN: compiled stage graph via ",
-    end: "<!-- END: compiled stage graph -->",
-  },
-  {
-    verb: "scope-table",
-    begin: "<!-- BEGIN: compiled scope grid via ",
-    end: "<!-- END: compiled scope grid -->",
-  },
-] as const;
 
 // Harnesses the packager builds = every harness/<name>/ that carries a
 // manifest.ts. DISCOVERED, not hardcoded: adding harness #N is one harness/<n>/
@@ -296,48 +288,6 @@ function projectTierFrontmatter(s: string, srcPath: string, harness: Harness): s
     effortKey: harness === "opencode" ? "variant" : "effort",
     removeKeys: harness === "kiro" ? ["disallowedTools"] : [],
   });
-}
-
-function projectKiroAgentJson(srcPath: string, content: Buffer): Buffer {
-  if (!srcPath.endsWith("-agent.json")) return content;
-  const agent = coreAgentForFile(srcPath);
-  if (!agent) return content;
-  if (agent.model.kind !== "tier") {
-    throw new Error(`${srcPath}: the accepted core Method supplies no model tier.`);
-  }
-  const effective = resolveModelPolicy(
-    null, modelAgentName(srcPath), agent.model.tier, "kiro", TIER_CAP);
-  return Buffer.from(writeKiroAgentSurface(content.toString("utf-8"), effective), "utf-8");
-}
-
-// The authored Kiro agent JSONs preload the shared knowledge with a glob; a
-// dispatched agent gets the shared methodology files only, as every other
-// harness's preflight names them (SHIPPED_FORMAT_DOCS is the one list).
-function projectKiroSharedKnowledge(content: Buffer): Buffer {
-  const parsed = JSON.parse(content.toString("utf-8")) as { resources?: unknown };
-  const glob = "file://.kiro/knowledge/aidlc-shared/*.md";
-  if (!Array.isArray(parsed.resources) || !parsed.resources.includes(glob)) return content;
-  const files = readdirSync(join(CORE_ROOT, "knowledge", "aidlc-shared"))
-    .filter((file) => file.endsWith(".md") && !SHIPPED_FORMAT_DOCS.has(file))
-    .sort()
-    .map((file) => `file://.kiro/knowledge/aidlc-shared/${file}`);
-  parsed.resources = parsed.resources.flatMap((entry) => (entry === glob ? files : [entry]));
-  return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
-}
-
-// Every hook command of an authored Kiro agent JSON gets the row's
-// hookCommandSuffix (the manifest says why), so the authored files carry the
-// command an author writes and no hook can ship without it.
-function projectKiroHookCommands(content: Buffer, suffix: string | undefined): Buffer {
-  if (suffix === undefined) return content;
-  const parsed = JSON.parse(content.toString("utf-8")) as { hooks?: Record<string, Array<{ command?: unknown }>> };
-  if (parsed.hooks === undefined) return content;
-  for (const rows of Object.values(parsed.hooks)) {
-    for (const row of rows) {
-      if (typeof row.command === "string") row.command = `${row.command}${suffix}`;
-    }
-  }
-  return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
 }
 
 // Merge the tier-derived chat.modelDefaults entries into an authored Kiro
@@ -842,17 +792,9 @@ function prepareAuthoredHostFile(request: {
     kind: "bytes", bytes: transform(srcPath, hostContentBytes(content),
       m.harnessDir, m.rulesRename, m.tierFlavor, invoke, letters),
   })];
-  if (m.tierFlavor === "kiro") {
-    if (file.source.startsWith("agents/") && file.source.endsWith(".json")) {
-      steps.push((content) => ({ kind: "bytes",
-        bytes: projectKiroAgentJson(srcPath, hostContentBytes(content)) }));
-      steps.push((content) => ({ kind: "bytes",
-        bytes: projectKiroSharedKnowledge(hostContentBytes(content)) }));
-      steps.push((content) => ({ kind: "bytes",
-        bytes: projectKiroHookCommands(hostContentBytes(content), m.hookCommandSuffix) }));
-    } else if (file.source === "settings/cli.json") {
-      steps.push((content) => ({ kind: "bytes", bytes: projectKiroCliJson(hostContentBytes(content)) }));
-    }
+  if (m.tierFlavor === "kiro" && file.source === "settings/cli.json") {
+    steps.push((content) => ({ kind: "bytes",
+      bytes: projectKiroCliJson(hostContentBytes(content)) }));
   }
   return prepareHostSource({ host, file, steps });
 }
@@ -860,8 +802,9 @@ function prepareAuthoredHostFile(request: {
 async function buildTree(
   m: HarnessManifest,
   outRoot: string,
-  invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
+  channel: DistributionChannel = "copy",
 ): Promise<string[]> {
+  const invoke = channel === "native" ? "aidlc" : `bun ${m.harnessDir}/tools/aidlc.ts`;
   const producer = runnerProducer(m);
   if (!producer.ok) throw new Error(`packager: ${m.name}: ${producer.refusal}`);
   const harnessDir = m.harnessDir;
@@ -1054,11 +997,17 @@ async function buildTree(
     harnessDir, harnessName: m.name,
   }) : { read: () => refused<ProjectionRefusal>({ kind: "command-source-failed",
     reason: "This manifest selected standard runner production." }) };
+  let commandPlacement: CommandPlacement | undefined;
+  const skillInputs = hostSkillInputs(m.name);
+  const projectedPaths = new Set<string>();
   if (m.emit) {
     m.emit({
-      emitCommands: (place) => emitCommandProjection({ method: coreBuild.method,
-        source: commandSource, place, projectRoot: outRoot,
-        substituteToken: (text) => substituteToken(text, harnessDir, invoke, letters) }),
+      emitCommands: (place) => {
+        commandPlacement = place;
+        if (skillInputs.length === 0) emitCommandProjection({ method: coreBuild.method,
+          source: commandSource, place, projectRoot: outRoot,
+          substituteToken: (text) => substituteToken(text, harnessDir, invoke, letters) });
+      },
       method: coreBuild.method,
       reviewerAgents,
       sources: coreBuild.sources,
@@ -1076,6 +1025,24 @@ async function buildTree(
       tierCap: TIER_CAP,
     });
   }
+  if (skillInputs.length > 0 && commandPlacement === undefined) {
+    throw new Error(`The selected skill host supplied no native command placement: ${m.name}`);
+  }
+  if (commandPlacement !== undefined) {
+    const skills = await packageBuildRoot.projectSkills({ host: hostInput.host,
+      projectRoot: pathToFileURL(outRoot), method: coreBuild.method, files: hostInput.files,
+      prepare: prepareHostInput, commands: commandSource, place: commandPlacement,
+      tokens: { HARNESS_DIR: harnessDir, INVOKE: invoke, SKILL_INVOKE: null,
+        TOOL_PREFIX: substituteToken("{{TOOL_PREFIX}}", harnessDir, invoke, letters),
+        TRUSTED_NAMESPACE: TRUSTED_ROUTE_NAMESPACE, OPTION_LETTERS: letters } });
+    if (!skills.ok) throw new Error(JSON.stringify(skills.refusal));
+    writeProjectedFiles({ files: skills.value, projectRoot: outRoot });
+    skills.value.forEach((file) => { projectedPaths.add(file.path); });
+  }
+  const agents = packageBuildRoot.projectAgents({ host: hostInput.host, method: coreBuild.method,
+    files: hostInput.files, prepare: prepareHostInput, channel, modelCap: TIER_CAP });
+  if (!agents.ok) throw new Error(JSON.stringify(agents.refusal));
+  writeProjectedFiles({ files: agents.value, projectRoot: outRoot });
   if (producer.value === "standard") {
     runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "write"]);
     runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "scopes"]);
@@ -1090,9 +1057,9 @@ async function buildTree(
   // 6. Generated table regions are build products, not authored prose. Refresh
   //    them only after emit(), because Codex and Copilot place the orchestrator
   //    skill outside <harnessDir>/skills/.
-  refreshGeneratedSkillRegions(outRoot, treeRoot, harnessDir, m);
+  refreshGeneratedSkillRegions({ outRoot, treeRoot, harnessDir, manifest: m, projectedPaths });
   // 7. The place an earlier release's refresh writes the tables into the skill.
-  keepEarlierReleaseRegions(outRoot, m);
+  keepEarlierReleaseRegions({ outRoot, manifest: m, projectedPaths });
   return [...walk(outRoot)];
 }
 
@@ -1693,11 +1660,20 @@ function emitCommandProjection(request: Parameters<typeof createCommandRenderers
   const rendered = projectMethodCommands({ method: request.method,
     harness: createCommandRenderers(request) });
   if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
-  for (const file of rendered.value) {
+  writeProjectedFiles({ files: rendered.value.map((file) => file.content.kind === "text"
+    ? { ...file, content: { kind: "text",
+      text: request.substituteToken(file.content.text) } } : file),
+    projectRoot: request.projectRoot });
+}
+
+function writeProjectedFiles(request: {
+  readonly files: readonly ProjectedFile[]; readonly projectRoot: string;
+}): void {
+  for (const file of request.files) {
     const destination = join(request.projectRoot, file.path);
     mkdirSync(dirname(destination), { recursive: true });
     writeFileSync(destination, file.content.kind === "text"
-      ? request.substituteToken(file.content.text) : file.content.bytes);
+      ? file.content.text : file.content.bytes);
     if (file.mode === "executable") chmodSync(destination, 0o755);
   }
 }
@@ -1752,53 +1728,34 @@ function assembledOrchestratorSkill(
   return skillPath;
 }
 
-function refreshGeneratedSkillRegions(
-  outRoot: string,
-  treeRoot: string,
-  harnessDir: string,
-  manifest: HarnessManifest,
-): void {
+function refreshGeneratedSkillRegions(request: {
+  readonly outRoot: string; readonly treeRoot: string; readonly harnessDir: string;
+  readonly manifest: HarnessManifest; readonly projectedPaths: ReadonlySet<string>;
+}): void {
+  const { outRoot, treeRoot, harnessDir, manifest, projectedPaths } = request;
   // The generated tables live beside the skill (tables.md), out of its body.
   const skillPath = join(dirname(assembledOrchestratorSkill(outRoot, manifest)), "tables.md");
+  if (projectedPaths.has(relative(outRoot, skillPath).split(sep).join("/"))) return;
   if (!existsSync(skillPath)) return;
-  let body = readFileSync(skillPath, "utf-8").replace(/\r\n/g, "\n");
-
-  for (const region of GENERATED_SKILL_REGIONS) {
-    const rendered = runTool(
-      treeRoot,
-      harnessDir,
-      manifest.name,
-      ["tools/aidlc-utility.ts", region.verb],
-    ).trimEnd();
-    const beginIdx = body.indexOf(region.begin);
-    const endIdx = body.indexOf(region.end);
-    if (beginIdx === -1 && endIdx === -1) continue;
-    if (
-      beginIdx === -1 ||
-      endIdx === -1 ||
-      endIdx < beginIdx ||
-      body.lastIndexOf(region.begin) !== beginIdx ||
-      body.lastIndexOf(region.end) !== endIdx
-    ) {
-      throw new Error(
-        `packager: malformed ${region.verb} markers in ${skillPath}`,
-      );
-    }
-    body =
-      body.slice(0, beginIdx) +
-      rendered +
-      body.slice(endIdx + region.end.length);
-  }
-
+  const refreshed = refreshSkillRegions({ text: readFileSync(skillPath, "utf-8"),
+    render: (verb) => accepted(runTool(treeRoot, harnessDir, manifest.name,
+      ["tools/aidlc-utility.ts", verb])) });
+  if (!refreshed.ok) throw new Error(`packager: ${refreshed.refusal} in ${skillPath}`);
+  const body = refreshed.value;
   writeFileSync(skillPath, body, "utf-8");
 }
 
 // See scripts/earlier-release-regions.ts.
-function keepEarlierReleaseRegions(outRoot: string, manifest: HarnessManifest): void {
+function keepEarlierReleaseRegions(request: {
+  readonly outRoot: string; readonly manifest: HarnessManifest; readonly projectedPaths: ReadonlySet<string>;
+}): void {
+  const { outRoot, manifest, projectedPaths } = request;
   const skillPath = assembledOrchestratorSkill(outRoot, manifest);
+  if (projectedPaths.has(relative(outRoot, skillPath).split(sep).join("/"))) return;
   if (!earlierReleasesReadSkill(relative(outRoot, skillPath), manifest.harnessDir)) return;
-  const body = readFileSync(skillPath, "utf-8").replace(/\n*$/, "");
-  writeFileSync(skillPath, `${body}\n\n${EARLIER_RELEASE_REGIONS}\n`, "utf-8");
+  const body = readFileSync(skillPath, "utf-8");
+  writeFileSync(skillPath, finishEarlierReleaseSkill({ text: body,
+    skillRel: relative(outRoot, skillPath), harnessDir: manifest.harnessDir }), "utf-8");
 }
 
 function loadManifest(name: string): HarnessManifest {
@@ -1826,7 +1783,7 @@ async function writeReleaseHarness(name: string): Promise<void> {
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  await buildTree(m, releaseDir, "aidlc");
+  await buildTree(m, releaseDir, "native");
   rewriteNativeInvocations(releaseDir, m, copyRoot);
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
@@ -2085,7 +2042,7 @@ async function buildCheckPass(request: {
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
     await buildTree(manifest, copyRoot);
-    await buildTree(manifest, nativeRoot, "aidlc");
+    await buildTree(manifest, nativeRoot, "native");
     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
@@ -2205,7 +2162,7 @@ for (const name of targets) {
   const manifest = loadManifest(name);
   const captured = await packageBuildRoot.readHostSources({ name, directory: manifest.harnessDir,
     root: pathToFileURL(join(HARNESS_ROOT, name)), copied: manifest.harnessFiles.map((file) => file.src),
-    required: manifest.emit?.authoredInputs ?? [] });
+    required: [...(manifest.emit?.authoredInputs ?? []), ...hostAgentInputs(name)] });
   if (!captured.ok) {
     console.error(JSON.stringify(captured.refusal));
     process.exit(1);

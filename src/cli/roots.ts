@@ -168,6 +168,8 @@ export type CapturedHostSources = {
 };
 
 export interface PackageBuildRoot {
+  readonly projectSkills: ProjectSkills;
+  readonly projectAgents: ProjectAgents;
   loadCore(): MethodReading<CoreBuild>;
   loadPlugins(request: { readonly core: CoreBuild }): MethodReading<AuthoredPluginBuild>;
   prepareCommandSource(request: CoreCommandRequest): Promise<CommandSource>;
