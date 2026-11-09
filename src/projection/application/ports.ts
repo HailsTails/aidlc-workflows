@@ -33,9 +33,26 @@ import type {
 } from "../domain/neutral-surface.ts";
 import type { ProjectedFile } from "../domain/projected-file.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
-import type { HostTokenBindings } from "../domain/template-token.ts";
+import type { HostTokenBindings, TokenBindings } from "../domain/template-token.ts";
 
 export type Rendering = Result<readonly ProjectedFile[], ProjectionRefusal>;
+
+export type SkillTableVerb = "stage-table" | "scope-table";
+
+export type SkillTableRenderer = (verb: SkillTableVerb) => Result<string, string>;
+
+export type AuthoredFilePreparer = (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
+
+export type SkillRenderingInputs = {
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly tables: SkillTableRenderer;
+};
+
+export type HostSkillRenderer = (
+  inputs: SkillRenderingInputs,
+) => Pick<Harness, "renderOrchestratorSkill" | "renderSessionSkill">;
 
 export interface Harness {
   readonly tokens: HostTokenBindings;

@@ -8,9 +8,10 @@ import type { HostShell } from "../installation/application/boundary-ports.ts";
 import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { ProcessRunner } from "../kernel/process-runner-port.ts";
+import type { SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout } from "../packaging/domain/payload.ts";
-import type { Harness } from "../projection/application/ports.ts";
+import type { Harness, HostSkillRenderer } from "../projection/application/ports.ts";
 import type { MarkdownOutliner } from "../workflow-definition/application/ports.ts";
 
 export type ExitStatus = 0 | 1 | 2;
@@ -24,6 +25,12 @@ export type BuildHost = {
   readonly host: HostIdentity;
   readonly harness: Harness;
   readonly layout: DistributionLayout;
+};
+
+export type HostBuildMembers = {
+  readonly host: HostIdentity;
+  readonly skillInputs: readonly SourcePath[];
+  readonly skills: HostSkillRenderer;
 };
 
 export type RuntimeHost = {
