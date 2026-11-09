@@ -1,3 +1,4 @@
+import { scopeLaneId } from "./gate-scope.ts";
 import { finishGate, runSweep, type FoundationSweeps } from "./sweep-run.ts";
 import type { BudgetReport, SweepReliance } from "../domain/sweep.ts";
 import type { LanePlan } from "../domain/lane-plan.ts";
@@ -157,7 +158,7 @@ const checked = async (services: GateServices, run: CheckedRun): Promise<GateRep
     progress: services.progress,
     clock: services.clock,
   });
-  const lane = scope.value.lane?.id;
+  const lane = scopeLaneId(scope.value);
   const base = scope.value.base?.ref;
   return report(request, {
     lane, base, baseCommit: scope.value.base?.commit, verdict: verdictOf(outcomes), outcomes,
