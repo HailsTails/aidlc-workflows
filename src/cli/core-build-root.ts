@@ -5,7 +5,7 @@ import { accepted, refused, type Result } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import { serializeCompiledMethod, createCommandRenderers, prepareLegacyRunners, projectMethodCommands,
   createHostSurfaceReader, type CompiledMethodFiles } from "../projection/core-root.ts";
-import type { CommandPlacement, Rendering } from "../projection/application/ports.ts";
+import type { CommandPlacement, CommandSource, Rendering } from "../projection/application/ports.ts";
 import { loadAuthoredCoreMethod, type AuthoredCoreMethod } from "../workflow-definition/core-root.ts";
 import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
 
@@ -37,10 +37,15 @@ export const loadCoreBuild = async (request: {
   return accepted({ ...loaded.value, project });
 };
 
-export const projectCoreCommands = (request: Parameters<typeof prepareLegacyRunners>[0] & {
+export const prepareCoreCommandSource = (request: Parameters<typeof prepareLegacyRunners>[0],
+  ports: Parameters<typeof prepareLegacyRunners>[1]): Promise<CommandSource> => prepareLegacyRunners(request, ports);
+
+export const projectCoreCommands = (request: {
+  readonly method: CoreBuild["method"];
+  readonly source: CommandSource;
   readonly place: CommandPlacement;
 }): Rendering => projectMethodCommands({ method: request.method,
-  harness: createCommandRenderers({ source: prepareLegacyRunners(request), place: request.place }) });
+  harness: createCommandRenderers({ source: request.source, place: request.place }) });
 
 export { loadAuthoredPluginBuild as loadPluginBuildCatalog, reviewerAgentSet, inlineAgentSet,
   type AuthoredPluginBuild as PluginBuildCatalog, type PluginBuildTarget }
