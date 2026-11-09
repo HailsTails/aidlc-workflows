@@ -30,14 +30,6 @@ export const legacyEnvironment = (
   ...(transpilerCache === undefined ? {} : { [TRANSPILER_CACHE_VARIABLE]: transpilerCache }),
 });
 
-const SOURCES_THAT_MOVE_LEGACY_TESTS = [
-  "harness/**",
-  "core/**",
-  "src/**",
-  "tests/harness/**",
-  "tests/fixtures/**",
-];
-
 export type LegacyRunner = {
   readonly bun: string;
   readonly environment: Readonly<Record<string, string>>;
@@ -109,7 +101,7 @@ export const legacySuites = (
 ): readonly TestSuite[] => [
   {
     name: "legacy smoke",
-    triggers: [...SOURCES_THAT_MOVE_LEGACY_TESTS, "tests/smoke/**"],
+    triggers: ["**"],
     tests: ["tests/smoke/**/*.test.ts"],
     sharesPackageBuild: true,
     heavy: true,
@@ -117,7 +109,7 @@ export const legacySuites = (
   },
   {
     name: "legacy tests on the harness matrix",
-    triggers: [...SOURCES_THAT_MOVE_LEGACY_TESTS, "tests/unit/**"],
+    triggers: ["**"],
     tests: ["tests/unit/**/*.test.ts"],
     following: ["harness-matrix"],
     sharesPackageBuild: true,
