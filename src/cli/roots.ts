@@ -27,7 +27,7 @@ import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../projectio
 import type { DistributionChannel } from "../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
 import type { CompiledMethodFiles, ProjectionRefusal } from "../projection/domain/projection.ts";
-import type { HostTokenChoices } from "../projection/domain/template-token.ts";
+import type { HostTokenChoices, TokenBindings } from "../projection/domain/template-token.ts";
 import type { Method } from "../workflow-definition/domain/method.ts";
 import type { Tier } from "../workflow-definition/domain/vocabulary.ts";
 import type {
@@ -139,7 +139,7 @@ export type HostSourcesRequest = {
 };
 
 export type HostAgentsRequest = {
-  readonly members: HostAgentMembers;
+  readonly host: HostIdentity;
   readonly method: Method;
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
@@ -148,6 +148,18 @@ export type HostAgentsRequest = {
 };
 
 export type ProjectAgents = (request: HostAgentsRequest) => Rendering;
+
+export type HostSkillsRequest = {
+  readonly host: HostIdentity;
+  readonly method: Method;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly commands: CommandSource;
+  readonly place: CommandPlacement;
+};
+
+export type ProjectSkills = (request: HostSkillsRequest) => Promise<Rendering>;
 
 export type CapturedHostSources = {
   readonly host: HostIdentity;

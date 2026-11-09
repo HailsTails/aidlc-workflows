@@ -29,6 +29,7 @@ export const SCRATCH_HOST_DATA: HostData = {
 const nothing = (): Rendering => accepted([]);
 
 export const SCRATCH_AGENT_INPUTS: AgentRenderingInputs = {
+  host: SCRATCH_HOST,
   channel: "copy",
   files: [],
   prepare: accepted,
