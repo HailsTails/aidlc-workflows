@@ -20,6 +20,7 @@ import {
   bridgeImportRestrictions,
   hostBundleImportRestrictions,
   hostTestImportRestrictions,
+  implementerConstruction,
   legacyImportRestrictions,
   legacyOwnership,
   methodAssertion,
@@ -49,6 +50,11 @@ const layersOf = (context: ContextName): readonly Layer[] => CONTEXT_LAYERS[cont
 
 const testedLayersOf = (context: ContextName): readonly Layer[] =>
   layersOf(context).filter((layer) => layer !== "fixtures");
+
+const PROCESS_ENTRIES: readonly string[] = [
+  "src/cli/main.ts",
+  "src/cli/legacy-runner-child.ts",
+];
 
 const LEGACY_FILES = ["core/**/*.ts", "scripts/**/*.ts", "plugins/*/tools/**/*.ts"];
 
@@ -130,13 +136,18 @@ const productionSyntax = (context: ContextName, layer: Layer): SyntaxRestriction
     ? sampleSyntax(context, layer)
     : [...harnessNames, ...layerSyntax(context, layer), ...edgeSyntax(context, layer)];
 
+const constructionRefused = (syntax: readonly SyntaxRestriction[]): SyntaxRestriction[] => [
+  ...syntax,
+  implementerConstruction(IMPLEMENTERS.map((implementer) => implementer.factory)),
+];
+
 const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   name: `aidlc/src/${context}/${layer}`,
   files: srcFiles(context, layer),
   rules: {
     ...restrict({
       imports: srcImportRestrictions({ context, layer }),
-      syntax: productionSyntax(context, layer),
+      syntax: constructionRefused(productionSyntax(context, layer)),
     }),
     ...(purityOf(layer) === "pure" ? PURE_RULES : {}),
   },
@@ -150,7 +161,10 @@ const srcPortsConfig = (context: ContextName): Linter.Config => ({
   rules: {
     ...restrict({
       imports: srcImportRestrictions({ context, layer: "application" }),
-      syntax: [...productionSyntax(context, "application"), unglossedTypes(context, GLOSSARY)],
+      syntax: constructionRefused([
+        ...productionSyntax(context, "application"),
+        unglossedTypes(context, GLOSSARY),
+      ]),
     }),
     ...PURE_RULES,
   },
@@ -209,7 +223,7 @@ const bridgeConfig = (bridge: LegacyBridge, context: ContextName): Linter.Config
       placement: { context, layer: "adapters" },
       bridgedModule: bridge.module,
     }),
-    syntax: productionSyntax(context, "adapters"),
+    syntax: constructionRefused(productionSyntax(context, "adapters")),
   }),
 });
 
@@ -294,6 +308,15 @@ const hermeticTestConfig = (implementer: Implementer): Linter.Config => ({
   }),
 });
 
+const processEntryConfig: Linter.Config = {
+  name: "aidlc/src/cli/process-entries",
+  files: [...PROCESS_ENTRIES],
+  rules: restrict({
+    imports: srcImportRestrictions({ context: "cli", layer: "root" }),
+    syntax: productionSyntax("cli", "root"),
+  }),
+};
+
 const implementerConfigs: Linter.Config[] = IMPLEMENTERS.flatMap((implementer) => [
   implementerConfig(implementer),
   hermeticTestConfig(implementer),
@@ -315,6 +338,7 @@ export const boundaryConfig: Linter.Config[] = [
   hostBundleConfig,
   hostTestConfig,
   ...LEGACY_BRIDGES.flatMap(legacyBridgeConfigs),
+  processEntryConfig,
   {
     name: "aidlc/lint-tooling/pure",
     files: ["lint/gate/domain/**/*.ts", "lint/gate/application/**/*.ts"],

@@ -376,6 +376,13 @@ export const domainClock: SyntaxRestriction = {
   message: "Domain purity: take the time from the Clock port; the domain never reads the clock.",
 };
 
+export const implementerConstruction = (factories: readonly string[]): SyntaxRestriction => ({
+  selector: `CallExpression[callee.name=/^(${alternatives(factories)})$/]`,
+  message:
+    "Composition: a platform implementer is built once, in a process entry listed in " +
+    "PROCESS_ENTRIES (lint/boundaries.ts), and handed down as a parameter.",
+});
+
 export const dynamicImport: SyntaxRestriction = {
   selector: "ImportExpression",
   message:
