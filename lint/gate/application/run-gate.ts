@@ -1,3 +1,5 @@
+import { finishGate, runSweep, type FoundationSweeps } from "./sweep-run.ts";
+import type { BudgetReport, SweepReliance } from "../domain/sweep.ts";
 import type { LanePlan } from "../domain/lane-plan.ts";
 import type { WaitReason } from "../domain/machine-lock.ts";
 import {
@@ -35,6 +37,10 @@ export type RunnableRequest = Exclude<GateRequest, { readonly kind: "help" }>;
 export type GateProblem = { readonly problem: string; readonly fix: string };
 
 export type GateReport = {
+  readonly baseCommit?: string | undefined;
+  readonly sweep?: SweepReliance;
+  readonly sweepCached?: boolean;
+  readonly budget?: BudgetReport;
   readonly mode: RunnableRequest["kind"];
   readonly lane: string | undefined;
   readonly base: string | undefined;
@@ -45,6 +51,7 @@ export type GateReport = {
 };
 
 export type GateServices = {
+  readonly sweeps?: FoundationSweeps;
   readonly plans: LanePlanSource;
   readonly repository: Repository;
   readonly workspace: Workspace;
@@ -92,7 +99,10 @@ const locked = async (
 ): Promise<GateReport> => {
   const lane = request.kind === "full" ? request.laneId : undefined;
   const command = `gate ${request.kind}`;
-  const outcome = await services.lock.acquire({ lane, command, waitMs: request.waitMs });
+  const slots = request.kind === "full" && request.sweep ? services.sweeps?.slots : undefined;
+  const outcome = await services.lock.acquire({
+    lane, command, waitMs: request.waitMs, ...(slots === undefined ? {} : { slots }),
+  });
   if (!outcome.acquired) {
     return report(request, { verdict: "busy", problem: busy(outcome.reason) });
   }
@@ -149,7 +159,9 @@ const checked = async (services: GateServices, run: CheckedRun): Promise<GateRep
   });
   const lane = scope.value.lane?.id;
   const base = scope.value.base?.ref;
-  return report(request, { lane, base, verdict: verdictOf(outcomes), outcomes });
+  return report(request, {
+    lane, base, baseCommit: scope.value.base?.commit, verdict: verdictOf(outcomes), outcomes,
+  });
 };
 
 const sourcesFor = (services: GateServices, plan: LanePlan): ScopeSources => ({
@@ -171,16 +183,20 @@ const runScope = async (services: GateServices, request: ScopeRequest): Promise<
   }
 };
 
-const runFull = (services: GateServices, request: FullRequest): Promise<GateReport> =>
-  locked(services, request, async () => {
-    const plan = services.plans.load();
-    if (!plan.ok) {
-      return failed(request, plan);
-    }
-    const scope = fullScopeOf(sourcesFor(services, plan.value), request);
-    return checked(services, { request, plan: plan.value, scope });
-  });
+const fullChecks = async (services: GateServices, request: FullRequest): Promise<GateReport> => {
+  const plan = services.plans.load();
+  if (!plan.ok) {
+    return failed(request, plan);
+  }
+  const effective = request.sweep ? { ...request, allTests: true } : request;
+  const scope = fullScopeOf(sourcesFor(services, plan.value), effective);
+  return checked(services, { request: effective, plan: plan.value, scope });
+};
 
+const runFull = (services: GateServices, request: FullRequest): Promise<GateReport> =>
+  locked(services, request, () => request.sweep
+    ? runSweep(services, request, () => fullChecks(services, request))
+    : fullChecks(services, request));
 const runUpdateGoldens = (
   services: GateServices,
   request: UpdateGoldensRequest,
@@ -199,7 +215,7 @@ const runLocked = (services: GateServices, request: LockedRequest): Promise<Gate
     return report(request, { verdict: exitCode === 0 ? "green" : "red", exitCode });
   });
 
-export const runGateRequest = (
+const runRequest = (
   services: GateServices,
   request: RunnableRequest,
 ): Promise<GateReport> => {
@@ -213,4 +229,13 @@ export const runGateRequest = (
     case "locked":
       return runLocked(services, request);
   }
+};
+
+export const runGateRequest = async (
+  services: GateServices,
+  request: RunnableRequest,
+): Promise<GateReport> => {
+  const started = services.clock.nowMs();
+  const report = await runRequest(services, request);
+  return finishGate({ services, request, report, started });
 };

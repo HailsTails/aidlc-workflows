@@ -4,7 +4,7 @@ import type { TestSuite } from "../application/tests-check.ts";
 
 const folderSuite = (root: string): TestSuite => ({
   name: root,
-  triggers: [`${root}/**`],
+  triggers: ["src/**", "scripts/package.ts"],
   tests: [`${root}/**/*.test.ts`],
 });
 

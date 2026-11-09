@@ -52,6 +52,12 @@ export const printDebt = (debt: DebtFigure | undefined): void => {
   }
 };
 
+const sweepFields = (report: GateReport) => ({
+  ...(report.sweep === undefined ? {} : { sweep: report.sweep }),
+  ...(report.sweepCached === undefined ? {} : { sweepCached: report.sweepCached }),
+  ...(report.budget === undefined ? {} : { budget: report.budget }),
+});
+
 export const summaryLine = ({ report, debt }: ReportedRun): string => {
   const checks = report.outcomes.map((outcome) => ({
     id: outcome.id,
@@ -67,6 +73,7 @@ export const summaryLine = ({ report, debt }: ReportedRun): string => {
     base: report.base ?? null,
     result: report.verdict,
     checks,
+    ...sweepFields(report),
     ...(debt === undefined ? {} : { debt }),
     ...(report.problem === undefined ? {} : { problem: report.problem }),
     ...(report.exitCode === undefined ? {} : { exitCode: report.exitCode }),

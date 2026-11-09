@@ -1,3 +1,4 @@
+import type { SweepTree } from "../application/sweep-run.ts";
 import {
   presentPaths,
   type BaseRevision,
@@ -90,3 +91,14 @@ export const gitRepository = (root: string, upstreamRef: string = UPSTREAM_REF):
     return shown.ok ? shown.text : undefined;
   },
 });
+
+export const sweepTree = (root: string, foundationRef: string): SweepTree => {
+  const head = git(root, ["rev-parse", "--verify", "HEAD^{commit}"]);
+  const foundation = git(root, ["rev-parse", "--verify", `${foundationRef}^{commit}`]);
+  const status = git(root, ["status", "--porcelain", "--untracked-files=all"]);
+  return {
+    head: head.ok ? head.text.trim() : "",
+    foundation: foundation.ok ? foundation.text.trim() : "",
+    clean: status.ok && status.text.trim() === "",
+  };
+};

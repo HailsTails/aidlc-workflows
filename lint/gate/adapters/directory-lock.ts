@@ -122,7 +122,7 @@ const ownerFor = (placement: LockPlacement, request: LockRequest): LockOwner => 
 });
 
 type Attempt =
-  | { readonly kind: "held"; readonly slot: string }
+  | { readonly kind: "held"; readonly slots: readonly string[] }
   | { readonly kind: "waiting"; readonly reason: WaitReason; readonly detail: string };
 
 const claim = (slot: string, owner: LockOwner): boolean => {
@@ -142,7 +142,14 @@ const slotsOf = (placement: LockPlacement): readonly string[] =>
 const holders = (slots: readonly string[]): string =>
   slots.map((slot) => describeOwner(readOwner(slot))).join("; ");
 
-const attempt = (placement: LockPlacement, owner: LockOwner): Attempt => {
+type Claim = {
+  readonly owner: LockOwner;
+  readonly claimed: string[];
+  readonly wanted: number;
+};
+
+const attempt = (placement: LockPlacement, request: Claim): Attempt => {
+  const { owner, claimed } = request;
   const { policy, memory } = placement;
   const freeBytes = memory.bytes();
   if (!memoryAdmits(policy, freeBytes)) {
@@ -150,10 +157,17 @@ const attempt = (placement: LockPlacement, owner: LockOwner): Attempt => {
     return { kind: "waiting", reason: "free memory below floor", detail };
   }
   const slots = slotsOf(placement);
-  const slot = slots.find((candidate) => claim(candidate, owner));
-  return slot === undefined
-    ? { kind: "waiting", reason: "no free slot", detail: holders(slots) }
-    : { kind: "held", slot };
+  const needed = Math.min(request.wanted, slots.length);
+  slots
+    .filter((candidate) => !claimed.includes(candidate))
+    .forEach((candidate) => {
+      if (claimed.length < needed && claim(candidate, owner)) {
+        claimed.push(candidate);
+      }
+    });
+  return claimed.length >= needed
+    ? { kind: "held", slots: [...claimed] }
+    : { kind: "waiting", reason: "no free slot", detail: holders(slots) };
 };
 
 const queueOf = (placement: LockPlacement): string => join(placement.directory, QUEUE_FOLDER);
@@ -176,24 +190,27 @@ const liveTicketsAhead = (placement: LockPlacement, ticket: string): readonly st
       return false;
     });
 
-const turnOf = (placement: LockPlacement, ticket: string, owner: LockOwner): Attempt => {
-  const ahead = liveTicketsAhead(placement, ticket);
-  return ahead.length === 0
-    ? attempt(placement, owner)
-    : { kind: "waiting", reason: "waiting for its turn", detail: holders(ahead) };
+type Waiting = Claim & {
+  readonly deadline: number;
+  readonly ticket: string;
 };
 
-type Waiting = { readonly deadline: number; readonly ticket: string; readonly owner: LockOwner };
+const turnOf = (waiting: Waiting, placement: LockPlacement): Attempt => {
+  const ahead = liveTicketsAhead(placement, waiting.ticket);
+  return ahead.length === 0
+    ? attempt(placement, waiting)
+    : { kind: "waiting", reason: "waiting for its turn", detail: holders(ahead) };
+};
 
 const awaitTurn = async (
   placement: LockPlacement,
   waiting: Waiting,
-): Promise<{ readonly slot: string } | { readonly reason: WaitReason }> => {
+): Promise<{ readonly slots: readonly string[] } | { readonly reason: WaitReason }> => {
   let announced: WaitReason | undefined;
   for (;;) {
-    const result = turnOf(placement, waiting.ticket, waiting.owner);
+    const result = turnOf(waiting, placement);
     if (result.kind === "held") {
-      return { slot: result.slot };
+      return { slots: result.slots };
     }
     if (Date.now() >= waiting.deadline) {
       return { reason: result.reason };
@@ -207,7 +224,7 @@ const awaitTurn = async (
 };
 
 export const directoryLock = (placement: LockPlacement): MachineLock => {
-  let held: string | undefined;
+  let held: readonly string[] = [];
   return {
     acquire: async (request) => {
       mkdirSync(placement.directory, { recursive: true });
@@ -215,21 +232,28 @@ export const directoryLock = (placement: LockPlacement): MachineLock => {
       const ticket = enqueue(placement, owner);
       try {
         const deadline = Date.now() + request.waitMs;
-        const outcome = await awaitTurn(placement, { deadline, ticket, owner });
+        const claimed: string[] = [];
+        const outcome = await awaitTurn(placement, {
+          deadline,
+          ticket,
+          owner,
+          claimed,
+          wanted: request.slots ?? 1,
+        });
         if ("reason" in outcome) {
+          claimed.forEach(releaseIfOurs);
           return { acquired: false, reason: outcome.reason };
         }
-        held = outcome.slot;
-        holdUntilExit(outcome.slot);
+        held = outcome.slots;
+        held.forEach(holdUntilExit);
         return { acquired: true };
       } finally {
         rmSync(ticket, { recursive: true, force: true });
       }
     },
     release: () => {
-      if (held !== undefined) {
-        releaseIfOurs(held);
-      }
+      held.forEach(releaseIfOurs);
+      held = [];
     },
   };
 };

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { gitRepository } from "./git-repository.ts";
+import { gitRepository, sweepTree } from "./git-repository.ts";
 
 setDefaultTimeout(30_000);
 
@@ -119,5 +119,19 @@ describe("arrivals are anchored to the upstream project's history", () => {
     const { root, base } = mergedProject("no-upstream-ref");
     git(root, "update-ref", "-d", "refs/remotes/upstream/main");
     expect(gitRepository(root).arrivals(base)).toEqual([]);
+  });
+});
+
+describe("sweep tree identity", () => {
+  test("foundation is its exact tip, not its merge base with the candidate", () => {
+    const { root } = mergedProject("sweep-tip");
+    const foundation = git(root, "rev-parse", "upstream");
+    const head = git(root, "rev-parse", "HEAD");
+    expect(sweepTree(root, "upstream")).toEqual({ head, foundation, clean: true });
+  });
+  test("untracked source makes the tree dirty", () => {
+    const { root } = mergedProject("sweep-dirty");
+    write({ root, path: "new.ts", content: "export const n = 1;" });
+    expect(sweepTree(root, "foundation").clean).toBe(false);
   });
 });

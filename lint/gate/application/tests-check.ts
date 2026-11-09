@@ -1,3 +1,4 @@
+import { needsCandidateLegacy } from "../domain/candidate-selection.ts";
 import { presentPaths } from "../domain/change.ts";
 import {
   classifyFailures,
@@ -35,6 +36,7 @@ export type TestSuite = {
   readonly sharesPackageBuild?: boolean;
   readonly heavy?: boolean;
   readonly selectsByImpact?: boolean;
+  readonly foundationLegacy?: boolean;
 };
 
 export type TestsDependencies = {
@@ -43,6 +45,7 @@ export type TestsDependencies = {
   readonly suites: readonly TestSuite[];
   readonly looseTests: readonly string[];
   readonly testCommand: (files: readonly string[]) => Command;
+  readonly looseCommand?: (files: readonly string[]) => Command;
   readonly capabilities: Capabilities;
   readonly exclusions: readonly CapabilityExclusion[];
   readonly build: SharedBuild;
@@ -112,6 +115,8 @@ const commandsOf = (
 const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly Run[] =>
   dependencies.suites
     .filter((suite) => scope.everything || touches(scope, suite.triggers))
+    .filter((suite) => scope.everything || suite.foundationLegacy !== true ||
+      needsCandidateLegacy(pathsOf(scope.changes)))
     .map((suite) => ({ suite, available: followingFiles(dependencies, suite) }))
     .map(({ suite, available }) => ({
       suite,
@@ -141,10 +146,10 @@ const looseRun = (
         {
           name: "changed tests",
           files,
-          commands: [dependencies.testCommand(files)],
+          commands: [(dependencies.looseCommand ?? dependencies.testCommand)(files)],
           concurrency: 1,
-          sharesPackageBuild: false,
-          heavy: false,
+          sharesPackageBuild: dependencies.looseCommand !== undefined,
+          heavy: dependencies.looseCommand !== undefined,
           available: files.length,
         },
       ];
