@@ -33,6 +33,7 @@ const services = (ready: Loaded<string>): GateServices => ({
   workspace: { read: () => undefined, write: () => undefined, filesMatching: () => ["lint/x.ts"] },
   lock: { acquire: async () => ({ acquired: true }), release: () => undefined },
   progress: { started: () => undefined, finished: () => undefined, note: () => undefined },
+  clock: { nowMs: () => 0 },
   runner: { capture: () => ({ exitCode: 0, output: "" }), attach: () => 0 },
   goldens: {
     runner: { capture: () => ({ exitCode: 0, output: "" }), attach: () => 0 },

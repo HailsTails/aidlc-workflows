@@ -149,7 +149,9 @@ describe("the tests check shares one package build", () => {
     const commands: Command[] = [];
     const finding = { subject: "build", violation: "failed: x", fix: "fix it" };
 
-    const outcome = await packagedCheck({ build: { ensure: () => finding }, commands }).run(BUILT_SCOPE);
+    const build: SharedBuild = { ensure: () => finding };
+
+    const outcome = await packagedCheck({ build, commands }).run(BUILT_SCOPE);
 
     expect(outcome.findings).toEqual([finding]);
     expect(commands).toEqual([]);

@@ -135,7 +135,8 @@ const judgeRun = (request: {
   if (built !== undefined) {
     return buildFailureVerdict(built);
   }
-  const run = sharing ? { ...request.run, command: withPackageReady(request.run.command) } : request.run;
+  const command = sharing ? withPackageReady(request.run.command) : request.run.command;
+  const run = { ...request.run, command };
   const result = dependencies.runner.capture(run.command);
   const timings = fileTimings(result.output);
   if (result.exitCode === 0) {

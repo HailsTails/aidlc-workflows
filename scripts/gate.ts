@@ -39,6 +39,7 @@ import { capabilityProbes } from "../lint/gate/adapters/capability-probes.ts";
 import { environmentExclusions } from "../lint/gate/adapters/environment-exclusions.ts";
 import { legacyEnvironment, legacySuites } from "../lint/gate/adapters/legacy-suites.ts";
 import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
+import { systemClock } from "../lint/gate/adapters/system-clock.ts";
 import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
 import { disciplinesCheck } from "../lint/gate/application/disciplines-check.ts";
@@ -221,6 +222,7 @@ const main = async (): Promise<number> => {
     repository,
     workspace,
     lock,
+    clock: systemClock,
     runner,
     goldens,
     checksFor,

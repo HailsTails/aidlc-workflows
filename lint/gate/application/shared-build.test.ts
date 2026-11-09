@@ -3,6 +3,8 @@ import type { Command, CommandResult } from "./ports.ts";
 import { sharedBuild } from "./shared-build.ts";
 
 const COMMAND: Command = { label: "bun scripts/package.ts", argv: ["bun", "scripts/package.ts"] };
+const NEWLINE = String.fromCharCode(10);
+const FAILED: CommandResult = { exitCode: 1, output: ["a", "b", "c", "d"].join(NEWLINE) };
 
 const runnerReturning = (result: CommandResult, calls: Command[]) => ({
   capture: (command: Command): CommandResult => {
@@ -26,7 +28,7 @@ describe("sharedBuild", () => {
 
   test("a failed build is reported to every asker without building again", () => {
     const calls: Command[] = [];
-    const build = sharedBuild(runnerReturning({ exitCode: 1, output: "a\nb\nc\nd" }, calls), COMMAND);
+    const build = sharedBuild(runnerReturning(FAILED, calls), COMMAND);
 
     const first = build.ensure();
     const second = build.ensure();

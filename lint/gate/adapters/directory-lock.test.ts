@@ -89,7 +89,7 @@ describe("directoryLock queue", () => {
 });
 
 describe("directoryLock owner record", () => {
-  test("it names the caller working directory, and the lane falls back to its folder name", async () => {
+  test("it names the caller directory, and the lane falls back to the folder name", async () => {
     const directory = lockFolder("identity");
     const lock = lockIn(directory, PLENTY);
 

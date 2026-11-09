@@ -26,7 +26,10 @@ export const fileTimings = (output: string): readonly FileTiming[] => {
   return timings;
 };
 
-export const slowestFiles = (timings: readonly FileTiming[], count: number): readonly FileTiming[] =>
+export const slowestFiles = (
+  timings: readonly FileTiming[],
+  count: number,
+): readonly FileTiming[] =>
   [...timings].sort((a, b) => b.ms - a.ms).slice(0, count);
 
 export const slowestNote = (timings: readonly FileTiming[], count: number): string => {

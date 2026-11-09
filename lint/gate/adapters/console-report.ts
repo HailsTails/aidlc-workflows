@@ -29,8 +29,10 @@ export const consoleProgress: Progress = {
   started: (id) => toStderr(`gate · ${id} …`),
   finished: (outcome) => {
     const count = outcome.findings.length;
-    const took = outcome.durationMs === undefined ? "" : ` · ${formatDuration(outcome.durationMs)}`;
-    toStderr(`gate · ${outcome.id} · ${outcome.status}${took} · ${count} findings · ${outcome.note}`);
+    const spent = outcome.durationMs;
+    const took = spent === undefined ? "" : ` · ${formatDuration(spent)}`;
+    const verdict = `${outcome.id} · ${outcome.status}${took}`;
+    toStderr(`gate · ${verdict} · ${count} findings · ${outcome.note}`);
     printFindings(outcome);
   },
   note: toStderr,

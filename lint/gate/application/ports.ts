@@ -157,6 +157,10 @@ export type DisciplineAudit = {
   readonly run: () => AuditReport;
 };
 
+export type Clock = {
+  readonly nowMs: () => number;
+};
+
 export type Progress = {
   readonly started: (id: CheckId) => void;
   readonly finished: (outcome: CheckOutcome) => void;
