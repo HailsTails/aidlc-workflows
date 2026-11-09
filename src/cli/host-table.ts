@@ -1,3 +1,4 @@
+import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
 import { CLAUDE_HOST_DATA, CLAUDE_AUTHORED_PLACEMENTS } from "../hosts/claude/host-data.ts";
@@ -29,6 +30,7 @@ Result<HostAgentMembers | null, ProjectionRefusal> => {
   return accepted({ host, render: entry.render, inputs: paths.flatMap((path) => path.ok ? [path.value] : []) });
 };
 const HOST_SKILL_MEMBERS = [
+  { name: "copilot", inputs: COPILOT_SKILL_INPUTS, render: createCopilotSkillRenderer },
   { name: "cursor", inputs: CURSOR_SKILL_INPUTS, render: createCursorSkillRenderer },
   { name: "kiro-ide", inputs: KIRO_IDE_SKILL_INPUTS, render: createKiroIdeSkillRenderer },
   { name: "opencode", inputs: OPENCODE_SKILL_INPUTS, render: createOpenCodeSkillRenderer },
