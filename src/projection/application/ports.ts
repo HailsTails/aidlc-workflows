@@ -53,6 +53,37 @@ export type AgentModelPolicy = (request: {
   readonly model: TieredModel;
 }) => Result<string | undefined, ProjectionRefusal>;
 
+export type AgentPersonaRequest = {
+  readonly agent: Agent;
+  readonly text: "authored-file" | "persona-body";
+  readonly knowledge: "absorbed" | "preflight-only";
+  readonly reading: "whole-files" | "in-parts";
+};
+
+export type AgentPersonaPreparer = (request: AgentPersonaRequest) => Result<string, ProjectionRefusal>;
+
+export type MarkdownEffortKey = "effort" | "variant" | "effortLevel";
+
+export type AgentFrontmatter = {
+  readonly model: "projected" | "omitted";
+  readonly effortKey: MarkdownEffortKey;
+  readonly modelQuoting: "plain" | "quoted";
+  readonly insertBeforeKeys: readonly string[];
+  readonly removeKeys: readonly string[];
+  readonly afterProjectionLines: readonly string[];
+};
+
+export type AgentDocumentRequest = AgentPersonaRequest & {
+  readonly frontmatter: AgentFrontmatter;
+};
+
+export type AgentDocumentSurface = (request: AgentDocumentRequest) => Result<string, ProjectionRefusal>;
+
+export type TomlAgentModelPolicy = (request: {
+  readonly agent: Agent;
+  readonly content: string;
+}) => Result<string, ProjectionRefusal>;
+
 export type AgentRenderingInputs = {
   readonly host: HostIdentity;
   readonly channel: DistributionChannel;
