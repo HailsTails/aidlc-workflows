@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { failureOutput } from "../domain/failure-output.ts";
 import type { Command, CommandResult, CommandRunner } from "../application/ports.ts";
 import { temporaryEnvironment } from "./run-temp.ts";
 
@@ -33,6 +36,17 @@ const inOrderWithLimit = async <T, R>(
   return results;
 };
 
+const retainFailure = (root: string, command: Command, result: CommandResult): CommandResult => {
+  if (result.exitCode === 0) return result;
+  const parent = join(root, ".cache", "gate-failures");
+  mkdirSync(parent, { recursive: true });
+  const path = join(mkdtempSync(join(parent, "failure-")), "output.log");
+  const header = `${command.label}: exit ${result.exitCode}\n`;
+  writeFileSync(path, header + failureOutput(result.output));
+  console.error(`gate · failure evidence · ${path}`);
+  return result;
+};
+
 export const processRunner = (root: string, temp: string): CommandRunner => {
   const environmentOf = (command: { readonly env?: Readonly<Record<string, string>> }) => ({
     ...(command.env ?? process.env),
@@ -53,13 +67,14 @@ export const processRunner = (root: string, temp: string): CommandRunner => {
         stderr: "pipe",
         env: environmentOf(command),
       });
-      return {
+      return retainFailure(root, command, {
         exitCode: result.exitCode,
         output: `${result.stdout.toString()}${result.stderr.toString()}`,
-      };
+      });
     },
     captureAll: ({ commands, concurrency }) =>
-      inOrderWithLimit(commands, concurrency, (command) => settled(spawnAsync(command))),
+      inOrderWithLimit(commands, concurrency, async (command) =>
+        retainFailure(root, command, await settled(spawnAsync(command)))),
     attach: (command) =>
       Bun.spawnSync([...command.argv], {
         cwd: root,
