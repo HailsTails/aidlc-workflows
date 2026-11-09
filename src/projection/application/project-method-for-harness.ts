@@ -1,3 +1,4 @@
+import { renderMethodSettings } from "./project-method-settings.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
 import { projectPath } from "../../kernel/values.ts";
@@ -34,8 +35,7 @@ export const createProjectMethodForHarness = (registry: HarnessRegistry): Projec
       ...renderStageAndScopeCommands({ method: request.method, harness }),
       ...request.surface.skills.map((skill) => harness.renderSessionSkill({ skill })),
       harness.renderOrchestratorSkill({ method: request.method }),
-      harness.renderSettings({ method: request.method }),
-      harness.renderHookRegistrations({ hooks: request.method.hooks }),
+      ...renderMethodSettings({ method: request.method, harness }),
       harness.renderOnboarding({ templates: request.surface.onboarding, method: request.method }),
       harness.renderHostData(),
       ...request.sources.filter((source) => !runtimeSources.has(source.path))

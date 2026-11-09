@@ -1,3 +1,5 @@
+import { createCopyChannelAllowSource } from "./adapters/legacy-dispatcher.ts";
+import { projectMethodSettings } from "./application/project-method-settings.ts";
 import { projectRuntime } from "./application/project-runtime.ts";
 import { createRuntimeReading } from "./adapters/runtime-files.ts";
 import { legacyAgentTiersData } from "./adapters/legacy-agent-surfaces.ts";
@@ -23,26 +25,36 @@ export const createBuildProjection = (request: {
   readonly runnerScratch: LegacyRunnerScratch;
   readonly runnerFrames: URL;
   readonly runnerChild: URL;
-}): BuildProjection => ({
-  projectRuntime,
-  readRuntime: createRuntimeReading({ tree: request.sessionFiles,
-    agentTiers: legacyAgentTiersData, settingsSchema: legacySettingsSchemaData }),
-  projectHostSurface,
-  serializeMethod: serializeCompiledMethod,
-  readSessionSkills: (capture) => createSessionSkillSource({ ...capture, tree: request.sessionFiles }).read(),
-  projectSkills: async (skills) => {
-    const tables = await prepareLegacySkillTables(skills, { scratch: request.runnerScratch,
-      processRunner: request.runnerProcess, frames: request.runnerFrames });
-    return projectMethodSkills({ method: skills.method, sessions: skills.sessions,
-      commands: createCommandRenderers({ source: skills.commands, place: skills.place }),
-      skills: skills.render({ files: skills.files, prepare: skills.prepare, tokens: skills.tokens, tables }) });
-  },
-  projectAgents: (agents) => projectMethodAgents({ method: agents.method,
-    harness: agents.render({ host: agents.host, files: agents.files, prepare: agents.prepare,
-      channel: agents.channel, models: legacyAgentModelPolicy(agents.modelCap), formatDocuments: shippedFormatDocuments() }) }),
-  readHostSources: (capture) => createHostSurfaceReader({ ...capture, reader: request.hostFiles }).read({ host: capture.host }),
-  prepareCommandSource: (command) =>
-    prepareLegacyRunners({ ...command, temporaryRoot: request.runnerFrames }, {
-      scratch: request.runnerScratch, processRunner: request.runnerProcess, child: request.runnerChild,
-    }),
-});
+}): BuildProjection => {
+  const allows = createCopyChannelAllowSource();
+  return {
+    projectSettings: (settings) => {
+      const reading = allows.read();
+      if (!reading.ok) return reading;
+      const harness = settings.render({ files: settings.files, prepare: settings.prepare,
+        tokens: settings.tokens, channel: settings.channel, entrypoints: settings.entrypoints, allows: reading.value });
+      return projectMethodSettings({ method: settings.method, harness });
+    },
+    projectRuntime,
+    readRuntime: createRuntimeReading({ tree: request.sessionFiles,
+      agentTiers: legacyAgentTiersData, settingsSchema: legacySettingsSchemaData }),
+    projectHostSurface,
+    serializeMethod: serializeCompiledMethod,
+    readSessionSkills: (capture) => createSessionSkillSource({ ...capture, tree: request.sessionFiles }).read(),
+    projectSkills: async (skills) => {
+      const tables = await prepareLegacySkillTables(skills, { scratch: request.runnerScratch,
+        processRunner: request.runnerProcess, frames: request.runnerFrames });
+      return projectMethodSkills({ method: skills.method, sessions: skills.sessions,
+        commands: createCommandRenderers({ source: skills.commands, place: skills.place }),
+        skills: skills.render({ files: skills.files, prepare: skills.prepare, tokens: skills.tokens, tables }) });
+    },
+    projectAgents: (agents) => projectMethodAgents({ method: agents.method,
+      harness: agents.render({ host: agents.host, files: agents.files, prepare: agents.prepare,
+        channel: agents.channel, models: legacyAgentModelPolicy(agents.modelCap), formatDocuments: shippedFormatDocuments() }) }),
+    readHostSources: (capture) => createHostSurfaceReader({ ...capture, reader: request.hostFiles }).read({ host: capture.host }),
+    prepareCommandSource: (command) =>
+      prepareLegacyRunners({ ...command, temporaryRoot: request.runnerFrames }, {
+        scratch: request.runnerScratch, processRunner: request.runnerProcess, child: request.runnerChild,
+      }),
+  };
+};
