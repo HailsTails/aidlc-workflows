@@ -162,6 +162,22 @@ export type HostSkillsRequest = {
 
 export type ProjectSkills = (request: HostSkillsRequest) => Promise<Rendering>;
 
+export type HostSurfaceMembers = {
+  readonly host: HostIdentity;
+  readonly data: HostData;
+  readonly placements: readonly AuthoredPlacement[];
+};
+
+export type HostSurfaceRequest = {
+  readonly host: HostIdentity;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly tokens: TokenBindings;
+  readonly channel: DistributionChannel;
+};
+
+export type ProjectHostSurface = (request: HostSurfaceRequest) => Rendering;
+
 export type CapturedHostSources = {
   readonly host: HostIdentity;
   readonly files: readonly AuthoredHostFile[];
