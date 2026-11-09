@@ -1,6 +1,7 @@
 import { describe, expect, test, type AsymmetricMatcher } from "bun:test";
-import { boundaryConfig } from "./boundaries.ts";
+import { boundaryConfig, typeBridgeConfigs } from "./boundaries.ts";
 import { Linter } from "./eslint-port.ts";
+import { legacyOwnership } from "./restrictions.ts";
 import { standardsConfig } from "./standards.ts";
 
 const BOUNDARIES: Linter.Config[] = [...standardsConfig, ...boundaryConfig];
@@ -369,5 +370,110 @@ describe("boundaryConfig for roots and the tests of adapters and roots", () => {
     const hermetic = "src/kernel/file-system.hermetic.test.ts";
 
     expect(findingsFor(NODE_FS_IMPORT, hermetic)).not.toContainEqual(IMPORT_REFUSED);
+  });
+});
+
+const TYPE_BRIDGES = [
+  {
+    module: "core/tools/aidlc-lib.ts",
+    readBy: "src/projection/domain/host-surface.ts",
+    retiresWhen: "Phase 2: its owner moves into src.",
+  },
+  {
+    module: "core/tools/aidlc-runtime-paths.ts",
+    readBy: "src/projection/domain/host-surface.ts",
+    retiresWhen: "Phase 2: its owner moves into src.",
+  },
+];
+
+const SHIPPED = '"../../../core/tools/aidlc-lib.ts"';
+const SHIPPED_PATHS = '"../../../core/tools/aidlc-runtime-paths.ts"';
+
+const typeBridgeFindingsFor = (code: string): Linter.LintMessage[] =>
+  new Linter({ configType: "flat" }).verify(
+    code,
+    [...standardsConfig, ...typeBridgeConfigs(TYPE_BRIDGES)],
+    { filename: "src/projection/domain/host-surface.ts" },
+  );
+
+const TYPE_BRIDGE_REFUSAL = refusal("Type bridge: this file may only import type");
+
+describe("boundaryConfig for a type bridge to a shipped owner", () => {
+  test("allows a type import of each bridged module", () => {
+    const code =
+      `import type { HookActivation } from ${SHIPPED};\n` +
+      `import { type KiroLayout } from ${SHIPPED_PATHS};\n` +
+      "export type Own = [HookActivation, KiroLayout];\n";
+
+    expect(typeBridgeFindingsFor(code)).not.toContainEqual(TYPE_BRIDGE_REFUSAL);
+    expect(typeBridgeFindingsFor(code)).not.toContainEqual(IMPORT_REFUSAL);
+  });
+
+  test("allows a type re-export of the bridged module", () => {
+    const code = `export type { HookActivation } from ${SHIPPED};\n`;
+
+    expect(typeBridgeFindingsFor(code)).not.toContainEqual(TYPE_BRIDGE_REFUSAL);
+    expect(typeBridgeFindingsFor(code)).not.toContainEqual(IMPORT_REFUSAL);
+  });
+
+  test("refuses a value import of the bridged module", () => {
+    const code = `import { kiroLayoutOf } from ${SHIPPED_PATHS};\nexport const f = kiroLayoutOf;\n`;
+
+    expect(typeBridgeFindingsFor(code)).toContainEqual(TYPE_BRIDGE_REFUSAL);
+  });
+
+  test("refuses a side-effect import of the bridged module", () => {
+    expect(typeBridgeFindingsFor(`import ${SHIPPED};\nexport const one = 1;\n`)).toContainEqual(
+      TYPE_BRIDGE_REFUSAL,
+    );
+  });
+
+  test("refuses a value re-export of the bridged module", () => {
+    expect(typeBridgeFindingsFor(`export { kiroLayoutOf } from ${SHIPPED_PATHS};\n`)).toContainEqual(
+      TYPE_BRIDGE_REFUSAL,
+    );
+  });
+
+  test("refuses an import of a legacy module that is not bridged", () => {
+    const code = 'import type { X } from "../../../core/tools/aidlc-init.ts";\nexport type Y = X;\n';
+
+    expect(typeBridgeFindingsFor(code)).toContainEqual(IMPORT_REFUSAL);
+  });
+});
+
+const SHIPPED_ROW = [
+  {
+    name: "HookActivation",
+    context: "projection",
+    kind: "concept",
+    definition: "What a host tells the person.",
+    shippedOwner: "core/tools/aidlc-lib.ts",
+  },
+] as const;
+
+const ownershipFindingsFor = (filename: string): Linter.LintMessage[] =>
+  new Linter({ configType: "flat" }).verify(
+    "export interface HookActivation {}\n",
+    [
+      ...standardsConfig,
+      {
+        files: ["**/*.ts"],
+        rules: {
+          "no-restricted-syntax": ["error", ...legacyOwnership(SHIPPED_ROW, filename)],
+        },
+      },
+    ],
+    { filename },
+  );
+
+describe("legacyOwnership for a row naming its shipped owner", () => {
+  test("allows the exported declaration in the shipped owner's file", () => {
+    expect(ownershipFindingsFor("core/tools/aidlc-lib.ts")).not.toContainEqual(ANY_REFUSAL);
+  });
+
+  test("still refuses the same declaration in another legacy file", () => {
+    expect(ownershipFindingsFor("core/tools/aidlc-init.ts")).toContainEqual(
+      refusal("this declares HookActivation again"),
+    );
   });
 });

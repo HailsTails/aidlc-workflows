@@ -122,9 +122,9 @@ const monolithReachBack: ImportRestriction = {
   message: MONOLITH_MOVE,
 };
 
-const bridgedReachBack = (bridgedModule: string): ImportRestriction => ({
-  regex: `(^|/)(?!${escapeRegex(bridgedModule)}$)(${alternatives(LEGACY_ROOTS)})/`,
-  message: `${MONOLITH_MOVE} This adapter's one legacy bridge is ${bridgedModule}.`,
+const bridgedReachBack = (bridgedModules: readonly string[]): ImportRestriction => ({
+  regex: `(^|/)(?!(?:${alternatives(bridgedModules)})$)(${alternatives(LEGACY_ROOTS)})/`,
+  message: `${MONOLITH_MOVE} This file's legacy bridge is ${bridgedModules.join(", ")}.`,
 });
 
 const hostBundleReach: ImportRestriction = {
@@ -194,8 +194,30 @@ export const bridgeImportRestrictions = (request: {
   readonly bridgedModule: string;
 }): ImportRestriction[] => [
   ...srcImportRestrictions(request.placement).filter((entry) => entry !== monolithReachBack),
-  bridgedReachBack(request.bridgedModule),
+  bridgedReachBack([request.bridgedModule]),
 ];
+
+export const typeBridgeImportRestrictions = (request: {
+  readonly placement: Placement;
+  readonly bridgedModules: readonly string[];
+}): ImportRestriction[] => [
+  ...srcImportRestrictions(request.placement).filter((entry) => entry !== monolithReachBack),
+  bridgedReachBack(request.bridgedModules),
+];
+
+export const typeOnlyBridge = (bridgedModules: readonly string[]): SyntaxRestriction[] => {
+  const names = bridgedModules.map((module) => module.split("/").at(-1) ?? module);
+  const from = `[source.value=/(${alternatives(names)})$/]`;
+  const message =
+    `Type bridge: this file may only import type from ${bridgedModules.join(", ")}. A value ` +
+    "import runs the shipped module, which is a runtime bridge in LEGACY_BRIDGES.";
+  return [
+    `ImportDeclaration${from}[importKind!="type"] > :matches(ImportDefaultSpecifier, ImportNamespaceSpecifier, ImportSpecifier[importKind!="type"])`,
+    `ImportDeclaration${from}[importKind!="type"][specifiers.length=0]`,
+    `ExportNamedDeclaration${from}[exportKind!="type"]`,
+    `ExportAllDeclaration${from}`,
+  ].map((selector) => ({ selector, message }));
+};
 
 const PUBLISHED_TO_HOSTS = "domain/|application/(boundary-)?ports\\.ts$";
 
@@ -347,23 +369,29 @@ export const methodSyntaxFor = (
 const namedAny = (node: string, names: readonly string[]): readonly string[] =>
   names.length > 0 ? [`${node}[id.name=/^(${alternatives(names)})$/]`] : [];
 
-const legacySelectors = (entry: GlossaryEntry): readonly string[] => {
+const aliasSelectors = (entry: GlossaryEntry): readonly string[] => {
   const aliases = entry.legacy ?? [];
   const constants = aliases.filter((alias) => /^[A-Z0-9_]+$/.test(alias));
   const types = aliases.filter((alias) => !constants.includes(alias));
-  const exportedTwin = `ExportNamedDeclaration > ${DECLARATIONS}[id.name="${entry.name}"]`;
-  return [
-    ...namedAny(DECLARATIONS, types),
-    ...namedAny("VariableDeclarator", constants),
-    exportedTwin,
-  ];
+  return [...namedAny(DECLARATIONS, types), ...namedAny("VariableDeclarator", constants)];
 };
 
-export const legacyOwnership = (glossary: readonly GlossaryEntry[]): SyntaxRestriction[] =>
+const exportedTwin = (entry: GlossaryEntry): string =>
+  `ExportNamedDeclaration > ${DECLARATIONS}[id.name="${entry.name}"]`;
+
+const legacySelectors = (entry: GlossaryEntry, file: string | undefined): readonly string[] =>
+  entry.shippedOwner !== undefined && entry.shippedOwner === file
+    ? aliasSelectors(entry)
+    : [...aliasSelectors(entry), exportedTwin(entry)];
+
+export const legacyOwnership = (
+  glossary: readonly GlossaryEntry[],
+  file?: string,
+): SyntaxRestriction[] =>
   glossary
     .filter((entry) => entry.kind !== "technical" && entry.kind !== "variant")
     .flatMap((entry) =>
-      legacySelectors(entry).map((selector) => ({
+      legacySelectors(entry, file).map((selector) => ({
         selector,
         message:
           `One owner: this declares ${entry.name} again; it is owned by ${entry.context} in ` +
