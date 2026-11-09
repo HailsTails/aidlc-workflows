@@ -58,7 +58,8 @@
       ],
       "territory": [],
       "monolithDeletions": {
-        "src/cli/application/ports.ts": ["*"]
+        "src/cli/application/ports.ts": ["*"],
+        "scripts/onboarding.ts": ["OnboardingFills"]
       }
     },
     "G": {

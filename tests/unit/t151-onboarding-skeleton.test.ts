@@ -10,8 +10,8 @@ import {
   declaredSlots,
   renderNeutralOnboarding,
   renderOnboarding,
-  type OnboardingFills,
 } from "../../scripts/onboarding.ts";
+import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 
 const NEUTRAL = readFileSync(join(REPO_ROOT, "core", "templates", "onboarding.md"), "utf-8");

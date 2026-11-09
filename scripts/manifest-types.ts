@@ -9,7 +9,7 @@ import type { ProjectionRefusal } from "../src/projection/domain/projection.ts";
 // skills tree) — structural divergence that no declarative row can express.
 
 import { accepted, refused, type Result } from "../src/kernel/result.ts";
-import type { OnboardingFills } from "./onboarding.ts";
+import type { OnboardingFills } from "../src/projection/domain/neutral-surface.ts";
 import type { Method } from "../src/workflow-definition/domain/method.ts";
 import type { CommandPlacement } from "../src/projection/application/ports.ts";
 import type { MethodSource } from "../src/workflow-definition/domain/method-source.ts";

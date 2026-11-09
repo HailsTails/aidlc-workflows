@@ -3,7 +3,7 @@
 // onboarding in dist/copilot/AGENTS.md. Both Copilot surfaces auto-read it;
 // the native method imports must remain in this exclusive root file.
 
-import type { OnboardingFills } from "../../scripts/onboarding.ts";
+import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
 
 const fills: OnboardingFills = {
   invoke: "/aidlc",
