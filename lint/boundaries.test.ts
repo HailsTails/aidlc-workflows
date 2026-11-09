@@ -477,3 +477,43 @@ describe("legacyOwnership for a row naming its shipped owner", () => {
     );
   });
 });
+
+const USE_CASE_IMPORT =
+  'import { plan } from "../../../../projection/application/legacy-command-plan.ts";\n' +
+  "export const planned = plan;\n";
+
+const ROOT_USE_CASE_IMPORT =
+  'import { plan } from "../projection/application/legacy-command-plan.ts";\n' +
+  "export const planned = plan;\n";
+
+const DOMAIN_IMPORT =
+  'import { subject } from "../../../../projection/domain/native-command.ts";\n' +
+  "export const named = subject;\n";
+
+describe("boundaryConfig for the cli composing other contexts", () => {
+  test("refuses a cli route importing another context's use case", () => {
+    const messages = findingsFor(
+      USE_CASE_IMPORT,
+      "src/cli/adapters/routes/projection/legacy-runner-child.ts",
+    );
+
+    expect(messages).toContainEqual(expect.objectContaining({ ruleId: "no-restricted-imports" }));
+  });
+
+  test("lets a cli composition root import another context's use case", () => {
+    expect(findingsFor(ROOT_USE_CASE_IMPORT, "src/cli/main.ts")).not.toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports" }),
+    );
+  });
+
+  test("lets a cli route import another context's domain", () => {
+    const messages = findingsFor(
+      DOMAIN_IMPORT,
+      "src/cli/adapters/routes/projection/legacy-runner-child.ts",
+    );
+
+    expect(messages).not.toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports" }),
+    );
+  });
+});
