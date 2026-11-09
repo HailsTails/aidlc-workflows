@@ -21,6 +21,7 @@ import type {
   HostDocumentRenderer,
   HostSettingsRenderer,
   HostSkillRenderer,
+  Rendering,
 } from "../projection/application/ports.ts";
 import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
 import type { DistributionChannel } from "../projection/domain/projected-file.ts";
@@ -145,6 +146,8 @@ export type HostAgentsRequest = {
   readonly channel: DistributionChannel;
   readonly modelCap: Tier | null;
 };
+
+export type ProjectAgents = (request: HostAgentsRequest) => Rendering;
 
 export type CapturedHostSources = {
   readonly host: HostIdentity;

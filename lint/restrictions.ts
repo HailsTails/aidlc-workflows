@@ -21,7 +21,8 @@ export const purityOf = (layer: Layer): "pure" | "effectful" =>
 
 const privateLayersOf = (other: ContextName, placement: Placement): readonly string[] => {
   const rule = CONTEXT_MAP[placement.context];
-  const composes = rule.composesRootsOf.includes(other);
+  const composingPlacement = placement.context !== "cli" || placement.layer === "root";
+  const composes = rule.composesRootsOf.includes(other) && composingPlacement;
   const hidden = composes ? [] : ["application/", "main\\.ts$"];
   const readsFormats = placement.layer === "adapters" && rule.readsFileFormatsOf.includes(other);
   const adapters = readsFormats ? "adapters/(?![\\w-]+-files?\\.ts$)" : "adapters/";
