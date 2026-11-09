@@ -1,5 +1,5 @@
 import { describe, expect, test, type AsymmetricMatcher } from "bun:test";
-import { boundaryConfig, typeBridgeConfigs } from "./boundaries.ts";
+import { boundaryConfig, portFilesConfig, typeBridgeConfigs } from "./boundaries.ts";
 import { Linter } from "./eslint-port.ts";
 import { legacyOwnership } from "./restrictions.ts";
 import { standardsConfig } from "./standards.ts";
@@ -47,6 +47,11 @@ describe("boundaryConfig in production code", () => {
 
 const findingsFor = (code: string, filename: string): Linter.LintMessage[] =>
   new Linter({ configType: "flat" }).verify(code, BOUNDARIES, { filename });
+
+const PORT_FILE_BOUNDARIES: Linter.Config[] = [...standardsConfig, ...portFilesConfig];
+
+const portFileFindingsFor = (code: string, filename: string): Linter.LintMessage[] =>
+  new Linter({ configType: "flat" }).verify(code, PORT_FILE_BOUNDARIES, { filename });
 
 const UNDECLARED = "not a layer of a context in lint/context-map.ts";
 
@@ -138,9 +143,13 @@ describe("boundaryConfig published types", () => {
   test("leaves a ports concept file's test outside the port files", () => {
     const code = "export type StageSample = { readonly slug: string };\n";
 
-    expect(findingsFor(code, "src/projection/application/ports/stages.test.ts")).not.toContainEqual(
-      refusal(UNGLOSSED),
-    );
+    expect({
+      concept: portFileFindingsFor(code, "src/projection/application/ports/stages.ts"),
+      test: portFileFindingsFor(code, "src/projection/application/ports/stages.test.ts"),
+    }).toEqual({
+      concept: expect.arrayContaining([refusal(UNGLOSSED)]),
+      test: expect.not.arrayContaining([refusal(UNGLOSSED)]),
+    });
   });
 
   test("accepts a type the context's glossary names", () => {
