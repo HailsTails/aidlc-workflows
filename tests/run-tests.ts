@@ -162,6 +162,7 @@ OUTPUT MODIFIERS (combinable with any tier/profile):
   --matrix-job ID     Required job in that plan. Implies --require-coverage.
   --debug         Implies --verbose; streams per-test output and writes SDK/TUI
                   driver traces to tests/logs/
+  --test-name-pattern PAT  Forwarded to bun test: only run cases whose full name matches PAT.
   --filter PAT    Only run tests whose filename matches extended regex PAT
                   Fails if a selected file executes no cases or no files match.
                   The scope runs and the guard matrix (t-scope-run-*,
@@ -1168,7 +1169,10 @@ async function runBunTestFile(
   if (streamPath) writeFileSync(streamPath, `Test: ${base}\nFile: ${actualFile}\nStatus: RUNNING\n\n--- Output ---\n`);
   const run = await runSpawnCapture(
     BUN,
-    ["test", actualFile, `--timeout=${DEFAULT_CASE_TIMEOUT_MS}`, "--reporter=junit", `--reporter-outfile=${junitXml}`],
+    [
+      "test", actualFile, `--timeout=${DEFAULT_CASE_TIMEOUT_MS}`, "--reporter=junit", `--reporter-outfile=${junitXml}`,
+      ...(args.testNamePattern ? ["--test-name-pattern", args.testNamePattern] : []),
+    ],
     env,
     debugPrefix,
     context,
