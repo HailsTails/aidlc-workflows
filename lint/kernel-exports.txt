@@ -40,8 +40,10 @@ Result
 RunCurrentRuntimeArgs
 SourcePath
 Timestamp
+TreeEntry
 TreeFile
 TreeReading
+TreeSelection
 UnreadableTreeFile
 WriteFileArgs
 YamlParser
@@ -56,6 +58,7 @@ createNodeProcessRunner
 distributionId
 frameworkVersion
 projectPath
+readEveryEntry
 refused
 sourcePath
 timestamp
