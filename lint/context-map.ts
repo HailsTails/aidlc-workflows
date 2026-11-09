@@ -155,6 +155,12 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
       "owners it reads move into src and ship in the runtime bundle (R1), then the policy moves " +
       "to src/hosts/kiro-ide beside kiroIdePermissionLines.",
   },
+  {
+    module: "core/hooks/aidlc-state-transition-guard.ts",
+    readBy: "src/projection/adapters/legacy-delegate-admission.ts",
+    retiresWhen: SHIPPED_OWNER_MOVES,
+  },
+  shippedOwner("aidlc-lib", "src/projection/adapters/legacy-workspace-commands.ts"),
   shippedOwner("aidlc-distribution", "src/packaging/adapters/legacy-distribution.ts"),
   shippedOwner("aidlc-version", "src/packaging/adapters/legacy-version.ts"),
   shippedOwner("aidlc-channel", "src/packaging/adapters/legacy-channel.ts"),

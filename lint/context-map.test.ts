@@ -130,6 +130,16 @@ const EXPECTED_BRIDGES = [
       "to src/hosts/kiro-ide beside kiroIdePermissionLines.",
   },
   {
+    module: "core/hooks/aidlc-state-transition-guard.ts",
+    readBy: "src/projection/adapters/legacy-delegate-admission.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-lib.ts",
+    readBy: "src/projection/adapters/legacy-workspace-commands.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
     module: "core/tools/aidlc-distribution.ts",
     readBy: "src/packaging/adapters/legacy-distribution.ts",
     retiresWhen: OWNER_MOVES,
