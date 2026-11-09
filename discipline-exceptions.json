@@ -576,14 +576,14 @@
           },
           {
             "why": "Why is a real disk read an effect placed behind a port in one named adapter?",
-            "because": "Each context that does real IO registers each reach as one named adapter, so its whole IO surface is reviewed in a few files and every other adapter stays a decoder of values it is handed.",
-            "evidence": "discipline-exceptions.json registers src/workflow-definition/adapters/source-files.ts for Workflow Definition and src/projection/adapters/legacy-runners.ts for Projection's runner reach"
+            "because": "Each real IO reach is registered once per capability, so the whole disk surface is reviewed in a few files and every other file stays a decoder of values it is handed.",
+            "evidence": "lint/implementers.json registers src/kernel/file-system.ts as the file-system implementer; src/projection/adapters/legacy-runners.ts is Projection's runner reach"
           }
         ],
-        "rootCause": "The rebuild keeps domain and application pure and registers each real IO reach as one named adapter, so Projection's reads of the captured host sources live in host-source-files.ts alone.",
-        "rootCheck": "Read lint/restrictions.ts and the existing exception entries on 2026-11-09: purityRestriction still refuses node: imports in domain and application, and Projection has no other registered disk-read location.",
-        "readback": "Each context registers every real IO reach as one named adapter, therefore Projection's disk reads sit in one file, therefore the renderers receive the captured source's values from a port, therefore host-source-files.ts alone imports node:fs/promises and node:path as a read-only reach to disk.",
-        "owner": "Lane G (Guardrails) in lanes.json; the file is codex/integration's; the coordinator approved the location in the AIDLC pace and parallel lanes note at 21:18 UTC"
+        "rootCause": "The rebuild registers each real IO reach once per capability, and this file is Projection's transitional disk reader until it reads through the kernel FileSystem port.",
+        "rootCheck": "Read lint/implementers.json and lint/restrictions.ts on 2026-11-09: purityRestriction still refuses node: imports in domain and application, and the file-system capability has one registered implementer in src/kernel.",
+        "readback": "Every real IO reach is registered once per capability, therefore Projection's disk reads sit in one transitional file, therefore host-source-files.ts alone imports node:fs/promises and node:path until the FileSystem port replaces it.",
+        "owner": "Lane G (Guardrails) in lanes.json owns this record; the file is integration's, and the record retires when Projection reads host sources through the FileSystem port"
       }
     },
     {
