@@ -58,17 +58,17 @@ export const hostSkillMembers = (host: HostIdentity): Result<HostSkillMembers | 
   return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
 };
 const HOST_SURFACE_MEMBERS = [
-  { name: "copilot", data: COPILOT_HOST_DATA, placements: COPILOT_AUTHORED_PLACEMENTS },
-  { name: "cursor", data: CURSOR_HOST_DATA, placements: CURSOR_AUTHORED_PLACEMENTS },
-  { name: "opencode", data: OPENCODE_HOST_DATA, placements: OPENCODE_AUTHORED_PLACEMENTS },
-  { name: "kiro", data: KIRO_HOST_DATA, placements: KIRO_AUTHORED_PLACEMENTS },
-  { name: "codex", data: CODEX_HOST_DATA, placements: CODEX_AUTHORED_PLACEMENTS },
-  { name: "claude", data: CLAUDE_HOST_DATA, placements: CLAUDE_AUTHORED_PLACEMENTS },
+  { name: "copilot", renderData: () => COPILOT_HOST_DATA, placements: COPILOT_AUTHORED_PLACEMENTS },
+  { name: "cursor", renderData: () => CURSOR_HOST_DATA, placements: CURSOR_AUTHORED_PLACEMENTS },
+  { name: "opencode", renderData: () => OPENCODE_HOST_DATA, placements: OPENCODE_AUTHORED_PLACEMENTS },
+  { name: "kiro", renderData: () => KIRO_HOST_DATA, placements: KIRO_AUTHORED_PLACEMENTS },
+  { name: "codex", renderData: () => CODEX_HOST_DATA, placements: CODEX_AUTHORED_PLACEMENTS },
+  { name: "claude", renderData: () => CLAUDE_HOST_DATA, placements: CLAUDE_AUTHORED_PLACEMENTS },
 ] as const;
 
 export const hostSurfaceMembers = (host: HostIdentity): HostSurfaceMembers | null => {
   const entry = HOST_SURFACE_MEMBERS.find((candidate) => candidate.name === host.distribution);
-  return entry ? { host, data: entry.data, placements: entry.placements } : null;
+  return entry ? { host, renderData: entry.renderData, placements: entry.placements } : null;
 };
 
 const HOST_SETTINGS_MEMBERS = [

@@ -255,7 +255,7 @@ export type AgentProjection = (request: AgentProjectionRequest) => Rendering;
 
 export type HostSurfaceProjectionRequest = {
   readonly host: HostIdentity;
-  readonly data: HostData;
+  readonly renderData: HostDataRenderer;
   readonly placements: readonly AuthoredPlacement[];
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;

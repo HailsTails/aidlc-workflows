@@ -97,8 +97,9 @@ export function copyChannelDelegateShellDeny(harnessDir: string, agent: string):
       ...copyChannelDispatcherCommands().map((command) => `${tool("aidlc.ts")} ${command}`),
     ],
     exclude: [
-      ...Object.keys(admitted).sort().flatMap((file) =>
-        admitted[file].flatMap((verb) => exclusionsFor(`${tool(file)} ${verb}`))
+      ...Object.entries(admitted)
+        .sort(([left], [right]) => left < right ? -1 : Number(left > right))
+        .flatMap(([file, verbs]) => verbs.flatMap((verb) => exclusionsFor(`${tool(file)} ${verb}`))
       ),
       ...WORKSPACE_NOUNS.flatMap((noun) => workspaceExclusions(tool("aidlc-utility.ts"), noun)),
       ...engineRouteExclusions(agent, engine),
@@ -152,7 +153,8 @@ export function splitShellDeny({ match, exclude }: ShellDeny): ShellDeny[] {
   const unsplit: string[] = [];
   for (const pattern of exclude) {
     const prefix = prefixes.find((candidate) => pattern.startsWith(candidate));
-    const word = prefix === undefined ? "" : pattern.slice(prefix.length).split(" ")[0];
+    const word = prefix === undefined ? ""
+      : pattern.slice(prefix.length).split(" ")[0] ?? "";
     if (word === "" || /[*?]/.test(word)) {
       unsplit.push(pattern);
       continue;

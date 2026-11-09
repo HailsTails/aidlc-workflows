@@ -18,6 +18,7 @@ import type {
   CommandSource,
   Harness,
   HostAgentRenderer,
+  HostDataRenderer,
   HostDocumentRenderer,
   HostSettingsRenderer,
   HostSkillRenderer,
@@ -154,7 +155,7 @@ export type ProjectSkills = (request: HostSkillsRequest) => Promise<Rendering>;
 
 export type HostSurfaceMembers = {
   readonly host: HostIdentity;
-  readonly data: HostData;
+  readonly renderData: HostDataRenderer;
   readonly placements: readonly AuthoredPlacement[];
 };
 
