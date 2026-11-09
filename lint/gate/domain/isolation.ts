@@ -12,10 +12,17 @@ export type ImplementerFiles = {
   readonly hermeticTest: string;
 };
 
+export type EdgeEntry = {
+  readonly file: string;
+  readonly effects: readonly string[];
+};
+
 type Measure = {
   readonly graph: SourceGraph;
   readonly implementers: readonly ImplementerFiles[];
+  readonly edges: readonly EdgeEntry[];
 };
+
 
 const IO_MODULES = new Set([
   "child_process",
@@ -100,9 +107,19 @@ const testOffenders = (measure: Measure, test: string): readonly string[] => {
   return reached === undefined ? [] : [`${test} · test reaches ${reached}`];
 };
 
-const globalOffenders = (file: string, references: SourceReferences): readonly string[] =>
+const effectsAllowedFor = (edges: readonly EdgeEntry[], file: string): readonly string[] =>
+  edges.find((edge) => edge.file === file)?.effects ?? [];
+
+const globalOffenders = (
+  file: string,
+  references: SourceReferences,
+  edges: readonly EdgeEntry[],
+): readonly string[] =>
   references.globals
-    .filter((name) => GLOBAL_NAMES.has(name))
+    .filter(
+      (name) => GLOBAL_NAMES.has(name) && !effectsAllowedFor(edges, file).includes(name),
+    )
+
     .map((name) => `${file} · uses ${name}`);
 
 export const offendersOf = (measure: Measure): readonly string[] => {
@@ -111,9 +128,24 @@ export const offendersOf = (measure: Measure): readonly string[] => {
     if (file.endsWith(".test.ts")) {
       return testOffenders(measure, file);
     }
-    return implementerFiles.has(file) ? [] : globalOffenders(file, references);
+    return implementerFiles.has(file) ? [] : globalOffenders(file, references, measure.edges);
   });
 };
+
+export const staleEdgeEffects = (request: {
+  readonly graph: SourceGraph;
+  readonly edges: readonly EdgeEntry[];
+}): readonly Finding[] =>
+  request.edges.flatMap((edge) =>
+    edge.effects
+      .filter((effect) => !(request.graph.get(edge.file)?.globals ?? []).includes(effect))
+      .map((effect) => ({
+        subject: `${edge.file} · allows ${effect}`,
+        violation: "is an edge-entry effect the file no longer has",
+        fix: "Remove the effect from lint/edge-entries.json, or the entry once the file is gone.",
+      })),
+  );
+
 
 const OFFENDER_FIX =
   "Unit tests reach the platform only through a fake of a kernel port; only the registered " +

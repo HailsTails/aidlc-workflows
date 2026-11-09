@@ -31,6 +31,7 @@ const outcomeFor = (request: {
     modules: typescriptModuleReader,
     record: recordOf(request.recorded),
     implementers: () => [],
+    edges: () => [],
     sources: ["src/**/*.ts"],
   }).run(SCOPE);
 

@@ -2,6 +2,8 @@ import {
   judgeIsolation,
   narrowedOffenders,
   offendersOf,
+  staleEdgeEffects,
+  type EdgeEntry,
   type ImplementerFiles,
   type SourceGraph,
 } from "../domain/isolation.ts";
@@ -14,6 +16,7 @@ export type IsolationDependencies = {
   readonly modules: ModuleReader;
   readonly record: NameList;
   readonly implementers: () => readonly ImplementerFiles[];
+  readonly edges: () => readonly EdgeEntry[];
   readonly sources: readonly string[];
 };
 
@@ -34,10 +37,9 @@ const unrecorded: Finding = {
 export const isolationCheck = (dependencies: IsolationDependencies): GateCheck => ({
   id: "isolation",
   run: async (scope) => {
-    const measured = offendersOf({
-      graph: graphOf(dependencies),
-      implementers: dependencies.implementers(),
-    });
+    const graph = graphOf(dependencies);
+    const edges = dependencies.edges();
+    const measured = offendersOf({ graph, implementers: dependencies.implementers(), edges });
     const recorded = dependencies.record.read();
     if (scope.record) {
       dependencies.record.write(
@@ -45,7 +47,9 @@ export const isolationCheck = (dependencies: IsolationDependencies): GateCheck =
       );
     }
     const findings =
-      recorded === undefined ? [unrecorded] : judgeIsolation({ recorded, measured });
+      recorded === undefined
+        ? [unrecorded]
+        : [...judgeIsolation({ recorded, measured }), ...staleEdgeEffects({ graph, edges })];
     const note = `${measured.length} offenders, ${recorded?.length ?? 0} recorded`;
     return judged({ id: "isolation", findings, note });
   },
