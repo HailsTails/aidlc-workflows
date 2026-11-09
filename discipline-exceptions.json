@@ -624,6 +624,123 @@
         "readback": "Each context registers every real IO reach as one named adapter, therefore Projection's disk reads sit in one file, therefore the renderers receive the captured source's values from a port, therefore host-source-files.ts alone imports node:fs/promises and node:path as a read-only reach to disk.",
         "owner": "Lane G (Guardrails) in lanes.json; the file is codex/integration's; the coordinator approved the location in the AIDLC pace and parallel lanes note at 21:18 UTC"
       }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "src/kernel/file-system.ts",
+      "reason": "The one implementer of the kernel FileSystem port: the single place the rebuild reaches the disk through node:fs/promises and node:url.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/kernel/file-system.ts import node:fs/promises and node:url?",
+            "because": "createNodeFileSystem renders each URL natively and performs the reads and scratch writes that the FileSystem port declares.",
+            "evidence": "createNodeFileSystem and NodeFileLib in src/kernel/file-system.ts"
+          },
+          {
+            "why": "Why does createNodeFileSystem render each URL natively and perform the reads and scratch writes the FileSystem port declares?",
+            "because": "The port speaks only URLs and byte arrays, so the implementer maps them onto the runtime and no consumer needs a node: type.",
+            "evidence": "src/kernel/file-system-port.ts imports no node: module"
+          },
+          {
+            "why": "Why does the port speak only URLs and byte arrays so that no consumer needs a node: type?",
+            "because": "Consumers in domain and application stay pure, and a fake can stand in for the port.",
+            "evidence": "src/kernel/fixtures/file-system.fake.ts createInMemoryFileSystem"
+          },
+          {
+            "why": "Why must a fake stand in for the port so that consumers stay pure in domain and application?",
+            "because": "Their tests must not touch the real disk, and a second file importing node:fs would be a second way to reach it.",
+            "evidence": "src/kernel/file-system.test.ts imports no node: module"
+          },
+          {
+            "why": "Why must tests not touch the real disk when a second file importing node:fs would be a second way to reach it?",
+            "because": "The disk is one registered capability: one implementer, proven once against the real runtime by its hermetic test.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          }
+        ],
+        "rootCause": "The rebuild registers each real IO reach as one named implementer behind a port, so the disk is reached in file-system.ts alone.",
+        "rootCheck": "Read lint/implementers.json and the exception entries on 2026-11-09: file-system.ts is the only registered implementer of the file-system capability.",
+        "readback": "Every real IO reach is one named implementer, therefore the disk is reached through the FileSystem port, therefore file-system.ts alone imports node:fs/promises and node:url.",
+        "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "src/kernel/file-system.hermetic.test.ts",
+      "reason": "The hermetic test of the file-system implementer: the only test that exercises the real runtime, in a scratch folder it creates and removes.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/kernel/file-system.hermetic.test.ts import node:fs/promises, node:os, node:path and node:url?",
+            "because": "It creates and removes a scratch folder and checks createNodeFileSystem against the real runtime there.",
+            "evidence": "createNodeFileSystem in src/kernel/file-system.ts"
+          },
+          {
+            "why": "Why does it check createNodeFileSystem against the real runtime in a scratch folder it creates and removes?",
+            "because": "The seam tests use the fake, so only this test can show that the implementer behaves as its port says on the real runtime.",
+            "evidence": "src/kernel/file-system.test.ts imports no node: module"
+          },
+          {
+            "why": "Why can only this test show that the implementer behaves as its port says, when the seam tests use the fake?",
+            "because": "The fake is written from the port and not from the runtime, so it cannot reveal where the runtime differs.",
+            "evidence": "src/kernel/fixtures/file-system.fake.ts"
+          },
+          {
+            "why": "Why must the fake be written from the port and not from the runtime, if the runtime can differ?",
+            "because": "Consumers depend on the port alone, so the port is the contract and the implementer is held to it by one real-runtime proof.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          },
+          {
+            "why": "Why is the implementer held to the port by one real-runtime proof instead of many?",
+            "because": "One registered implementer per capability has one hermeticTest, so no other test imports a node: module.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          }
+        ],
+        "rootCause": "The registered file-system implementer is proven once against the real runtime, so its hermetic test alone may import node: modules.",
+        "rootCheck": "Read lint/implementers.json on 2026-11-09: the hermeticTest field names this file for the capability.",
+        "readback": "The implementer needs one real-runtime proof, therefore its hermetic test uses a scratch folder, therefore file-system.hermetic.test.ts imports the node: modules and no other test does.",
+        "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "src/kernel/process-runner.hermetic.test.ts",
+      "reason": "The hermetic test of the process-runner implementer: the only test that exercises the real runtime, in a scratch folder it creates and removes.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/kernel/process-runner.hermetic.test.ts import node:fs/promises, node:os, node:path and node:url?",
+            "because": "It creates and removes a scratch folder and checks createNodeProcessRunner against the real runtime there.",
+            "evidence": "createNodeProcessRunner in src/kernel/process-runner.ts"
+          },
+          {
+            "why": "Why does it check createNodeProcessRunner against the real runtime in a scratch folder it creates and removes?",
+            "because": "The seam tests use the fake, so only this test can show that the implementer behaves as its port says on the real runtime.",
+            "evidence": "src/kernel/process-runner.test.ts imports no node: module"
+          },
+          {
+            "why": "Why can only this test show that the implementer behaves as its port says, when the seam tests use the fake?",
+            "because": "The fake is written from the port and not from the runtime, so it cannot reveal where the runtime differs.",
+            "evidence": "src/kernel/fixtures/process-runner.fake.ts"
+          },
+          {
+            "why": "Why must the fake be written from the port and not from the runtime, if the runtime can differ?",
+            "because": "Consumers depend on the port alone, so the port is the contract and the implementer is held to it by one real-runtime proof.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          },
+          {
+            "why": "Why is the implementer held to the port by one real-runtime proof instead of many?",
+            "because": "One registered implementer per capability has one hermeticTest, so no other test imports a node: module.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          }
+        ],
+        "rootCause": "The registered process-runner implementer is proven once against the real runtime, so its hermetic test alone may import node: modules.",
+        "rootCheck": "Read lint/implementers.json on 2026-11-09: the hermeticTest field names this file for the capability.",
+        "readback": "The implementer needs one real-runtime proof, therefore its hermetic test uses a scratch folder, therefore process-runner.hermetic.test.ts imports the node: modules and no other test does.",
+        "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+      }
     }
   ]
 }
