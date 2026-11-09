@@ -5,9 +5,13 @@ import type {
   HumanTurnHistory,
 } from "../execution/application/boundary-ports.ts";
 import type { HostShell } from "../installation/application/boundary-ports.ts";
+import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { HostIdentity } from "../kernel/host.ts";
+import type { ProcessRunner } from "../kernel/process-runner-port.ts";
+import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout } from "../packaging/domain/payload.ts";
 import type { Harness } from "../projection/application/ports.ts";
+import type { MarkdownOutliner } from "../workflow-definition/application/ports.ts";
 
 export type ExitStatus = 0 | 1 | 2;
 
@@ -34,6 +38,23 @@ export type RuntimeHost = {
 export interface BuildRoot {
   routes(request: { readonly hosts: readonly BuildHost[] }): readonly CommandRoute[];
 }
+
+export type Platform = {
+  readonly fileSystem: FileSystem;
+  readonly processRunner: ProcessRunner;
+  readonly yaml: YamlParser;
+};
+
+export type BuildSources = {
+  readonly core: URL;
+  readonly plugins: URL;
+};
+
+export type CreateBuildRoot = (createBuildRootArgs: {
+  readonly platform: Platform;
+  readonly outliner: MarkdownOutliner;
+  readonly sources: BuildSources;
+}) => BuildRoot;
 
 export interface RuntimeRoot {
   routes(request: {

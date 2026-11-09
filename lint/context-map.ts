@@ -22,7 +22,9 @@ export const CONTEXT_MAP: Readonly<Record<ContextName, ContextRule>> = {
     dependsOn: [],
     readsFileFormatsOf: [],
     composesRootsOf: [],
-    instead: "The kernel holds shared identity values only; move anything richer into its context.",
+    instead:
+      "The kernel holds shared identity values and the one file-system implementer behind its " +
+      "node-free port; move anything richer into its context.",
   },
   "workflow-definition": {
     dependsOn: ["kernel"],
