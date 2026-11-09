@@ -384,19 +384,10 @@ const manifest: HarnessManifest = {
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
     { src: "hooks", dst: "hooks" },
-    { src: "skills/aidlc-session-cost", dst: "skills/aidlc-session-cost" },
-    { src: "skills/aidlc-replay", dst: "skills/aidlc-replay" },
-    { src: "skills/aidlc-outcomes-pack", dst: "skills/aidlc-outcomes-pack" },
-    { src: "skills/aidlc-issue-report", dst: "skills/aidlc-issue-report" },
-    { src: "skills/aidlc-knowledge", dst: "skills/aidlc-knowledge" },
   ],
 
   // Authored surfaces. Persona Markdown files are core projections.
   harnessFiles: [
-    { src: "skills/aidlc/SKILL.md", dst: "skills/aidlc/SKILL.md" },
-    { src: "skills/aidlc/question-rendering.md", dst: "skills/aidlc/question-rendering.md" },
-    { src: "skills/aidlc/composer.md", dst: "skills/aidlc/composer.md" },
-    { src: "skills/aidlc/tables.md", dst: "skills/aidlc/tables.md" },
     // The reference form; the packager writes the shipped memory's text over
     // it, as the engine does with the project's own memory for every chat.
     { src: "steering/aidlc-active-memory.md", dst: "steering/aidlc-active-memory.md" },
