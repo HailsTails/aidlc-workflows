@@ -43,6 +43,7 @@ import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
 import { disciplinesCheck } from "../lint/gate/application/disciplines-check.ts";
 import type { GateCheck } from "../lint/gate/application/gate-check.ts";
+import { sharedBuild } from "../lint/gate/application/shared-build.ts";
 import { goldensCheck, type GoldensDependencies } from "../lint/gate/application/goldens-check.ts";
 import { lintCheck } from "../lint/gate/application/lint-check.ts";
 import { kernelCheck } from "../lint/gate/application/kernel-check.ts";
@@ -105,11 +106,13 @@ const goldenLayout: GoldenLayout = {
 
 const bun = (label: string, args: readonly string[]): Command => ({ label, argv: [BUN, ...args] });
 
+const packageBuild = sharedBuild(runner, bun("bun scripts/package.ts", ["scripts/package.ts"]));
+
 const goldens: GoldensDependencies = {
   runner,
   source: goldenSource(goldenLayout),
   store: goldenStore({ layout: goldenLayout, workspace }),
-  build: bun("bun scripts/package.ts", ["scripts/package.ts"]),
+  build: packageBuild,
 };
 
 const tsc = (project: string): Command =>
@@ -171,6 +174,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     capabilities: capabilityProbes(temp.path),
     exclusions: environmentExclusions(workspace),
     testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
+    build: packageBuild,
   }),
   goldensCheck(goldens),
 ];

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { GateScope } from "./gate-scope.ts";
-import type { CommandResult, Workspace } from "./ports.ts";
+import type { Command, CommandResult, Workspace } from "./ports.ts";
+import type { SharedBuild } from "./shared-build.ts";
 import { testsCheck, type TestSuite } from "./tests-check.ts";
 
 const SCOPE: GateScope = {
@@ -30,6 +31,7 @@ const checkWith = (request: {
   readonly symlinks: boolean;
   readonly suite?: TestSuite;
   readonly files?: Readonly<Record<string, string>>;
+  readonly build?: SharedBuild;
 }) =>
   testsCheck({
     runner: { capture: () => request.result, attach: () => 0 },
@@ -44,6 +46,7 @@ const checkWith = (request: {
           : { available: true, evidence: "present" },
     },
     exclusions: [{ capability: "symlinks", cases: [LISTED] }],
+    build: request.build ?? { ensure: () => undefined },
   });
 
 describe("the tests check tells capability reds from regressions", () => {
@@ -99,5 +102,65 @@ describe("the tests check tells capability reds from regressions", () => {
     const result: CommandResult = { exitCode: 0, output: "" };
     await checkWith({ result, symlinks: true, suite, files }).run(SCOPE);
     expect(ran).toEqual([["tests/a.test.ts"]]);
+  });
+});
+
+describe("the tests check shares one package build", () => {
+  const PACKAGED: TestSuite = { ...SUITE, sharesPackageBuild: true };
+  const BUILT_SCOPE: GateScope = { ...SCOPE, build: true };
+
+  const captured = (commands: Command[]) => ({
+    capture: (command: Command): CommandResult => {
+      commands.push(command);
+      return { exitCode: 0, output: "" };
+    },
+    attach: () => 0,
+  });
+
+  const packagedCheck = (request: { readonly build: SharedBuild; readonly commands: Command[] }) =>
+    testsCheck({
+      runner: captured(request.commands),
+      workspace: workspaceOf({ "tests/a.test.ts": "" }),
+      suites: [PACKAGED],
+      looseTests: [],
+      testCommand: () => ({ label: "bun test", argv: ["bun", "test"], env: { PATH: "p" } }),
+      capabilities: { probe: () => ({ available: true, evidence: "present" }) },
+      exclusions: [],
+      build: request.build,
+    });
+
+  test("the suite runs with the build marked ready, after asking for the build", async () => {
+    const commands: Command[] = [];
+    let builds = 0;
+    const build: SharedBuild = {
+      ensure: () => {
+        builds += 1;
+        return undefined;
+      },
+    };
+
+    await packagedCheck({ build, commands }).run(BUILT_SCOPE);
+
+    expect(builds).toBe(1);
+    expect(commands[0]?.env).toEqual({ PATH: "p", AIDLC_TEST_PACKAGE_READY: "1" });
+  });
+
+  test("red: a failed shared build is a finding and the suite does not run", async () => {
+    const commands: Command[] = [];
+    const finding = { subject: "build", violation: "failed: x", fix: "fix it" };
+
+    const outcome = await packagedCheck({ build: { ensure: () => finding }, commands }).run(BUILT_SCOPE);
+
+    expect(outcome.findings).toEqual([finding]);
+    expect(commands).toEqual([]);
+  });
+
+  test("with no build requested the suite is not marked ready", async () => {
+    const commands: Command[] = [];
+    const build: SharedBuild = { ensure: () => undefined };
+
+    await packagedCheck({ build, commands }).run(SCOPE);
+
+    expect(commands[0]?.env).toEqual({ PATH: "p" });
   });
 });

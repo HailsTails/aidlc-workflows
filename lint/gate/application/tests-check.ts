@@ -14,6 +14,7 @@ import { fileTimings, slowestNote, type FileTiming } from "../domain/test-timing
 import type { GateCheck } from "./gate-check.ts";
 import { touches, type GateScope } from "./gate-scope.ts";
 import type { Capabilities, Command, CommandRunner, Workspace } from "./ports.ts";
+import type { SharedBuild } from "./shared-build.ts";
 
 export type TestSuite = {
   readonly name: string;
@@ -21,6 +22,7 @@ export type TestSuite = {
   readonly tests: readonly string[];
   readonly following?: readonly string[];
   readonly command?: (files: readonly string[]) => Command;
+  readonly sharesPackageBuild?: boolean;
 };
 
 export type TestsDependencies = {
@@ -31,12 +33,14 @@ export type TestsDependencies = {
   readonly testCommand: (files: readonly string[]) => Command;
   readonly capabilities: Capabilities;
   readonly exclusions: readonly CapabilityExclusion[];
+  readonly build: SharedBuild;
 };
 
 type Run = {
   readonly name: string;
   readonly files: readonly string[];
   readonly command: Command;
+  readonly sharesPackageBuild: boolean;
 };
 
 type RunVerdict = {
@@ -70,13 +74,21 @@ const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly 
       name: suite.name,
       files,
       command: (suite.command ?? dependencies.testCommand)(files),
+      sharesPackageBuild: suite.sharesPackageBuild === true,
     }));
 
 const looseRun = (dependencies: TestsDependencies, scope: GateScope): readonly Run[] => {
   const files = presentPaths(scope.changes).filter(globMatcher(dependencies.looseTests));
   return scope.everything || files.length === 0
     ? []
-    : [{ name: "changed tests", files, command: dependencies.testCommand(files) }];
+    : [
+        {
+          name: "changed tests",
+          files,
+          command: dependencies.testCommand(files),
+          sharesPackageBuild: false,
+        },
+      ];
 };
 
 const probesOf = (capabilities: Capabilities): Probes =>
@@ -101,7 +113,29 @@ const regression = (run: Run, name: string): Finding => ({
     "never skip, loosen or delete a test to get green.",
 });
 
-const judgeRun = (dependencies: TestsDependencies, run: Run): RunVerdict => {
+const PACKAGE_READY = { AIDLC_TEST_PACKAGE_READY: "1" } as const;
+
+const withPackageReady = (command: Command): Command =>
+  command.env === undefined ? command : { ...command, env: { ...command.env, ...PACKAGE_READY } };
+
+const buildFailureVerdict = (finding: Finding): RunVerdict => ({
+  findings: [finding],
+  excluded: "",
+  timings: [],
+});
+
+const judgeRun = (request: {
+  readonly dependencies: TestsDependencies;
+  readonly run: Run;
+  readonly scope: GateScope;
+}): RunVerdict => {
+  const { dependencies, scope } = request;
+  const sharing = request.run.sharesPackageBuild && scope.build;
+  const built = sharing ? dependencies.build.ensure() : undefined;
+  if (built !== undefined) {
+    return buildFailureVerdict(built);
+  }
+  const run = sharing ? { ...request.run, command: withPackageReady(request.run.command) } : request.run;
   const result = dependencies.runner.capture(run.command);
   const timings = fileTimings(result.output);
   if (result.exitCode === 0) {
@@ -135,7 +169,7 @@ export const testsCheck = (dependencies: TestsDependencies): GateCheck => ({
     if (runs.length === 0) {
       return skipped("tests", "no changed context has tests");
     }
-    const verdicts = runs.map((run) => judgeRun(dependencies, run));
+    const verdicts = runs.map((run) => judgeRun({ dependencies, run, scope }));
     const ran = runs.map((run) => `${run.name} (${run.files.length})`).join(", ");
     const excluded = verdicts.map((verdict) => verdict.excluded).filter((note) => note !== "");
     const slowest = slowestNote(verdicts.flatMap((verdict) => verdict.timings), SLOWEST_FILES);

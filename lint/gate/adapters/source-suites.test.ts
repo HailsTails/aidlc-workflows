@@ -30,6 +30,7 @@ const check = testsCheck({
   looseTests: [],
   capabilities: { probe: () => ({ available: true, evidence: "present" }) },
   exclusions: [],
+  build: { ensure: () => undefined },
   testCommand: (files) => {
     ranFiles.push([...files]);
     return { label: "bun test", argv: ["test", ...files] };

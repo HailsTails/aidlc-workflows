@@ -38,7 +38,7 @@ const services = (ready: Loaded<string>): GateServices => ({
     runner: { capture: () => ({ exitCode: 0, output: "" }), attach: () => 0 },
     source: { measure: () => ({}) },
     store: { read: () => ({}), write: () => undefined },
-    build: { label: "build", argv: ["build"] },
+    build: { ensure: () => undefined },
   },
   checksFor: () => [recordingCheck("lint"), recordingCheck("ownership")],
   toolchain: { ready: () => ready },

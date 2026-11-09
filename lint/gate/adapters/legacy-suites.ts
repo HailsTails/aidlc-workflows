@@ -49,6 +49,7 @@ export const legacySuites = (runner: LegacyRunner): readonly TestSuite[] => [
     name: "legacy smoke",
     triggers: [...SOURCES_THAT_MOVE_LEGACY_TESTS, "tests/smoke/**"],
     tests: ["tests/smoke/**/*.test.ts"],
+    sharesPackageBuild: true,
     command: () => runnerCommand({ runner, label: "legacy smoke", args: ["--smoke"] }),
   },
   {
@@ -56,6 +57,7 @@ export const legacySuites = (runner: LegacyRunner): readonly TestSuite[] => [
     triggers: [...SOURCES_THAT_MOVE_LEGACY_TESTS, "tests/unit/**"],
     tests: ["tests/unit/**/*.test.ts"],
     following: ["harness-matrix"],
+    sharesPackageBuild: true,
     command: (files) =>
       runnerCommand({
         runner,
