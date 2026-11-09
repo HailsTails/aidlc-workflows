@@ -268,3 +268,50 @@ test("native placement inputs are required by capture even after their old copy 
       source: source(".mcp.json"), reason: "Host source is unreadable: not-found.",
     }]));
 });
+import { tokenBindingsFixture } from "../projection/fixtures/token-bindings.fixture.ts";
+
+const runtimeFiles = {
+  "file:///core/tools/aidlc-version.ts": 'export const AIDLC_VERSION = "2.11.3";',
+  "file:///core/tools/run.ts": "{{INVOKE}}",
+  "file:///core/hooks/hook.ts": "H", "file:///core/sensors/check.ts": "S",
+  "file:///core/scopes/feature.yaml": "C",
+};
+
+test("the real runtime route captures once for two hosts and keeps the captured bytes after mutation", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: runtimeFiles });
+  const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml },
+    outliner, sources, runnerFrames });
+  expect(await root.projectRuntime({ host: host({ name: "alpha", directory: ".alpha" }),
+    method: methodSliceFixture, tokens: tokenBindingsFixture({ harnessDir: ".alpha" }) }))
+    .toHaveProperty("value", expect.arrayContaining([{
+      path: path(".alpha/tools/run.ts"), content: { kind: "text", text: "bun .alpha/tools/aidlc.ts" },
+      mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/run.ts") },
+    }]));
+  await fileSystem.writeFile({ file: new URL("file:///core/tools/run.ts"),
+    content: { kind: "text", text: "changed" } });
+  expect(await root.projectRuntime({ host: host({ name: "beta", directory: ".beta" }),
+    method: methodSliceFixture, tokens: tokenBindingsFixture({ harnessDir: ".beta" }) }))
+    .toHaveProperty("value", expect.arrayContaining([{
+      path: path(".beta/tools/run.ts"), content: { kind: "text", text: "bun .beta/tools/aidlc.ts" },
+      mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/run.ts") },
+    }]));
+  expect(readTree).toHaveBeenCalledTimes(4);
+});
+
+test("the runtime route preserves capture failures across hosts without re-reading", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: runtimeFiles,
+    faults: { "file:///core/hooks/hook.ts": "permission-denied" } });
+  const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml },
+    outliner, sources, runnerFrames });
+  expect(await root.projectRuntime({ host: host({ name: "alpha", directory: ".alpha" }),
+    method: methodSliceFixture, tokens: tokenBindingsFixture({ harnessDir: ".alpha" }) })).toEqual(refused([
+      { kind: "neutral-source-unreadable", source: source("hooks/hook.ts"), reason: "permission-denied" },
+    ]));
+  expect(await root.projectRuntime({ host: host({ name: "beta", directory: ".beta" }),
+    method: methodSliceFixture, tokens: tokenBindingsFixture({ harnessDir: ".beta" }) })).toEqual(refused([
+      { kind: "neutral-source-unreadable", source: source("hooks/hook.ts"), reason: "permission-denied" },
+    ]));
+  expect(readTree).toHaveBeenCalledTimes(4);
+});

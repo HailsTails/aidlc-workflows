@@ -1,3 +1,7 @@
+import { createBuildPackaging } from "../packaging/core-root.ts";
+import type { VersionStamp } from "../projection/application/ports.ts";
+import type { SharedRuntime } from "../projection/domain/neutral-surface.ts";
+import type { ProjectRuntime } from "./roots.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports.ts";
 import { hostAgentMembers, hostSkillMembers, hostSkillInputs, hostSurfaceMembers } from "./host-table.ts";
@@ -48,6 +52,22 @@ const captureHost = async (capture: HostSourcesRequest,
   };
 
 
+const runtimeProjector = (request: {
+  readonly projection: Pick<BuildProjection, "readRuntime" | "projectRuntime">;
+  readonly core: URL;
+  readonly stamp: VersionStamp;
+}): ProjectRuntime => {
+  let captured: Promise<Result<SharedRuntime, readonly ProjectionRefusal[]>> | undefined;
+  return async ({ host, method, tokens }) => {
+    const runtime = await (captured ??= request.projection.readRuntime({
+      core: request.core, method, stamp: request.stamp,
+    }));
+    if (!runtime.ok) return runtime;
+    const projected = request.projection.projectRuntime({ host, runtime: runtime.value, tokens });
+    return projected.ok ? projected : refused([projected.refusal]);
+  };
+};
+
 export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const loading = createAuthoredMethodLoading({ reader: request.platform.fileSystem,
     parser: request.platform.yaml, outliner: request.outliner });
@@ -62,6 +82,8 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
       project: (target) => projectFor({ authored: loaded.value, target }, projection.serializeMethod) }) : loaded;
   };
   return {
+    projectRuntime: runtimeProjector({ projection, core: request.sources.core,
+      stamp: createBuildPackaging().stamp }),
     loadCore: () => core ??= loadCore(),
     loadPlugins: ({ core: loaded }) => loading.loadPlugins({ core: loaded,
       pluginsRoot: request.sources.plugins }),
