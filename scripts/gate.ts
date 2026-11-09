@@ -206,7 +206,7 @@ const main = async (): Promise<number> => {
   }
   const lock = directoryLock({
     directory: process.env["AIDLC_GATE_LOCK_DIR"] ?? lockDirectoryBesideMainCheckout(ROOT),
-    cwd: ROOT,
+    cwd: process.cwd(),
     onWait: consoleProgress.note,
     policy: policy.value,
     memory: systemMemory,

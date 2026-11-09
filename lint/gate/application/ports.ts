@@ -109,7 +109,7 @@ export type GoldenStore = {
 };
 
 export type LockRequest = {
-  readonly lane: string;
+  readonly lane: string | undefined;
   readonly command: string;
   readonly waitMs: number;
 };
