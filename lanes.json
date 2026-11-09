@@ -107,6 +107,9 @@
         "src/cli/adapters/routes/{packaging,installation}/**",
         "src/cli/core-build-root{,.test}.ts",
         "src/cli/legacy-runner-child{,.test}.ts",
+        "src/cli/main{,.test}.ts",
+        "src/cli/package-build-root{,.test}.ts",
+        "src/projection/adapters/compiled-method-file{,.test}.ts",
         "docs/reference/15-stage-definition.md",
         "docs/harness-engineering/09-porting-to-a-new-harness.md",
         "scripts/package.ts",
@@ -129,8 +132,7 @@
       ],
       "notOwned": [
         "harness/{codex,opencode}/manifest.ts",
-        "src/workflow-definition/domain/method-references{,.test}.ts",
-        "src/projection/adapters/compiled-method-file{,.test}.ts"
+        "src/workflow-definition/domain/method-references{,.test}.ts"
       ],
       "territory": ["workflow-definition", "projection", "packaging", "installation"],
       "consumes": ["src/kernel/**"],
@@ -220,7 +222,11 @@
         "src/hosts/*/runtime.ts",
         "core/hooks/**"
       ],
-      "notOwned": ["src/cli/core-build-root{,.test}.ts"],
+      "notOwned": [
+        "src/cli/core-build-root{,.test}.ts",
+        "src/cli/main{,.test}.ts",
+        "src/cli/package-build-root{,.test}.ts"
+      ],
       "territory": ["execution", "cli"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
       "monolithDeletions": {
@@ -254,8 +260,7 @@
         "src/hosts/{codex,opencode}/build.ts",
         "harness/codex/manifest.ts",
         "harness/opencode/manifest.ts",
-        "src/workflow-definition/domain/method-references{,.test}.ts",
-        "src/projection/adapters/compiled-method-file{,.test}.ts"
+        "src/workflow-definition/domain/method-references{,.test}.ts"
       ],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {
