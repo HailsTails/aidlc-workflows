@@ -6,49 +6,21 @@
 //     permission rules; the AIDLC markdown layers live in
 //     aidlc/spaces/<space>/memory/)
 //   - the only authored .codex/ file is the aidlc-codex-adapter.ts stdin shim
-//     (a harnessFile); the agent TOMLs in .codex/agents/ are emitted.
+//     (placed by its native host surface); the agent TOMLs in .codex/agents/ are emitted.
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { CODEX_HOST_DATA } from "../../src/hosts/codex/host-data.ts";
 import emit from "./emit.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const manifest: HarnessManifest = {
   name: "codex",
-  productName: "Codex CLI",
-  // AI-DLC's status line items (Codex's own built-ins; task-progress is the
-  // update_plan progress the skill keeps current). They ship here, not in
-  // .codex/config.toml: Codex has no per-person project file, so the line goes
-  // into the shared config only when someone in the project chooses it (#1407).
-  statusLine: { items: ["model-with-reasoning", "git-branch", "task-progress", "context-used"] },
-  configNextStep: "run `codex` (when it asks about hooks, choose Trust all and continue), then `$aidlc --doctor`",
-  // Its matcher-free PreToolUse group beats in the record before each engine
-  // command. Codex runs a project's hooks only once the person trusts them in
-  // its /hooks screen, which nothing outside Codex can do for them; measured
-  // live, the trust counts for the next message in the same chat.
-  hookActivation: {
-    recovery: "In Codex, type /hooks, press t to trust all, then press Esc. Then carry on in the same chat.",
-    // The human-turn hook leaves a heartbeat on every message, before the
-    // first workflow too.
-    notRunYet:
-      "This is expected before your first Codex chat in this folder. If you already started one, type /hooks " +
-      "in Codex, press t to trust all, then press Esc, and run doctor again.",
-    agentStep:
-      "Codex has not been allowed to run this project's AI-DLC steps. Only the person can allow " +
-      "it, inside Codex: do not edit any Codex config and do not restart Codex. Their next " +
-      "message counts in this same chat. Show the person this line and end your turn: " +
-      '"In Codex, type /hooks, press t to trust all, then press Esc. Then carry on here."',
-    // Measured live (0.164.0): started in a folder inside the project, Codex
-    // offers $aidlc and lists the project's hooks as trusted, but runs them
-    // from that folder, where their commands do not find AI-DLC.
-    startedInsideProject:
-      "AI-DLC's hooks work only when Codex is started in the project folder. Exit Codex, start it again in " +
-      "<folder>, then type <entry>.",
-  },
-  // Codex marks every shell command its model runs: CODEX_SESSION_ID (#2000),
-  // and the thread as CODEX_THREAD_ID from 0.145.0.
-  hostShell: { env: ["CODEX_SESSION_ID", "CODEX_THREAD_ID"] },
-  // A clean chat for new work started beside other work.
-  newChatStep: { text: "open a new chat, then type <entry>" },
+  productName: CODEX_HOST_DATA.productName,
+  statusLine: CODEX_HOST_DATA.statusLine,
+  configNextStep: CODEX_HOST_DATA.configNextStep,
+  hookActivation: CODEX_HOST_DATA.hookActivation,
+  hostShell: CODEX_HOST_DATA.hostShell,
+  newChatStep: CODEX_HOST_DATA.newChatStep,
   harnessDir: ".codex",
   orchestratorSkillPath: ".agents/skills/aidlc/SKILL.md",
   tierFlavor: "codex",
@@ -129,22 +101,11 @@ const manifest: HarnessManifest = {
     { src: "hooks", dst: "hooks" },
   ],
 
-  // The one authored .codex/ surface: the stdin adapter shim. The orchestrator
-  // skill is authored too but is EMITTED into .agents/skills/aidlc/ by emit().
-  harnessFiles: [
-    { src: "hooks/aidlc-codex-adapter.ts", dst: "hooks/aidlc-codex-adapter.ts" },
-    // Project-root .gitignore (beside .codex/, not inside it) for the aidlc/
-    // workspace layout: cursors + machine-local runtime ignored, the shared work
-    // (memory/codekb/registry/state/audit shards/artifacts) committed. Authored as
-    // dot-gitignore so it does not act as a live ignore inside harness/codex/.
-    // projectRoot routes it to dist/codex/.gitignore + the --check determinism
-    // guard.
-    { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
-  ],
+  harnessFiles: [],
 
   onboarding: { dst: "AGENTS.md", projectRoot: true, harnessDst: "onboarding.md", fills: onboardingFills },
 
-  rulesRename: "aidlc-rules",
+  rulesRename: CODEX_HOST_DATA.rulesFolder,
 
   // Skills go to .agents/skills/ via emit, not <harnessDir>/skills/ via runner-gen.
   skipRunnerGen: true,
