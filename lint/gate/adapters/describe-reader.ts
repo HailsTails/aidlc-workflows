@@ -20,3 +20,26 @@ export const topLevelDescribes = (source: string): readonly string[] => {
     return name === undefined ? [] : [name];
   });
 };
+
+const REGISTERING_ROOTS = new Set(["describe", "test", "it"]);
+
+const rootIdentifier = (expression: ts.Expression): string | undefined => {
+  if (ts.isIdentifier(expression)) {
+    return expression.text;
+  }
+  if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+    return rootIdentifier(expression.expression);
+  }
+  return ts.isCallExpression(expression) ? rootIdentifier(expression.expression) : undefined;
+};
+
+const registersTests = (node: ts.Node): boolean =>
+  (ts.isCallExpression(node) && REGISTERING_ROOTS.has(rootIdentifier(node.expression) ?? "")) ||
+  node.getChildren().some(registersTests);
+
+export const hasTestsOutsideNamedDescribes = (source: string): boolean => {
+  const file = ts.createSourceFile("test.ts", source, ts.ScriptTarget.Latest, true);
+  return file.statements.some(
+    (statement) => topLevelDescribeName(statement) === undefined && registersTests(statement),
+  );
+};

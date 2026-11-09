@@ -101,7 +101,9 @@ const reachFrom = (edgesOf: (path: string) => readonly Edge[], test: string): re
   return [...seen, ...folders];
 };
 
-const remembered = <Key extends string, Value>(find: (key: Key) => Value): ((key: Key) => Value) => {
+type Finder<Key, Value> = (key: Key) => Value;
+
+const remembered = <Key extends string, Value>(find: Finder<Key, Value>): Finder<Key, Value> => {
   const known = new Map<Key, Value>();
   return (key) => {
     if (!known.has(key)) {

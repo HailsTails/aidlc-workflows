@@ -52,11 +52,18 @@ describe("assignGroups", () => {
   });
 });
 
+describe("describePatterns without a remainder", () => {
+  test("it leaves out the shard for cases outside the describes", () => {
+    expect(describePatterns(NAMES, false)).toHaveLength(NAMES.length);
+  });
+});
+
 describe("planItems", () => {
   const request = {
     files: ["big.test.ts", "a.test.ts", "b.test.ts"],
     weightOf: (file: string) => (file === "big.test.ts" ? 100 : 1),
     describesOf: (file: string) => (file === "big.test.ts" ? ["one", "two"] : []),
+    hasOtherTests: () => true,
     splitAtOrAbove: 60,
     groups: 1,
   };
@@ -70,6 +77,12 @@ describe("planItems", () => {
       ["big.test.ts", false],
       ["a.test.ts+b.test.ts", true],
     ]);
+  });
+
+  test("a big file with no test outside its describes gets no remainder shard", () => {
+    const items = planItems({ ...request, hasOtherTests: () => false });
+
+    expect(items.filter((item) => item.files.includes("big.test.ts"))).toHaveLength(2);
   });
 
   test("every input file appears in the plan", () => {

@@ -55,14 +55,14 @@ describe("legacy matrix plan", () => {
     "tests/unit/b.test.ts",
   ]);
 
-  test("a heavy file is split by describe block and the rest share one run", () => {
+  test("a heavy file splits per describe block and the rest share one run", () => {
     const patterns = commands?.map((command) => command.argv.includes("--test-name-pattern"));
-    expect(patterns).toEqual([true, true, true, false]);
+    expect(patterns).toEqual([true, true, false]);
   });
 
   test("every shard of the heavy file selects that one file, and the others select theirs", () => {
     const filters = commands?.map((command) => command.argv[command.argv.indexOf("--filter") + 1]);
-    expect(filters).toEqual(["^(big)", "^(big)", "^(big)", "^(a|b)"]);
+    expect(filters).toEqual(["^(big)", "^(big)", "^(a|b)"]);
   });
 
   test("the suite declares how many runs go side by side", () => {

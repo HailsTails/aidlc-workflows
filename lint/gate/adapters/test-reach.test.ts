@@ -19,6 +19,14 @@ const FILES: Readonly<Record<string, string>> = {
   "scripts/package.ts": "export const p = 1;",
 };
 
+const ABSOLUTE_LITERALS = [
+  String.raw`const w = "/WindowsApps";`,
+  String.raw`const c = "C:/Windows/Temp";`,
+  String.raw`const d = "./"; const e = "../..";`,
+  String.raw`const n = "dist/\n";`,
+  String.raw`const z = "\u0000dist/bundle.js";`,
+].join(" ");
+
 const workspace: Workspace = {
   read: (path) => FILES[path],
   write: () => undefined,
@@ -49,7 +57,7 @@ describe("testReach", () => {
     const scanned: string[] = [];
     const probing: Workspace = {
       ...workspace,
-      read: (path) => (path === "tests/unit/abs.test.ts" ? String.raw`const w = "/WindowsApps"; const c = "C:/Windows/Temp"; const d = "./"; const e = "../.."; const n = "dist/\n"; const z = "\u0000dist/bundle.js";` : undefined),
+      read: (path) => (path === "tests/unit/abs.test.ts" ? ABSOLUTE_LITERALS : undefined),
       filesMatching: (globs) => {
         scanned.push(...globs);
         return [];

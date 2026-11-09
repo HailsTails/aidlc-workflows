@@ -3,7 +3,7 @@ import { filterPattern } from "../domain/legacy-selection.ts";
 import { planItems, type PlanItem } from "../domain/test-sharding.ts";
 import type { TestSuite } from "../application/tests-check.ts";
 import type { Command, Workspace } from "../application/ports.ts";
-import { topLevelDescribes } from "./describe-reader.ts";
+import { hasTestsOutsideNamedDescribes, topLevelDescribes } from "./describe-reader.ts";
 
 const INHERITED_NAMES = [
   "PATH",
@@ -93,6 +93,7 @@ const matrixCommands = (
     files,
     weightOf: weightsOf(planning.workspace),
     describesOf: (file) => topLevelDescribes(planning.workspace.read(file) ?? ""),
+    hasOtherTests: (file) => hasTestsOutsideNamedDescribes(planning.workspace.read(file) ?? ""),
     splitAtOrAbove: planning.splitAtOrAbove,
     groups: Math.max(1, Math.floor(planning.workers / 2)),
   }).map((item) => itemCommand(runner, item));

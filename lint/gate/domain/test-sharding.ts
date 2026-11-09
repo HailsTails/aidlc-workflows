@@ -28,10 +28,14 @@ const ownedBy = (name: string, names: readonly string[]): string => {
   return `^${exclusion}${startsWithName(name)}`;
 };
 
-export const describePatterns = (describes: readonly string[]): readonly string[] => {
+export const describePatterns = (
+  describes: readonly string[],
+  withRemainder = true,
+): readonly string[] => {
   const names = [...new Set(describes)];
   const remainder = `^(?!(?:${names.map(startsWithName).join("|")}))`;
-  return names.length === 0 ? [] : [...names.map((name) => ownedBy(name, names)), remainder];
+  const owned = names.map((name) => ownedBy(name, names));
+  return names.length === 0 ? [] : [...owned, ...(withRemainder ? [remainder] : [])];
 };
 
 export const assignGroups = <T extends { readonly weight: number }>(
@@ -54,12 +58,13 @@ export type PlanRequest = {
   readonly files: readonly string[];
   readonly weightOf: (file: string) => number;
   readonly describesOf: (file: string) => readonly string[];
+  readonly hasOtherTests: (file: string) => boolean;
   readonly splitAtOrAbove: number;
   readonly groups: number;
 };
 
 const shardsOf = (request: PlanRequest, file: string): readonly PlanItem[] => {
-  const patterns = describePatterns(request.describesOf(file));
+  const patterns = describePatterns(request.describesOf(file), request.hasOtherTests(file));
   const weight = request.weightOf(file);
   return patterns.length === 0
     ? [{ files: [file], pattern: undefined, weight }]
