@@ -12,6 +12,7 @@ const hostOnlyChange: GateScope = {
   everything: false,
   build: false,
   record: false,
+  heavy: { ensure: async () => ({ acquired: true }) },
 };
 
 const ranFiles: string[][] = [];

@@ -101,6 +101,7 @@ export const legacySuites = (
     triggers: [...SOURCES_THAT_MOVE_LEGACY_TESTS, "tests/smoke/**"],
     tests: ["tests/smoke/**/*.test.ts"],
     sharesPackageBuild: true,
+    heavy: true,
     command: () => runnerCommand({ runner, label: "legacy smoke", args: ["--smoke"] }),
   },
   {
@@ -109,6 +110,7 @@ export const legacySuites = (
     tests: ["tests/unit/**/*.test.ts"],
     following: ["harness-matrix"],
     sharesPackageBuild: true,
+    heavy: true,
     command: (files) =>
       runnerCommand({
         runner,

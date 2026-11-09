@@ -31,6 +31,7 @@ export type TestSuite = {
   readonly commands?: (files: readonly string[]) => readonly Command[];
   readonly concurrency?: number;
   readonly sharesPackageBuild?: boolean;
+  readonly heavy?: boolean;
 };
 
 export type TestsDependencies = {
@@ -50,6 +51,7 @@ type Run = {
   readonly commands: readonly Command[];
   readonly concurrency: number;
   readonly sharesPackageBuild: boolean;
+  readonly heavy: boolean;
 };
 
 type RunVerdict = {
@@ -94,6 +96,7 @@ const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly 
       commands: commandsOf(dependencies, suite, files),
       concurrency: suite.concurrency ?? 1,
       sharesPackageBuild: suite.sharesPackageBuild === true,
+      heavy: suite.heavy === true,
     }));
 
 const looseRun = (dependencies: TestsDependencies, scope: GateScope): readonly Run[] => {
@@ -107,6 +110,7 @@ const looseRun = (dependencies: TestsDependencies, scope: GateScope): readonly R
           commands: [dependencies.testCommand(files)],
           concurrency: 1,
           sharesPackageBuild: false,
+          heavy: false,
         },
       ];
 };
@@ -141,6 +145,14 @@ const PACKAGE_READY = { AIDLC_TEST_PACKAGE_READY: "1" } as const;
 const withPackageReady = (command: Command): Command =>
   command.env === undefined ? command : { ...command, env: { ...command.env, ...PACKAGE_READY } };
 
+const noSlot = (reason: string): Finding => ({
+  subject: "machine lock",
+  violation: `the legacy suites need a machine lock slot and none was free: ${reason}`,
+  fix:
+    "Raise --wait, or run this scope with --only on the checks that need no slot " +
+    "(everything except tests and goldens).",
+});
+
 const buildFailureVerdict = (finding: Finding): RunVerdict => ({
   findings: [finding],
   excluded: "",
@@ -163,17 +175,30 @@ const resultOf = async (dependencies: TestsDependencies, run: Run): Promise<Comm
   };
 };
 
+const beforeRunning = async (request: {
+  readonly dependencies: TestsDependencies;
+  readonly run: Run;
+  readonly scope: GateScope;
+}): Promise<Finding | undefined> => {
+  const { run, scope } = request;
+  const slot = run.heavy ? await scope.heavy.ensure() : { acquired: true as const };
+  if (!slot.acquired) {
+    return noSlot(slot.reason);
+  }
+  return run.sharesPackageBuild && scope.build ? request.dependencies.build.ensure() : undefined;
+};
+
 const judgeRun = async (request: {
   readonly dependencies: TestsDependencies;
   readonly run: Run;
   readonly scope: GateScope;
 }): Promise<RunVerdict> => {
   const { dependencies, scope } = request;
-  const sharing = request.run.sharesPackageBuild && scope.build;
-  const built = sharing ? dependencies.build.ensure() : undefined;
-  if (built !== undefined) {
-    return buildFailureVerdict(built);
+  const blocked = await beforeRunning({ dependencies, run: request.run, scope });
+  if (blocked !== undefined) {
+    return buildFailureVerdict(blocked);
   }
+  const sharing = request.run.sharesPackageBuild && scope.build;
   const commands = sharing ? request.run.commands.map(withPackageReady) : request.run.commands;
   const run = { ...request.run, commands };
   const result = await resultOf(dependencies, run);

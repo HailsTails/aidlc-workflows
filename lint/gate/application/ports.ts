@@ -122,6 +122,10 @@ export type LockOutcome =
   | { readonly acquired: true }
   | { readonly acquired: false; readonly reason: WaitReason };
 
+export type HeavySlot = {
+  readonly ensure: () => Promise<LockOutcome>;
+};
+
 export type MachineLock = {
   readonly acquire: (request: LockRequest) => Promise<LockOutcome>;
   readonly release: () => void;

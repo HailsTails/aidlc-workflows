@@ -52,6 +52,7 @@ const scopeRequest = (only: ScopeRequest["only"]): ScopeRequest => ({
   target: "lint/x.ts",
   baseRef: "origin/rebuild/foundation",
   record: false,
+  waitMs: 0,
   only,
 });
 
@@ -76,5 +77,75 @@ describe("runGateRequest toolchain", () => {
 
     expect(report.verdict).toBe("green");
     expect(ranChecks).toEqual(["ownership"]);
+  });
+});
+
+const heavyCheck = (outcomes: string[]): GateCheck => ({
+  id: "tests",
+  run: async (scope) => {
+    const slot = await scope.heavy.ensure();
+    outcomes.push(slot.acquired ? "acquired" : "refused");
+    return { id: "tests", status: "green", findings: [], note: "ran" };
+  },
+});
+
+const lockedServices = (events: string[], granted: boolean): GateServices => ({
+  ...services({ ok: true, value: "ready" }),
+  lock: {
+    acquire: async (request) => {
+      events.push(`acquire ${request.command}`);
+      return granted ? { acquired: true } : { acquired: false, reason: "no free slot" };
+    },
+    release: () => events.push("release"),
+  },
+  checksFor: () => [heavyCheck(events)],
+});
+
+describe("runGateRequest machine slot", () => {
+
+  test("a scope run takes a slot for heavy work and gives it back afterwards", async () => {
+    const events: string[] = [];
+
+    await runGateRequest(lockedServices(events, true), scopeRequest(["tests"]));
+
+    expect(events).toEqual(["acquire gate scope", "acquired", "release"]);
+  });
+
+  test("a scope run that never needs a slot never asks for one", async () => {
+    const events: string[] = [];
+    const lightServices = { ...lockedServices(events, true), checksFor: () => [] };
+
+    await runGateRequest(lightServices, scopeRequest(["lint"]));
+
+    expect(events).toEqual(["release"]);
+  });
+
+  test("red: a scope run is refused heavy work when no slot is free", async () => {
+    const events: string[] = [];
+
+    await runGateRequest(lockedServices(events, false), scopeRequest(["tests"]));
+
+    expect(events).toContain("refused");
+  });
+
+  test("a full run does not ask for a second slot from inside", async () => {
+    const events: string[] = [];
+    const request = {
+      kind: "full" as const,
+      laneId: undefined,
+      baseRef: "origin/rebuild/foundation",
+      build: false,
+      record: false,
+      waitMs: 0,
+      only: ["tests" as const],
+    };
+
+    const base = { ref: request.baseRef, commit: "abc" };
+    const withBase = lockedServices(events, true);
+    const repository = { ...withBase.repository, resolve: () => base };
+
+    await runGateRequest({ ...withBase, repository }, request);
+
+    expect(events).toEqual(["acquire gate full", "acquired", "release"]);
   });
 });

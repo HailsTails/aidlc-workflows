@@ -101,7 +101,7 @@ const requestFor = (parsed: Parsed, defaults: ArgumentDefaults): GateRequest => 
   const wait = waitMs(raw, defaults);
   const build = raw["no-build"] !== true;
   if (raw.scope !== undefined) {
-    return { kind: "scope", target: raw.scope, baseRef, record, only };
+    return { kind: "scope", target: raw.scope, baseRef, record, waitMs: wait, only };
   }
   if (raw.full === true) {
     return { kind: "full", laneId: raw.lane, baseRef, build, record, waitMs: wait, only };

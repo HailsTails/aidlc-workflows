@@ -7,6 +7,7 @@ export type ScopeRequest = {
   readonly target: string;
   readonly baseRef: string;
   readonly record: boolean;
+  readonly waitMs: number;
   readonly only: CheckSelection;
 };
 

@@ -2,9 +2,9 @@ import { globMatcher } from "../domain/glob.ts";
 import type { BaseRevision, ChangedFile } from "../domain/change.ts";
 import { laneById, type Lane, type LanePlan } from "../domain/lane-plan.ts";
 import type { FullRequest, ScopeRequest } from "./gate-request.ts";
-import type { Loaded, Repository, Workspace } from "./ports.ts";
+import type { HeavySlot, Loaded, Repository, Workspace } from "./ports.ts";
 
-export type GateScope = {
+export type ScopeFacts = {
   readonly lane: Lane | undefined;
   readonly base: BaseRevision | undefined;
   readonly changes: readonly ChangedFile[];
@@ -12,6 +12,8 @@ export type GateScope = {
   readonly build: boolean;
   readonly record: boolean;
 };
+
+export type GateScope = ScopeFacts & { readonly heavy: HeavySlot };
 
 export type ScopeSources = {
   readonly plan: LanePlan;
@@ -41,7 +43,11 @@ const pathChanges = (workspace: Workspace, paths: readonly string[]): readonly C
   return workspace.filesMatching(asGlobs).map((path) => ({ path, kind: "modified" as const }));
 };
 
-const laneScope = (sources: ScopeSources, request: ScopeRequest, lane: Lane): Loaded<GateScope> => {
+const laneScope = (
+  sources: ScopeSources,
+  request: ScopeRequest,
+  lane: Lane,
+): Loaded<ScopeFacts> => {
   const base = baseFor(sources.repository, request.baseRef);
   if (!base.ok) {
     return base;
@@ -51,7 +57,7 @@ const laneScope = (sources: ScopeSources, request: ScopeRequest, lane: Lane): Lo
   return { ok: true, value: { ...scope, record: request.record } };
 };
 
-export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<GateScope> => {
+export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<ScopeFacts> => {
   const lane = laneById(sources.plan, request.target);
   if (lane !== undefined) {
     return laneScope(sources, request, lane);
@@ -62,7 +68,7 @@ export const scopeOf = (sources: ScopeSources, request: ScopeRequest): Loaded<Ga
   return { ok: true, value: { ...scope, record: request.record } };
 };
 
-export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded<GateScope> => {
+export const fullScopeOf = (sources: ScopeSources, request: FullRequest): Loaded<ScopeFacts> => {
   const lane = request.laneId === undefined ? undefined : laneById(sources.plan, request.laneId);
   if (request.laneId !== undefined && lane === undefined) {
     return unknownLane(sources.plan, request.laneId);

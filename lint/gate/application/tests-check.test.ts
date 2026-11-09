@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { GateScope } from "./gate-scope.ts";
-import type { Command, CommandResult, Workspace } from "./ports.ts";
+import type { Command, CommandResult, LockOutcome, Workspace } from "./ports.ts";
 import type { SharedBuild } from "./shared-build.ts";
 import { testsCheck, type TestSuite } from "./tests-check.ts";
 
@@ -11,6 +11,7 @@ const SCOPE: GateScope = {
   everything: true,
   build: false,
   record: false,
+  heavy: { ensure: async () => ({ acquired: true }) },
 };
 const SUITE: TestSuite = { name: "legacy", triggers: ["**"], tests: ["tests/**/*.test.ts"] };
 const LISTED = "t243 > rejects symlink traversal";
@@ -166,5 +167,74 @@ describe("the tests check shares one package build", () => {
     await packagedCheck({ build, commands }).run(SCOPE);
 
     expect(commands[0]?.env).toEqual({ PATH: "p" });
+  });
+});
+
+const LEGACY: TestSuite = { ...SUITE, name: "legacy", heavy: true };
+const LIGHT: TestSuite = { ...SUITE, name: "light" };
+
+const GRANTED: LockOutcome = { acquired: true };
+const REFUSED: LockOutcome = { acquired: false, reason: "no free slot" };
+
+const slotWith = (acquired: boolean) => {
+  const asked: number[] = [];
+  const heavy = {
+    ensure: async () => {
+      asked.push(1);
+      return acquired ? GRANTED : REFUSED;
+    },
+  };
+  return { asked, heavy };
+};
+
+const check = (suite: TestSuite, commands: Command[]) =>
+  testsCheck({
+    runner: {
+      capture: (command: Command): CommandResult => {
+        commands.push(command);
+        return { exitCode: 0, output: "" };
+      },
+      captureAll: async () => [],
+      attach: () => 0,
+    },
+    workspace: workspaceOf({ "tests/a.test.ts": "" }),
+    suites: [suite],
+    looseTests: [],
+    testCommand: () => ({ label: "bun test", argv: ["bun", "test"] }),
+    capabilities: { probe: () => ({ available: true, evidence: "present" }) },
+    exclusions: [],
+    build: { ensure: () => undefined },
+  });
+
+describe("the tests check takes a machine slot for the legacy suites only", () => {
+
+  test("a heavy suite asks for the slot, and runs once it has it", async () => {
+    const { asked, heavy } = slotWith(true);
+    const commands: Command[] = [];
+
+    await check(LEGACY, commands).run({ ...SCOPE, heavy });
+
+    expect(asked).toHaveLength(1);
+    expect(commands).toHaveLength(1);
+  });
+
+  test("red: with no slot free the heavy suite does not run and the finding says why", async () => {
+    const { heavy } = slotWith(false);
+    const commands: Command[] = [];
+
+    const outcome = await check(LEGACY, commands).run({ ...SCOPE, heavy });
+
+    expect(commands).toEqual([]);
+    expect(outcome.findings.map((finding) => finding.subject)).toEqual(["machine lock"]);
+  });
+
+  test("a light suite never asks for the slot", async () => {
+    const { asked, heavy } = slotWith(false);
+    const commands: Command[] = [];
+
+    await check(LIGHT, commands).run({ ...SCOPE, heavy });
+
+    expect(asked).toEqual([]);
+    expect(commands).toHaveLength(1);
   });
 });
