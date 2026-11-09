@@ -3,6 +3,7 @@ import {
   isIoModule,
   judgeIsolation,
   narrowedOffenders,
+  staleEdgeEffects,
   offendersOf,
   type SourceGraph,
 } from "./isolation.ts";
@@ -40,7 +41,7 @@ describe("isIoModule", () => {
 });
 
 describe("offendersOf", () => {
-  const offenders = offendersOf({ graph: GRAPH, implementers: IMPLEMENTERS });
+  const offenders = offendersOf({ graph: GRAPH, implementers: IMPLEMENTERS, edges: [] });
 
   test("a test whose closure reaches a node IO module is an offender", () => {
     expect(offenders).toContain(
@@ -76,5 +77,34 @@ describe("judgeIsolation", () => {
 
   test("a recorded offender that is gone drops out of the record", () => {
     expect(narrowedOffenders({ recorded: ["old", "gone"], measured: ["old"] })).toEqual(["old"]);
+  });
+});
+
+describe("edge entries", () => {
+  const edgeGraph: SourceGraph = new Map([
+    ["src/cli/child.ts", { imports: [], globals: ["Bun", "import()", "process"] }],
+  ]);
+  const edges = [{ file: "src/cli/child.ts", effects: ["Bun", "import()"] }];
+
+  test("a registered effect of the edge file is allowed and any other is an offender", () => {
+    expect(offendersOf({ graph: edgeGraph, implementers: [], edges })).toEqual([
+      "src/cli/child.ts · uses process",
+    ]);
+  });
+
+  test("the same effect in another file is still an offender", () => {
+    const graph: SourceGraph = new Map([["src/cli/other.ts", { imports: [], globals: ["Bun"] }]]);
+
+    expect(offendersOf({ graph, implementers: [], edges })).toEqual([
+      "src/cli/other.ts · uses Bun",
+    ]);
+  });
+
+  test("an allowed effect the file no longer has is a finding", () => {
+    const graph: SourceGraph = new Map([["src/cli/child.ts", { imports: [], globals: ["Bun"] }]]);
+
+    expect(staleEdgeEffects({ graph, edges }).map(({ subject }) => subject)).toEqual([
+      "src/cli/child.ts · allows import()",
+    ]);
   });
 });

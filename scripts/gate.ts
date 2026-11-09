@@ -52,6 +52,7 @@ import { goldensCheck, type GoldensDependencies } from "../lint/gate/application
 import { lintCheck } from "../lint/gate/application/lint-check.ts";
 import { kernelCheck } from "../lint/gate/application/kernel-check.ts";
 import { isolationCheck } from "../lint/gate/application/isolation-check.ts";
+import { edgeEntriesFile } from "../lint/gate/adapters/edge-entries-file.ts";
 import { implementersFile } from "../lint/gate/adapters/implementers-file.ts";
 import { monolithCheck } from "../lint/gate/application/monolith-check.ts";
 import { ownershipCheck } from "../lint/gate/application/ownership-check.ts";
@@ -187,6 +188,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     modules: typescriptModuleReader,
     record: nameListFile({ workspace, path: "lint/isolation-offenders.txt" }),
     implementers: implementersFile({ workspace, path: "lint/implementers.json" }),
+    edges: edgeEntriesFile({ workspace, path: "lint/edge-entries.json" }),
     sources: ["src/**/*.ts"],
   }),
   testsCheck({
