@@ -163,7 +163,8 @@ OUTPUT MODIFIERS (combinable with any tier/profile):
   --debug         Implies --verbose; streams per-test output and writes SDK/TUI
                   driver traces to tests/logs/
   --test-name-pattern PAT  Forwarded to bun test: only run cases whose full name matches PAT.
-  --allow-empty-shard      With --test-name-pattern: a pattern that matches no case is a skip, not a failure.
+  --allow-empty-shard      With --test-name-pattern: a pattern that matches no case is a
+                           skip, not a failure.
   --filter PAT    Only run tests whose filename matches extended regex PAT
                   Fails if a selected file executes no cases or no files match.
                   The scope runs and the guard matrix (t-scope-run-*,
@@ -1191,7 +1192,8 @@ async function runBunTestFile(
   } catch {
     xml = "";
   }
-  const emptyShard = args.allowEmptyShard && args.testNamePattern !== "" && run.rc !== 0 && /matched 0 tests/.test(run.output);
+  const emptyShard = args.allowEmptyShard && args.testNamePattern !== "" &&
+    run.rc !== 0 && /matched 0 tests/.test(run.output);
   const { e2eCaseCounts, validateJUnitEvidence } = await import("./lib/e2e-plan.ts");
   const evidence = validateJUnitEvidence(xml);
   const cases = evidence.complete ? evidence.cases : e2eCaseCounts(xml);
@@ -2175,7 +2177,8 @@ async function main(): Promise<number> {
   }
 
   const emptyShardAllowed = args.allowEmptyShard && args.testNamePattern !== "";
-  if (filterRegex && failedFiles === 0 && !emptyShardAllowed && !resultRows.some((row) => row.tests > row.skipped)) {
+  const ranNothing = !resultRows.some((row) => row.tests > row.skipped);
+  if (filterRegex && failedFiles === 0 && !emptyShardAllowed && ranNothing) {
     selectionErrors.push(totalFiles === 0
       ? `--filter ${JSON.stringify(args.filter)} matched no test files in the selected tiers/shard. Check the filename, tier and shard.`
       : `--filter ${JSON.stringify(args.filter)} executed no test cases. --no-llm excludes Claude-dependent files; select deterministic tests or enable the requested live coverage.`);
