@@ -54,7 +54,11 @@ const candidatesFor = (literal: string, from: string): readonly string[] => {
 };
 
 const isPathLike = (literal: string): boolean =>
-  literal.length > 0 && !literal.includes(" ") && !literal.startsWith("node:");
+  literal.length > 0 &&
+  ![...literal].some((character) => character <= " ") &&
+  !literal.includes(":") &&
+  !literal.startsWith("/") &&
+  !literal.startsWith("\\");
 
 const resolveEdge = (workspace: Workspace, found: Literal, from: string): Edge | undefined => {
   if (!isPathLike(found.text)) {
@@ -66,7 +70,7 @@ const resolveEdge = (workspace: Workspace, found: Literal, from: string): Edge |
   }
   const folder = normalise(found.text);
   const namesFolder = found.text.includes("/") || found.joined;
-  return namesFolder && workspace.filesMatching([`${folder}/**`]).length > 0
+  return namesFolder && folder !== "" && workspace.filesMatching([`${folder}/**`]).length > 0
     ? { kind: "folder", path: folder }
     : undefined;
 };
@@ -97,15 +101,31 @@ const reachFrom = (edgesOf: (path: string) => readonly Edge[], test: string): re
   return [...seen, ...folders];
 };
 
+const remembered = <Key extends string, Value>(find: (key: Key) => Value): ((key: Key) => Value) => {
+  const known = new Map<Key, Value>();
+  return (key) => {
+    if (!known.has(key)) {
+      known.set(key, find(key));
+    }
+    return known.get(key) as Value;
+  };
+};
+
+const rememberingWorkspace = (workspace: Workspace): Workspace => {
+  const read = remembered((path: string) => workspace.read(path));
+  const matching = remembered((glob: string) => workspace.filesMatching([glob]));
+  return {
+    read,
+    write: workspace.write,
+    filesMatching: (globs) => globs.flatMap(matching),
+  };
+};
+
 export const testReach = (request: {
   readonly workspace: Workspace;
   readonly tests: readonly string[];
 }): TestReach => {
-  const cache = new Map<string, readonly Edge[]>();
-  const edgesOf = (path: string): readonly Edge[] => {
-    const known = cache.get(path) ?? edgesIn(request.workspace, path);
-    cache.set(path, known);
-    return known;
-  };
+  const workspace = rememberingWorkspace(request.workspace);
+  const edgesOf = remembered((path: string) => edgesIn(workspace, path));
   return Object.fromEntries(request.tests.map((test) => [test, reachFrom(edgesOf, test)]));
 };

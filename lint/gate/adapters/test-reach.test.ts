@@ -45,6 +45,23 @@ describe("testReach", () => {
     expect(reach).toContain("hooks/aidlc-guard.ts");
   });
 
+  test("an absolute or drive-lettered literal names nothing in the repository", () => {
+    const scanned: string[] = [];
+    const probing: Workspace = {
+      ...workspace,
+      read: (path) => (path === "tests/unit/abs.test.ts" ? String.raw`const w = "/WindowsApps"; const c = "C:/Windows/Temp"; const d = "./"; const e = "../.."; const n = "dist/\n"; const z = "\u0000dist/bundle.js";` : undefined),
+      filesMatching: (globs) => {
+        scanned.push(...globs);
+        return [];
+      },
+    };
+
+    const reach = testReach({ workspace: probing, tests: ["tests/unit/abs.test.ts"] });
+
+    expect(scanned).toEqual([]);
+    expect(Object.values(reach)[0]).toBeDefined();
+  });
+
   test("a path found inside a helper the test imports counts too", () => {
     expect(reach).toContain("core/tools/deep.ts");
   });
