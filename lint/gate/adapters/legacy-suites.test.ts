@@ -46,7 +46,7 @@ describe("legacy matrix plan", () => {
   };
   const suites = legacySuites(
     { bun: "bun", environment: {} },
-    { workspace, workers: 2, splitAtOrAbove: 60 },
+    { workspace, workers: 2, splitAtOrAbove: 60, targetSeconds: 150 },
   );
   const matrix = suites[1];
   const commands = matrix?.commands?.([

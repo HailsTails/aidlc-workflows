@@ -1,4 +1,4 @@
-import { assignGroups, escapeRegex } from "./test-sharding.ts";
+import { assignGroups, escapeRegex } from "./grouping.ts";
 
 export type CaseTiming = {
   readonly name: string;

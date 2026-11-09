@@ -3,6 +3,7 @@ import { filterPattern } from "../domain/legacy-selection.ts";
 import { planItems, type PlanItem } from "../domain/test-sharding.ts";
 import type { TestSuite } from "../application/tests-check.ts";
 import type { Command, Workspace } from "../application/ports.ts";
+import { casesOfFile } from "./case-weights-file.ts";
 import { hasTestsOutsideNamedDescribes, topLevelDescribes } from "./describe-reader.ts";
 
 const INHERITED_NAMES = [
@@ -56,6 +57,7 @@ export type LegacyPlanning = {
   readonly workspace: Workspace;
   readonly workers: number;
   readonly splitAtOrAbove: number;
+  readonly targetSeconds: number;
 };
 
 const WEIGHTS_PATH = "tests/unit-shard-weights.json";
@@ -77,10 +79,11 @@ const weightsOf = (workspace: Workspace): ((file: string) => number) => {
 const itemCommand = (runner: LegacyRunner, item: PlanItem): Command => {
   const select = ["--unit", "--filter", filterPattern(item.files)];
   const shard = item.pattern === undefined ? [] : ["--test-name-pattern", item.pattern];
+  const mayBeEmpty = item.canBeEmpty === true ? ["--allow-empty-shard"] : [];
   return runnerCommand({
     runner,
     label: "legacy tests on the harness matrix",
-    args: [...select, ...shard],
+    args: [...select, ...shard, ...mayBeEmpty],
   });
 };
 
@@ -96,6 +99,8 @@ const matrixCommands = (
     hasOtherTests: (file) => hasTestsOutsideNamedDescribes(planning.workspace.read(file) ?? ""),
     splitAtOrAbove: planning.splitAtOrAbove,
     groups: Math.max(1, Math.floor(planning.workers / 2)),
+    casesOf: casesOfFile(planning.workspace),
+    targetSeconds: planning.targetSeconds,
   }).map((item) => itemCommand(runner, item));
 
 export const legacySuites = (
