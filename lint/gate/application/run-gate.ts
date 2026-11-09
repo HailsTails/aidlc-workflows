@@ -86,7 +86,7 @@ const locked = async (
   request: FullRequest | UpdateGoldensRequest | LockedRequest,
   action: () => Promise<GateReport>,
 ): Promise<GateReport> => {
-  const lane = request.kind === "full" ? (request.laneId ?? "none") : "none";
+  const lane = request.kind === "full" ? request.laneId : undefined;
   const command = `gate ${request.kind}`;
   const outcome = await services.lock.acquire({ lane, command, waitMs: request.waitMs });
   if (!outcome.acquired) {
