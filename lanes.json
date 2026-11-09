@@ -122,6 +122,7 @@
         "tests/unit/t303-packager-orchestrator-skill-path.test.ts",
         "tests/unit/t230-dispatcher-routes.test.ts",
         "tests/integration/t188-plugin-compose.serial.test.ts",
+        "scripts/earlier-release-regions.ts",
         "discipline-exceptions.json"
       ],
       "notOwned": [
