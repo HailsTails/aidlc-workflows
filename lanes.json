@@ -73,6 +73,8 @@
         "tests/fixtures/aidlc-lib-declarations.txt",
         "tests/unit/t-aidlc-lib-only-shrinks.test.ts",
         "scripts/gate.ts",
+        "tests/run-tests.ts",
+        "tests/harness/runner-profile.ts",
         "biome.json",
         "disciplines.json",
         "discipline-exceptions.json",
