@@ -32,9 +32,8 @@ describe("capability probes", () => {
   });
 
   test("the short-names probe names the fixture root it checked", () => {
-    const system = join(process.env["SystemRoot"] ?? "C:\\Windows", "Temp").toLowerCase();
     const evidence = capabilityProbes(SCRATCH).probe("short-names").evidence.toLowerCase();
-    const named = [SCRATCH.toLowerCase(), system].some((root) => evidence.includes(root));
+    const named = evidence.includes(SCRATCH.toLowerCase());
     expect(process.platform !== "win32" || named).toBe(true);
   });
 });
