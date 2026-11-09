@@ -5,7 +5,8 @@ import type { SourcePath } from "../../../kernel/values.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import { decodeKiroAgentDocument, type KiroDocument, type KiroField,
   type KiroHookRow, type KiroHookRows, type KiroHooks, type KiroDocumentRefusal } from "./agent-document-schema.ts";
-import { sharedKnowledgeResources, type SharedKnowledge } from "./shared-knowledge.ts";
+import { sharedKnowledgeResources } from "./shared-knowledge.ts";
+import type { SharedKnowledge } from "../../../workflow-definition/domain/knowledge.ts";
 
 export type KiroModelDecision =
   | { readonly kind: "preserve" }

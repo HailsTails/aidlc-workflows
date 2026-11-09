@@ -242,6 +242,7 @@ export type AgentProjectionRequest = {
 export type AgentProjection = (request: AgentProjectionRequest) => Rendering;
 
 export interface BuildProjection {
+  readonly projectAgents: AgentProjection;
   serializeMethod(request: CompiledMethodRequest): CompiledMethodFiles;
   readHostSources(
     capture: HostSourceCapture,

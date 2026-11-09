@@ -66,6 +66,10 @@ import {
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { hostAgentInputs } from "../src/cli/host-table.ts";
+import type {
+  DistributionChannel, ProjectedFile,
+} from "../src/projection/domain/projected-file.ts";
 import { openPackageBuildRoot } from "../src/cli/main.ts";
 import { createNodeFileSystem } from "../src/kernel/file-system.ts";
 import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
@@ -110,7 +114,7 @@ import {
   modelAgentName,
   resolveModelPolicy,
   serializeAgentTiers,
-  writeKiroAgentSurface,
+
   writeKiroCliSurface,
   writeMarkdownAgentSurface,
 } from "../core/tools/aidlc-model-policy.ts";
@@ -126,7 +130,6 @@ import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
 import { kiroIdeSteering } from "../core/tools/aidlc-includes.ts";
-import { SHIPPED_FORMAT_DOCS } from "../core/tools/aidlc-inline-context.ts";
 import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -296,48 +299,6 @@ function projectTierFrontmatter(s: string, srcPath: string, harness: Harness): s
     effortKey: harness === "opencode" ? "variant" : "effort",
     removeKeys: harness === "kiro" ? ["disallowedTools"] : [],
   });
-}
-
-function projectKiroAgentJson(srcPath: string, content: Buffer): Buffer {
-  if (!srcPath.endsWith("-agent.json")) return content;
-  const agent = coreAgentForFile(srcPath);
-  if (!agent) return content;
-  if (agent.model.kind !== "tier") {
-    throw new Error(`${srcPath}: the accepted core Method supplies no model tier.`);
-  }
-  const effective = resolveModelPolicy(
-    null, modelAgentName(srcPath), agent.model.tier, "kiro", TIER_CAP);
-  return Buffer.from(writeKiroAgentSurface(content.toString("utf-8"), effective), "utf-8");
-}
-
-// The authored Kiro agent JSONs preload the shared knowledge with a glob; a
-// dispatched agent gets the shared methodology files only, as every other
-// harness's preflight names them (SHIPPED_FORMAT_DOCS is the one list).
-function projectKiroSharedKnowledge(content: Buffer): Buffer {
-  const parsed = JSON.parse(content.toString("utf-8")) as { resources?: unknown };
-  const glob = "file://.kiro/knowledge/aidlc-shared/*.md";
-  if (!Array.isArray(parsed.resources) || !parsed.resources.includes(glob)) return content;
-  const files = readdirSync(join(CORE_ROOT, "knowledge", "aidlc-shared"))
-    .filter((file) => file.endsWith(".md") && !SHIPPED_FORMAT_DOCS.has(file))
-    .sort()
-    .map((file) => `file://.kiro/knowledge/aidlc-shared/${file}`);
-  parsed.resources = parsed.resources.flatMap((entry) => (entry === glob ? files : [entry]));
-  return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
-}
-
-// Every hook command of an authored Kiro agent JSON gets the row's
-// hookCommandSuffix (the manifest says why), so the authored files carry the
-// command an author writes and no hook can ship without it.
-function projectKiroHookCommands(content: Buffer, suffix: string | undefined): Buffer {
-  if (suffix === undefined) return content;
-  const parsed = JSON.parse(content.toString("utf-8")) as { hooks?: Record<string, Array<{ command?: unknown }>> };
-  if (parsed.hooks === undefined) return content;
-  for (const rows of Object.values(parsed.hooks)) {
-    for (const row of rows) {
-      if (typeof row.command === "string") row.command = `${row.command}${suffix}`;
-    }
-  }
-  return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
 }
 
 // Merge the tier-derived chat.modelDefaults entries into an authored Kiro
@@ -842,17 +803,9 @@ function prepareAuthoredHostFile(request: {
     kind: "bytes", bytes: transform(srcPath, hostContentBytes(content),
       m.harnessDir, m.rulesRename, m.tierFlavor, invoke, letters),
   })];
-  if (m.tierFlavor === "kiro") {
-    if (file.source.startsWith("agents/") && file.source.endsWith(".json")) {
-      steps.push((content) => ({ kind: "bytes",
-        bytes: projectKiroAgentJson(srcPath, hostContentBytes(content)) }));
-      steps.push((content) => ({ kind: "bytes",
-        bytes: projectKiroSharedKnowledge(hostContentBytes(content)) }));
-      steps.push((content) => ({ kind: "bytes",
-        bytes: projectKiroHookCommands(hostContentBytes(content), m.hookCommandSuffix) }));
-    } else if (file.source === "settings/cli.json") {
-      steps.push((content) => ({ kind: "bytes", bytes: projectKiroCliJson(hostContentBytes(content)) }));
-    }
+  if (m.tierFlavor === "kiro" && file.source === "settings/cli.json") {
+    steps.push((content) => ({ kind: "bytes",
+      bytes: projectKiroCliJson(hostContentBytes(content)) }));
   }
   return prepareHostSource({ host, file, steps });
 }
@@ -860,8 +813,9 @@ function prepareAuthoredHostFile(request: {
 async function buildTree(
   m: HarnessManifest,
   outRoot: string,
-  invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
+  channel: DistributionChannel = "copy",
 ): Promise<string[]> {
+  const invoke = channel === "native" ? "aidlc" : `bun ${m.harnessDir}/tools/aidlc.ts`;
   const producer = runnerProducer(m);
   if (!producer.ok) throw new Error(`packager: ${m.name}: ${producer.refusal}`);
   const harnessDir = m.harnessDir;
@@ -1076,6 +1030,10 @@ async function buildTree(
       tierCap: TIER_CAP,
     });
   }
+  const agents = packageBuildRoot.projectAgents({ host: hostInput.host, method: coreBuild.method,
+    files: hostInput.files, prepare: prepareHostInput, channel, modelCap: TIER_CAP });
+  if (!agents.ok) throw new Error(JSON.stringify(agents.refusal));
+  writeProjectedFiles({ files: agents.value, projectRoot: outRoot });
   if (producer.value === "standard") {
     runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "write"]);
     runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "scopes"]);
@@ -1693,11 +1651,20 @@ function emitCommandProjection(request: Parameters<typeof createCommandRenderers
   const rendered = projectMethodCommands({ method: request.method,
     harness: createCommandRenderers(request) });
   if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
-  for (const file of rendered.value) {
+  writeProjectedFiles({ files: rendered.value.map((file) => file.content.kind === "text"
+    ? { ...file, content: { kind: "text",
+      text: request.substituteToken(file.content.text) } } : file),
+    projectRoot: request.projectRoot });
+}
+
+function writeProjectedFiles(request: {
+  readonly files: readonly ProjectedFile[]; readonly projectRoot: string;
+}): void {
+  for (const file of request.files) {
     const destination = join(request.projectRoot, file.path);
     mkdirSync(dirname(destination), { recursive: true });
     writeFileSync(destination, file.content.kind === "text"
-      ? request.substituteToken(file.content.text) : file.content.bytes);
+      ? file.content.text : file.content.bytes);
     if (file.mode === "executable") chmodSync(destination, 0o755);
   }
 }
@@ -1826,7 +1793,7 @@ async function writeReleaseHarness(name: string): Promise<void> {
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  await buildTree(m, releaseDir, "aidlc");
+  await buildTree(m, releaseDir, "native");
   rewriteNativeInvocations(releaseDir, m, copyRoot);
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
@@ -2085,7 +2052,7 @@ async function buildCheckPass(request: {
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
     await buildTree(manifest, copyRoot);
-    await buildTree(manifest, nativeRoot, "aidlc");
+    await buildTree(manifest, nativeRoot, "native");
     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
@@ -2205,7 +2172,7 @@ for (const name of targets) {
   const manifest = loadManifest(name);
   const captured = await packageBuildRoot.readHostSources({ name, directory: manifest.harnessDir,
     root: pathToFileURL(join(HARNESS_ROOT, name)), copied: manifest.harnessFiles.map((file) => file.src),
-    required: manifest.emit?.authoredInputs ?? [] });
+    required: [...(manifest.emit?.authoredInputs ?? []), ...hostAgentInputs(name)] });
   if (!captured.ok) {
     console.error(JSON.stringify(captured.refusal));
     process.exit(1);

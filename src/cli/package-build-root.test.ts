@@ -5,7 +5,7 @@ import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts
 import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
 import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
 import { accepted, refused } from "../kernel/result.ts";
-import { host } from "../kernel/fixtures/values.fixture.ts";
+import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import type { Platform } from "./roots.ts";
 import { createPackageBuildRoot } from "./package-build-root.ts";
 
@@ -109,4 +109,25 @@ test("a successful captured command is consumed synchronously after the root cle
   expect(source.read({ concept: "orchestrator-skill", name: "aidlc-init" })).toEqual({ ok: true, value: { kind: "declined" } });
   expect(removeFolder).toHaveBeenCalledTimes(1);
   expect(runner.received()).toHaveLength(1);
+});
+
+test("the real root omits unregistered agent hosts", async () => {
+  const root = createPackageBuildRoot({ platform: { fileSystem: createInMemoryFileSystem({ files }),
+    processRunner, yaml }, outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  expect(root.projectAgents({ host: host({ name: "claude", directory: ".claude" }), method: core.method,
+    files: [], prepare: accepted, channel: "copy", modelCap: null })).toEqual(accepted([]));
+});
+
+test("the real root renders a captured Kiro conductor without replacing its model", async () => {
+  const root = createPackageBuildRoot({ platform: { fileSystem: createInMemoryFileSystem({ files }),
+    processRunner, yaml }, outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  expect(root.projectAgents({ host: host({ name: "kiro", directory: ".kiro" }), method: core.method,
+    files: [{ source: source("agents/aidlc.json"), content: { kind: "text", text: '{ "model": "personal" }\r\n' } }],
+    prepare: accepted, channel: "native", modelCap: null })).toEqual(accepted([{
+      path: path(".kiro/agents/aidlc.json"), content: { kind: "text", text: '{ "model": "personal" }\r\n' },
+      mode: "regular", availability: "always",
+      origin: { kind: "harness-authored", source: source("agents/aidlc.json") },
+    }]));
 });

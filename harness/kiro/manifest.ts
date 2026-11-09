@@ -12,7 +12,7 @@
 //   - the orchestrator skill is per-harness (authored here, NOT core), so it
 //     is NOT in coreDirs — only the 3 session skills are.
 //   - agents/ is MIXED: the persona .md files are core (copied + rules rename
-//     n/a), the Kiro-native agent .json configs are authored (harnessFiles).
+//     n/a); Kiro-native agent JSON is rendered from the captured authored inputs.
 //   - hooks/ is MIXED: core hook bodies are copied; the one authored
 //     aidlc-kiro-adapter.ts stdin shim is a harnessFile.
 //   - AGENTS.md lands at the PROJECT ROOT (dist/kiro/AGENTS.md), outside .kiro/.
@@ -31,6 +31,7 @@ import {
   KIRO_PROMPT_LINES, kiroCliAgentRenderer, type KiroModelSurface,
 } from "../../src/hosts/kiro/projection/agent-renderer.ts";
 import { kiroCommandPath } from "../../src/hosts/kiro/projection/command-renderer.ts";
+import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const PERSONA_PROMPT_LINES = [...KIRO_PROMPT_LINES];
@@ -173,7 +174,7 @@ const manifest: HarnessManifest = {
   // keep the code; in bash the unset variable leaves a plain `exit`, which
   // keeps the last command's status. tests/unit/t-kiro-hook-exit-code.test.ts
   // runs a refusal both ways.
-  hookCommandSuffix: "; exit $LASTEXITCODE",
+  hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX,
   rootIntegrations: [
     {
       path: ".gitignore",
@@ -257,23 +258,6 @@ const manifest: HarnessManifest = {
     { src: "skills/aidlc/question-rendering.md", dst: "skills/aidlc/question-rendering.md" },
     { src: "skills/aidlc/composer.md", dst: "skills/aidlc/composer.md" },
     { src: "skills/aidlc/tables.md", dst: "skills/aidlc/tables.md" },
-    { src: "agents/aidlc.json", dst: "agents/aidlc.json" },
-    { src: "agents/aidlc-architect-agent.json", dst: "agents/aidlc-architect-agent.json" },
-    { src: "agents/aidlc-developer-agent.json", dst: "agents/aidlc-developer-agent.json" },
-    { src: "agents/aidlc-product-lead-agent.json", dst: "agents/aidlc-product-lead-agent.json" },
-    { src: "agents/aidlc-architecture-reviewer-agent.json", dst: "agents/aidlc-architecture-reviewer-agent.json" },
-    { src: "agents/aidlc-composer-agent.json", dst: "agents/aidlc-composer-agent.json" },
-    // Ensemble collaborator configs (2.5.0 roster closure): lean read+shell
-    // delegation targets so any stage can flip to an ensemble topology here.
-    { src: "agents/aidlc-product-agent.json", dst: "agents/aidlc-product-agent.json" },
-    { src: "agents/aidlc-design-agent.json", dst: "agents/aidlc-design-agent.json" },
-    { src: "agents/aidlc-delivery-agent.json", dst: "agents/aidlc-delivery-agent.json" },
-    { src: "agents/aidlc-aws-platform-agent.json", dst: "agents/aidlc-aws-platform-agent.json" },
-    { src: "agents/aidlc-compliance-agent.json", dst: "agents/aidlc-compliance-agent.json" },
-    { src: "agents/aidlc-devsecops-agent.json", dst: "agents/aidlc-devsecops-agent.json" },
-    { src: "agents/aidlc-quality-agent.json", dst: "agents/aidlc-quality-agent.json" },
-    { src: "agents/aidlc-pipeline-deploy-agent.json", dst: "agents/aidlc-pipeline-deploy-agent.json" },
-    { src: "agents/aidlc-operations-agent.json", dst: "agents/aidlc-operations-agent.json" },
     { src: "hooks/aidlc-kiro-adapter.ts", dst: "hooks/aidlc-kiro-adapter.ts" },
     { src: "hooks/aidlc-record-human-turn.kiro.hook", dst: "hooks/aidlc-record-human-turn.kiro.hook" },
     { src: "hooks/aidlc-plan-approval-guard.kiro.hook", dst: "hooks/aidlc-plan-approval-guard.kiro.hook" },

@@ -1,3 +1,4 @@
+import { hostAgentMembers } from "./host-table.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
@@ -56,5 +57,11 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
     prepareCommandSource: ({ core: loaded, ...command }) => projection.prepareCommandSource({ ...command,
       method: loaded.method, sources: loaded.sources }),
     readHostSources: (host) => captureHost(host),
+    projectAgents: (agents) => {
+      const members = hostAgentMembers(agents.host);
+      if (!members.ok) return members;
+      return members.value === null ? accepted([])
+        : projection.projectAgents({ ...agents, render: members.value.render });
+    },
   };
 };

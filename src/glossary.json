@@ -92,6 +92,7 @@
 {"name":"SensorDeclaration","context":"workflow-definition","kind":"concept","definition":"A deterministic check a stage can pull in: command, severity, trigger, path filter.","legacy":["SensorManifest","SensorResolution"]},
 {"name":"KnowledgeAudience","context":"workflow-definition","kind":"concept","definition":"Whether a knowledge document is shared or for one agent."},
 {"name":"KnowledgeDocument","context":"workflow-definition","kind":"concept","definition":"One knowledge file's method source path, owner and audience; its bytes are in MethodSources.files.","legacy":["KnowledgeEntry","KnowledgeIndex"]},
+{"name":"SharedKnowledge","context":"workflow-definition","kind":"concept","definition":"The Method's knowledge documents a dispatched agent may preload, with the shipped format documents that are left out of them."},
 {"name":"OverlayAnchor","context":"workflow-definition","kind":"concept","definition":"Any overlay anchor, stage or persona."},
 {"name":"OverlayFragment","context":"workflow-definition","kind":"concept","definition":"One overlay text at an anchor, with its order."},
 {"name":"OverlayDropReason","context":"workflow-definition","kind":"concept","definition":"Why an overlay was not applied."},
