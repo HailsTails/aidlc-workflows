@@ -37,6 +37,7 @@ import {
 } from "../lint/gate/adapters/record-locations.ts";
 import { capabilityProbes } from "../lint/gate/adapters/capability-probes.ts";
 import { environmentExclusions } from "../lint/gate/adapters/environment-exclusions.ts";
+import { transpilerCacheFolder } from "../lint/gate/adapters/transpiler-cache.ts";
 import { legacyEnvironment, legacySuites } from "../lint/gate/adapters/legacy-suites.ts";
 import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
 import { systemClock } from "../lint/gate/adapters/system-clock.ts";
@@ -127,6 +128,8 @@ const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
   },
 ];
 
+const TRANSPILER_CACHE = transpilerCacheFolder(ROOT);
+
 const LEGACY_SPLIT_SECONDS = 60;
 
 const LEGACY_WORKERS = Math.max(1, Number(process.env["AIDLC_GATE_TEST_WORKERS"]) || 8);
@@ -134,7 +137,7 @@ const LEGACY_WORKERS = Math.max(1, Number(process.env["AIDLC_GATE_TEST_WORKERS"]
 const TEST_SUITES: readonly TestSuite[] = [
   ...SOURCE_SUITES,
   ...legacySuites(
-    { bun: BUN, environment: legacyEnvironment(process.env) },
+    { bun: BUN, environment: legacyEnvironment(process.env, TRANSPILER_CACHE) },
     { workspace, workers: LEGACY_WORKERS, splitAtOrAbove: LEGACY_SPLIT_SECONDS },
   ),
   {

@@ -14,15 +14,20 @@ const INHERITED_NAMES = [
   "LOCALAPPDATA",
 ] as const;
 
+export const TRANSPILER_CACHE_VARIABLE = "BUN_RUNTIME_TRANSPILER_CACHE_PATH";
+
 export const legacyEnvironment = (
   source: Readonly<Record<string, string | undefined>>,
-): Readonly<Record<string, string>> =>
-  Object.fromEntries(
+  transpilerCache?: string,
+): Readonly<Record<string, string>> => ({
+  ...Object.fromEntries(
     INHERITED_NAMES.flatMap((name) => {
       const value = source[name];
       return value === undefined ? [] : [[name, value] as const];
     }),
-  );
+  ),
+  ...(transpilerCache === undefined ? {} : { [TRANSPILER_CACHE_VARIABLE]: transpilerCache }),
+});
 
 const SOURCES_THAT_MOVE_LEGACY_TESTS = [
   "harness/**",

@@ -69,3 +69,10 @@ describe("legacy matrix plan", () => {
     expect(matrix?.concurrency).toBe(2);
   });
 });
+
+describe("legacy transpiler cache", () => {
+  test("a given cache folder is the only addition to the named variables", () => {
+    const environment = legacyEnvironment({ PATH: "/bin", SECRET: "s" }, "/cache");
+    expect(environment).toEqual({ PATH: "/bin", BUN_RUNTIME_TRANSPILER_CACHE_PATH: "/cache" });
+  });
+});
