@@ -1,0 +1,2 @@
+#!/bin/sh
+exec bun scripts/gate.ts --scope G --only zones,records,lint,disciplines,typecheck,monolith,kernel,isolation
