@@ -151,6 +151,7 @@ export type ProjectAgents = (request: HostAgentsRequest) => Rendering;
 
 export type HostSkillsRequest = {
   readonly host: HostIdentity;
+  readonly projectRoot: URL;
   readonly method: Method;
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
