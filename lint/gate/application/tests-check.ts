@@ -129,8 +129,12 @@ const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly 
       heavy: suite.heavy === true,
     }));
 
-const looseRun = (dependencies: TestsDependencies, scope: GateScope): readonly Run[] => {
-  const files = presentPaths(scope.changes).filter(globMatcher(dependencies.looseTests));
+const looseRun = (
+  dependencies: TestsDependencies, scope: GateScope, covered: ReadonlySet<string>,
+): readonly Run[] => {
+  const files = presentPaths(scope.changes)
+    .filter(globMatcher(dependencies.looseTests))
+    .filter((file) => !covered.has(file));
   return scope.everything || files.length === 0
     ? []
     : [
@@ -277,7 +281,9 @@ const judgeRun = async (request: {
 export const testsCheck = (dependencies: TestsDependencies): GateCheck => ({
   id: "tests",
   run: async (scope) => {
-    const runs = [...suiteRuns(dependencies, scope), ...looseRun(dependencies, scope)];
+    const suites = suiteRuns(dependencies, scope);
+    const covered = new Set(suites.flatMap((suite) => suite.files));
+    const runs = [...suites, ...looseRun(dependencies, scope, covered)];
     if (runs.length === 0) {
       return skipped("tests", "no changed context has tests");
     }

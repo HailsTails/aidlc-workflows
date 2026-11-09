@@ -105,7 +105,10 @@ export const legacySuites = (
     tests: ["tests/smoke/**/*.test.ts"],
     sharesPackageBuild: true,
     heavy: true,
-    command: () => runnerCommand({ runner, label: "legacy smoke", args: ["--smoke"] }),
+    selectsByImpact: true,
+    command: (files) => runnerCommand({
+      runner, label: "legacy smoke", args: ["--smoke", "--filter", filterPattern(files)],
+    }),
   },
   {
     name: "legacy tests on the harness matrix",

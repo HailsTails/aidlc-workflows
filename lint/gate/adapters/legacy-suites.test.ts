@@ -1,5 +1,6 @@
 import { testsCheck } from "../application/tests-check.ts";
 import { globMatcher } from "../domain/glob.ts";
+import type { TestReach } from "../domain/test-impact.ts";
 import type { Command } from "../application/ports.ts";
 import { describe, expect, test } from "bun:test";
 import { legacyEnvironment, legacySuites } from "./legacy-suites.ts";
@@ -20,7 +21,9 @@ describe("legacy suites", () => {
     const suites = legacySuites({ bun: "bun", environment });
     const commands = suites.map((suite) => suite.command?.(["tests/unit/t177.test.ts"]));
     expect(commands.map((command) => command?.env)).toEqual([environment, environment]);
-    expect(commands[0]?.argv).toEqual(["bun", "tests/run-tests.ts", "--smoke", "--no-llm"]);
+    expect(commands[0]?.argv).toEqual([
+      "bun", "tests/run-tests.ts", "--smoke", "--filter", "^(t177)", "--no-llm",
+    ]);
     expect(commands[1]?.argv).toEqual([
       "bun",
       "tests/run-tests.ts",
@@ -80,17 +83,23 @@ describe("legacy transpiler cache", () => {
   });
 });
 
-const LEGACY_FILES = ["tests/smoke/s.test.ts", "tests/unit/a.test.ts", "tests/unit/b.test.ts"];
+const LEGACY_FILES = [
+  "tests/smoke/s.test.ts", "tests/unit/a.test.ts", "tests/unit/b.test.ts",
+  "tests/unit/uncovered.test.ts",
+];
 const ALL_LEGACY = [
-  ["bun", "tests/run-tests.ts", "--smoke", "--no-llm"],
+  ["bun", "tests/run-tests.ts", "--smoke", "--filter", "^(s)", "--no-llm"],
   ["bun", "tests/run-tests.ts", "--unit", "--filter", "^(a|b)", "--no-llm"],
 ];
 const KNOWN_LEGACY = [
-  ["bun", "tests/run-tests.ts", "--smoke", "--no-llm"],
+  ["bun", "tests/run-tests.ts", "--smoke", "--filter", "^(s)", "--no-llm"],
   ["bun", "tests/run-tests.ts", "--unit", "--filter", "^(a)", "--no-llm"],
 ];
 
-const selectedLegacy = async (changed: readonly string[]): Promise<readonly string[][]> => {
+const selectedLegacy = async (
+  changed: readonly string[], loose = false,
+  smoke: { readonly reach?: TestReach; readonly files?: readonly string[] } = {},
+): Promise<readonly string[][]> => {
   const commands: string[][] = [];
   const capture = (command: Command) => {
     commands.push([...command.argv]);
@@ -99,16 +108,18 @@ const selectedLegacy = async (changed: readonly string[]): Promise<readonly stri
   const check = testsCheck({
     runner: { capture, captureAll: async () => [], attach: () => 0 },
     workspace: {
-      read: () => 'import { x } from "../harness/harness-matrix.ts";',
+      read: (path) =>
+        path.includes("uncovered") ? "" : 'import { x } from "../harness/harness-matrix.ts";',
       write: () => undefined,
-      filesMatching: (globs) => LEGACY_FILES.filter(globMatcher(globs)),
+      filesMatching: (globs) => (smoke.files ?? LEGACY_FILES).filter(globMatcher(globs)),
     },
     suites: legacySuites({ bun: "bun", environment: {} }),
-    looseTests: [],
-    testCommand: () => ({ label: "unexpected loose test", argv: ["unexpected"] }),
+    looseTests: loose ? ["tests/**/*.test.ts"] : [],
+    testCommand: (files) => ({ label: "loose tests", argv: ["bun", "test", ...files] }),
     capabilities: { probe: () => ({ available: true, evidence: "fixture" }) },
     exclusions: [], build: { ensure: () => undefined },
     reachOf: () => ({
+      ...smoke.reach,
       "tests/unit/a.test.ts": ["core/a.ts"],
       "tests/unit/b.test.ts": ["core/b.ts"],
     }),
@@ -146,5 +157,34 @@ describe("legacy admission preserves conservative impact selection", () => {
 
   test("an ordinary scoped run with no changes selects nothing", async () => {
     expect(await selectedLegacy([])).toEqual([]);
+  });
+});
+
+describe("selected legacy files run once", () => {
+  test("a changed matrix file is not also a loose test", async () => {
+    const commands = await selectedLegacy(["tests/unit/a.test.ts"], true);
+    expect(commands).toEqual(KNOWN_LEGACY);
+  });
+  test("a changed smoke file is not also a loose test", async () => {
+    expect(await selectedLegacy(["tests/smoke/s.test.ts"], true)).toEqual(ALL_LEGACY);
+  });
+  test("a changed unit outside the actual matrix followers stays loose", async () => {
+    expect(await selectedLegacy(["tests/unit/uncovered.test.ts"], true)).toEqual([
+      ["bun", "test", "tests/unit/uncovered.test.ts"], ...ALL_LEGACY,
+    ]);
+  });
+});
+
+
+describe("smoke impact uses the existing conservative selector", () => {
+  const reach = { "tests/smoke/s.test.ts": ["core/a.ts", "core/b.ts"] };
+  test("a known smoke dependency selects its file with the runner filter", async () => {
+    expect(await selectedLegacy(["core/a.ts"], false, { reach })).toEqual(KNOWN_LEGACY);
+  });
+  test("a known unimpacted smoke file is omitted", async () => {
+    const known = { ...reach, "tests/smoke/other.test.ts": ["core/b.ts"] };
+    expect(await selectedLegacy(["core/a.ts"], false, {
+      reach: known, files: [...LEGACY_FILES, "tests/smoke/other.test.ts"],
+    })).toEqual(KNOWN_LEGACY);
   });
 });
