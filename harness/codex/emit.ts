@@ -4,8 +4,8 @@
 // ctx.substituteToken, plus a local aidlc-rules rename mirroring the
 // packager's (rewriteProse).
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, posix, relative, win32 } from "node:path";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, posix, win32 } from "node:path";
 import { stringify } from "smol-toml";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
 import {
@@ -293,11 +293,6 @@ export function emitTrustSeed(
 // emit() — the manifest entry point. Assembles every codex-only emission as a
 // {path, content} list, then writes it into the packager-provided dist root.
 // ---------------------------------------------------------------------------
-export const authoredInputs: readonly string[] = [
-  "skills/aidlc/SKILL.md", "skills/aidlc/question-rendering.md",
-  "skills/aidlc/composer.md", "skills/aidlc/tables.md",
-];
-
 function emit(ctx: EmitContext): void {
   // tierCap is the packager's resolved pack-time cap, passed through so the
   // emit-owned TOML projections use the SAME cap as every declarative
@@ -320,18 +315,6 @@ function emit(ctx: EmitContext): void {
   // layer generates from core sources (agent bodies and runner prose).
   const rewriteProse = (s: string): string =>
     substituteToken(s).replaceAll(`${harnessDir}/rules/`, `${harnessDir}/aidlc-rules/`);
-
-  const IMPLICIT_GUARD = "policy:\n  allow_implicit_invocation: false\n";
-
-  function walk(dir: string): string[] {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir).sort()) {
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) out.push(...walk(full));
-      else out.push(full);
-    }
-    return out;
-  }
 
   const onboarding = readFileSync(join(CODEX_ROOT, "onboarding.md"), "utf-8")
     .replaceAll(`${harnessDir}/skills/`, ".agents/skills/");
@@ -399,39 +382,6 @@ function emit(ctx: EmitContext): void {
     }
   }
 
-  // (a) authored orchestrator shell with the standard token projection.
-  for (const authored of ctx.hostSources.filter((file) => authoredInputs.includes(file.source))) {
-    const f = authored.source.slice("skills/aidlc/".length);
-    emissions.push({
-      path: join(SKILLS_DST, "aidlc", f),
-      content: () => substituteToken(ctx.hostSourceText(authored)),
-    });
-  }
-  // (d) standalone core skills — byte-copy + prose rewrite from core/skills/.
-  // Codex alone does NOT enumerate core/skills/, so this list is the only thing
-  // that ships them here: a skill missing from it silently reaches every OTHER
-  // harness and not this one.
-  // A Codex user invokes a skill with `$`, so the slash commands these skills
-  // name (`/aidlc`, `/aidlc-replay`) are written the Codex way; a path such as
-  // `<record>/aidlc-state.md` or `.codex/tools/aidlc.ts` is left as it is.
-  const codexInvocations = (s: string): string =>
-    s.replace(/(^|[\s(`"])\/(aidlc(?:-[a-z][a-z0-9-]*)?)(?![a-z0-9-]*\.[a-z])/gm, "$1$$$2");
-  for (const skill of ["aidlc-session-cost", "aidlc-replay", "aidlc-outcomes-pack", "aidlc-knowledge", "aidlc-issue-report"]) {
-    const srcDir = join(coreRoot, "skills", skill);
-    if (!existsSync(srcDir)) continue;
-    for (const file of walk(srcDir)) {
-      const rel = relative(srcDir, file);
-      emissions.push({
-        path: join(SKILLS_DST, skill, rel),
-        content: () => {
-          const prose = rewriteProse(readFileSync(file, "utf-8"));
-          return rel.endsWith(".md") ? codexInvocations(prose) : prose;
-        },
-      });
-    }
-    emissions.push({ path: join(SKILLS_DST, skill, "agents", "openai.yaml"), content: () => IMPLICIT_GUARD });
-  }
-
   // Clean-sweep the emitted skills tree so a removed runner doesn't linger.
   // In --check mode distRoot is temporary; the packager compares its complete
   // inventory with the independently generated counterpart after emit returns.
@@ -443,4 +393,4 @@ function emit(ctx: EmitContext): void {
   ctx.emitCommands(codexCommandPath);
 }
 
-export default Object.assign(emit, { authoredInputs });
+export default emit;
