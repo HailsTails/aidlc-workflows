@@ -1,3 +1,5 @@
+import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS } from "../hosts/cursor/host-data.ts";
+import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
 import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS } from "../hosts/kiro/host-data.ts";
 import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS } from "../hosts/codex/host-data.ts";
@@ -15,7 +17,7 @@ import { accepted, refused, type Result } from "../kernel/result.ts";
 import { sourcePath } from "../kernel/values.ts";
 import { KIRO_AGENT_JSON, kiroAgents } from "../hosts/kiro/projection/json-agent-renderer.ts";
 import type { ProjectionRefusal } from "../projection/domain/projection.ts";
-import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers } from "./roots.ts";
+import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers, HostSettingsMembers } from "./roots.ts";
 
 const AGENT_MEMBERS = [{ name: "kiro", inputs: KIRO_AGENT_JSON, render: kiroAgents }] as const;
 
@@ -55,6 +57,7 @@ export const hostSkillMembers = (host: HostIdentity): Result<HostSkillMembers | 
   return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
 };
 const HOST_SURFACE_MEMBERS = [
+  { name: "cursor", data: CURSOR_HOST_DATA, placements: CURSOR_AUTHORED_PLACEMENTS },
   { name: "opencode", data: OPENCODE_HOST_DATA, placements: OPENCODE_AUTHORED_PLACEMENTS },
   { name: "kiro", data: KIRO_HOST_DATA, placements: KIRO_AUTHORED_PLACEMENTS },
   { name: "codex", data: CODEX_HOST_DATA, placements: CODEX_AUTHORED_PLACEMENTS },
@@ -64,4 +67,21 @@ const HOST_SURFACE_MEMBERS = [
 export const hostSurfaceMembers = (host: HostIdentity): HostSurfaceMembers | null => {
   const entry = HOST_SURFACE_MEMBERS.find((candidate) => candidate.name === host.distribution);
   return entry ? { host, data: entry.data, placements: entry.placements } : null;
+};
+
+const HOST_SETTINGS_MEMBERS = [
+  { name: "claude", inputs: CLAUDE_SETTINGS_INPUTS, render: createClaudeSettingsRenderer },
+] as const;
+
+export const hostSettingsInputs = (name: string): readonly string[] =>
+  HOST_SETTINGS_MEMBERS.find((entry) => entry.name === name)?.inputs ?? [];
+
+export const hostSettingsMembers = (host: HostIdentity): Result<HostSettingsMembers | null, ProjectionRefusal> => {
+  const entry = HOST_SETTINGS_MEMBERS.find((candidate) => candidate.name === host.distribution);
+  if (!entry) return accepted(null);
+  const paths = entry.inputs.map(sourcePath);
+  const failed = paths.find((path) => !path.ok);
+  if (failed && !failed.ok) return refused({ kind: "render-failed", concept: "settings",
+    name: failed.refusal.raw, reason: "The authored settings input is not a portable source path." });
+  return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
 };

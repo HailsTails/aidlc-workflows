@@ -67,7 +67,7 @@ import {
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { hostAgentInputs, hostSkillInputs, hostSurfaceMembers } from "../src/cli/host-table.ts";
-import { distributionId, projectPath } from "../src/kernel/values.ts";
+import { distributionId, projectPath, sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
   DistributionChannel, ProjectedFile,
 } from "../src/projection/domain/projected-file.ts";
@@ -796,6 +796,18 @@ function prepareAuthoredHostFile(request: {
   return prepareHostSource({ host, file, steps });
 }
 
+function shippedSettingsEntrypoints(treeRoot: string): readonly SourcePath[] {
+  return ["hooks", "tools"].flatMap((folder) =>
+    readdirSync(join(treeRoot, folder), { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
+      .map((entry) => `${folder}/${entry.name}`),
+  ).sort().map((raw) => {
+    const path = sourcePath(raw);
+    if (!path.ok) throw new Error(`The built settings entrypoint is not portable: ${raw}`);
+    return path.value;
+  });
+}
+
 async function buildTree(
   m: HarnessManifest,
   outRoot: string,
@@ -1043,6 +1055,14 @@ async function buildTree(
     if (!skills.ok) throw new Error(JSON.stringify(skills.refusal));
     writeProjectedFiles({ files: skills.value, projectRoot: outRoot });
   }
+  const settings = packageBuildRoot.projectSettings({ host: hostInput.host, method: coreBuild.method,
+    files: hostInput.files, prepare: prepareHostInput, channel,
+    entrypoints: shippedSettingsEntrypoints(treeRoot),
+    tokens: { HARNESS_DIR: harnessDir, INVOKE: invoke, SKILL_INVOKE: null,
+      TOOL_PREFIX: substituteToken("{{TOOL_PREFIX}}", harnessDir, invoke, letters),
+      TRUSTED_NAMESPACE: TRUSTED_ROUTE_NAMESPACE, OPTION_LETTERS: letters } });
+  if (!settings.ok) throw new Error(JSON.stringify(settings.refusal));
+  writeProjectedFiles({ files: settings.value, projectRoot: outRoot });
   const agents = packageBuildRoot.projectAgents({ host: hostInput.host, method: coreBuild.method,
     files: hostInput.files, prepare: prepareHostInput, channel, modelCap: TIER_CAP });
   if (!agents.ok) throw new Error(JSON.stringify(agents.refusal));
@@ -1053,7 +1073,6 @@ async function buildTree(
   }
 
   expandCursorToolAllows(treeRoot, m);
-  expandClaudeToolAllows(treeRoot, m);
   expandKiroToolAllows(treeRoot, m);
   expandKiroIdeConductorAllows(treeRoot, m, invoke);
   writeProjectionData(outRoot, treeRoot, m);
@@ -1163,42 +1182,6 @@ function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): vo
     `Bash(${trustedCommand("*")})`,
     ...nativeDispatcherCommands().map((command) => `Bash(${command})`),
   ];
-  writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-// Claude's authored settings.json names AI-DLC's tool scripts with one glob.
-// The projection lists, in its place, each dispatcher command a copy channel
-// pre-approves exactly as AI-DLC runs it (copyChannelDispatcherCommands), and
-// each tool script it pre-approves (copyChannelToolScripts), bare or followed
-// by arguments, never a longer file name. A script behind a machine-changing
-// command, and any config command but the read-only forms, then shows Claude
-// Code's own prompt. Both trees get it; the native rewrite then drops every
-// bun entry.
-function expandClaudeToolAllows(treeRoot: string, m: HarnessManifest): void {
-  if (m.tierFlavor !== "claude") return;
-  const settingsPath = join(treeRoot, "settings.json");
-  const value = JSON.parse(readFileSync(settingsPath, "utf-8")) as { permissions?: { allow?: unknown } };
-  const allow = value.permissions?.allow;
-  // The authored entries name the tools folder as written (`.claude`), which
-  // a renamed harness folder keeps, so the expansion uses the same spelling.
-  const glob = Array.isArray(allow)
-    ? allow.find((entry): entry is string =>
-      typeof entry === "string" && /^Bash\(bun \S+\/tools\/aidlc-\*\)$/.test(entry)
-    )
-    : undefined;
-  if (!Array.isArray(allow) || glob === undefined) {
-    throw new Error("[claude] settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand");
-  }
-  const toolsDir = glob.slice("Bash(bun ".length, -"/aidlc-*)".length);
-  const tool = (script: string) => `Bash(bun ${toolsDir}/${script}`;
-  value.permissions!.allow = allow.flatMap((entry) =>
-    entry === glob
-      ? [
-        ...copyChannelDispatcherCommands().map((command) => `${tool("aidlc.ts")} ${command})`),
-        ...copyChannelToolScripts().flatMap((script) => [`${tool(script)})`, `${tool(script)} *)`]),
-      ]
-      : [entry]
-  );
   writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 

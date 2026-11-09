@@ -196,6 +196,7 @@ export type CapturedHostSources = {
 };
 
 export interface PackageBuildRoot {
+  readonly projectSettings: ProjectSettings;
   readonly projectRuntime: ProjectRuntime;
   readonly projectHostSurface: ProjectHostSurface;
   readonly projectSkills: ProjectSkills;

@@ -2,10 +2,12 @@ import { judged, skipped, type Finding } from "../domain/outcome.ts";
 import type { GateCheck } from "./gate-check.ts";
 import { touches } from "./gate-scope.ts";
 import type { Command, CommandRunner } from "./ports.ts";
+import type { SharedBuild } from "./shared-build.ts";
 
 export type TypecheckProject = {
   readonly command: Command;
   readonly triggers: readonly string[];
+  readonly build?: SharedBuild;
 };
 
 export type TypecheckDependencies = {
@@ -20,6 +22,10 @@ const STRICT_FIX =
   "with a Zod schema at the edge, and avoid casts and non-null assertions.";
 
 const typeErrors = (runner: CommandRunner, project: TypecheckProject): readonly Finding[] => {
+  const buildFailure = project.build?.ensure();
+  if (buildFailure !== undefined) {
+    return [buildFailure];
+  }
   const result = runner.capture(project.command);
   const errors = result.output.split(/\r?\n/).filter((line) => TYPE_ERROR.test(line));
   const failedWithoutErrors = result.exitCode !== 0 && errors.length === 0;

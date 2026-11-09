@@ -4,7 +4,8 @@ import type { SharedRuntime } from "../projection/domain/neutral-surface.ts";
 import type { ProjectRuntime } from "./roots.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports.ts";
-import { hostAgentMembers, hostSkillMembers, hostSkillInputs, hostSurfaceMembers } from "./host-table.ts";
+import { hostAgentMembers, hostSkillMembers, hostSkillInputs, hostSurfaceMembers,
+  hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
@@ -40,7 +41,7 @@ const captureHost = async (capture: HostSourcesRequest,
     if (!directory.ok) return refused([directory.refusal]);
     const host = { distribution: distribution.value, directory: directory.value };
     const surface = hostSurfaceMembers(host);
-    const required = [...capture.required, ...hostSkillInputs(capture.name),
+    const required = [...capture.required, ...hostSkillInputs(capture.name), ...hostSettingsInputs(capture.name),
       ...(surface?.placements.map((placement) => placement.source) ?? [])];
     const paths = [...new Set([...capture.copied, ...required])].map(sourcePath);
     const failures = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
@@ -90,6 +91,12 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
     prepareCommandSource: ({ core: loaded, ...command }) => projection.prepareCommandSource({ ...command,
       method: loaded.method, sources: loaded.sources }),
     readHostSources: (host) => captureHost(host, projection),
+    projectSettings: (settings) => {
+      const members = hostSettingsMembers(settings.host);
+      if (!members.ok) return members;
+      return members.value === null ? accepted([])
+        : projection.projectSettings({ ...settings, render: members.value.render });
+    },
     projectHostSurface: (surface) => {
       const members = hostSurfaceMembers(surface.host);
       return members === null ? accepted([]) : projection.projectHostSurface({ ...surface,

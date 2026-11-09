@@ -121,6 +121,7 @@
         "harness/kiro/manifest.ts",
         "harness/cursor/manifest.ts",
         "harness/kiro-ide/manifest.ts",
+        "harness/copilot/manifest.ts",
         "scripts/agent-knowledge.ts",
         "tests/unit/t248-steering-content-delivery.test.ts",
         "tests/unit/t64.test.ts",

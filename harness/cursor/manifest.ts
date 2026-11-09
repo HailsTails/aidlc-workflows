@@ -26,6 +26,7 @@
 //     payloads and subprocess-pipes into the byte-shared core hooks.
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
+import { CURSOR_HOST_DATA } from "../../src/hosts/cursor/host-data.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { modelAgentName, resolveModelPolicy,
@@ -40,13 +41,13 @@ import { cursorCommandPath } from "../../src/hosts/cursor/projection/command-ren
 
 const manifest: HarnessManifest = {
   name: "cursor",
-  productName: "Cursor",
-  configNextStep: "open this project in Cursor, then run `/aidlc --doctor`",
+  productName: CURSOR_HOST_DATA.productName,
+  configNextStep: CURSOR_HOST_DATA.configNextStep,
   // Cursor sets CURSOR_AGENT in its agent's terminal (Cursor's terminal docs;
   // not yet measured live).
-  hostShell: { env: ["CURSOR_AGENT"] },
+  hostShell: CURSOR_HOST_DATA.hostShell,
   // A clean chat for new work started beside other work.
-  newChatStep: { text: "open a new chat, then type <entry>" },
+  newChatStep: CURSOR_HOST_DATA.newChatStep,
   harnessDir: ".cursor",
   orchestratorSkillPath: ".cursor/skills/aidlc/SKILL.md",
   tierFlavor: "cursor",
@@ -120,21 +121,6 @@ const manifest: HarnessManifest = {
   ],
 
   harnessFiles: [
-    // The orchestrator skill — Cursor-native layout, /aidlc invocation.
-    // Cursor-native shortcut skills. Cursor's commands/ surface is legacy;
-    // skills are the current slash-invocation primitive.
-    // AIDLC method pointers: standing layers always apply; phase guidance is
-    // agent-decided. Cursor has no @-import expansion, so each carries a READ
-    // instruction naming aidlc/active-memory/. /aidlc space refreshes that
-    // copy (aidlc-includes.ts refreshActiveMemory).
-    { src: "rules-aidlc.mdc", dst: "rules/aidlc.mdc" },
-    { src: "rules-aidlc-phase-ideation.mdc", dst: "rules/aidlc-phase-ideation.mdc" },
-    { src: "rules-aidlc-phase-inception.mdc", dst: "rules/aidlc-phase-inception.mdc" },
-    { src: "rules-aidlc-phase-construction.mdc", dst: "rules/aidlc-phase-construction.mdc" },
-    { src: "rules-aidlc-phase-operation.mdc", dst: "rules/aidlc-phase-operation.mdc" },
-    // The hook shim + wiring (the adapter is authored; the core hook bodies
-    // beside it are packaged byte-identical to the Claude harness).
-    { src: "hooks/aidlc-cursor-adapter.ts", dst: "hooks/aidlc-cursor-adapter.ts" },
     { src: "hooks.json", dst: "hooks.json" },
     // Project-level permissions: pre-approve AI-DLC's own workflow commands
     // (the dispatcher's engine commands and the aidlc-*.ts tools) so the
@@ -142,7 +128,6 @@ const manifest: HarnessManifest = {
     // .cursor/cli.json is the ONLY project-level CLI config Cursor reads
     // (permissions only, documented contract).
     { src: "cli.json", dst: "cli.json" },
-    { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
     // The copy runtime's non-destructive installer, run from the extracted
     // runtime (`bun "$RUNTIME_ROOT/cursor/install.ts" your-project`). It merges
     // the project-owned Cursor config and onboarding surfaces before copying.
@@ -156,12 +141,12 @@ const manifest: HarnessManifest = {
 
   // .cursor/rules/ is Cursor's native rules dir and our stub deliberately
   // lives there; core projects no rules/ dir, so nothing needs renaming.
-  rulesRename: null,
+  rulesRename: CURSOR_HOST_DATA.rulesFolder,
 
   // Runners generate into .cursor/skills/ and remain explicit-only. Cursor
   // otherwise lets the model auto-activate a relevant skill even when
   // user-invocable is true, which is unsafe for state-mutating stage runners.
-  runnerFrontmatterAdditions: ["disable-model-invocation: true"],
+  runnerFrontmatterAdditions: CURSOR_HOST_DATA.runnerFrontmatterAdditions,
   skipRunnerGen: true,
 
   emit(ctx): void {
