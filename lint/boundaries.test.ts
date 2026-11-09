@@ -477,3 +477,39 @@ describe("legacyOwnership for a row naming its shipped owner", () => {
     );
   });
 });
+
+const FILE_SYSTEM_BUILT = 'export const files = createNodeFileSystem();\n';
+
+describe("boundaryConfig for building a platform implementer", () => {
+  test("refuses a route building the file system", () => {
+    expect(
+      findingsFor(FILE_SYSTEM_BUILT, "src/cli/adapters/routes/projection/legacy-runner-child.ts"),
+    ).toContainEqual(refusal("built once, in a process entry"));
+  });
+
+  test("refuses a context root building the process runner", () => {
+    expect(
+      findingsFor("export const run = createNodeProcessRunner();\n", "src/cli/roots.ts"),
+    ).toContainEqual(refusal("built once, in a process entry"));
+  });
+
+  test("refuses a route building it through a namespace", () => {
+    const code = "export const files = composition.createNodeFileSystem();";
+
+    expect(findingsFor(code, "src/cli/roots.ts")).toContainEqual(
+      refusal("built once, in a process entry"),
+    );
+  });
+
+  test("allows the main entry to build the file system", () => {
+    expect(findingsFor(FILE_SYSTEM_BUILT, "src/cli/main.ts")).not.toContainEqual(
+      refusal("built once, in a process entry"),
+    );
+  });
+
+  test("allows the legacy runner child entry to build the file system", () => {
+    expect(findingsFor(FILE_SYSTEM_BUILT, "src/cli/legacy-runner-child.ts")).not.toContainEqual(
+      refusal("built once, in a process entry"),
+    );
+  });
+});
