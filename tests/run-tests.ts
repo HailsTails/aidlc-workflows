@@ -45,6 +45,7 @@ import {
   TestBudgetExhaustedError,
 } from "./harness/test-budget.ts";
 import { buildMeta, renderMeta } from "./lib/bun-junit-to-meta.ts";
+import { acquirePackageLock, processExists } from "../lint/gate/adapters/package-lock.ts";
 import { CASE_TIMEOUT_RETRY_MAX_MS, FILE_ATTEMPT_ENV, flakyLiveLine, ISOLATED_RETRY_MAX_MS, MODEL_API_REASON, modelApiFailed, modelApiLine, onlyModelApiFailures, onlyCaseTimeouts, ORDINARY_RETRY_MAX_MS, personTurnFailed, personTurnLine, preserveFirstAttempt, retryEligible, retryPassed } from "./lib/file-retry.ts";
 import {
   type OrderWeights,
@@ -362,28 +363,20 @@ if (args.e2ePlan) {
 function prepareGeneratedTrees(): void {
   if (process.env[PACKAGE_READY_ENV] === "1") return;
   mkdirSync(dirname(PACKAGE_LOCK), { recursive: true });
-  const deadline = Date.now() + NATIVE_COMPILE_TIMEOUT_MS;
-  let acquired = false;
-  while (!acquired) {
-    try {
-      mkdirSync(PACKAGE_LOCK);
-      acquired = true;
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !("code" in error) ||
-        error.code !== "EEXIST"
-      ) {
-        throw error;
-      }
-      if (Date.now() >= deadline) {
-        process.stderr.write(
-          `ERROR: timed out waiting for projection regeneration lock ${PACKAGE_LOCK}\n`,
-        );
-        process.exit(2);
-      }
-      Bun.sleepSync(100);
-    }
+  const lock = acquirePackageLock({
+    lockPath: PACKAGE_LOCK,
+    pid: process.pid,
+    isProcessAlive: processExists,
+    now: Date.now,
+    sleep: (milliseconds) => Bun.sleepSync(milliseconds),
+    timeoutMs: NATIVE_COMPILE_TIMEOUT_MS,
+    report: (line) => process.stderr.write(line),
+  });
+  if (lock.kind === "timed-out") {
+    process.stderr.write(
+      `ERROR: timed out waiting for projection regeneration lock ${PACKAGE_LOCK}\n`,
+    );
+    process.exit(2);
   }
   let generationFailed = false;
   try {
@@ -402,7 +395,7 @@ function prepareGeneratedTrees(): void {
       process.env[PACKAGE_READY_ENV] = "1";
     }
   } finally {
-    rmSync(PACKAGE_LOCK, { recursive: true, force: true });
+    lock.release();
   }
   // process.exit inside try would skip finally and strand the package lock.
   if (generationFailed) process.exit(2);
