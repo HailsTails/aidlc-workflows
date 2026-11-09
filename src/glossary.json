@@ -342,6 +342,8 @@
 {"name":"LifecycleHookPoint","context":"workflow-definition","kind":"concept","definition":"A HookPoint that is not around a tool call."},
 {"name":"MethodSourceKind","context":"workflow-definition","kind":"concept","definition":"Which kind of method source a file is; each kind has one fixed folder. An overlay is a plugin contribution under contributions/, located by its owning plugin."},
 {"name":"MethodSourceLocation","context":"workflow-definition","kind":"concept","definition":"Which method source file a fact is about: its owner and MethodSourcePath, the one key entities, bytes and refusals share."},
+{"name":"AuthoredTree","context":"workflow-definition","kind":"concept","definition":"Which authored source root a path is read below: core or plugins."},
+{"name":"AuthoredTreeLocation","context":"workflow-definition","kind":"concept","definition":"A path below an authored source root, as read, before it is known to be a method source or a plugin: empty for the root itself, ending in a slash for a folder."},
 {"name":"MethodFileLocation","context":"workflow-definition","kind":"concept","definition":"Which file a method refusal is about: a method source, a plugin manifest, or the stage pins."},
 {"name":"FileMode","context":"kernel","kind":"concept","definition":"Whether a file is written as a regular file or an executable."},
 {"name":"IntegrationLifecycle","context":"installation","kind":"concept","definition":"Whether a root integration is live in this release or being retired."},

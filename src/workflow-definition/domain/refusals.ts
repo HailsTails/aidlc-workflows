@@ -1,3 +1,4 @@
+import type { UnreadableTreeFile } from "../../kernel/file-system-port.ts";
 import type { Owner, PluginId, ScopeName, StageSlug } from "./identities.ts";
 import type { MethodSourceLocation } from "./method-source.ts";
 
@@ -15,6 +16,14 @@ export type MethodFileLocation =
   | ({ readonly kind: "method-source" } & MethodSourceLocation)
   | { readonly kind: "plugin-manifest"; readonly plugin: string }
   | { readonly kind: "stage-pins" };
+
+export type AuthoredTree = "core" | "plugins";
+
+export type AuthoredTreeLocation = {
+  readonly kind: "authored-tree";
+  readonly tree: AuthoredTree;
+  readonly within: string;
+};
 
 export type MethodRefusal =
   | {
@@ -68,4 +77,9 @@ export type MethodRefusal =
       readonly kind: "missing-dependency";
       readonly plugin: PluginId;
       readonly needs: string;
+    }
+  | {
+      readonly kind: "source-unreadable";
+      readonly location: AuthoredTreeLocation;
+      readonly code: UnreadableTreeFile["code"];
     };
