@@ -146,6 +146,7 @@
 {"name":"SessionSkillTreeReader","context":"projection","kind":"port","definition":"Port: reads the core session skills folder as one tree of bytes, naming each entry it cannot read; the file-system implementer serves it."},
 {"name":"LegacyRunnerScratch","context":"projection","kind":"port","definition":"Port: makes, fills and removes the private scratch folder the legacy runner bridge works in; the file-system implementer serves it."},
 {"name":"LegacyRunnerProcess","context":"projection","kind":"port","definition":"Port: runs the legacy runner bridge's child on the current runtime; the process-runner implementer serves it."},
+{"name":"LegacyRunnerOutputReader","context":"projection","kind":"port","definition":"Port: reads, inside the legacy runner bridge's child, the folder the frozen runner generator wrote, as one tree of bytes naming each entry it cannot read; the file-system implementer serves it."},
 {"name":"HostSurfaceReader","context":"projection","kind":"port","definition":"Port: reads the files a harness authors for its own tree (harness/<h>/**)."},
 {"name":"NativeCommandName","context":"projection","kind":"concept","definition":"A host's native name for one command, which is also its folder: one portable path segment."},
 {"name":"CommandFilePath","context":"projection","kind":"concept","definition":"Where a file sits inside its native command's folder: a portable relative path that cannot climb out."},

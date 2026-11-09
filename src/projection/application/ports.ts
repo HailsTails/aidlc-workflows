@@ -89,6 +89,10 @@ export interface LegacyRunnerProcess {
   ): Promise<Result<ProcessOutput, ProcessFailure>>;
 }
 
+export interface LegacyRunnerOutputReader {
+  readTree(readTreeArgs: ReadTreeArgs): Promise<Result<TreeReading, FileSystemError>>;
+}
+
 export interface SessionSkillSource {
   read(): Promise<Result<readonly SessionSkill[], readonly ProjectionRefusal[]>>;
 }

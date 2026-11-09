@@ -130,7 +130,7 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
       "the phase 1 freeze keeps in shipped bytes.",
   },
   shippedOwner("aidlc-tiers", "src/projection/adapters/legacy-tiers.ts"),
-  shippedOwner("aidlc-runner-gen", "src/projection/adapters/legacy-runners.ts"),
+  shippedOwner("aidlc-runner-gen", "src/cli/legacy-runner-child.ts"),
   shippedOwner("aidlc-utility", "src/projection/adapters/legacy-skill-tables.ts"),
   shippedOwner("aidlc-settings", "src/projection/adapters/legacy-settings-schema.ts"),
   shippedOwner("aidlc-command", "src/projection/adapters/legacy-trusted-commands.ts"),
