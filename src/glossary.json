@@ -306,6 +306,7 @@
 {"name":"HostAgentMembers","context":"cli","kind":"concept","definition":"A host's members for the agents group: the authored agent files and its HostAgentRenderer."},
 {"name":"HostSkillMembers","context":"cli","kind":"concept","definition":"A host's members for the skills group: the authored orchestrator files and its HostSkillRenderer."},
 {"name":"HostAgentsRequest","context":"cli","kind":"concept","definition":"What the build root needs to render one host's agents: its HostAgentMembers, the Method, the captured authored files and their preparer, the DistributionChannel, and the tier cap the build runs under."},
+{"name":"ProjectAgents","context":"cli","kind":"technical","definition":"The PackageBuildRoot member that renders every Method agent and the conductor agent of one host from a HostAgentsRequest."},
 {"name":"HostDocumentMembers","context":"cli","kind":"concept","definition":"A host's members for the onboarding and documents group: the authored sources its onboarding fills come from and its HostDocumentRenderer."},
 {"name":"HostSettingsMembers","context":"cli","kind":"concept","definition":"A host's members for the settings and hooks group: the authored settings and hook files and its HostSettingsRenderer."},
 {"name":"BuildSources","context":"cli","kind":"concept","definition":"Where the build reads authored sources: the core folder and the plugins folder, by URL."},
