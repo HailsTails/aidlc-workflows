@@ -13,6 +13,7 @@ import type { KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout, HostDistribution } from "../packaging/domain/payload.ts";
 import type {
+  AuthoredFilePreparer,
   CommandPlacement,
   CommandSource,
   Harness,
@@ -22,9 +23,12 @@ import type {
   HostSkillRenderer,
 } from "../projection/application/ports.ts";
 import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
+import type { DistributionChannel } from "../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
 import type { CompiledMethodFiles, ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostTokenChoices } from "../projection/domain/template-token.ts";
+import type { Method } from "../workflow-definition/domain/method.ts";
+import type { Tier } from "../workflow-definition/domain/vocabulary.ts";
 import type {
   AuthoredCoreMethod,
   AuthoredPluginBuild,
@@ -54,6 +58,8 @@ export type HostConceptMembers<Render> = ConceptMembers<Render> & {
   readonly host: HostIdentity;
 };
 
+export type HostAgentMembers = HostConceptMembers<HostAgentRenderer>;
+
 export type HostSkillMembers = HostConceptMembers<HostSkillRenderer>;
 
 export type HostSettingsMembers = HostConceptMembers<HostSettingsRenderer>;
@@ -65,7 +71,7 @@ export type HostBuildMembers = {
   readonly tokens: HostTokenChoices;
   readonly data: HostData;
   readonly placements: readonly AuthoredPlacement[];
-  readonly agents: HostAgentRenderer;
+  readonly agents: ConceptMembers<HostAgentRenderer>;
   readonly commands: CommandPlacement;
   readonly skills: ConceptMembers<HostSkillRenderer>;
   readonly settings: ConceptMembers<HostSettingsRenderer>;
@@ -129,6 +135,15 @@ export type HostSourcesRequest = {
   readonly root: URL;
   readonly copied: readonly string[];
   readonly required: readonly string[];
+};
+
+export type HostAgentsRequest = {
+  readonly members: HostAgentMembers;
+  readonly method: Method;
+  readonly files: readonly AuthoredHostFile[];
+  readonly prepare: AuthoredFilePreparer;
+  readonly channel: DistributionChannel;
+  readonly modelCap: Tier | null;
 };
 
 export type CapturedHostSources = {
