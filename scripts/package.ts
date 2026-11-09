@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
 import { refreshSkillRegions, finishEarlierReleaseSkill }
   from "../src/projection/domain/skill-regions.ts";
 import type { FileContent } from "../src/kernel/file-content.ts";
@@ -68,7 +69,8 @@ import {
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { hostAgentInputs, hostSkillInputs } from "../src/cli/host-table.ts";
+import { hostAgentInputs, hostSkillInputs, hostSurfaceMembers } from "../src/cli/host-table.ts";
+import { distributionId, projectPath } from "../src/kernel/values.ts";
 import type {
   DistributionChannel, ProjectedFile,
 } from "../src/projection/domain/projected-file.ts";
@@ -222,11 +224,12 @@ function substituteInvocationTokens(
   harnessDir: string,
   invoke = `bun ${harnessDir}/tools/aidlc.ts`,
 ): string {
-  const toolPrefix = invoke === "aidlc" ? `${TRUSTED_COMMAND_PREFIX} ` : `bun ${harnessDir}/tools/`;
+  const bindings = channelTokens({ channel: invoke === "aidlc" ? "native" : "copy",
+    directory: harnessDir, prefix: TRUSTED_COMMAND_PREFIX, namespace: TRUSTED_ROUTE_NAMESPACE });
   return s
     .replace(INVOKE_TOKEN, invoke)
-    .replace(TOOL_PREFIX_TOKEN, toolPrefix)
-    .replace(TRUSTED_NAMESPACE_TOKEN, TRUSTED_ROUTE_NAMESPACE);
+    .replace(TOOL_PREFIX_TOKEN, bindings.TOOL_PREFIX)
+    .replace(TRUSTED_NAMESPACE_TOKEN, bindings.TRUSTED_NAMESPACE);
 }
 
 // The letters a questions file gives a question's options before `X. Other`:
@@ -505,15 +508,13 @@ const PLUGIN_AUTHORING_CONTEXT_DST = join(
 const ACTIVE_SPACE_REL = join("aidlc", "active-space");
 const ACTIVE_SPACE_VALUE = "default\n";
 
-// Write tools/data/harness.json from manifest data. The runtime reads the
+// T-M2-F1-0 removes this legacy writer after every native host surface registers.
+// The runtime reads the
 // rules-subdir and any host-native generated-runner frontmatter from this
 // open-set descriptor. Pretty-printed + trailing newline keeps output
 // diff-friendly and stable under --check.
 function writeHarnessData(treeRoot: string, m: HarnessManifest, invoke: string): void {
-  // A FRESH object, deliberately: the runtime READER tolerates unknown keys, but
-  // this writer alone decides what ships. Anything hand-added to a local
-  // harness.json is erased on the next build, so a new configuration field has
-  // to be added HERE to exist at all.
+  // Keep installed additions out of the declared shipped descriptor.
   const data: Record<string, unknown> = {
     schemaVersion: 1,
     distribution: m.name,
@@ -894,6 +895,13 @@ async function buildTree(
   const prepareHostInput = (file: AuthoredHostFile) => prepareAuthoredHostFile({
     file, host: hostInput.host, manifest: m, root: harnessSrcRoot, invoke, letters,
   });
+  const surface = packageBuildRoot.projectHostSurface({ host: hostInput.host, files: hostInput.files,
+    prepare: prepareHostInput, channel, tokens: { HARNESS_DIR: harnessDir, INVOKE: invoke,
+      SKILL_INVOKE: null, TOOL_PREFIX: channelTokens({ channel, directory: harnessDir,
+        prefix: TRUSTED_COMMAND_PREFIX, namespace: TRUSTED_ROUTE_NAMESPACE }).TOOL_PREFIX,
+      TRUSTED_NAMESPACE: TRUSTED_ROUTE_NAMESPACE, OPTION_LETTERS: letters } });
+  if (!surface.ok) throw new Error(JSON.stringify(surface.refusal));
+  writeProjectedFiles({ files: surface.value, projectRoot: outRoot });
   for (const { src, dst, projectRoot } of m.harnessFiles) {
     const file = hostInput.files.find((entry) => entry.source === src);
     if (!file) continue;
@@ -984,8 +992,10 @@ async function buildTree(
   //     purely from the manifest, so unseeded; written into the same tools/data/
   //     the compile step just created, hence walked + byte-diffed by --check
   //     like any other generated file.
-  writeHarnessData(treeRoot, m, invoke);
-  writePluginAgentData(treeRoot, m);
+  if (surface.value.length === 0) {
+    writeHarnessData(treeRoot, m, invoke);
+    writePluginAgentData(treeRoot, m);
+  }
   writeAgentTiersData(treeRoot);
   writeSettingsSchemaData(treeRoot);
 
@@ -1882,7 +1892,7 @@ const PLUGINS_ROOT = join(REPO_ROOT, "plugins");
 
 // Per-harness plugin projection descriptors are derived from manifests once,
 // consumed directly by the checkout emitter, and emitted into every tools/data
-// bundle for the standalone builder. Manifests remain the single source.
+// bundle for the standalone builder. Native placements supplement legacy rows.
 let pluginTargetCache: PluginTargetTable | null = null;
 function pluginTargets(): PluginTargetTable {
   if (pluginTargetCache) return pluginTargetCache;
@@ -1900,6 +1910,13 @@ function pluginTargets(): PluginTargetTable {
     for (const file of manifest.harnessFiles) {
       if (file.projectRoot) addTopLevel(file.dst);
     }
+    const distribution = distributionId(manifest.name);
+    const directory = projectPath(manifest.harnessDir);
+    if (!distribution.ok || !directory.ok) throw new Error("Invalid plugin target host identity");
+    const surface = hostSurfaceMembers({
+      distribution: distribution.value, directory: directory.value,
+    });
+    for (const placement of surface?.placements ?? []) addTopLevel(placement.destination);
     if (manifest.onboarding?.projectRoot) {
       addTopLevel(manifest.onboarding.dst);
     }

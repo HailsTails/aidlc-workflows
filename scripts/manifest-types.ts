@@ -359,7 +359,7 @@ export type HarnessManifest = {
    * skill. The packager persists these in tools/data/harness.json so runner
    * regeneration during plugin composition applies the same host contract.
    */
-  runnerFrontmatterAdditions?: string[];
+  readonly runnerFrontmatterAdditions?: readonly string[];
   /**
    * How to render this harness's neutral and harness-specific onboarding.
    * null when the harness generates it elsewhere or ships none.
@@ -427,7 +427,7 @@ export type HarnessManifest = {
    * writes it later, or not for every dispatch, would make the engine tell the
    * person no reviewer finished a review one did.
    */
-  agentFinishRecorded?: { env: string[] };
+  readonly agentFinishRecorded?: { readonly env: readonly string[] };
   /**
    * The variables this host sets in every command its agent runs, read like
    * `hookActivation.missedReplyInHost`'s `env`. In a project with more than one
@@ -438,7 +438,7 @@ export type HarnessManifest = {
    * own terminal carries (an editor's TERM_PROGRAM), or a tool started there would
    * read as this host. Emitted into <harnessDir>/tools/data/harness.json.
    */
-  hostShell?: { env: string[] };
+  readonly hostShell?: { readonly env: readonly string[] };
   skipRunnerGen?: boolean;
   /**
    * Optional per-shell emission plugin (codex, copilot and opencode today). It always writes

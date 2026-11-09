@@ -72,9 +72,9 @@ test("host path refusal precedes IO and a valid capture retains its host", async
     { kind: "invalid-path", base: "source", raw: "../outside" },
   ] });
   expect(readFile).not.toHaveBeenCalled();
-  expect(await root.readHostSources({ name: "kiro", directory: ".kiro", root: new URL("file:///host/"),
+  expect(await root.readHostSources({ name: "fixture-host", directory: ".fixture", root: new URL("file:///host/"),
     copied: [], required: [] })).toEqual({ ok: true, value: {
-      host: host({ name: "kiro", directory: ".kiro" }), files: [],
+      host: host({ name: "fixture-host", directory: ".fixture" }), files: [],
     } });
 });
 
@@ -150,7 +150,7 @@ test("the skill route omits unregistered hosts without reading neutral sources",
   const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
   const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml },
     outliner, sources, runnerFrames });
-  expect(await root.projectSkills({ host: host({ name: "kiro", directory: ".kiro" }),
+  expect(await root.projectSkills({ host: host({ name: "fixture-host", directory: ".fixture" }),
     projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
     commands: { read: () => accepted({ kind: "declined" }) }, place: claudeCommandPath, tokens: skillTokens }))
     .toEqual(accepted([]));
@@ -197,4 +197,74 @@ test("the real skill route composes B and C once and captures neutral skills onc
     content: { kind: "text", text: "Changed after capture" } }));
   expect(accept(await root.projectSkills(skillRequest))).toEqual(expected);
   expect(readTree).toHaveBeenCalledTimes(1);
+});
+test("registered Kiro skills refuse the actual missing captured orchestrator input", async () => {
+  const root = createPackageBuildRoot({ platform: { fileSystem: createInMemoryFileSystem({ files: {} }),
+    processRunner, yaml }, outliner, sources, runnerFrames });
+  expect(await root.projectSkills({ host: host({ name: "kiro", directory: ".kiro" }),
+    projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
+    commands: { read: () => accepted({ kind: "declined" }) }, place: claudeCommandPath, tokens: skillTokens }))
+    .toEqual(refused({ kind: "render-failed", concept: "orchestrator-skill", name: "skills/aidlc/SKILL.md",
+      reason: "The authored orchestrator document was not captured." }));
+});
+test("the standalone surface route omits an unregistered host without IO or preparation", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const readFile = mock<Platform["fileSystem"]["readFile"]>(fileSystem.readFile);
+  const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
+  const prepare = mock(accepted);
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readFile, readTree },
+    processRunner, yaml }, outliner, sources, runnerFrames });
+  expect(root.projectHostSurface({ host: host({ name: "fixture-host", directory: ".fixture" }),
+    files: [], prepare, tokens: skillTokens, channel: "copy" })).toEqual(accepted([]));
+  expect(readFile).not.toHaveBeenCalled();
+  expect(readTree).not.toHaveBeenCalled();
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+const surfaceFiles = {
+  "file:///host/skills/aidlc/SKILL.md": "Door",
+  "file:///host/skills/aidlc/question-rendering.md": "Question",
+  "file:///host/skills/aidlc/composer.md": "Composer",
+  "file:///host/skills/aidlc/tables.md": "Tables",
+  "file:///host/settings.local.json.example": "E",
+  "file:///host/.mcp.json": "{}",
+  "file:///host/dot-gitignore": "G",
+  "file:///host/rules-aidlc.md": "R",
+};
+
+test("the real surface route uses one captured snapshot and preserves exact native placement bytes", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: surfaceFiles });
+  const readFile = mock<Platform["fileSystem"]["readFile"]>(fileSystem.readFile);
+  const prepare = mock(accepted);
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readFile },
+    processRunner, yaml }, outliner, sources, runnerFrames });
+  const captured = accept(await root.readHostSources({ name: "claude", directory: ".claude",
+    root: new URL("file:///host/"), copied: [], required: [] }));
+  const surfaceRequest = { host: captured.host, files: captured.files,
+    prepare, tokens: skillTokens, channel: "copy" } as const;
+  const projected = root.projectHostSurface(surfaceRequest);
+  expect(projected).toMatchObject({ ok: true, value: [
+    { path: path(".claude/tools/data/harness.json"), content: { kind: "text" } },
+    { path: path(".claude/settings.local.json.example"), content: { kind: "bytes", bytes: new Uint8Array([69]) } },
+    { path: path(".mcp.json"), content: { kind: "bytes", bytes: new Uint8Array([123, 125]) } },
+    { path: path(".gitignore"), content: { kind: "bytes", bytes: new Uint8Array([71]) } },
+    { path: path(".claude/rules/aidlc.md"), content: { kind: "bytes", bytes: new Uint8Array([82]) } },
+  ] });
+  expect(readFile).toHaveBeenCalledTimes(8);
+  expect(prepare).toHaveBeenCalledTimes(4);
+  accept(await fileSystem.writeFile({ file: new URL("file:///host/dot-gitignore"),
+    content: { kind: "text", text: "Changed after capture" } }));
+  expect(root.projectHostSurface(surfaceRequest)).toEqual(projected);
+  expect(readFile).toHaveBeenCalledTimes(8);
+});
+
+test("native placement inputs are required by capture even after their old copy rows retire", async () => {
+  const root = createPackageBuildRoot({ platform: { fileSystem: createInMemoryFileSystem({
+    files: surfaceFiles, faults: { "file:///host/.mcp.json": "not-found" },
+  }), processRunner, yaml }, outliner, sources, runnerFrames });
+  expect(await root.readHostSources({ name: "claude", directory: ".claude",
+    root: new URL("file:///host/"), copied: [], required: [] })).toEqual(refused([{
+      kind: "host-source-unreadable", host: host({ name: "claude", directory: ".claude" }),
+      source: source(".mcp.json"), reason: "Host source is unreadable: not-found.",
+    }]));
 });

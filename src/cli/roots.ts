@@ -24,7 +24,7 @@ import type {
   Rendering,
 } from "../projection/application/ports.ts";
 import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../projection/domain/host-surface.ts";
-import type { DistributionChannel } from "../projection/domain/projected-file.ts";
+import type { DistributionChannel, ProjectedFile } from "../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
 import type { CompiledMethodFiles, ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostTokenChoices, TokenBindings } from "../projection/domain/template-token.ts";
@@ -92,10 +92,6 @@ export type RuntimeHost = {
   readonly encoder: HostResponseEncoder;
 };
 
-export interface BuildRoot {
-  routes(request: { readonly hosts: readonly BuildHost[] }): readonly CommandRoute[];
-}
-
 export type Platform = {
   readonly fileSystem: FileSystem;
   readonly processRunner: ProcessRunner;
@@ -106,12 +102,6 @@ export type BuildSources = {
   readonly core: URL;
   readonly plugins: URL;
 };
-
-export type CreateBuildRoot = (createBuildRootArgs: {
-  readonly platform: Platform;
-  readonly outliner: MarkdownOutliner;
-  readonly sources: BuildSources;
-}) => BuildRoot;
 
 export type CoreBuildTarget = {
   readonly name: string;
@@ -178,12 +168,23 @@ export type HostSurfaceRequest = {
 
 export type ProjectHostSurface = (request: HostSurfaceRequest) => Rendering;
 
+export type HostRuntimeRequest = {
+  readonly host: HostIdentity;
+  readonly method: Method;
+  readonly tokens: TokenBindings;
+};
+
+export type ProjectRuntime = (
+  request: HostRuntimeRequest,
+) => Promise<Result<readonly ProjectedFile[], readonly ProjectionRefusal[]>>;
+
 export type CapturedHostSources = {
   readonly host: HostIdentity;
   readonly files: readonly AuthoredHostFile[];
 };
 
 export interface PackageBuildRoot {
+  readonly projectHostSurface: ProjectHostSurface;
   readonly projectSkills: ProjectSkills;
   readonly projectAgents: ProjectAgents;
   loadCore(): MethodReading<CoreBuild>;

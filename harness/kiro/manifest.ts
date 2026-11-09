@@ -243,21 +243,12 @@ const manifest: HarnessManifest = {
     { src: "scopes", dst: "scopes" },
     { src: "agents", dst: "agents" },
     { src: "hooks", dst: "hooks" },
-    { src: "skills/aidlc-session-cost", dst: "skills/aidlc-session-cost" },
-    { src: "skills/aidlc-replay", dst: "skills/aidlc-replay" },
-    { src: "skills/aidlc-outcomes-pack", dst: "skills/aidlc-outcomes-pack" },
-    { src: "skills/aidlc-issue-report", dst: "skills/aidlc-issue-report" },
-    { src: "skills/aidlc-knowledge", dst: "skills/aidlc-knowledge" },
   ],
 
   // Authored Kiro shell surfaces. These carry literal `.kiro` (harness-specific
   // by construction); they are .md/.json/.ts copied verbatim (the .md token
   // substitution is a no-op on them — no {{HARNESS_DIR}} token present).
   harnessFiles: [
-    { src: "skills/aidlc/SKILL.md", dst: "skills/aidlc/SKILL.md" },
-    { src: "skills/aidlc/question-rendering.md", dst: "skills/aidlc/question-rendering.md" },
-    { src: "skills/aidlc/composer.md", dst: "skills/aidlc/composer.md" },
-    { src: "skills/aidlc/tables.md", dst: "skills/aidlc/tables.md" },
     { src: "hooks/aidlc-kiro-adapter.ts", dst: "hooks/aidlc-kiro-adapter.ts" },
     { src: "hooks/aidlc-record-human-turn.kiro.hook", dst: "hooks/aidlc-record-human-turn.kiro.hook" },
     { src: "hooks/aidlc-plan-approval-guard.kiro.hook", dst: "hooks/aidlc-plan-approval-guard.kiro.hook" },
