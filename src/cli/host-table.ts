@@ -1,3 +1,4 @@
+import { createCodexDocumentRenderer } from "../hosts/codex/projection/document-renderer.ts";
 import { createKiroDocumentRenderer } from "../hosts/kiro/projection/document-renderer.ts";
 import { CODEX_SETTINGS_INPUTS, createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
 import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
@@ -11,7 +12,7 @@ import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS } from "../hosts/cursor/ho
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
 import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING } from "../hosts/kiro/host-data.ts";
-import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS } from "../hosts/codex/host-data.ts";
+import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING } from "../hosts/codex/host-data.ts";
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
@@ -106,7 +107,7 @@ const HOST_BINDING_HEADINGS = [
   { name: "claude", heading: CLAUDE_BINDING_HEADING },
   { name: "kiro", heading: KIRO_BINDING_HEADING },
   { name: "kiro-ide", heading: "Kiro IDE" },
-  { name: "codex", heading: "Codex CLI" },
+  { name: "codex", heading: CODEX_BINDING_HEADING },
   { name: "cursor", heading: "Cursor" },
   { name: "opencode", heading: "opencode" },
   { name: "copilot", heading: "GitHub Copilot" },
@@ -119,6 +120,7 @@ export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEnt
 );
 
 const HOST_DOCUMENT_MEMBERS = [
+  { name: "codex", inputs: [], render: createCodexDocumentRenderer },
   { name: "kiro", inputs: [], render: createKiroDocumentRenderer },
   { name: "claude", inputs: [], render: createClaudeDocumentRenderer },
 ] as const;
