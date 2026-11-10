@@ -1,3 +1,4 @@
+import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
 import { createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
 import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
 import { openCodeAgents } from "../hosts/opencode/projection/agent-renderer.ts";
@@ -12,6 +13,14 @@ import { host, source } from "../kernel/fixtures/values.fixture.ts";
 import { hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
+
+test("Kiro IDE documents directly register the native factory with no authored capture", () => {
+  const kiroIde = host({ name: "kiro-ide", directory: ".kiro" });
+  expect(hostDocumentMembers(kiroIde)).toEqual({ host: kiroIde, inputs: [], render: createKiroIdeDocumentRenderer });
+  expect(hostBindingHeadings()).toEqual([
+    "Claude Code", "Kiro CLI", "Kiro IDE", "Codex CLI", "Cursor", "opencode", "GitHub Copilot",
+  ]);
+});
 
 test("an unregistered host has no agent inputs or accidental Kiro members", () => {
   expect(hostAgentInputs("fixture-host")).toEqual([]);

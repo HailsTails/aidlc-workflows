@@ -271,8 +271,6 @@ const manifest: HarnessManifest = {
   // Same core projection as kiro CLI.
   coreDirs: [
     { src: "tools", dst: "tools" },
-    { src: "aidlc-common", dst: "aidlc-common" },
-    { src: "knowledge", dst: "knowledge" },
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
     { src: "hooks", dst: "hooks" },

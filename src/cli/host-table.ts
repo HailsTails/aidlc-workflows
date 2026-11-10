@@ -1,3 +1,4 @@
+import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
 import { CURSOR_SETTINGS_INPUTS, createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
 import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
 import { openCodeAgents } from "../hosts/opencode/projection/agent-renderer.ts";
@@ -11,7 +12,7 @@ import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
 import { KIRO_SETTINGS_INPUTS, createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 import { createClaudeDocumentRenderer } from "../hosts/claude/projection/document-renderer.ts";
 import type { HostDocumentMembers } from "./roots.ts";
-import { KIRO_IDE_AUTHORED_PLACEMENTS } from "../hosts/kiro-ide/host-data.ts";
+import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
 import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS } from "../hosts/copilot/host-data.ts";
 import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS } from "../hosts/cursor/host-data.ts";
@@ -118,7 +119,7 @@ export const hostSettingsMembers = (host: HostIdentity): Result<HostSettingsMemb
 const HOST_BINDING_HEADINGS = [
   { name: "claude", heading: CLAUDE_BINDING_HEADING },
   { name: "kiro", heading: KIRO_BINDING_HEADING },
-  { name: "kiro-ide", heading: "Kiro IDE" },
+  { name: "kiro-ide", heading: KIRO_IDE_BINDING_HEADING },
   { name: "codex", heading: CODEX_BINDING_HEADING },
   { name: "cursor", heading: "Cursor" },
   { name: "opencode", heading: "opencode" },
@@ -132,6 +133,7 @@ export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEnt
 );
 
 const HOST_DOCUMENT_MEMBERS = [
+  { name: "kiro-ide", inputs: [], render: createKiroIdeDocumentRenderer },
   { name: "codex", inputs: [], render: createCodexDocumentRenderer },
   { name: "kiro", inputs: [], render: createKiroDocumentRenderer },
   { name: "claude", inputs: [], render: createClaudeDocumentRenderer },

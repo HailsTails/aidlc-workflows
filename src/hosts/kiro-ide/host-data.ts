@@ -1,6 +1,8 @@
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
+export const KIRO_IDE_BINDING_HEADING = "Kiro IDE";
+
 const KIRO_IDE_TRUST_STEP =
   "In Kiro IDE, trust this folder: choose Trust Folder & Continue when Kiro asks whether you " +
   "trust it, or select Manage on the Restricted Mode banner, then Trust. Then run Developer: " +
