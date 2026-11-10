@@ -1,5 +1,9 @@
+import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
+import { createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
+import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
 import { createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
 import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
+import { openCodeAgents } from "../hosts/opencode/projection/agent-renderer.ts";
 import { createOpenCodeSettingsRenderer } from "../hosts/opencode/projection/settings-renderer.ts";
 import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
 import { createKiroIdeSettingsRenderer } from "../hosts/kiro-ide/projection/settings-renderer.ts";
@@ -11,6 +15,27 @@ import { host, source } from "../kernel/fixtures/values.fixture.ts";
 import { hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
+
+test("Cursor documents directly register the native factory with no authored capture", () => {
+  const cursor = host({ name: "cursor", directory: ".cursor" });
+  expect(hostDocumentMembers(cursor)).toEqual({ host: cursor, inputs: [], render: createCursorDocumentRenderer });
+});
+
+test("Copilot settings register the native hooks factory without authored capture", () => {
+  const copilot = host({ name: "copilot", directory: ".aidlc" });
+  expect(hostSettingsInputs("copilot")).toEqual([]);
+  expect(hostSettingsMembers(copilot)).toEqual({ ok: true, value: {
+    host: copilot, inputs: [], render: createCopilotSettingsRenderer,
+  } });
+});
+
+test("Kiro IDE documents directly register the native factory with no authored capture", () => {
+  const kiroIde = host({ name: "kiro-ide", directory: ".kiro" });
+  expect(hostDocumentMembers(kiroIde)).toEqual({ host: kiroIde, inputs: [], render: createKiroIdeDocumentRenderer });
+  expect(hostBindingHeadings()).toEqual([
+    "Claude Code", "Kiro CLI", "Kiro IDE", "Codex CLI", "Cursor", "opencode", "GitHub Copilot",
+  ]);
+});
 
 test("an unregistered host has no agent inputs or accidental Kiro members", () => {
   expect(hostAgentInputs("fixture-host")).toEqual([]);
@@ -154,5 +179,13 @@ test("Cursor settings capture only its authored CLI settings and hook registrati
   expect(hostSettingsInputs("cursor")).toEqual(["cli.json", "hooks.json"]);
   expect(hostSettingsMembers(cursor)).toEqual({ ok: true, value: {
     host: cursor, inputs: [source("cli.json"), source("hooks.json")], render: createCursorSettingsRenderer,
+  } });
+});
+
+test("OpenCode agents directly register the native factory without authored capture", () => {
+  const opencode = host({ name: "opencode", directory: ".aidlc" });
+  expect(hostAgentInputs("opencode")).toEqual([]);
+  expect(hostAgentMembers(opencode)).toEqual({ ok: true, value: {
+    host: opencode, inputs: [], render: openCodeAgents,
   } });
 });

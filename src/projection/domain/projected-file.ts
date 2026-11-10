@@ -28,6 +28,7 @@ export type ProjectionOrigin =
   | { readonly kind: "rendered"; readonly concept: RenderedConcept; readonly name: string }
   | { readonly kind: "runtime-data"; readonly name: RuntimeDataName }
   | { readonly kind: "workspace-memory"; readonly copy: MemoryCopy; readonly path: MethodSourcePath }
+  | { readonly kind: "memory-companion"; readonly copy: MemoryCopy; readonly source: SourcePath }
   | { readonly kind: "active-space" };
 
 export type DistributionChannel = "copy" | "native";

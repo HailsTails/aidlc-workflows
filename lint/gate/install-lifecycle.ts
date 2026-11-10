@@ -5,6 +5,7 @@ import { copyInstallLab } from "./adapters/copy-install-lab.ts";
 import { fileWorkspace } from "./adapters/file-workspace.ts";
 import { lifecycleFixtures } from "./adapters/lifecycle-fixtures.ts";
 import { checkLifecycles, recordLifecycles } from "./application/install-lifecycle.ts";
+import { discoveredHarnesses } from "./application/harness-discovery.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/[\\/]$/, "");
 const SANDBOX = join(ROOT, ".cache", "install-lab");
@@ -31,11 +32,7 @@ const requestFrom = (argv: readonly string[]): Request | undefined => {
 
 const workspace = fileWorkspace(ROOT);
 
-const harnesses = (): readonly string[] =>
-  workspace
-    .filesMatching(["harness/*/manifest.ts"])
-    .map((path) => path.split("/")[1] ?? "")
-    .filter((name) => name !== "");
+const harnesses = (): readonly string[] => discoveredHarnesses(workspace);
 
 const main = (): number => {
   const request = requestFrom(Bun.argv.slice(2));

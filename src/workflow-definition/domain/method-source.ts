@@ -17,6 +17,11 @@ export const METHOD_SOURCE_FOLDERS = {
 
 export type MethodSourceKind = keyof typeof METHOD_SOURCE_FOLDERS;
 
+export type MethodFileKind = "method-document" | "companion";
+
+export const methodFileKind = (path: string): MethodFileKind =>
+  path.endsWith(".md") ? "method-document" : "companion";
+
 export type MethodSourcePath = Brand<string, "MethodSourcePath">;
 
 export type MethodSourceRoot = Brand<string, "MethodSourceRoot">;

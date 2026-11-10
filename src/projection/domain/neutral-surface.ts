@@ -52,6 +52,11 @@ export type RuntimeFile = {
   readonly content: FileContent;
 };
 
+export type MemoryCompanion = {
+  readonly source: SourcePath;
+  readonly content: FileContent;
+};
+
 export type SharedRuntime = {
   readonly files: readonly RuntimeFile[];
   readonly version: FileContent;

@@ -52,6 +52,7 @@ import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
 import { disciplinesCheck } from "../lint/gate/application/disciplines-check.ts";
 import type { GateCheck } from "../lint/gate/application/gate-check.ts";
+import { discoveredHarnesses } from "../lint/gate/application/harness-discovery.ts";
 import { sharedBuild } from "../lint/gate/application/shared-build.ts";
 import { goldensCheck, type GoldensDependencies } from "../lint/gate/application/goldens-check.ts";
 import { lintCheck } from "../lint/gate/application/lint-check.ts";
@@ -108,11 +109,7 @@ const audit = disciplineCore({
 });
 const CLEAN_TRIGGERS = [...CLEAN_ZONE.folders.map((folder) => `${folder}/**`), ...CLEAN_ZONE.files];
 
-const harnesses = (): readonly string[] =>
-  workspace
-    .filesMatching(["harness/*/manifest.ts"])
-    .map((path) => path.split("/")[1] ?? "")
-    .filter((name) => name !== "");
+const harnesses = (): readonly string[] => discoveredHarnesses(workspace);
 
 const goldenLayout: GoldenLayout = {
   root: ROOT,

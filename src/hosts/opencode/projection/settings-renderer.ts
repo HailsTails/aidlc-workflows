@@ -46,8 +46,6 @@ const renderHookRegistrations = (inputs: SettingsRenderingInputs): Rendering => 
     .join("\n");
   const embedded = raw.replace(entrypointMarker, `/* @aidlc-shipped-entrypoints@ */ ${entrypoints}`);
   const imports = embedded.replaceAll(authoredToolImport, `"../../${harnessDir}/tools/aidlc-executable-path.ts"`);
-  // This authored plugin used the emitter's complete token pass, not the
-  // generic .ts preparation rule that selects invocation tokens only.
   const text = bindTemplateTokens({ text: imports, tokens: inputs.tokens, selected: TEMPLATE_TOKENS });
   const path = projectPath(`.opencode/${pluginSource}`);
   return path.ok ? accepted([{ path: path.value, content: { kind: "text", text },
