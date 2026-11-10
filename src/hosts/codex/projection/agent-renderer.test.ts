@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test";
+import { SCRATCH_AGENT_INPUTS } from "../../../projection/fixtures/scratch-host.fixture.ts";
+import { expect, test, mock } from "bun:test";
 import { projectPath } from "../../../kernel/values.ts";
 import { accept } from "../../../kernel/fixtures/accept.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
@@ -6,7 +7,7 @@ import type { ProjectionRefusal } from "../../../projection/domain/projection.ts
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import { agentSlug } from "../../../workflow-definition/domain/identities.ts";
 import { methodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
-import { createCodexAgentRenderer } from "./agent-renderer.ts";
+import { codexAgents } from "./agent-renderer.ts";
 
 const agent: Agent = {
   slug: accept(agentSlug("aidlc-example-agent")),
@@ -21,39 +22,38 @@ const agent: Agent = {
 const refusal: ProjectionRefusal = { kind: "render-failed", concept: "agent",
   name: agent.slug, reason: "Frozen writer refused" };
 
-test("both native discovery and conductor persona files retain their origins and bytes", () => {
-  const renderer = createCodexAgentRenderer({
-    markdownSurface: (source) => {
-      expect(source).toBe(agent);
+test("the registered Codex factory supplies separate exact Markdown and persona requests", () => {
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS,
+    documents: (request) => {
+      expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+        frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
+          removeKeys: [], afterProjectionLines: [] } });
       return accepted("Markdown persona\n");
     },
-    preparePersona: (source) => {
-      expect(source).toBe(agent);
-      return " Prepared persona ";
+    persona: (request) => {
+      expect(request).toEqual({ agent, text: "persona-body", knowledge: "absorbed", reading: "whole-files" });
+      return accepted(" Prepared persona ");
     },
-    codexSurface: (request) => {
-      expect(request.agent).toBe(agent);
-      expect(request.content).toBe('name = "aidlc-example-agent"\n' +
+    tomlModels: (request) => {
+      expect(request).toEqual({ agent, content: 'name = "aidlc-example-agent"\n' +
         'description = "An \\"example\\" role"\n' +
-        'developer_instructions = """\nPrepared persona\n"""\n');
+        'developer_instructions = """\nPrepared persona\n"""\n' });
       return accepted("Native TOML persona\n");
     },
   });
-  expect(accept(renderer({ agent, knowledge: [] }))).toEqual([
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([
     { path: accept(projectPath(".codex/agents/aidlc-example-agent.md")), mode: "regular", availability: "always",
-      content: { kind: "text", text: "Markdown persona\n" },
-      origin: { kind: "method-source", path: agent.source } },
+      content: { kind: "text", text: "Markdown persona\n" }, origin: { kind: "method-source", path: agent.source } },
     { path: accept(projectPath(".codex/agents/aidlc-example-agent.toml")), mode: "regular", availability: "always",
-      content: { kind: "text", text: "Native TOML persona\n" },
-      origin: { kind: "method-source", path: agent.source } },
-  ]);
+      content: { kind: "text", text: "Native TOML persona\n" }, origin: { kind: "method-source", path: agent.source } },
+  ]));
 });
 
-test("native instructions escape backslashes and triple quotes and explain the prose-only cap", () => {
-  const renderer = createCodexAgentRenderer({
-    markdownSurface: () => accepted("Markdown"),
-    preparePersona: () => 'Path \\| and """; the `maxTurns: 12` frontmatter above - keep the two numbers in sync',
-    codexSurface: (request) => {
+test("the registered factory keeps native escaping and the prose-only cap", () => {
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS,
+    documents: () => accepted("Markdown"),
+    persona: () => accepted('Path \\| and """; the `maxTurns: 12` frontmatter above - keep the two numbers in sync'),
+    tomlModels: (request) => {
       expect(request.content).toBe('name = "aidlc-example-agent"\n' +
         'description = "An \\"example\\" role"\n' +
         'developer_instructions = """\nPath \\\\| and \\"\\"\\"; ' +
@@ -63,23 +63,32 @@ test("native instructions escape backslashes and triple quotes and explain the p
       return accepted("Native");
     },
   });
-  expect(renderer({ agent, knowledge: [] }).ok).toBe(true);
+  expect(renderer.renderAgent({ agent, knowledge: [] }).ok).toBe(true);
 });
 
-test("a Markdown model-writer refusal is returned unchanged", () => {
-  const renderer = createCodexAgentRenderer({
-    markdownSurface: () => refused(refusal),
-    codexSurface: () => accepted("Unused"),
-    preparePersona: () => "Unused",
-  });
-  expect(renderer({ agent, knowledge: [] })).toEqual(refused(refusal));
+test("a document refusal prevents persona and TOML work without partial files", () => {
+  const persona = mock(() => accepted("Unused"));
+  const tomlModels = mock(() => accepted("Unused"));
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, documents: () => refused(refusal), persona, tomlModels });
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(refused(refusal));
+  expect(persona).not.toHaveBeenCalled();
+  expect(tomlModels).not.toHaveBeenCalled();
 });
 
-test("a TOML model-writer refusal is returned unchanged", () => {
-  const renderer = createCodexAgentRenderer({
-    markdownSurface: () => accepted("Markdown"),
-    codexSurface: () => refused(refusal),
-    preparePersona: () => "Persona",
-  });
-  expect(renderer({ agent, knowledge: [] })).toEqual(refused(refusal));
+test("a persona refusal is returned before the TOML model writer", () => {
+  const tomlModels = mock(() => accepted("Unused"));
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, documents: () => accepted("Markdown"),
+    persona: () => refused(refusal), tomlModels });
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(refused(refusal));
+  expect(tomlModels).not.toHaveBeenCalled();
+});
+
+test("a TOML model refusal returns no partial Markdown file", () => {
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, documents: () => accepted("Markdown"),
+    persona: () => accepted("Persona"), tomlModels: () => refused(refusal) });
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(refused(refusal));
+});
+
+test("Codex has no separate conductor agent file", () => {
+  expect(codexAgents(SCRATCH_AGENT_INPUTS).renderConductorAgent({ knowledge: [] })).toEqual(accepted([]));
 });

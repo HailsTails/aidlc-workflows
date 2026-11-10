@@ -1,3 +1,4 @@
+import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
 import { createOpenCodeSettingsRenderer } from "../hosts/opencode/projection/settings-renderer.ts";
 import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
 import { createKiroIdeSettingsRenderer } from "../hosts/kiro-ide/projection/settings-renderer.ts";
@@ -136,5 +137,13 @@ test("OpenCode settings register the native settings and captured plugin produce
   expect(hostSettingsMembers(opencode)).toEqual({ ok: true, value: {
     host: opencode, inputs: [source("opencode.json"), source("plugin/aidlc-opencode-adapter.ts")],
     render: createOpenCodeSettingsRenderer,
+  } });
+});
+
+test("Codex agents directly register the native factory without authored capture", () => {
+  const codex = host({ name: "codex", directory: ".codex" });
+  expect(hostAgentInputs("codex")).toEqual([]);
+  expect(hostAgentMembers(codex)).toEqual({ ok: true, value: {
+    host: codex, inputs: [], render: codexAgents,
   } });
 });
