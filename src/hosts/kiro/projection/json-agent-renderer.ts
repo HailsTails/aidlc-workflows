@@ -1,3 +1,4 @@
+import { kiroCliAgentRenderer } from "./agent-renderer.ts";
 import { prepareKiroAgentBatch, expandKiroAgentAllows } from "./tool-allows.ts";
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
@@ -102,6 +103,20 @@ export const createKiroJsonAgentRenderer = (profile: {
   };
 };
 
-export const kiroAgents: HostAgentRenderer = (inputs) => createKiroJsonAgentRenderer({
-  host: inputs.host, formatDocuments: inputs.formatDocuments,
-})(inputs);
+export const kiroAgents: HostAgentRenderer = (inputs) => {
+  const json = createKiroJsonAgentRenderer({ host: inputs.host, formatDocuments: inputs.formatDocuments })(inputs);
+  const markdown = kiroCliAgentRenderer(({ agent, removeKeys }) => inputs.documents({
+    agent, text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+    frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
+      insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
+  }));
+  return {
+    renderConductorAgent: json.renderConductorAgent,
+    renderAgent: (request) => {
+      const native = json.renderAgent(request);
+      if (!native.ok) return native;
+      const document = markdown(request);
+      return document.ok ? accepted([...native.value, ...document.value]) : document;
+    },
+  };
+};
