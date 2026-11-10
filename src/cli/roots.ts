@@ -100,7 +100,6 @@ export type HostBuildRequest = {
   readonly modelCap: Tier | null;
   readonly entrypoints: readonly SourcePath[];
   readonly projectRoot: URL;
-  readonly commands: CommandSource;
   readonly reviewerAgents: ReadonlySet<AgentSlug>;
 };
 

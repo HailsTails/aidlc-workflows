@@ -11,7 +11,7 @@ import type { DistributionChannel } from "../../domain/projected-file.ts";
 import type { CompiledMethodFiles, ProjectionRefusal } from "../../domain/projection.ts";
 import type { TokenBindings } from "../../domain/template-token.ts";
 import type { HostAgentRenderer } from "./agents.ts";
-import type { CommandPlacement, CommandSource } from "./commands.ts";
+import type { CommandPlacement } from "./commands.ts";
 import type { HostDocumentRenderer } from "./documents.ts";
 import type { Harness } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
@@ -43,7 +43,6 @@ export type HarnessAssemblyRequest = {
   readonly fills: OnboardingFills;
   readonly bindingHeadings: readonly string[];
   readonly projectRoot: URL;
-  readonly commands: CommandSource;
   readonly reviewerAgents: ReadonlySet<AgentSlug>;
   readonly runtime: SharedRuntime;
   readonly compiled: CompiledMethodFiles;
