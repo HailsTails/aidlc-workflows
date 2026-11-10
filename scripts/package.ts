@@ -1759,6 +1759,7 @@ function pluginTargets(): PluginTargetTable {
       distribution: distribution.value, directory: directory.value,
     });
     for (const placement of surface?.placements ?? []) addTopLevel(placement.destination);
+    for (const root of manifest.rootIntegrations ?? []) addTopLevel(root.path);
     if (manifest.onboarding?.projectRoot) {
       addTopLevel(manifest.onboarding.dst);
     }

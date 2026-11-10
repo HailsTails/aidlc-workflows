@@ -6,7 +6,9 @@ import {
   runnerProducer, orchestratorSkillLocation, type HarnessManifest,
 } from "../../scripts/manifest-types.ts";
 import { frontmatterBlock } from "../../core/tools/aidlc-lib.ts";
-import { hostAgentMembers, hostSurfaceMembers } from "../../src/cli/host-table.ts";
+import {
+  hostAgentMembers, hostSettingsInputs, hostSurfaceMembers,
+} from "../../src/cli/host-table.ts";
 import { distributionId, projectPath } from "../../src/kernel/values.ts";
 import { accepted, refused } from "../../src/kernel/result.ts";
 
@@ -366,7 +368,8 @@ export function validateManifest(
     (capabilities.memoryInclude === "codex-engine") !==
       (orchestratorLocation === ".agents/skills/aidlc/SKILL.md") ||
     (capabilities.memoryInclude === "opencode-instructions") !==
-      manifest.harnessFiles.some((file) => file.dst === "opencode.json") ||
+      (manifest.harnessFiles.some((file) => file.dst === "opencode.json") ||
+        hostSettingsInputs(name).includes("opencode.json")) ||
     (capabilities.memoryInclude === "copilot-agents-md") !==
       (manifest.onboarding?.projectRoot === true &&
         manifest.onboarding.dst === "AGENTS.md" &&

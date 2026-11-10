@@ -1,3 +1,4 @@
+import { createOpenCodeSettingsRenderer } from "../hosts/opencode/projection/settings-renderer.ts";
 import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
 import { createKiroIdeSettingsRenderer } from "../hosts/kiro-ide/projection/settings-renderer.ts";
 import { createCodexDocumentRenderer } from "../hosts/codex/projection/document-renderer.ts";
@@ -97,7 +98,7 @@ test("the Codex settings table registers its native factory without authored fil
   expect(hostSettingsMembers(codex)).toEqual({ ok: true, value: {
     host: codex, inputs: [], render: createCodexSettingsRenderer,
   } });
-  expect(hostSettingsMembers(host({ name: "opencode", directory: ".aidlc" })))
+  expect(hostSettingsMembers(host({ name: "fixture-host", directory: ".fixture" })))
     .toEqual({ ok: true, value: null });
 });
 
@@ -124,4 +125,13 @@ test("Kiro documents are registered with no authored capture and the shared head
 test("Codex documents directly register the native renderer without authored capture", () => {
   const codex = host({ name: "codex", directory: ".codex" });
   expect(hostDocumentMembers(codex)).toEqual({ host: codex, inputs: [], render: createCodexDocumentRenderer });
+});
+
+test("OpenCode settings register the native settings and captured plugin producer", () => {
+  const opencode = host({ name: "opencode", directory: ".aidlc" });
+  expect(hostSettingsInputs("opencode")).toEqual(["opencode.json", "plugin/aidlc-opencode-adapter.ts"]);
+  expect(hostSettingsMembers(opencode)).toEqual({ ok: true, value: {
+    host: opencode, inputs: [source("opencode.json"), source("plugin/aidlc-opencode-adapter.ts")],
+    render: createOpenCodeSettingsRenderer,
+  } });
 });

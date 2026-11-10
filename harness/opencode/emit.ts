@@ -5,8 +5,6 @@
 //     opencode-native `model:`/`variant:` keys plus an added `mode: subagent`
 //     (so none registers as a primary agent), body token-substituted → .aidlc.
 //   - .opencode/command/aidlc.md — the user-invoked /aidlc entry (authored).
-//   - .opencode/plugin/aidlc-opencode-adapter.ts — the hook adapter (authored;
-//     opencode auto-discovers plugins from .opencode/plugin/).
 //
 // WHY the engine is NOT inside .opencode/: opencode auto-imports every *.ts
 // under .opencode/tools/ and .opencode/tool/ as custom tool definitions, and
@@ -15,7 +13,7 @@
 // which opencode never scans; the shipped opencode.json registers
 // `skills.paths: [".aidlc/skills"]` for skill discovery there.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
 import { createOpenCodeAgentRenderer } from "../../src/hosts/opencode/projection/agent-renderer.ts";
@@ -44,62 +42,19 @@ function projectActiveMemoryReferences(raw: string): string {
     .replaceAll(".aidlc/rules/", "aidlc/active-memory/");
 }
 
-function embedShippedEntrypoints(raw: string, distRoot: string): string {
-  const marker = "/* @aidlc-shipped-entrypoints@ */ []";
-  const entries = ["hooks", "tools"]
-    .flatMap((dir) =>
-      readdirSync(join(distRoot, ".aidlc", dir), { withFileTypes: true })
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
-        .map((entry) => `${dir}/${entry.name}`),
-    )
-    .sort();
-  if (!raw.includes(marker)) {
-    throw new Error("opencode adapter is missing its shipped-entrypoint emission marker.");
-  }
-  const rendered = JSON.stringify(entries, null, 2)
-    .split("\n")
-    .map((line, index) => (index === 0 ? line : `  ${line}`))
-    .join("\n");
-  return raw.replace(marker, `/* @aidlc-shipped-entrypoints@ */ ${rendered}`);
-}
-
-// The adapter imports its leaf tools from core/ in this repository; in a
-// project they sit in the engine tree beside .opencode/ (both channels ship
-// it), never inside .opencode/, which opencode scans for tools.
-const PLUGIN_TOOL_IMPORTS = ["aidlc-executable-path.ts"];
-
-function projectedToolImports(raw: string, harnessDir: string): string {
-  let out = raw;
-  for (const file of PLUGIN_TOOL_IMPORTS) {
-    const authored = `"../../../core/tools/${file}"`;
-    if (!out.includes(authored)) throw new Error(`opencode adapter no longer imports ${file} from core/tools.`);
-    out = out.replaceAll(authored, `"../../${harnessDir}/tools/${file}"`);
-  }
-  return out;
-}
-
 export const authoredInputs: readonly string[] = [
-  "command/aidlc.md", "plugin/aidlc-opencode-adapter.ts",
+  "command/aidlc.md",
 ];
 
 function authoredShellEmissions(ctx: EmitContext, shell: string):
   Array<{ path: string; content: () => string }> {
-  const { distRoot, harnessDir, substituteToken } = ctx;
+  const { substituteToken } = ctx;
   const emissions: Array<{ path: string; content: () => string }> = [];
   // Authored shell surfaces, copied with token substitution on the .md.
   for (const authored of ctx.hostSources.filter((file) => file.source === "command/aidlc.md")) {
     emissions.push({
       path: join(shell, "command", "aidlc.md"),
       content: () => substituteToken(ctx.hostSourceText(authored)),
-    });
-  }
-  for (const authored of ctx.hostSources.filter((file) =>
-    file.source === "plugin/aidlc-opencode-adapter.ts")) {
-    emissions.push({
-      path: join(shell, "plugin", "aidlc-opencode-adapter.ts"),
-      content: () => substituteToken(projectedToolImports(
-        embedShippedEntrypoints(ctx.hostSourceText(authored), distRoot), harnessDir,
-      )),
     });
   }
 
