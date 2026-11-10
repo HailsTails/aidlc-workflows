@@ -68,6 +68,7 @@ import { typecheckCheck } from "../lint/gate/application/typecheck-check.ts";
 import { typecheckProjects } from "../lint/gate/application/typecheck-projects.ts";
 import { zonesCheck } from "../lint/gate/application/zones-check.ts";
 import type { Command } from "../lint/gate/application/ports.ts";
+import { GENERATED_GOLDEN_RECORDS } from "../lint/gate/domain/golden-records.ts";
 import type { LanePlan } from "../lint/gate/domain/lane-plan.ts";
 import { debtFigureOf } from "../lint/gate/domain/zone-rules.ts";
 
@@ -203,7 +204,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     workspace,
     modules: typescriptModuleReader,
     json: jsonReader,
-    sharedRecords: [...records.globs, "tests/golden/**"],
+    sharedRecords: [...records.globs, ...GENERATED_GOLDEN_RECORDS],
   }),
   zonesCheck({ repository, selection, records }),
   recordsCheck({ repository, records, ruleInputs: RULE_INPUTS }),
