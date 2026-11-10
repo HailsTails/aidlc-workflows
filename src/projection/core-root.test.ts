@@ -83,7 +83,7 @@ test("agent composition supplies shipped allows to one native factory for the co
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
   const render = mock<HostAgentRenderer>(() => ({ renderAgent: () => accepted([]),
     renderConductorAgent: () => accepted([]) }));
-  expect(projection.projectAgents({ method: methodSliceFixture, host: identity, render, files: [],
+  expect(projection.projectAgents({ rulesFolder: null, method: methodSliceFixture, host: identity, render, files: [],
     prepare: accepted, channel: "copy", modelCap: null, sources: [], reviewerAgents: new Set(),
     tokens: tokenBindingsFixture({ harnessDir: ".claude" }) })).toEqual(accepted([]));
   expect(render).toHaveBeenCalledTimes(1);
@@ -97,7 +97,7 @@ test("agent composition exposes a missing captured source refusal without recons
     runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
   const render = mock<HostAgentRenderer>(() => ({ renderAgent: () => accepted([]), renderConductorAgent: () => accepted([]) }));
-  expect(projection.projectAgents({ method: methodSliceFixture, host: identity, render, files: [], prepare: accepted,
+  expect(projection.projectAgents({ rulesFolder: null, method: methodSliceFixture, host: identity, render, files: [], prepare: accepted,
     channel: "copy", modelCap: null, sources: [], reviewerAgents: new Set(), tokens: tokenBindingsFixture({ harnessDir: ".claude" }) }))
     .toEqual(accepted([]));
   expect(render.mock.calls[0]?.[0].documents({ agent: {
@@ -118,7 +118,7 @@ test("agent composition absorbs knowledge for a core agent appointed only by the
     runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
   const render = mock<HostAgentRenderer>(() => ({ renderAgent: () => accepted([]), renderConductorAgent: () => accepted([]) }));
-  expect(projection.projectAgents({ method: methodSliceFixture, host: identity, render, files: [], prepare: accepted,
+  expect(projection.projectAgents({ rulesFolder: null, method: methodSliceFixture, host: identity, render, files: [], prepare: accepted,
     channel: "copy", modelCap: null, reviewerAgents: new Set([agent("aidlc-product-agent")]),
     tokens: tokenBindingsFixture({ harnessDir: ".claude" }), sources: [
       { owner: { kind: "core" }, path: methodSource({ kind: "agent", within: "aidlc-product-agent.md" }),

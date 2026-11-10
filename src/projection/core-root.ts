@@ -68,7 +68,7 @@ export const createBuildProjection = (request: {
       const reading = allows.read();
       if (!reading.ok) return reading;
       const persona = createAgentPersonaPreparer({ sources: agents.sources, tokens: agents.tokens,
-        directory: agents.host.directory, reviewerAgents: agents.reviewerAgents,
+        directory: agents.host.directory, rulesFolder: agents.rulesFolder, reviewerAgents: agents.reviewerAgents,
         sharedKnowledge: delegatedSharedKnowledge(agents.host.directory) });
       const markdown = legacyMarkdownAgentSurface({ host: agents.host, cap: agents.modelCap });
       return projectMethodAgents({ method: agents.method,

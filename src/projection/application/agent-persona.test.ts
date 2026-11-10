@@ -15,7 +15,7 @@ const personaAgent = (): CoreAgent => ({ slug: agent("aidlc-example-agent"),
   persona: { text: "<!-- aidlc-delegated-knowledge-preflight -->\nBody {{HARNESS_DIR}}", headings: [] },
   additions: { afterPreflight: [], endOfBody: [] } });
 
-const inputs = () => ({ sources: [], reviewerAgents: new Set<string>(), directory: ".claude", sharedKnowledge: "shared",
+const inputs = () => ({ sources: [], reviewerAgents: new Set<string>(), directory: ".claude", rulesFolder: null, sharedKnowledge: "shared",
   tokens: tokenBindingsFixture({ harnessDir: ".claude" }) });
 
 test("captured authored bytes retain their formatting and bind tokens rather than reconstructing the persona", () => {
@@ -60,4 +60,39 @@ test("preflight-only requests do not absorb captured reviewer knowledge", () => 
     content: { kind: "text", text: "This reviewer checklist must not enter the native worker persona." } }] });
   expect(prepare({ agent: personaAgent(), text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\nBody .claude"));
+});
+
+test("a null rules folder leaves bound persona paths unchanged", () => {
+  const prepare = createAgentPersonaPreparer({ ...inputs(), directory: ".kiro", rulesFolder: null,
+    tokens: tokenBindingsFixture({ harnessDir: ".kiro" }) });
+  const agent = { ...personaAgent(), persona: { headings: [],
+    text: "<!-- aidlc-delegated-knowledge-preflight -->\n{{HARNESS_DIR}}/rules/overview.md and {{HARNESS_DIR}}/rules/default.rules" } };
+  expect(prepare({ agent, text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
+    .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\n.kiro/rules/overview.md and .kiro/rules/default.rules"));
+});
+
+test("the host rules folder is renamed after tokens while the native default.rules path stays", () => {
+  const prepare = createAgentPersonaPreparer({ ...inputs(), directory: ".kiro", rulesFolder: "steering",
+    tokens: tokenBindingsFixture({ harnessDir: ".kiro" }) });
+  const agent = { ...personaAgent(), persona: { headings: [],
+    text: "<!-- aidlc-delegated-knowledge-preflight -->\n{{HARNESS_DIR}}/rules/overview.md and {{HARNESS_DIR}}/rules/default.rules" } };
+  expect(prepare({ agent, text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
+    .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\n.kiro/steering/overview.md and .kiro/rules/default.rules"));
+});
+
+test("captured text drops only the leading BOM before persona preparation", () => {
+  const agent = personaAgent();
+  const prepare = createAgentPersonaPreparer({ ...inputs(), sources: [{ owner: { kind: "core" }, path: agent.source,
+    content: { kind: "text", text: "\uFEFF---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody \uFEFF inside" } }] });
+  expect(prepare({ agent, text: "authored-file", knowledge: "preflight-only", reading: "whole-files" }))
+    .toEqual(accepted("---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody \uFEFF inside"));
+});
+
+test("captured UTF-8 bytes drop their leading BOM before persona preparation", () => {
+  const agent = personaAgent();
+  const prepare = createAgentPersonaPreparer({ ...inputs(), sources: [{ owner: { kind: "core" }, path: agent.source,
+    content: { kind: "bytes", bytes: new TextEncoder().encode(
+      "\uFEFF---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody") } }] });
+  expect(prepare({ agent, text: "authored-file", knowledge: "preflight-only", reading: "whole-files" }))
+    .toEqual(accepted("---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody"));
 });

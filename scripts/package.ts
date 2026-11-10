@@ -1068,6 +1068,7 @@ async function buildTree(
     writeProjectedFiles({ files: documents.value, projectRoot: outRoot });
   }
   const agents = packageBuildRoot.projectAgents({ host: hostInput.host, method: coreBuild.method,
+    rulesFolder: m.rulesRename ?? null,
     reviewerAgents,
     sources: coreBuild.sources,
     tokens: { HARNESS_DIR: harnessDir, INVOKE: invoke, SKILL_INVOKE: null,

@@ -154,6 +154,7 @@ export type HostSourcesRequest = {
 };
 
 export type HostAgentsRequest = {
+  readonly rulesFolder: string | null;
   readonly reviewerAgents: ReadonlySet<AgentSlug>;
   readonly tokens: TokenBindings;
   readonly sources: readonly MethodSource[];

@@ -70,6 +70,7 @@ export type HostAgentRenderer = (
 ) => Pick<Harness, "renderAgent" | "renderConductorAgent">;
 
 export type AgentProjectionRequest = {
+  readonly rulesFolder: string | null;
   readonly reviewerAgents: ReadonlySet<AgentSlug>;
   readonly tokens: TokenBindings;
   readonly sources: readonly MethodSource[];

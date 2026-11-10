@@ -1,6 +1,7 @@
 import { accepted, refused } from "../../kernel/result.ts";
 import type { MethodSource } from "../../workflow-definition/domain/method-source.ts";
 import { absorbReviewerKnowledge, injectDelegatedKnowledgePreflight } from "../domain/agent-knowledge.ts";
+import { renameRulesFolder } from "../domain/rules-folder.ts";
 import { bindTemplateTokens } from "../domain/token-binding.ts";
 import type { TokenBindings } from "../domain/template-token.ts";
 import type { AgentPersonaPreparer } from "./ports/agents.ts";
@@ -9,6 +10,7 @@ export const createAgentPersonaPreparer = (request: {
   readonly sources: readonly MethodSource[];
   readonly reviewerAgents: ReadonlySet<string>;
   readonly directory: string;
+  readonly rulesFolder: string | null;
   readonly sharedKnowledge: string;
   readonly tokens: TokenBindings;
 }): AgentPersonaPreparer => (persona) => {
@@ -22,11 +24,13 @@ export const createAgentPersonaPreparer = (request: {
       reason: "The accepted agent's authored source was not captured." });
     text = captured.content.kind === "text" ? captured.content.text
       : new TextDecoder("utf-8", { ignoreBOM: true }).decode(captured.content.bytes);
+    text = text.replace(/^\uFEFF/, "");
   }
   if (persona.knowledge === "absorbed") text = absorbReviewerKnowledge({ content: text,
     agentName: persona.agent.slug, reviewerAgents: request.reviewerAgents, sources: request.sources });
   text = injectDelegatedKnowledgePreflight({ content: text, agentName: persona.agent.slug,
     directory: request.directory, reading: persona.reading, sharedKnowledge: request.sharedKnowledge });
-  return accepted(bindTemplateTokens({ text, tokens: request.tokens,
-    selected: ["HARNESS_DIR", "INVOKE", "TOOL_PREFIX", "TRUSTED_NAMESPACE", "OPTION_LETTERS"] }));
+  const bound = bindTemplateTokens({ text, tokens: request.tokens,
+    selected: ["HARNESS_DIR", "INVOKE", "TOOL_PREFIX", "TRUSTED_NAMESPACE", "OPTION_LETTERS"] });
+  return accepted(renameRulesFolder({ text: bound, harnessDir: request.directory, rulesFolder: request.rulesFolder }));
 };
