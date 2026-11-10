@@ -1,3 +1,4 @@
+import { COPILOT_SETTINGS_INPUTS, createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
 import { CURSOR_SETTINGS_INPUTS, createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
 import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
@@ -95,6 +96,7 @@ export const hostSurfaceMembers = (host: HostIdentity): HostSurfaceMembers | nul
 };
 
 const HOST_SETTINGS_MEMBERS = [
+  { name: "copilot", inputs: COPILOT_SETTINGS_INPUTS, render: createCopilotSettingsRenderer },
   { name: "cursor", inputs: CURSOR_SETTINGS_INPUTS, render: createCursorSettingsRenderer },
   { name: "opencode", inputs: OPENCODE_SETTINGS_INPUTS, render: createOpenCodeSettingsRenderer },
   { name: "kiro-ide", inputs: KIRO_IDE_SETTINGS_INPUTS, render: createKiroIdeSettingsRenderer },

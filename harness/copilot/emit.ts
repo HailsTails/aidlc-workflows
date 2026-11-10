@@ -4,10 +4,6 @@
 // compile there, then calls this emit() for the .github/ shell — the project
 // discovery surface BOTH Copilot surfaces read (CLI 1.0.74+ and VS Code agent
 // mode 1.130+; verified by the compatibility-spike evidence):
-//   - .github/hooks/aidlc.json — the hook wiring: PascalCase event names in
-//     the {"version":1} envelope (the shared-recipe: BOTH surfaces then
-//     deliver snake_case payloads to the adapter), matcher-FREE (VS Code
-//     parses but IGNORES matchers, so every adapter target self-filters).
 //   - .github/agents/aidlc-*-agent.md — the 14 personas as native Copilot
 //     custom agents: NO model key (tierFlavor copilot is model-omitted by
 //     type — the two surfaces disagree on model: value syntax), and the core
@@ -28,47 +24,12 @@ import {
 } from "../../core/tools/aidlc-model-policy.ts";
 import { absorbReviewerKnowledge,
   injectDelegatedKnowledgePreflight } from "../../scripts/agent-knowledge.ts";
-import { EXTENDED_SUBPROCESS_TIMEOUT_MS } from "../../core/tools/aidlc-runtime-budget.ts";
 import { accepted, refused } from "../../src/kernel/result.ts";
 import type { ProjectionRefusal } from "../../src/projection/domain/projection.ts";
 import { copilotAgentRenderer, type CopilotModelSurface,
   type CopilotRuntimeSurface } from "../../src/hosts/copilot/projection/agent-renderer.ts";
 import { copilotCommandPath } from "../../src/hosts/copilot/projection/command-renderer.ts";
 import { LAUNCHER_PATH, launcherBody } from "../../core/tools/aidlc-launcher-voucher.ts";
-
-// ---------------------------------------------------------------------------
-// Hook wiring. PascalCase events; register ONLY events with a real core-hook
-// consumer (kiro-normative). One PreToolUse registration serves the guards
-// (state-transition, reviewer-scope, review-freeze, plan-approval) - the
-// adapter runs them in that order. SessionEnd is omitted because VS Code does
-// not document or accept that event. The shared manifest must be valid on
-// both hosts, so both use the adapter's next-SessionStart reconciliation path
-// for SESSION_ENDED.
-// ---------------------------------------------------------------------------
-const HOOK_TIMEOUT_SECONDS = EXTENDED_SUBPROCESS_TIMEOUT_MS / 1000;
-const COMPOUND_HOOK_TIMEOUT_SECONDS = HOOK_TIMEOUT_SECONDS * 2;
-const HOOK_WIRING: Array<{ event: string; target: string; timeoutSec: number }> = [
-  { event: "SessionStart", target: "session-start", timeoutSec: HOOK_TIMEOUT_SECONDS },
-  { event: "UserPromptSubmit", target: "record-human-turn", timeoutSec: HOOK_TIMEOUT_SECONDS },
-  { event: "PreToolUse", target: "guard-tool-call", timeoutSec: HOOK_TIMEOUT_SECONDS },
-  { event: "PostToolUse", target: "post-tool", timeoutSec: COMPOUND_HOOK_TIMEOUT_SECONDS },
-  { event: "PreCompact", target: "validate-state", timeoutSec: HOOK_TIMEOUT_SECONDS },
-  { event: "SubagentStart", target: "subagent-start", timeoutSec: HOOK_TIMEOUT_SECONDS },
-  { event: "SubagentStop", target: "log-subagent", timeoutSec: HOOK_TIMEOUT_SECONDS },
-  { event: "Stop", target: "continue-workflow", timeoutSec: COMPOUND_HOOK_TIMEOUT_SECONDS },
-];
-
-function emitHooksJson(harnessDir: string): string {
-  const hooks: Record<string, Array<Record<string, unknown>>> = {};
-  for (const { event, target, timeoutSec } of HOOK_WIRING) {
-    const cmd = `bun ${harnessDir}/hooks/aidlc-copilot-adapter.ts ${target}`;
-    hooks[event] ??= [];
-    // `bash` maps to linux+osx on the IDE and runs verbatim on the CLI;
-    // `powershell` covers Windows on both (bun is cross-platform).
-    hooks[event].push({ type: "command", bash: cmd, powershell: cmd, timeoutSec });
-  }
-  return `${JSON.stringify({ version: 1, hooks }, null, 2)}\n`;
-}
 
 function emit(ctx: EmitContext): void {
   const { coreRoot, distRoot, harnessDir, substituteToken } = ctx;
@@ -92,12 +53,6 @@ function emit(ctx: EmitContext): void {
         ),
     });
   }
-
-  // Hook wiring.
-  emissions.push({
-    path: join(SHELL, "hooks", "aidlc.json"),
-    content: () => emitHooksJson(harnessDir),
-  });
 
   for (const agent of ctx.method.agents) {
     const captured = ctx.sources.find((source) => source.path === agent.source
