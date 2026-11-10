@@ -1,7 +1,9 @@
 import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
 import { expect, test } from "bun:test";
 import { host, source } from "../kernel/fixtures/values.fixture.ts";
-import { hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers } from "./host-table.ts";
+import { hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
+  hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
+import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 
 test("an unregistered host has no agent inputs or accidental Kiro members", () => {
   expect(hostAgentInputs("claude")).toEqual([]);
@@ -48,4 +50,21 @@ test("host composition preserves the legacy binding refusal and missing-heading 
     reason: "harness bindings: aidlc-common/protocols/missing.md line 1: a binding run must name each tool once " +
       "(found Claude Code; missing Kiro CLI, Kiro IDE, Codex CLI, Cursor, opencode, GitHub Copilot).",
   } });
+});
+
+test("Kiro settings capture exactly its CLI settings and two shipped hook registrations", () => {
+  expect(hostSettingsInputs("kiro")).toEqual([
+    "settings/cli.json", "hooks/aidlc-record-human-turn.kiro.hook", "hooks/aidlc-plan-approval-guard.kiro.hook",
+  ]);
+  const kiro = host({ name: "kiro", directory: ".kiro" });
+  expect(hostSettingsMembers(kiro)).toEqual({ ok: true, value: { host: kiro, render: createKiroSettingsRenderer,
+    inputs: [source("settings/cli.json"), source("hooks/aidlc-record-human-turn.kiro.hook"),
+      source("hooks/aidlc-plan-approval-guard.kiro.hook")],
+  } });
+});
+
+test("the Kiro CLI settings registration does not claim the Kiro IDE route", () => {
+  expect(hostSettingsInputs("kiro-ide")).toEqual([]);
+  expect(hostSettingsMembers(host({ name: "kiro-ide", directory: ".kiro" })))
+    .toEqual({ ok: true, value: null });
 });

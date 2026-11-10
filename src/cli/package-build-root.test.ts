@@ -125,7 +125,11 @@ test("the real root renders a captured Kiro conductor without replacing its mode
     processRunner, yaml }, outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   expect(root.projectAgents({ host: host({ name: "kiro", directory: ".kiro" }), method: core.method,
-    files: [{ source: source("agents/aidlc.json"), content: { kind: "text", text: '{ "model": "personal" }\r\n' } }],
+    files: [
+      { source: source("agents/aidlc.json"), content: { kind: "text", text: '{ "model": "personal" }\r\n' } },
+      { source: source("agents/aidlc-architect-agent.json"), content: { kind: "text", text:
+        '{"name":"aidlc-architect-agent","toolsSettings":{"execute_bash":{"allowedCommands":["bun (run )?[\\"\']?\\\\.kiro/tools/[A-Za-z0-9._-]+\\\\.ts[\\"\']?( .*)?"]}}}' } },
+    ],
     prepare: accepted, channel: "native", modelCap: null })).toEqual(accepted([{
       path: path(".kiro/agents/aidlc.json"), content: { kind: "text", text: '{ "model": "personal" }\r\n' },
       mode: "regular", availability: "always",
