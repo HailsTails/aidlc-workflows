@@ -1,6 +1,7 @@
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { SourcePath } from "../../../kernel/values.ts";
+import type { AgentSlug } from "../../../workflow-definition/domain/identities.ts";
 import type { Method } from "../../../workflow-definition/domain/method.ts";
 import type { MethodSource } from "../../../workflow-definition/domain/method-source.ts";
 import type { Tier } from "../../../workflow-definition/domain/vocabulary.ts";
@@ -42,6 +43,7 @@ export type HarnessAssemblyRequest = {
   readonly fills: OnboardingFills;
   readonly projectRoot: URL;
   readonly commands: CommandSource;
+  readonly reviewerAgents: ReadonlySet<AgentSlug>;
 };
 
 export type HarnessAssembly = (
