@@ -34,7 +34,7 @@ describe("onboarding fixtures", () => {
 
 describe("neutral document fixtures", () => {
   test("carry a protocol with every host's binding subsection, in the binding order, and a rules reference", () => {
-    expect(protocolDocumentFixture).toMatchObject({
+    expect(protocolDocumentFixture()).toMatchObject({
       role: "protocol",
       content: {
         kind: "text",
@@ -45,16 +45,16 @@ describe("neutral document fixtures", () => {
 
   test("cover every role a host places", () => {
     expect([
-      protocolDocumentFixture.role,
-      templateDocumentFixture.role,
-      conductorDocumentFixture.role,
-      stageDocumentFixture.role,
-      knowledgeDocumentFixture.role,
+      protocolDocumentFixture().role,
+      templateDocumentFixture().role,
+      conductorDocumentFixture().role,
+      stageDocumentFixture().role,
+      knowledgeDocumentFixture().role,
     ]).toEqual(["protocol", "template", "conductor", "stage", "knowledge"]);
   });
 
   test("place a stage document at its core source path", () => {
-    expect(stageDocumentFixture.source).toEqual(source("aidlc-common/stages/inception/requirements.md"));
+    expect(stageDocumentFixture().source).toEqual(source("aidlc-common/stages/inception/requirements.md"));
   });
 });
 

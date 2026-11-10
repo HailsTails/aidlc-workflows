@@ -27,6 +27,6 @@ describe("scratch host fixtures", () => {
 
   test("place no neutral document", () => {
     expect(scratchDocumentRenderer(documentRenderingInputsFixture({ harnessDir: ".scratch" }))
-      .placeNeutralDocument({ document: stageDocumentFixture })).toEqual({ ok: true, value: [] });
+      .placeNeutralDocument({ document: stageDocumentFixture() })).toEqual({ ok: true, value: [] });
   });
 });

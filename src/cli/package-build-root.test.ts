@@ -381,3 +381,53 @@ test("the actual settings route preserves the missing-glob failure instead of sh
       reason: "settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand",
     }));
 });
+
+test("registered document projection captures neutral sources once while an unregistered host reads nothing", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: { ...files,
+    "file:///core/aidlc-common/conductor.md": "Conductor",
+    "file:///core/aidlc-common/protocols/one.md": "Protocol {{HARNESS_DIR}}",
+    "file:///core/templates/onboarding.md": "Neutral\n",
+    "file:///core/templates/onboarding-harness.md": "Native {{SKILL_INVOKE}}\n",
+  } });
+  const readFile = mock(fileSystem.readFile);
+  const root = createPackageBuildRoot({ platform: { fileSystem: { ...fileSystem, readFile }, processRunner, yaml },
+    outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  const documents = { core, fills: { invoke: "/aidlc", slots: {} },
+    tokens: tokenBindingsFixture({ harnessDir: ".claude" }) };
+  expect(await root.projectDocuments({ ...documents, host: host({ name: "fixture-host", directory: ".fixture" }) }))
+    .toEqual(accepted([]));
+  expect(readFile).not.toHaveBeenCalled();
+  expect(accept(await root.projectDocuments({ ...documents, host: host({ name: "claude", directory: ".claude" }) })))
+    .toEqual([
+      { path: path(".claude/CLAUDE.md"), mode: "regular", availability: "always",
+        origin: { kind: "rendered", concept: "onboarding", name: ".claude/CLAUDE.md" },
+        content: { kind: "text", text: "Native /aidlc\n\n## Shared AI-DLC onboarding\n\nNeutral\n" } },
+      { path: path(".claude/aidlc-common/conductor.md"), mode: "regular", availability: "always",
+        origin: { kind: "neutral", source: source("aidlc-common/conductor.md") },
+        content: { kind: "text", text: "Conductor" } },
+      { path: path(".claude/aidlc-common/protocols/one.md"), mode: "regular", availability: "always",
+        origin: { kind: "neutral", source: source("aidlc-common/protocols/one.md") },
+        content: { kind: "text", text: "Protocol .claude" } },
+    ]);
+  accept(await fileSystem.writeFile({ file: new URL("file:///core/aidlc-common/conductor.md"),
+    content: { kind: "text", text: "Changed after capture" } }));
+  expect(accept(await root.projectDocuments({ ...documents,
+    host: host({ name: "claude", directory: ".claude" }) }))[1]?.content)
+    .toEqual({ kind: "text", text: "Conductor" });
+  expect(readFile).toHaveBeenCalledTimes(3);
+});
+
+test("the document root preserves all neutral capture failures", async () => {
+  const fileSystem = createInMemoryFileSystem({ files });
+  const root = createPackageBuildRoot({ platform: { fileSystem, processRunner, yaml }, outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  expect(await root.projectDocuments({ core,
+    host: host({ name: "claude", directory: ".claude" }), fills: { invoke: "/aidlc", slots: {} },
+    tokens: tokenBindingsFixture({ harnessDir: ".claude" }) })).toEqual(refused([
+    { kind: "neutral-source-unreadable", source: source("aidlc-common/conductor.md"), reason: "not-found" },
+    { kind: "neutral-source-unreadable", source: source("templates/onboarding.md"), reason: "not-found" },
+    { kind: "neutral-source-unreadable", source: source("templates/onboarding-harness.md"), reason: "not-found" },
+    { kind: "neutral-source-unreadable", source: source("aidlc-common/protocols"), reason: "not-found" },
+  ]));
+});

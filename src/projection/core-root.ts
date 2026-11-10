@@ -1,6 +1,8 @@
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
 import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
 import { legacyCliModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
+import { createNeutralReading } from "./adapters/neutral-surface-files.ts";
+import { projectMethodDocuments } from "./application/project-method-documents.ts";
 import { createCopyChannelAllowSource } from "./adapters/legacy-dispatcher.ts";
 import { projectMethodSettings } from "./application/project-method-settings.ts";
 import { projectRuntime } from "./application/project-runtime.ts";
@@ -45,6 +47,8 @@ export const createBuildProjection = (request: {
       return projectMethodSettings({ method: settings.method, harness });
     },
     projectRuntime,
+    readNeutral: createNeutralReading({ files: request.hostFiles, tree: request.sessionFiles }),
+    projectDocuments: projectMethodDocuments,
     readRuntime: createRuntimeReading({ tree: request.sessionFiles,
       agentTiers: legacyAgentTiersData, settingsSchema: legacySettingsSchemaData }),
     projectHostSurface: createHostSurfaceProjection(legacyDelegateShellPolicy),
