@@ -1,3 +1,4 @@
+import { CODEX_SETTINGS_INPUTS, createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
 import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
 import { KIRO_SETTINGS_INPUTS, createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 import { createClaudeDocumentRenderer } from "../hosts/claude/projection/document-renderer.ts";
@@ -83,6 +84,7 @@ export const hostSurfaceMembers = (host: HostIdentity): HostSurfaceMembers | nul
 };
 
 const HOST_SETTINGS_MEMBERS = [
+  { name: "codex", inputs: CODEX_SETTINGS_INPUTS, render: createCodexSettingsRenderer },
   { name: "kiro", inputs: KIRO_SETTINGS_INPUTS, render: createKiroSettingsRenderer },
   { name: "claude", inputs: CLAUDE_SETTINGS_INPUTS, render: createClaudeSettingsRenderer },
 ] as const;

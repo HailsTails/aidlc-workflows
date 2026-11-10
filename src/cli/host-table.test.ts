@@ -1,3 +1,4 @@
+import { createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
 import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
 import { expect, test } from "bun:test";
 import { host, source } from "../kernel/fixtures/values.fixture.ts";
@@ -75,4 +76,14 @@ test("Claude uses the native agent factory with captured Method sources and no a
   const identity = host({ name: "claude", directory: ".claude" });
   expect(hostAgentInputs("claude")).toEqual([]);
   expect(hostAgentMembers(identity)).toEqual({ ok: true, value: { host: identity, render: claudeAgents, inputs: [] } });
+});
+
+test("the Codex settings table registers its native factory without authored files", () => {
+  const codex = host({ name: "codex", directory: ".codex" });
+  expect(hostSettingsInputs("codex")).toEqual([]);
+  expect(hostSettingsMembers(codex)).toEqual({ ok: true, value: {
+    host: codex, inputs: [], render: createCodexSettingsRenderer,
+  } });
+  expect(hostSettingsMembers(host({ name: "opencode", directory: ".aidlc" })))
+    .toEqual({ ok: true, value: null });
 });
