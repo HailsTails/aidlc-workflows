@@ -18,9 +18,10 @@ test("Claude combines neutral and native onboarding with one token substitution"
 });
 
 test("protocol placement keeps the Claude binding after binding the copied Markdown", () => {
-  expect(renderer.placeNeutralDocument({ document: protocolDocumentFixture })).toEqual({ ok: true, value: [{
+  const document = protocolDocumentFixture();
+  expect(renderer.placeNeutralDocument({ document })).toEqual({ ok: true, value: [{
     path: path(".claude/aidlc-common/protocols/stage-protocol.md"), mode: "regular", availability: "always",
-    origin: { kind: "neutral", source: protocolDocumentFixture.source }, content: { kind: "text", text:
+    origin: { kind: "neutral", source: document.source }, content: { kind: "text", text:
       "# Stage protocol\n\nRead the standing rules in .claude/rules/ before a stage starts.\n\n" +
       "## Harness bindings\n\n#### Claude Code\n\nClaude Code runs the stage in the chat.\n\n" },
   }] });

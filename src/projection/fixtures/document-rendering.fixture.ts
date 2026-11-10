@@ -20,7 +20,7 @@ export const ONBOARDING_FILLS_FIXTURE: OnboardingFills = {
   slots: { ["title_block"]: "# AI-DLC for this host" },
 };
 
-export const protocolDocumentFixture: NeutralDocument = {
+export const protocolDocumentFixture = (): NeutralDocument => ({
   source: source("aidlc-common/protocols/stage-protocol.md"),
   role: "protocol",
   content: text([
@@ -58,31 +58,31 @@ export const protocolDocumentFixture: NeutralDocument = {
     "",
     "GitHub Copilot runs the stage in the chat.",
   ]),
-};
+});
 
-export const templateDocumentFixture: NeutralDocument = {
+export const templateDocumentFixture = (): NeutralDocument => ({
   source: source("aidlc-common/templates/intent.md"),
   role: "template",
   content: text(["# Intent", "", "Run {{INVOKE}} status to see where the work stands."]),
-};
+});
 
-export const conductorDocumentFixture: NeutralDocument = {
+export const conductorDocumentFixture = (): NeutralDocument => ({
   source: source("aidlc-common/conductor.md"),
   role: "conductor",
   content: text(["# The Conductor's Craft", "", "Ask the engine for the next step."]),
-};
+});
 
-export const stageDocumentFixture: NeutralDocument = {
+export const stageDocumentFixture = (): NeutralDocument => ({
   source: source("aidlc-common/stages/inception/requirements.md"),
   role: "stage",
   content: text(["# Requirements", "", "Write the requirements into aidlc/."]),
-};
+});
 
-export const knowledgeDocumentFixture: NeutralDocument = {
+export const knowledgeDocumentFixture = (): NeutralDocument => ({
   source: source("knowledge/aidlc-shared/glossary.md"),
   role: "knowledge",
   content: text(["# Glossary", "", "A stage is a station on a line."]),
-};
+});
 
 export const documentRenderingInputsFixture = ({ harnessDir }: {
   readonly harnessDir: string;
