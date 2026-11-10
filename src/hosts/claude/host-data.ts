@@ -1,3 +1,6 @@
+import type { HostIdentity } from "../../kernel/host.ts";
+import { accepted, type Result } from "../../kernel/result.ts";
+import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
@@ -101,3 +104,10 @@ export const CLAUDE_AUTHORED_PLACEMENTS = [
   { source: "dot-gitignore", destination: ".gitignore" },
   { source: "rules-aidlc.md", destination: ".claude/rules/aidlc.md" },
 ] as const satisfies readonly AuthoredPlacement[];
+
+export const claudeHostIdentity = (): Result<HostIdentity, KernelRefusal> => {
+  const distribution = distributionId("claude");
+  if (!distribution.ok) return distribution;
+  const directory = projectPath(".claude");
+  return directory.ok ? accepted({ distribution: distribution.value, directory: directory.value }) : directory;
+};

@@ -18,7 +18,6 @@ export const EMIT_FILES: readonly string[] = [
   "harness/codex/emit.ts",
   "harness/copilot/emit.ts",
   "harness/opencode/emit.ts",
-  "harness/claude/manifest.ts",
   "harness/codex/manifest.ts",
   "harness/copilot/manifest.ts",
   "harness/cursor/manifest.ts",
