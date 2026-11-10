@@ -16,8 +16,6 @@ type CodexSettingsCapabilities = Pick<SettingsRenderingInputs, "extendedSubproce
 
 const adapterCmd = ({ harnessName, target, trustedNamespace }: { harnessName: string; target: string; trustedNamespace: string }) => `{{INVOKE}} ${trustedNamespace} adapter ${harnessName} ${target}`;
 
-// Codex command-hook `timeout` is in seconds, including in the canonical trust
-// identity. Stop and sensor fanout get an enclosing budget for compound work.
 function hookTimeoutSeconds(target: string, capabilities: CodexSettingsCapabilities): number {
   const ordinary = capabilities.extendedSubprocessTimeoutMs / 1000;
   return target === "continue-workflow" || target === "audit-and-sensors"
@@ -47,11 +45,6 @@ function renderRules({ harnessDir, channel, trustedNamespace, toolScripts }: { r
   const trustedPattern = ["aidlc", trustedNamespace]
     .map((token) => JSON.stringify(token))
     .join(", ");
-  // Codex compares whole words, so the copy channel names the dispatcher's
-  // engine namespace and each tool script a copy channel pre-approves
-  // (copyChannelToolScripts), as AI-DLC runs them. An allowed command also runs
-  // outside the sandbox; a config change and a script behind a machine-changing
-  // command stay in it and get Codex's own ask.
   const enginePattern = ["bun", `${harnessDir}/tools/aidlc.ts`, trustedNamespace]
     .map((token) => JSON.stringify(token))
     .join(", ");
@@ -81,8 +74,6 @@ prefix_rule(pattern = ["git", "add"], decision = "allow")
 `;
 }
 
-// Retained native-release callers inject the registered allow-source result.
-// This compatibility entry disappears with F3's retained emitter deletion.
 export function emitDefaultRules({ harnessDir, invoke, trustedNamespace }: {
   readonly harnessDir: string; readonly invoke: string; readonly trustedNamespace: string;
 }, allows: Result<CopyChannelAllows, SettingsFailure>): Result<string, SettingsFailure> {
@@ -107,9 +98,6 @@ type TrustState = {
   readonly state: Readonly<Record<string, { readonly ["trusted_hash"]: string }>>;
 };
 
-// Trust entries keyed on "<abs hooks.json path>:<event_snake>:<group>:<idx>".
-// Exported so the `trust` subcommand (scripts/package.ts) can print
-// installer-substituted entries.
 export function trustEntries({ hooksJsonPath, harnessName, invoke, trustedNamespace }: {
   readonly hooksJsonPath: string;
   readonly harnessName: string;
