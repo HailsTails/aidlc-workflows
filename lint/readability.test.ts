@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { cleanZoneConfig, INTERIM_READABILITY, interimReadabilityConfig } from "./readability.ts";
+import {
+  cleanZoneCommentsConfig,
+  cleanZoneConfig,
+  INTERIM_READABILITY,
+  interimReadabilityConfig,
+} from "./readability.ts";
+import { aidlcPlugin } from "./standards.ts";
 
 describe("cleanZoneConfig", () => {
   test("scopes each discipline block to the clean zone, never the scaffolding", () => {
@@ -52,6 +58,25 @@ describe("interimReadabilityConfig", () => {
       expect.objectContaining({
         name: "aidlc/readability/scaffolding",
         files: ["lint/gate/**/*.{ts,tsx,mts,cts}", "scripts/gate.ts"],
+      }),
+    ]);
+  });
+});
+
+describe("cleanZoneCommentsConfig", () => {
+  test("holds the clean zone to the comment rule the interim slot keeps off it", () => {
+    expect(cleanZoneCommentsConfig()).toEqual([
+      expect.objectContaining({
+        name: "aidlc/readability/clean-comments",
+        files: [
+          "src/**/*.{ts,tsx,mts,cts}",
+          "lint/**/*.{ts,tsx,mts,cts}",
+          "eslint.config.ts",
+          "eslint.config.test.ts",
+          "disciplines.eslint.d.mts",
+        ],
+        plugins: { aidlc: aidlcPlugin },
+        rules: { "aidlc/no-comments": "error" },
       }),
     ]);
   });
