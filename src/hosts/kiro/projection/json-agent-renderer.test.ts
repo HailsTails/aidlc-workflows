@@ -25,10 +25,18 @@ const file: AuthoredHostFile = {
 
 const host = { distribution: brand<DistributionId>("kiro"), directory: brand<ProjectPath>(".kiro") };
 const formatDocuments = new Set<string>();
+const allows = { dispatcherCommands: [], toolScripts: [] };
+
+const allowFile: AuthoredHostFile = {
+  source: brand<SourcePath>("agents/aidlc-allow-fixture.json"),
+  content: { kind: "text", text:
+    '{"toolsSettings":{"execute_bash":{"allowedCommands":["bun (run )?[\\"\\u0027]?\\\\.kiro/tools/[A-Za-z0-9._-]+\\\\.ts[\\"\\u0027]?( .*)?"]}}}' },
+};
+
 
 test("persona uses captured input and a typed policy decision", () => {
   const decision = mock(() => accepted({ kind: "project", model: "chosen" } as const));
-  expect(kiroJsonAgentRenderer({ host, files: [file], formatDocuments,
+  expect(kiroJsonAgentRenderer({ host, allows, files: [file], formatDocuments,
     modelDecision: decision, hookCommandSuffix: undefined })({ agent, knowledge: [] }))
     .toMatchObject({ ok: true, value: [{
       path: ".kiro/agents/aidlc-architect-agent.json",
@@ -39,7 +47,7 @@ test("persona uses captured input and a typed policy decision", () => {
 
 test("missing captured persona refuses before policy resolution", () => {
   const decision = mock(() => accepted({ kind: "preserve" } as const));
-  expect(kiroJsonAgentRenderer({ host, files: [], formatDocuments,
+  expect(kiroJsonAgentRenderer({ host, allows, files: [], formatDocuments,
     modelDecision: decision, hookCommandSuffix: undefined })({ agent, knowledge: [] }))
     .toMatchObject({ ok: false, refusal: { kind: "render-failed" } });
   expect(decision).not.toHaveBeenCalled();
@@ -48,14 +56,14 @@ test("missing captured persona refuses before policy resolution", () => {
 test("policy refusal precedes malformed JSON preparation", () => {
   const failure = { kind: "render-failed", concept: "agent", name: agent.slug,
     reason: "Missing model tier." } as const;
-  expect(kiroJsonAgentRenderer({ host,
+  expect(kiroJsonAgentRenderer({ host, allows,
     files: [{ ...file, content: { kind: "text", text: "malformed" } }], formatDocuments,
     modelDecision: () => refused(failure), hookCommandSuffix: undefined,
   })({ agent, knowledge: [] })).toEqual(refused(failure));
 });
 
 test("preparation refusal preserves its host, source and stage reason", () => {
-  expect(kiroJsonAgentRenderer({ host,
+  expect(kiroJsonAgentRenderer({ host, allows,
     files: [{ ...file, content: { kind: "text", text: "null" } }], formatDocuments,
     modelDecision: () => accepted({ kind: "preserve" }), hookCommandSuffix: undefined,
   })({ agent, knowledge: [] })).toEqual(refused({
@@ -65,32 +73,34 @@ test("preparation refusal preserves its host, source and stage reason", () => {
 });
 
 test("the published agent member prepares a persona once and delegates its model", () => {
-  const prepare = mock(() => accepted(file));
+  const prepare = mock(accepted<AuthoredHostFile>);
   const models = mock(() => accepted(undefined));
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({ host, formatDocuments, channel: "copy",
-    files: [file], prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
+    files: [file, allowFile, { source: brand<SourcePath>("skills/aidlc/SKILL.md"),
+      content: { kind: "text", text: "# Authored skill" } }],
+    prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderAgent({ agent, knowledge: [] })).toEqual(accepted([{
     path: path(".kiro/agents/aidlc-architect-agent.json"), mode: "regular", availability: "always",
     content: { kind: "text", text: '{\n  "name": "original",\n  "custom": true\n}\n' },
     origin: { kind: "harness-authored", source: file.source },
   }]));
-  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(prepare).toHaveBeenCalledTimes(2);
   expect(models).toHaveBeenCalledWith({ host, agent: agent.slug, model: agent.model });
 });
 
 test("the conductor preserves its model and appends the native hook suffix once", () => {
   const conductor: AuthoredHostFile = { source: brand<SourcePath>("agents/aidlc.json"),
     content: { kind: "text", text: '{"model":"personal","hooks":{"pre":[{"command":"run"}]}}' } };
-  const prepare = mock(() => accepted(conductor));
+  const prepare = mock(accepted<AuthoredHostFile>);
   const models = mock(() => accepted("unused"));
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({ host, formatDocuments, channel: "native",
-    files: [conductor], prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
+    files: [conductor, allowFile], prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
     path: path(".kiro/agents/aidlc.json"), mode: "regular", availability: "always",
     content: { kind: "text", text: '{\n  "model": "personal",\n  "hooks": {\n    "pre": [\n      {\n        "command": "run; exit $LASTEXITCODE"\n      }\n    ]\n  }\n}\n' },
     origin: { kind: "harness-authored", source: conductor.source },
   }]));
-  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(prepare).toHaveBeenCalledTimes(2);
   expect(models).not.toHaveBeenCalled();
 });
 
@@ -102,4 +112,41 @@ test("the published member preserves a preparation refusal before model lookup",
     allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderAgent({ agent, knowledge: [] })).toEqual(refused(failure));
   expect(models).not.toHaveBeenCalled();
+});
+test("the native factory refuses the whole set when no document has a tools-folder pattern", () => {
+  const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
+    host, formatDocuments, channel: "copy", files: [file], prepare: accepted,
+    models: () => accepted(undefined), allows: { dispatcherCommands: [], toolScripts: [] },
+  });
+  const failure = refused({ kind: "render-failed" as const, concept: "agent" as const, name: "kiro",
+    reason: "[kiro] no agent names the tools-folder pattern to expand" });
+  expect(render.renderAgent({ agent, knowledge: [] })).toEqual(failure);
+  expect(render.renderConductorAgent({ knowledge: [] })).toEqual(failure);
+});
+
+test("a refusal in another captured agent prevents partial rendering", () => {
+  const failure = refused({ kind: "host-source-unreadable" as const, host,
+    source: allowFile.source, reason: "The other captured source could not be prepared." });
+  const prepare = mock().mockReturnValueOnce(accepted(file)).mockReturnValueOnce(failure);
+  const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
+    host, formatDocuments, channel: "copy", files: [file, allowFile], prepare,
+    models: () => accepted(undefined), allows: { dispatcherCommands: [], toolScripts: [] },
+  });
+  expect(render.renderAgent({ agent, knowledge: [] })).toEqual(failure);
+  expect(render.renderConductorAgent({ knowledge: [] })).toEqual(failure);
+  expect(prepare).toHaveBeenCalledTimes(2);
+});
+
+test("conductor hook overflow is serialized before the final allow-list rewrite", () => {
+  const conductor: AuthoredHostFile = { source: brand<SourcePath>("agents/aidlc.json"), content: { kind: "text",
+    text: '{"hooks":{"pre":[1e400]},"toolsSettings":{"execute_bash":{"allowedCommands":["keep"]}}}' } };
+  const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
+    host, formatDocuments, channel: "copy", files: [conductor, allowFile], prepare: accepted,
+    models: () => accepted(undefined), allows: { dispatcherCommands: [], toolScripts: [] },
+  });
+  expect(render.renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
+    path: path(".kiro/agents/aidlc.json"), mode: "regular", availability: "always",
+    origin: { kind: "harness-authored", source: conductor.source }, content: { kind: "text",
+      text: '{\n  "hooks": {\n    "pre": [\n      null\n    ]\n  },\n  "toolsSettings": {\n    "execute_bash": {\n      "allowedCommands": [\n        "keep"\n      ]\n    }\n  }\n}\n' },
+  }]));
 });

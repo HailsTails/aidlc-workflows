@@ -1,3 +1,5 @@
+import { prepareKiroAgentBatch, expandKiroAgentAllows } from "./tool-allows.ts";
+import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
@@ -18,6 +20,7 @@ export type KiroJsonAgentProfile = {
   readonly host: HostIdentity;
   readonly files: readonly AuthoredHostFile[];
   readonly modelDecision: KiroJsonModelDecision;
+  readonly allows: CopyChannelAllows;
   readonly hookCommandSuffix: string | undefined;
   readonly formatDocuments: ReadonlySet<string>;
 };
@@ -26,11 +29,17 @@ const renderFailed = (name: string, reason: string): ProjectionRefusal => ({
   kind: "render-failed", concept: "agent", name, reason,
 });
 
-export const placeKiroAgentDocument = (file: AuthoredHostFile, content: FileContent): Rendering => {
+export const placeKiroAgentDocument = (file: AuthoredHostFile, request: {
+  readonly content: FileContent;
+  readonly allows: CopyChannelAllows;
+}): Rendering => {
+  // Allow-list serialization follows hook preparation, which observes overflow before it becomes null.
+  const expanded = expandKiroAgentAllows({ file: { ...file, content: request.content }, allows: request.allows });
+  if (!expanded.ok) return expanded;
   const path = projectPath(`.kiro/${file.source}`);
   return path.ok ? accepted([{
     path: path.value,
-    content,
+    content: expanded.value.file.content,
     mode: "regular",
     origin: { kind: "harness-authored", source: file.source },
     availability: "always",
@@ -50,7 +59,7 @@ export const kiroJsonAgentRenderer = (profile: KiroJsonAgentProfile): Harness["r
       knowledge: { documents: knowledge, formatDocuments: profile.formatDocuments },
       hookCommandSuffix: profile.hookCommandSuffix,
     });
-    return prepared.ok ? placeKiroAgentDocument(file, prepared.value)
+    return prepared.ok ? placeKiroAgentDocument(file, { content: prepared.value, allows: profile.allows })
       : refused(prepared.refusal);
   };
 
@@ -69,34 +78,31 @@ export const KIRO_AGENT_JSON = [
 export const createKiroJsonAgentRenderer = (profile: {
   readonly host: HostIdentity;
   readonly formatDocuments: ReadonlySet<string>;
-}): HostAgentRenderer => (inputs) => ({
-  renderAgent: (request) => {
-    const file = inputs.files.find((candidate) => candidate.source === `agents/${request.agent.slug}.json`);
-    if (!file) return refused(renderFailed(request.agent.slug,
-      `Missing captured Kiro persona JSON: agents/${request.agent.slug}.json.`));
-    const prepared = inputs.prepare(file);
-    if (!prepared.ok) return prepared;
-    return kiroJsonAgentRenderer({ ...profile, files: [prepared.value], hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX,
-      modelDecision: ({ agent, file: captured }) => {
+}): HostAgentRenderer => (inputs) => {
+  const prepared = prepareKiroAgentBatch(inputs);
+  if (!prepared.ok) return { renderAgent: () => prepared, renderConductorAgent: () => prepared };
+  const files = prepared.value;
+  return {
+    renderAgent: kiroJsonAgentRenderer({ ...profile, files, allows: inputs.allows, hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX,
+      modelDecision: ({ agent, file }) => {
         if (agent.model.kind !== "tier") return refused({ kind: "host-source-unreadable",
-          host: profile.host, source: captured.source, reason: "the accepted core Method supplies no model tier" });
+          host: profile.host, source: file.source, reason: "the accepted core Method supplies no model tier" });
         const model = inputs.models({ host: profile.host, agent: agent.slug, model: agent.model });
         return model.ok ? accepted({ kind: "project", model: model.value }) : model;
       },
-    })(request);
-  },
-  renderConductorAgent: ({ knowledge }) => {
-    const file = inputs.files.find((candidate) => candidate.source === "agents/aidlc.json");
-    if (!file) return refused(renderFailed("aidlc", "Missing captured Kiro conductor JSON: agents/aidlc.json."));
-    const captured = inputs.prepare(file);
-    if (!captured.ok) return captured;
-    const prepared = prepareKiroAgentDocument({ host: profile.host, source: captured.value.source,
-      content: captured.value.content, model: { kind: "preserve" },
-      knowledge: { documents: knowledge, formatDocuments: profile.formatDocuments },
-      hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX });
-    return prepared.ok ? placeKiroAgentDocument(file, prepared.value) : prepared;
-  },
-});
+    }),
+    renderConductorAgent: ({ knowledge }) => {
+      const file = files.find((candidate) => candidate.source === "agents/aidlc.json");
+      if (!file) return refused(renderFailed("aidlc", "Missing captured Kiro conductor JSON: agents/aidlc.json."));
+      const content = prepareKiroAgentDocument({ host: profile.host, source: file.source,
+        content: file.content, model: { kind: "preserve" },
+        knowledge: { documents: knowledge, formatDocuments: profile.formatDocuments },
+        hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX });
+      return content.ok ? placeKiroAgentDocument(file, { content: content.value, allows: inputs.allows }) : content;
+    },
+  };
+};
+
 export const kiroAgents: HostAgentRenderer = (inputs) => createKiroJsonAgentRenderer({
   host: inputs.host, formatDocuments: inputs.formatDocuments,
 })(inputs);

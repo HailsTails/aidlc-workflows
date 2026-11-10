@@ -210,14 +210,7 @@ const manifest: HarnessManifest = {
     { src: "hooks", dst: "hooks" },
   ],
 
-  // Authored Kiro shell surfaces. These carry literal `.kiro` (harness-specific
-  // by construction); they are .md/.json/.ts copied verbatim (the .md token
-  // substitution is a no-op on them — no {{HARNESS_DIR}} token present).
-  harnessFiles: [
-    { src: "hooks/aidlc-record-human-turn.kiro.hook", dst: "hooks/aidlc-record-human-turn.kiro.hook" },
-    { src: "hooks/aidlc-plan-approval-guard.kiro.hook", dst: "hooks/aidlc-plan-approval-guard.kiro.hook" },
-    { src: "settings/cli.json", dst: "settings/cli.json" },
-  ],
+  harnessFiles: [],
 
   pluginAgentFrontmatter: [...KIRO_HOST_DATA.pluginAgentFrontmatter.copy],
 
