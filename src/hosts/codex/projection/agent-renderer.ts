@@ -1,15 +1,7 @@
-import { accepted, refused, type Result } from "../../../kernel/result.ts";
+import type { HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
+import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
-import type { Harness } from "../../../projection/application/ports/harness.ts";
-import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
-
-type ModelSurface = Result<string, ProjectionRefusal>;
-type CodexAgentLegacy = {
-  readonly markdownSurface: (agent: Agent) => ModelSurface;
-  readonly codexSurface: (request: { readonly agent: Agent; readonly content: string }) => ModelSurface;
-  readonly preparePersona: (agent: Agent) => string;
-};
 
 const nativeInstructions = (persona: string): string => persona.replace(
   /the `maxTurns: (\d+)` frontmatter above - keep the two numbers in sync/g,
@@ -23,19 +15,21 @@ const nativeRole = (agent: Agent, persona: string): string =>
   `description = "${agent.description.replace(/\s+/g, " ").trim().replace(/"/g, '\\"')}"\n` +
   `developer_instructions = """\n${nativeInstructions(persona)}\n"""\n`;
 
-export const createCodexAgentRenderer = (legacy: CodexAgentLegacy): Harness["renderAgent"] =>
-  ({ agent }) => {
+export const codexAgents: HostAgentRenderer = (inputs) => ({
+  renderAgent: ({ agent }) => {
     const markdownPath = projectPath(`.codex/agents/${agent.slug}.md`);
     const codexPath = projectPath(`.codex/agents/${agent.slug}.toml`);
     if (!markdownPath.ok || !codexPath.ok) return refused({
       kind: "render-failed", concept: "agent", name: agent.slug,
       reason: "Codex agent destinations must be project-relative paths.",
     });
-    const markdown = legacy.markdownSurface(agent);
+    const markdown = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+      frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
+        removeKeys: [], afterProjectionLines: [] } });
     if (!markdown.ok) return markdown;
-    const codex = legacy.codexSurface({ agent,
-      content: nativeRole(agent, legacy.preparePersona(agent)),
-    });
+    const persona = inputs.persona({ agent, text: "persona-body", knowledge: "absorbed", reading: "whole-files" });
+    if (!persona.ok) return persona;
+    const codex = inputs.tomlModels({ agent, content: nativeRole(agent, persona.value) });
     if (!codex.ok) return codex;
     return accepted([
       { path: markdownPath.value, content: { kind: "text", text: markdown.value }, mode: "regular",
@@ -43,4 +37,6 @@ export const createCodexAgentRenderer = (legacy: CodexAgentLegacy): Harness["ren
       { path: codexPath.value, content: { kind: "text", text: codex.value }, mode: "regular",
         origin: { kind: "method-source", path: agent.source }, availability: "always" },
     ]);
-  };
+  },
+  renderConductorAgent: () => accepted([]),
+});

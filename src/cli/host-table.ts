@@ -1,3 +1,4 @@
+import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
 import { OPENCODE_SETTINGS_INPUTS, createOpenCodeSettingsRenderer } from "../hosts/opencode/projection/settings-renderer.ts";
 import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
 import { KIRO_IDE_SETTINGS_INPUTS, createKiroIdeSettingsRenderer } from "../hosts/kiro-ide/projection/settings-renderer.ts";
@@ -33,6 +34,7 @@ import type { ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers, HostSettingsMembers } from "./roots.ts";
 
 const AGENT_MEMBERS = [
+  { name: "codex", inputs: [], render: codexAgents },
   { name: "kiro-ide", inputs: ["agents/aidlc-aidlc.md"], render: kiroIdeAgents },
   { name: "kiro", inputs: KIRO_AGENT_JSON, render: kiroAgents },
   { name: "claude", inputs: [], render: claudeAgents },
