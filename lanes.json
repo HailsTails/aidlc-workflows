@@ -245,13 +245,18 @@
       }
     },
     "dot": {
-      "name": "Projection for kiro, kiro-ide, cursor and copilot (supervised, one ticket at a time)",
+      "name": "dot: the e2e worker helper and its temporary-root test",
       "agent": "codex/dot",
       "owns": [
-        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**",
         "tests/lib/e2e-workers.ts",
         "tests/unit/t-e2e-temporary-root.test.ts"
       ],
+      "monolithDeletions": {}
+    },
+    "hosts-c": {
+      "name": "Projection for kiro, kiro-ide, cursor and copilot (one ticket at a time)",
+      "agent": "codex/hosts-c",
+      "owns": ["src/hosts/{kiro,kiro-ide,cursor,copilot}/**"],
       "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {
@@ -261,6 +266,22 @@
     },
     "hosts-b": {
       "name": "Projection for codex and opencode (supervised, one ticket at a time)",
+      "agent": "codex/dot",
+      "owns": [
+        "src/hosts/{codex,opencode}/projection/**",
+        "src/hosts/{codex,opencode}/build.ts",
+        "src/hosts/{codex,opencode}/host-data{,.test}.ts",
+        "harness/codex/manifest.ts",
+        "harness/opencode/manifest.ts",
+        "src/workflow-definition/domain/method-references{,.test}.ts"
+      ],
+      "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
+      "monolithDeletions": {
+        "harness/{codex,opencode}/{manifest,emit}.ts": ["*"]
+      }
+    },
+    "hosts-b-cover": {
+      "name": "Cover for hosts-b's codex and opencode work, run by dot's worker; this entry is deleted when hosts-b claims a queue row again (Q86)",
       "agent": "codex/dot",
       "owns": [
         "src/hosts/{codex,opencode}/projection/**",
