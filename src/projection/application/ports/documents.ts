@@ -8,6 +8,7 @@ import type { TokenBindings } from "../../domain/template-token.ts";
 import type { Harness, Rendering } from "./harness.ts";
 
 export type DocumentRenderingInputs = {
+  readonly bindingHeadings: readonly string[];
   readonly fills: OnboardingFills;
   readonly tokens: TokenBindings;
 };
@@ -26,6 +27,7 @@ export type NeutralReading = (
 ) => Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
 
 export type DocumentProjectionRequest = {
+  readonly bindingHeadings: readonly string[];
   readonly method: Method;
   readonly host: HostIdentity;
   readonly render: HostDocumentRenderer;

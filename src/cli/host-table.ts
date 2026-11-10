@@ -2,7 +2,6 @@ import { CODEX_SETTINGS_INPUTS, createCodexSettingsRenderer } from "../hosts/cod
 import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
 import { KIRO_SETTINGS_INPUTS, createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 import { createClaudeDocumentRenderer } from "../hosts/claude/projection/document-renderer.ts";
-import type { DocumentRenderingInputs } from "../projection/application/ports/documents.ts";
 import type { HostDocumentMembers } from "./roots.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
@@ -15,7 +14,7 @@ import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS } from "../hosts/codex/host-
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
-import { CLAUDE_HOST_DATA, CLAUDE_AUTHORED_PLACEMENTS } from "../hosts/claude/host-data.ts";
+import { CLAUDE_HOST_DATA, CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_BINDING_HEADING } from "../hosts/claude/host-data.ts";
 import { OPENCODE_SKILL_INPUTS, createOpenCodeSkillRenderer } from "../hosts/opencode/projection/skill-renderer.ts";
 import { KIRO_SKILL_INPUTS, createKiroSkillRenderer } from "../hosts/kiro/projection/skill-renderer.ts";
 import { CODEX_SKILL_INPUTS, createCodexSkillRenderer } from "../hosts/codex/projection/skill-renderer.ts";
@@ -103,7 +102,7 @@ export const hostSettingsMembers = (host: HostIdentity): Result<HostSettingsMemb
 };
 
 const HOST_BINDING_HEADINGS = [
-  { name: "claude", heading: "Claude Code" },
+  { name: "claude", heading: CLAUDE_BINDING_HEADING },
   { name: "kiro", heading: "Kiro CLI" },
   { name: "kiro-ide", heading: "Kiro IDE" },
   { name: "codex", heading: "Codex CLI" },
@@ -112,13 +111,14 @@ const HOST_BINDING_HEADINGS = [
   { name: "copilot", heading: "GitHub Copilot" },
 ] as const;
 
+export const hostBindingHeadings = (): readonly string[] => HOST_BINDING_HEADINGS.map((entry) => entry.heading);
+
 export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEntries(
   HOST_BINDING_HEADINGS.map((entry) => [entry.name, entry.heading]),
 );
 
 const HOST_DOCUMENT_MEMBERS = [{ name: "claude", inputs: [],
-  render: (inputs: DocumentRenderingInputs) => createClaudeDocumentRenderer({ ...inputs,
-    bindingHeadings: Object.values(BINDING_HEADINGS) }),
+  render: createClaudeDocumentRenderer,
 }] as const;
 
 export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | null => {

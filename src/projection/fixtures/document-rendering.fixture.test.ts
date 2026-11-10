@@ -61,6 +61,7 @@ describe("neutral document fixtures", () => {
 describe("documentRenderingInputsFixture", () => {
   test("offers the fills and the host's tokens", () => {
     expect(documentRenderingInputsFixture({ harnessDir: ".kiro" })).toEqual({
+      bindingHeadings: ["Claude Code", "Kiro CLI", "Kiro IDE", "Codex CLI", "Cursor", "opencode", "GitHub Copilot"],
       fills: ONBOARDING_FILLS_FIXTURE,
       tokens: tokenBindingsFixture({ harnessDir: ".kiro" }),
     });
