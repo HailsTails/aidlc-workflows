@@ -1,11 +1,13 @@
-import { expect, test } from "bun:test";
+import { SCRATCH_AGENT_INPUTS } from "../../../projection/fixtures/scratch-host.fixture.ts";
+import { path } from "../../../kernel/fixtures/values.fixture.ts";
+import { expect, test, mock } from "bun:test";
 import { accept } from "../../../kernel/fixtures/accept.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import { agentSlug } from "../../../workflow-definition/domain/identities.ts";
 import { methodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
-import { createOpenCodeAgentRenderer } from "./agent-renderer.ts";
+import { openCodeAgents } from "./agent-renderer.ts";
 
 const agent: Agent = {
   slug: accept(agentSlug("aidlc-example-agent")),
@@ -17,55 +19,82 @@ const agent: Agent = {
   additions: { afterPreflight: [], endOfBody: [] },
 };
 
-test("native fields are passed to the frozen model surface and the persona names steps", () => {
-  const renderer = createOpenCodeAgentRenderer((request) => {
-    expect(request.agent).toBe(agent);
-    expect(request.effortKey).toBe("variant");
-    expect(request.removeKeys).toEqual(["disallowedTools", "maxTurns"]);
-    expect(request.afterProjectionLines).toEqual([
-      "mode: subagent", "steps: 12", "permission:", "  task: deny",
-    ]);
-    return accepted("---\nvariant: medium\n---\nBudget `maxTurns: 12`\n");
-  });
-  const rendering = renderer({ agent, knowledge: [] });
-  expect(accept(rendering)).toMatchObject([{
-    path: ".opencode/agents/aidlc-example-agent.md", mode: "regular", availability: "always",
-    content: { kind: "text", text: "---\nvariant: medium\n---\nBudget `steps: 12`\n" },
-    origin: { kind: "method-source", path: agent.source },
-  }]);
+test("native and inline personas request distinct frontmatters and retain exact separate bytes", () => {
+  const documents = mock().mockReturnValueOnce(accepted("---\nmode: subagent\nsteps: 12\npermission:\n  task: deny\n---\n" +
+    "Budget `maxTurns: 12`; aidlc/spaces/<active-space>/memory/project.md .aidlc/rules/aidlc-org.md " +
+    ".aidlc/rules/aidlc-team.md .aidlc/rules/aidlc-project.md .aidlc/rules/other.md\n"))
+    .mockReturnValueOnce(accepted("---\ndisallowedTools: Task\nmaxTurns: 12\n---\n" +
+      "Budget `maxTurns: 12`; aidlc/spaces/<active-space>/memory/project.md .aidlc/rules/aidlc-org.md " +
+      ".aidlc/rules/aidlc-team.md .aidlc/rules/aidlc-project.md .aidlc/rules/other.md\n"));
+  const renderer = openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents });
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([
+    { path: path(".opencode/agents/aidlc-example-agent.md"), mode: "regular", availability: "always",
+      origin: { kind: "method-source", path: agent.source }, content: { kind: "text", text:
+        "---\nmode: subagent\nsteps: 12\npermission:\n  task: deny\n---\nBudget `steps: 12`; " +
+        "aidlc/active-memory/project.md aidlc/active-memory/org.md aidlc/active-memory/team.md " +
+        "aidlc/active-memory/project.md aidlc/active-memory/other.md\n" } },
+    { path: path(".aidlc/agents/aidlc-example-agent.md"), mode: "regular", availability: "always",
+      origin: { kind: "method-source", path: agent.source }, content: { kind: "text", text:
+        "---\ndisallowedTools: Task\nmaxTurns: 12\n---\nBudget `maxTurns: 12`; " +
+        "aidlc/active-memory/project.md aidlc/active-memory/org.md aidlc/active-memory/team.md " +
+        "aidlc/active-memory/project.md aidlc/active-memory/other.md\n" } },
+  ]));
+  expect(documents).toHaveBeenNthCalledWith(1, { agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
+      removeKeys: ["disallowedTools", "maxTurns"], afterProjectionLines: [
+        "mode: subagent", "steps: 12", "permission:", "  task: deny",
+      ] } });
+  expect(documents).toHaveBeenNthCalledWith(2, { agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
+      removeKeys: [], afterProjectionLines: [] } });
+  expect(documents).toHaveBeenCalledTimes(2);
 });
 
-test("an agent without a cap or denials adds only the native subagent mode", () => {
-  const renderer = createOpenCodeAgentRenderer((request) => {
-    expect(request.afterProjectionLines).toEqual(["mode: subagent"]);
-    return accepted("Native model inheritance\n");
-  });
-  const rendering = renderer({ agent: { ...agent, maxTurns: null, tools: { disallowed: [] } },
-    knowledge: [] });
-  expect(accept(rendering)).toMatchObject([{ content: { text: "Native model inheritance\n" } }]);
+test("the registered factory keeps optional cap and denial lines absent", () => {
+  const documents = mock(() => accepted("Persona\n"));
+  const uncapped = { ...agent, maxTurns: null, tools: { disallowed: [] } };
+  expect(openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent: uncapped, knowledge: [] }).ok)
+    .toBe(true);
+  expect(documents).toHaveBeenNthCalledWith(1, { agent: uncapped, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
+      removeKeys: ["disallowedTools", "maxTurns"], afterProjectionLines: ["mode: subagent"] } });
 });
 
-test("a denial without Task is refused instead of emitting an unrelated native grant", () => {
-  const renderer = createOpenCodeAgentRenderer(() => accepted("Unused"));
-  expect(renderer({ agent: { ...agent, tools: { disallowed: ["Read"] } }, knowledge: [] }))
-    .toMatchObject({ ok: false, refusal: { kind: "render-failed", concept: "agent",
-      name: "aidlc-example-agent" } });
+test("the registered factory refuses unsupported denials before any document call", () => {
+  const documents = mock(() => accepted("Unused"));
+  expect(openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({
+    agent: { ...agent, tools: { disallowed: ["Read"] } }, knowledge: [],
+  })).toEqual(refused({ kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
+    reason: "OpenCode cannot translate disallowedTools without Task: Read." }));
+  expect(documents).not.toHaveBeenCalled();
 });
 
-test("the existing Task translation also accepts a mixed authored denial list", () => {
-  const renderer = createOpenCodeAgentRenderer((request) => {
-    expect(request.afterProjectionLines).toEqual([
-      "mode: subagent", "steps: 12", "permission:", "  task: deny",
-    ]);
-    return accepted("Native task denial\n");
-  });
-  expect(renderer({ agent: { ...agent, tools: { disallowed: ["Read", "task"] } },
-    knowledge: [] }).ok).toBe(true);
+test("a native document refusal prevents the inline document request", () => {
+  const refusal: ProjectionRefusal = { kind: "render-failed", concept: "agent", name: agent.slug, reason: "Native refused" };
+  const documents = mock(() => refused(refusal));
+  expect(openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent, knowledge: [] })).toEqual(refused(refusal));
+  expect(documents).toHaveBeenCalledTimes(1);
 });
 
-test("a frozen model bridge refusal reaches the caller unchanged", () => {
-  const refusal: ProjectionRefusal = { kind: "render-failed", concept: "agent",
-    name: agent.slug, reason: "Model policy refused this projection" };
-  const renderer = createOpenCodeAgentRenderer(() => refused(refusal));
-  expect(renderer({ agent, knowledge: [] })).toEqual(refused(refusal));
+test("an inline document refusal returns no partial native file", () => {
+  const refusal: ProjectionRefusal = { kind: "render-failed", concept: "agent", name: agent.slug, reason: "Inline refused" };
+  const documents = mock().mockReturnValueOnce(accepted("Native\n")).mockReturnValueOnce(refused(refusal));
+  expect(openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent, knowledge: [] })).toEqual(refused(refusal));
+  expect(documents).toHaveBeenCalledTimes(2);
+});
+
+test("OpenCode has no separate conductor agent file", () => {
+  expect(openCodeAgents(SCRATCH_AGENT_INPUTS).renderConductorAgent({ knowledge: [] })).toEqual(accepted([]));
+});
+
+test("the native factory retains mixed Task denial translation", () => {
+  const documents = mock(() => accepted("Native task denial\n"));
+  const mixed = { ...agent, tools: { disallowed: ["Read", "task"] } };
+  expect(openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({
+    agent: mixed, knowledge: [],
+  }).ok).toBe(true);
+  expect(documents).toHaveBeenNthCalledWith(1, { agent: mixed, text: "authored-file", knowledge: "absorbed",
+    reading: "whole-files", frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain",
+      insertBeforeKeys: [], removeKeys: ["disallowedTools", "maxTurns"],
+      afterProjectionLines: ["mode: subagent", "steps: 12", "permission:", "  task: deny"] } });
 });
