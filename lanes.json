@@ -84,7 +84,7 @@
         "disciplines.eslint.d.mts",
         "eslint.config.test.ts"
       ],
-      "notOwned": ["lint/context-map.ts", "lint/context-map.test.ts"],
+      "notOwned": ["lint/context-map.ts", "lint/context-map.test.ts", "tests/golden/runtime/**"],
       "territory": [],
       "hotFileGrants": {
         "package.json": ["devDependencies", "scripts.lint", "scripts.gate"],
@@ -273,6 +273,12 @@
       "monolithDeletions": {
         "harness/{codex,opencode}/{manifest,emit}.ts": ["*"]
       }
+    },
+    "runtime-golden": {
+      "name": "Runtime oracle (Phase 2 prep)",
+      "agent": "claude",
+      "owns": ["tests/golden/runtime/**"],
+      "monolithDeletions": {}
     }
   }
 }
