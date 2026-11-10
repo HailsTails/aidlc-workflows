@@ -1,3 +1,4 @@
+import type { AgentDocumentSurface, AgentRenderingInputs } from "../../../projection/application/ports/agents.ts";
 import { tokenBindingsFixture } from "../../../projection/fixtures/token-bindings.fixture.ts";
 import { expect, mock, test } from "bun:test";
 import { brand } from "../../../kernel/brand.ts";
@@ -8,7 +9,7 @@ import type { AuthoredHostFile } from "../../../projection/domain/host-surface.t
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import type { AgentSlug } from "../../../workflow-definition/domain/identities.ts";
 import type { MethodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
-import { kiroJsonAgentRenderer, createKiroJsonAgentRenderer } from "./json-agent-renderer.ts";
+import { kiroJsonAgentRenderer, createKiroJsonAgentRenderer, kiroAgents } from "./json-agent-renderer.ts";
 
 const agent: Agent = {
   slug: brand<AgentSlug>("aidlc-architect-agent"),
@@ -165,4 +166,57 @@ test("conductor hook overflow is serialized before the final allow-list rewrite"
     origin: { kind: "harness-authored", source: conductor.source }, content: { kind: "text",
       text: '{\n  "hooks": {\n    "pre": [\n      null\n    ]\n  },\n  "toolsSettings": {\n    "execute_bash": {\n      "allowedCommands": [\n        "keep"\n      ]\n    }\n  }\n}\n' },
   }]));
+});
+const nativeInputs = (documents: AgentDocumentSurface): AgentRenderingInputs => ({
+  tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted("unused"),
+  documents, tomlModels: () => accepted("unused"), inlineAgents: new Set(), host, formatDocuments,
+  channel: "copy", files: [file, allowFile], prepare: accepted, models: () => accepted(undefined), allows,
+});
+
+test("Kiro's native factory returns JSON then Markdown with the exact in-parts request", () => {
+  const documents = mock(() => accepted("---\nname: architect\n---\nRead .kiro/steering/project.md.\n"));
+  const prepare = mock(accepted<AuthoredHostFile>);
+  const renderer = kiroAgents({ ...nativeInputs(documents), prepare });
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([
+    { path: path(".kiro/agents/aidlc-architect-agent.json"), mode: "regular", availability: "always",
+      content: { kind: "text", text: '{\n  "name": "original",\n  "custom": true\n}\n' },
+      origin: { kind: "harness-authored", source: file.source } },
+    { path: path(".kiro/agents/aidlc-architect-agent.md"), mode: "regular", availability: "always",
+      content: { kind: "text", text: '---\nname: architect\ntools: ["read", "write", "shell"]\n' +
+        'includeMcpJson: true\n---\nRead .kiro/steering/project.md.\n' },
+      origin: { kind: "method-source", path: agent.source } },
+  ]));
+  expect(documents).toHaveBeenCalledTimes(1);
+  expect(documents).toHaveBeenCalledWith({ agent, text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+    frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
+      insertBeforeKeys: [], removeKeys: ["disallowedTools"], afterProjectionLines: [] } });
+  expect(prepare).toHaveBeenCalledTimes(2);
+});
+
+test("Kiro's JSON refusal prevents the Markdown request", () => {
+  const documents = mock(() => accepted("unused"));
+  const failure = { kind: "host-source-unreadable", host, source: file.source, reason: "unreadable JSON" } as const;
+  const renderer = kiroAgents({ ...nativeInputs(documents), prepare: () => refused(failure) });
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(refused(failure));
+  expect(documents).not.toHaveBeenCalled();
+});
+
+test("Kiro's Markdown refusal returns no partial JSON output", () => {
+  const failure = { kind: "render-failed", concept: "agent", name: agent.slug, reason: "missing persona" } as const;
+  const documents = mock(() => refused(failure));
+  expect(kiroAgents(nativeInputs(documents)).renderAgent({ agent, knowledge: [] })).toEqual(refused(failure));
+  expect(documents).toHaveBeenCalledTimes(1);
+});
+
+test("Kiro's combined factory keeps its conductor JSON-only", () => {
+  const documents = mock(() => accepted("unused"));
+  const conductor: AuthoredHostFile = { source: brand<SourcePath>("agents/aidlc.json"),
+    content: { kind: "text", text: '{"model":"personal"}' } };
+  const renderer = kiroAgents({ ...nativeInputs(documents), files: [conductor, allowFile] });
+  expect(renderer.renderConductorAgent({ knowledge: [] })).toEqual(accepted([
+    { path: path(".kiro/agents/aidlc.json"), mode: "regular", availability: "always",
+      content: { kind: "text", text: '{"model":"personal"}' },
+      origin: { kind: "harness-authored", source: conductor.source } },
+  ]));
+  expect(documents).not.toHaveBeenCalled();
 });

@@ -68,7 +68,7 @@ import {
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
-  hostAgentInputs, hostAgentMembers, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers, hostSettingsInputs,
+  hostAgentInputs, hostAgentMembers, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers,
 } from "../src/cli/host-table.ts";
 import { distributionId, projectPath, sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
@@ -119,7 +119,6 @@ import {
   resolveModelPolicy,
   serializeAgentTiers,
 
-  writeKiroCliSurface,
   writeMarkdownAgentSurface,
 } from "../core/tools/aidlc-model-policy.ts";
 import {
@@ -276,19 +275,6 @@ function projectTierFrontmatter(s: string, srcPath: string, harness: Harness): s
     effortKey: harness === "opencode" ? "variant" : "effort",
     removeKeys: harness === "kiro" ? ["disallowedTools"] : [],
   });
-}
-
-// Merge the tier-derived chat.modelDefaults entries into an authored Kiro
-// settings/cli.json: one entry per distinct pinned Kiro model, carrying the
-// highest sharing tier's effort (the collapse rule - kiroModelDefaults()).
-// Authored entries are preserved and join the same higher-effort collapse on
-// collision; none ship today, because a project map replaces the person's
-// personal one. CLI-only: the Kiro IDE ignores cli.json.
-function projectKiroCliJson(content: Buffer): Buffer {
-  return Buffer.from(
-    writeKiroCliSurface(content.toString("utf-8"), [], TIER_CAP),
-    "utf-8",
-  );
 }
 
 function transform(
@@ -778,11 +764,6 @@ function prepareAuthoredHostFile(request: {
     kind: "bytes", bytes: transform(srcPath, hostContentBytes(content),
       m.harnessDir, m.rulesRename, m.tierFlavor, invoke, letters),
   })];
-  if (m.tierFlavor === "kiro" && file.source === "settings/cli.json"
-    && !hostSettingsInputs(m.name).includes(file.source)) {
-    steps.push((content) => ({ kind: "bytes",
-      bytes: projectKiroCliJson(hostContentBytes(content)) }));
-  }
   return prepareHostSource({ host, file, steps });
 }
 
@@ -887,10 +868,7 @@ async function buildTree(
   }
   // 2. Copy authored harness surfaces (token substitution on .md). projectRoot
   //    files land beside the harness dir (e.g. dist/kiro/AGENTS.md), the rest
-  //    inside <harnessDir>/. On the kiro harnesses two authored JSON surfaces
-  //    are additionally tier-projected: the agent .json "model" fields and the
-  //    settings/cli.json chat.modelDefaults entries (effort rides on the model
-  //    on Kiro - see aidlc-tiers.ts).
+  //    inside <harnessDir>/.
 
   const harnessSrcRoot = join(HARNESS_ROOT, m.name);
   const prepareHostInput = (file: AuthoredHostFile) => prepareAuthoredHostFile({
@@ -1083,7 +1061,6 @@ async function buildTree(
   }
 
   expandCursorToolAllows(treeRoot, m);
-  expandKiroIdeConductorAllows(treeRoot, m, invoke);
   writeProjectionData(outRoot, treeRoot, m);
 
   return [...walk(outRoot)];
@@ -1192,26 +1169,6 @@ function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): vo
     ...nativeDispatcherCommands().map((command) => `Bash(${command})`),
   ];
   writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-// Kiro IDE's authored conductor (agents/aidlc-aidlc.md) allows AI-DLC's tool
-// scripts and the dispatcher's engine namespace. Both trees add, after the
-// engine line, each dispatcher command every install pre-approves exactly as
-// AI-DLC runs it (copyChannelDispatcherCommands): through the project's
-// dispatcher on the copy channel, through the installed aidlc command in the
-// native release. Reading a setting or running doctor then shows no card,
-// while any config change still does. Every persona's deny lists the same
-// commands (delegate-shell-deny.ts).
-function expandKiroIdeConductorAllows(treeRoot: string, m: HarnessManifest, invoke: string): void {
-  if (m.name !== "kiro-ide") return;
-  const conductor = join(treeRoot, "agents", "aidlc-aidlc.md");
-  const engine = `        - "${invoke} engine *"\n`;
-  const value = readFileSync(conductor, "utf-8");
-  if (value.split(engine).length !== 2) {
-    throw new Error(`[kiro-ide] agents/aidlc-aidlc.md must allow ${invoke} engine * exactly once`);
-  }
-  const exact = copyChannelDispatcherCommands().map((command) => `        - "${invoke} ${command}"\n`);
-  writeFileSync(conductor, value.replace(engine, `${engine}${exact.join("")}`));
 }
 
 // Cursor's authored cli.json names AI-DLC's tool scripts with one glob. The
@@ -1802,6 +1759,7 @@ function pluginTargets(): PluginTargetTable {
       distribution: distribution.value, directory: directory.value,
     });
     for (const placement of surface?.placements ?? []) addTopLevel(placement.destination);
+    for (const root of manifest.rootIntegrations ?? []) addTopLevel(root.path);
     if (manifest.onboarding?.projectRoot) {
       addTopLevel(manifest.onboarding.dst);
     }

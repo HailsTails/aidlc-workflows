@@ -44,7 +44,8 @@ import {
   RISKY_SHELL_FORMS,
   riskyFormDenyLines,
   shellDenyLines,
-} from "./delegate-shell-deny.ts";
+} from "../../src/hosts/kiro-ide/projection/delegate-shell-deny.ts";
+import { delegateShellFacts } from "../../src/projection/adapters/delegate-shell-facts.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const DELEGATION_AGENTS = [
@@ -67,7 +68,9 @@ const DELEGATION_AGENTS = [
 const PLUGIN_AGENT = "plugin-agent";
 const copyShellDeny = new Map<string, string[]>(
   [...DELEGATION_AGENTS, PLUGIN_AGENT].map((agent) => [agent, [
-    ...shellDenyLines(copyChannelDelegateShellDeny(".kiro", agent)),
+    ...shellDenyLines(copyChannelDelegateShellDeny({
+      facts: delegateShellFacts(), harnessDir: ".kiro", agent,
+    })),
     ...riskyFormDenyLines(["bun .kiro/tools/aidlc"]),
   ]]),
 );
@@ -275,23 +278,7 @@ const manifest: HarnessManifest = {
     { src: "hooks", dst: "hooks" },
   ],
 
-  // Authored surfaces. Persona Markdown files are core projections.
-  harnessFiles: [
-    { src: "settings/cli.json", dst: "settings/cli.json" },
-    // Kiro IDE shows a card for every hook run, so one registration runs the two
-    // hooks for each message and another the four tool-call checks (#2022). What
-    // ran after a write or a command is done by the next card (catch-up).
-    { src: "hooks/aidlc-record-human-turn.json", dst: "hooks/aidlc-record-human-turn.json" },
-    { src: "hooks/aidlc-guard-tool-call.json", dst: "hooks/aidlc-guard-tool-call.json" },
-    { src: "hooks/aidlc-log-subagent.json", dst: "hooks/aidlc-log-subagent.json" },
-    // No session-end registration: Kiro's Stop trigger fires at the end of every
-    // assistant turn (not at conversation close) on both surfaces, so a
-    // registration would append a spurious SESSION_ENDED between prompts.
-    // session-end stays unregistered until Kiro exposes a genuine session-end
-    // event.
-    { src: "hooks/aidlc-session-start.json", dst: "hooks/aidlc-session-start.json" },
-    { src: "hooks/aidlc-continue-workflow.json", dst: "hooks/aidlc-continue-workflow.json" },
-  ],
+  harnessFiles: [],
 
 
   // The native release keys the persona shell deny on the `aidlc engine`
@@ -301,7 +288,7 @@ const manifest: HarnessManifest = {
     .map(([from, agent]) => ({
       from,
       to: [
-        ...shellDenyLines(nativeDelegateShellDeny(agent)),
+        ...shellDenyLines(nativeDelegateShellDeny({ facts: delegateShellFacts(), agent })),
         ...riskyFormDenyLines(["aidlc"]),
       ].join("\n"),
     })),

@@ -17,67 +17,11 @@
 //     aidlc-kiro-adapter.ts stdin shim is a harnessFile.
 //   - AGENTS.md lands at the PROJECT ROOT (dist/kiro/AGENTS.md), outside .kiro/.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import type { EmitContext, HarnessManifest } from "../../scripts/manifest-types.ts";
-import {
-  absorbReviewerKnowledge, injectDelegatedKnowledgePreflight,
-} from "../../scripts/agent-knowledge.ts";
-import {
-  modelAgentName, resolveModelPolicy, writeMarkdownAgentSurface,
-} from "../../core/tools/aidlc-model-policy.ts";
-import { accepted, refused } from "../../src/kernel/result.ts";
-import {
-  kiroCliAgentRenderer, type KiroModelSurface,
-} from "../../src/hosts/kiro/projection/agent-renderer.ts";
+import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import { kiroCommandPath } from "../../src/hosts/kiro/projection/command-renderer.ts";
 import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
 import onboardingFills from "./onboarding.fills.ts";
 import { KIRO_HOST_DATA } from "../../src/hosts/kiro/host-data.ts";
-
-const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKeys }) => {
-  if (agent.model.kind !== "tier") return refused({
-    kind: "render-failed", concept: "agent", name: agent.slug,
-    reason: "This core-agent bridge requires an authored model tier.",
-  });
-  const source = ctx.sources.find((file) => file.path === agent.source &&
-    file.owner.kind === agent.owner.kind && (file.owner.kind === "core" ||
-      (agent.owner.kind === "plugin" && file.owner.plugin === agent.owner.plugin)));
-  if (source === undefined) return refused({
-    kind: "render-failed", concept: "agent", name: agent.slug,
-    reason: "This core-agent bridge requires captured agent text.",
-  });
-  const authored = source.content.kind === "text" ? source.content.text :
-    Buffer.from(source.content.bytes).toString("utf-8");
-  const raw = injectDelegatedKnowledgePreflight(
-    absorbReviewerKnowledge({ content: authored, agentName: agent.slug,
-      sourceRoot: ctx.coreRoot, reviewerAgents: ctx.reviewerAgents }),
-    agent.slug, ctx.harnessDir,
-  );
-  const text = ctx.substituteToken(raw).replace(/\.kiro\/rules\/(?!default\.rules)/g, ".kiro/steering/");
-  const effective = resolveModelPolicy(
-    null, modelAgentName(agent.slug), agent.model.tier, "kiro", ctx.tierCap,
-  );
-  return accepted(writeMarkdownAgentSurface(text, effective, {
-    effortKey: "effort", removeKeys: [...removeKeys],
-  }));
-};
-
-const emitAgents = (ctx: EmitContext): void => {
-  const renderAgent = kiroCliAgentRenderer(modelSurface(ctx));
-  for (const agent of ctx.method.agents) {
-    const rendering = renderAgent({ agent, knowledge: ctx.method.knowledge });
-    if (!rendering.ok) throw new Error(JSON.stringify(rendering.refusal));
-    for (const file of rendering.value) {
-      if (file.content.kind !== "text") {
-        throw new Error(`Kiro emitted non-text content for ${agent.slug}`);
-      }
-      const destination = join(ctx.distRoot, file.path);
-      mkdirSync(dirname(destination), { recursive: true });
-      writeFileSync(destination, file.content.text);
-    }
-  }
-};
 
 const manifest: HarnessManifest = {
   name: "kiro",
@@ -221,7 +165,6 @@ const manifest: HarnessManifest = {
   skipRunnerGen: true,
 
   emit(ctx): void {
-    emitAgents(ctx);
     ctx.emitCommands(kiroCommandPath);
   },
 

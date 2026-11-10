@@ -6,9 +6,9 @@ import type { Method } from "../../../workflow-definition/domain/method.ts";
 import type { MethodSource } from "../../../workflow-definition/domain/method-source.ts";
 import type { Tier } from "../../../workflow-definition/domain/vocabulary.ts";
 import type { AuthoredHostFile, AuthoredPlacement } from "../../domain/host-surface.ts";
-import type { OnboardingFills } from "../../domain/neutral-surface.ts";
+import type { OnboardingFills, SharedRuntime } from "../../domain/neutral-surface.ts";
 import type { DistributionChannel } from "../../domain/projected-file.ts";
-import type { ProjectionRefusal } from "../../domain/projection.ts";
+import type { CompiledMethodFiles, ProjectionRefusal } from "../../domain/projection.ts";
 import type { TokenBindings } from "../../domain/template-token.ts";
 import type { HostAgentRenderer } from "./agents.ts";
 import type { CommandPlacement, CommandSource } from "./commands.ts";
@@ -44,6 +44,8 @@ export type HarnessAssemblyRequest = {
   readonly projectRoot: URL;
   readonly commands: CommandSource;
   readonly reviewerAgents: ReadonlySet<AgentSlug>;
+  readonly runtime: SharedRuntime;
+  readonly compiled: CompiledMethodFiles;
 };
 
 export type HarnessAssembly = (

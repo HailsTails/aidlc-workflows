@@ -1,8 +1,7 @@
 // harness/opencode/manifest.ts — the opencode distribution row.
 //
 // Projects the harness-neutral core/ tree into dist/opencode/.aidlc/ and defers
-// every opencode-native surface to emit.ts (the .opencode/ shell: subagent .md
-// files, the /aidlc command, the hook-adapter plugin). Verified live against
+// personas and the /aidlc command to emit.ts. Verified live against
 // opencode 1.17.18.
 //
 // opencode specifics vs Claude:
@@ -13,7 +12,7 @@
 //     opencode never scans — and the shipped opencode.json registers
 //     `skills.paths: [".aidlc/skills"]` so skills are discovered there
 //     (live-verified).
-//   - .opencode/ carries ONLY natively-consumed emissions (emit.ts): the 14
+//   - .opencode/ carries ONLY natively-consumed surfaces: the 14
 //     persona subagents (.opencode/agents/*.md, mode: subagent + projected
 //     tier keys), the /aidlc command (.opencode/command/aidlc.md), and the
 //     hook-adapter plugin (.opencode/plugin/aidlc-opencode-adapter.ts, the
@@ -119,12 +118,7 @@ const manifest: HarnessManifest = {
     { src: "hooks", dst: "hooks" },
   ],
 
-  harnessFiles: [
-    // Project config at the dist ROOT (opencode reads ./opencode.json):
-    // skills.paths (skill discovery), instructions glob (the method include),
-    // and the native aidlc command permissions.
-    { src: "opencode.json", dst: "opencode.json", projectRoot: true },
-  ],
+  harnessFiles: [],
 
   // Neutral root guidance is shared; opencode.json loads the native setup separately.
   onboarding: { dst: "AGENTS.md", projectRoot: true, harnessDst: "onboarding.md", fills: onboardingFills },

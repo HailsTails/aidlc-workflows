@@ -85,10 +85,6 @@ export const KIRO_IDE_AUTHORED_PLACEMENTS = [
     "destination": ".kiro/steering/aidlc-active-memory.md"
   },
   {
-    "source": "agents/aidlc-aidlc.md",
-    "destination": ".kiro/agents/aidlc-aidlc.md"
-  },
-  {
     "source": "hooks/aidlc-kiro-adapter.ts",
     "destination": ".kiro/hooks/aidlc-kiro-adapter.ts"
   },

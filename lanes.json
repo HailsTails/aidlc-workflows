@@ -265,8 +265,7 @@
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {
         "harness/copilot/emit.ts": ["*"],
-        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"],
-        "harness/kiro-ide/delegate-shell-deny.ts": ["*"]
+        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"]
       }
     },
     "hosts-b": {
