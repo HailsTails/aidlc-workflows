@@ -36,10 +36,13 @@ test("the Kiro IDE host table uses policy-rendered data and the four remaining n
     { source: "hooks/aidlc-kiro-tool-names.ts", destination: ".kiro/hooks/aidlc-kiro-tool-names.ts" },
     { source: "dot-gitignore", destination: ".gitignore" },
   ]);
-  const hostData = members?.renderData({ delegateShell: {
-    shellDeny: (agent) => [`policy for ${agent}`], riskyForms: ["|"] } });
+  const hostData = members?.renderData({ delegateShellFacts: {
+    engineNamespace: "engine", engineRoutes: [], dispatcherCommands: ["--fixture"], launcherGlobalFlags: [],
+    workspaceNouns: [], workspaceRead: () => "other", admittedVerbs: () => ({}),
+    engineRouteAdmission: () => "refused", lifecycleAdmission: () => "admitted", trustedCommand: () => "unused",
+  } });
   expect(hostData?.productName).toBe("Kiro");
-  expect(hostData?.pluginAgentFrontmatter?.copy).toContain("policy for plugin-agent");
+  expect(hostData?.pluginAgentFrontmatter?.copy).toContain('        - "bun .kiro/tools/aidlc.ts --fixture"');
   expect(hostData?.pluginAgentFrontmatter?.native).toEqual(hostData?.pluginAgentFrontmatter?.copy);
 });
 

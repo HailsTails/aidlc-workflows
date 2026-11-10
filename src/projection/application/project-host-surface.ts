@@ -1,14 +1,14 @@
 import { refused } from "../../kernel/result.ts";
-import type { DelegateShellPolicy } from "./ports/delegate-shell.ts";
+import type { DelegateShellFacts } from "./ports/delegate-shell.ts";
 import type { HostSurfaceProjection } from "./ports/host-surface.ts";
 import type { Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 import { createHostSurfaceMembers } from "./host-surface-members.ts";
 
 export const createHostSurfaceProjection = (
-  delegateShell: (directory: string) => DelegateShellPolicy,
+  delegateShellFacts: DelegateShellFacts,
 ): HostSurfaceProjection => (request) => {
-  const hostData = request.renderData({ delegateShell: delegateShell(request.host.directory) });
+  const hostData = request.renderData({ delegateShellFacts });
   const members = createHostSurfaceMembers({ ...request, data: hostData });
   return collectCommandRenderings([
     members.renderHostData(),

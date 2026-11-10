@@ -2,12 +2,12 @@ import type { HostIdentity } from "../../../kernel/host.ts";
 import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../../domain/host-surface.ts";
 import type { DistributionChannel } from "../../domain/projected-file.ts";
 import type { TokenBindings } from "../../domain/template-token.ts";
-import type { DelegateShellPolicy } from "./delegate-shell.ts";
+import type { DelegateShellFacts } from "./delegate-shell.ts";
 import type { Rendering } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
 
 export type HostDataInputs = {
-  readonly delegateShell: DelegateShellPolicy;
+  readonly delegateShellFacts: DelegateShellFacts;
 };
 
 export type HostDataRenderer = (inputs: HostDataInputs) => HostData;

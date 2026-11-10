@@ -122,14 +122,6 @@ const EXPECTED_BRIDGES = [
   },
   { module: "core/tools/aidlc.ts", readBy: "src/projection/adapters/legacy-dispatcher.ts", retiresWhen: OWNER_MOVES },
   {
-    module: "harness/kiro-ide/delegate-shell-deny.ts",
-    readBy: "src/projection/adapters/legacy-delegate-shell.ts",
-    retiresWhen:
-      "Phase 2 delegate-shell cutover: the runtime guards, dispatcher routes and trusted-command " +
-      "owners it reads move into src and ship in the runtime bundle (R1), then the policy moves " +
-      "to src/hosts/kiro-ide beside kiroIdePermissionLines.",
-  },
-  {
     module: "core/hooks/aidlc-state-transition-guard.ts",
     readBy: "src/projection/adapters/legacy-delegate-admission.ts",
     retiresWhen: OWNER_MOVES,

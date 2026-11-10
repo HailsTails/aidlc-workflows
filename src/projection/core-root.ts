@@ -13,7 +13,7 @@ import { createRuntimeReading } from "./adapters/runtime-files.ts";
 import { legacyAgentTiersData } from "./adapters/legacy-agent-surfaces.ts";
 import { legacySettingsSchemaData } from "./adapters/legacy-settings-schema.ts";
 import { createHostSurfaceProjection } from "./application/project-host-surface.ts";
-import { legacyDelegateShellPolicy } from "./adapters/legacy-delegate-shell.ts";
+import { delegateShellFacts } from "./adapters/delegate-shell-facts.ts";
 import { createSessionSkillSource } from "./adapters/session-skill-files.ts";
 import { prepareLegacySkillTables } from "./adapters/legacy-skill-tables.ts";
 import { projectMethodSkills } from "./application/project-method-skills.ts";
@@ -54,7 +54,7 @@ export const createBuildProjection = (request: {
     projectDocuments: projectMethodDocuments,
     readRuntime: createRuntimeReading({ tree: request.sessionFiles,
       agentTiers: legacyAgentTiersData, settingsSchema: legacySettingsSchemaData }),
-    projectHostSurface: createHostSurfaceProjection(legacyDelegateShellPolicy),
+    projectHostSurface: createHostSurfaceProjection(delegateShellFacts()),
     serializeMethod: serializeCompiledMethod,
     readSessionSkills: (capture) => createSessionSkillSource({ ...capture, tree: request.sessionFiles }).read(),
     projectSkills: async (skills) => {

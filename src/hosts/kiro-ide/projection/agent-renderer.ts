@@ -4,7 +4,7 @@ import { projectPath } from "../../../kernel/values.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
-import type { DelegateShellPolicy } from "../../../projection/application/ports/delegate-shell.ts";
+import type { DelegateShellPolicy } from "./delegate-shell-deny.ts";
 
 const composerProposalPath = "aidlc/spaces/*/intents/.aidlc-engine/composer-proposal.json";
 const spacePaths = ["aidlc/spaces/**", ".aidlc/worktrees/*/aidlc/spaces/**"];

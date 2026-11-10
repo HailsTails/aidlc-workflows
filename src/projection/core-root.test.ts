@@ -28,15 +28,15 @@ test("Projection composes host capture and graph serialization through its own a
   });
 });
 
-test("Projection composition serves the retained shell policy to a native data renderer", () => {
+test("Projection composition serves the shared delegate facts to a native data renderer", () => {
   const fileSystem = createInMemoryFileSystem({ files: {} });
   const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
     runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
   expect(projection.projectHostSurface({ host: identity, files: [], placements: [], prepare: accepted,
     tokens: tokenBindingsFixture({ harnessDir: ".claude" }), channel: "copy",
-    renderData: ({ delegateShell }) => ({ productName: "Policy fixture", configNextStep: "Open", rulesFolder: null,
-      pluginAgentFrontmatter: { copy: delegateShell.riskyForms, native: [] } }),
+    renderData: ({ delegateShellFacts }) => ({ productName: "Policy fixture", configNextStep: "Open", rulesFolder: null,
+      pluginAgentFrontmatter: { copy: [delegateShellFacts.engineNamespace], native: [] } }),
   })).toEqual(accepted([
     { path: path(".claude/tools/data/harness.json"), content: { kind: "text", text: `{
   "schemaVersion": 1,
@@ -50,7 +50,7 @@ test("Projection composition serves the retained shell policy to a native data r
 ` }, mode: "regular", availability: "always",
       origin: { kind: "rendered", concept: "host-data", name: "claude" } },
     { path: path(".claude/tools/data/plugin-agent.md"),
-      content: { kind: "text", text: "---\n$\n`\n>\n<\n&\n@(\n@{\n\\n\n---\n" },
+      content: { kind: "text", text: "---\nengine\n---\n" },
       mode: "regular", availability: "always",
       origin: { kind: "rendered", concept: "host-data", name: "claude" } },
   ]));

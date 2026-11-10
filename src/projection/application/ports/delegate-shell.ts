@@ -20,8 +20,3 @@ export type DelegateShellFacts = {
   readonly lifecycleAdmission: (command: string) => "admitted" | "refused";
   readonly trustedCommand: (suffix: string) => string;
 };
-
-export type DelegateShellPolicy = {
-  readonly shellDeny: (agent: string) => readonly string[];
-  readonly riskyForms: readonly string[];
-};

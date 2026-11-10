@@ -22,7 +22,7 @@ import {
 import { delegatedLifecycleCommand } from "../../core/hooks/aidlc-state-transition-guard.ts";
 import { CONFIG_SECTIONS } from "../../core/tools/aidlc-command.ts";
 import { copyChannelDispatcherCommands, ROUTES } from "../../core/tools/aidlc.ts";
-import { RISKY_SHELL_FORMS } from "../../harness/kiro-ide/delegate-shell-deny.ts";
+import { RISKY_SHELL_FORMS } from "../../src/hosts/kiro-ide/projection/delegate-shell-deny.ts";
 import kiroManifest from "../../harness/kiro/manifest.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");

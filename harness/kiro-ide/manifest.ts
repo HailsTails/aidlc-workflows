@@ -44,7 +44,8 @@ import {
   RISKY_SHELL_FORMS,
   riskyFormDenyLines,
   shellDenyLines,
-} from "./delegate-shell-deny.ts";
+} from "../../src/hosts/kiro-ide/projection/delegate-shell-deny.ts";
+import { delegateShellFacts } from "../../src/projection/adapters/delegate-shell-facts.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const DELEGATION_AGENTS = [
@@ -67,7 +68,9 @@ const DELEGATION_AGENTS = [
 const PLUGIN_AGENT = "plugin-agent";
 const copyShellDeny = new Map<string, string[]>(
   [...DELEGATION_AGENTS, PLUGIN_AGENT].map((agent) => [agent, [
-    ...shellDenyLines(copyChannelDelegateShellDeny(".kiro", agent)),
+    ...shellDenyLines(copyChannelDelegateShellDeny({
+      facts: delegateShellFacts(), harnessDir: ".kiro", agent,
+    })),
     ...riskyFormDenyLines(["bun .kiro/tools/aidlc"]),
   ]]),
 );
@@ -285,7 +288,7 @@ const manifest: HarnessManifest = {
     .map(([from, agent]) => ({
       from,
       to: [
-        ...shellDenyLines(nativeDelegateShellDeny(agent)),
+        ...shellDenyLines(nativeDelegateShellDeny({ facts: delegateShellFacts(), agent })),
         ...riskyFormDenyLines(["aidlc"]),
       ].join("\n"),
     })),

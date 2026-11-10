@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createCopyChannelAllowSource } from "./legacy-dispatcher.ts";
+import { createCopyChannelAllowSource, dispatcherCommands, engineRouteAdmission, engineRoutes } from "./legacy-dispatcher.ts";
 
 const shippedAllows = {
   "ok": true,
@@ -83,4 +83,15 @@ const shippedAllows = {
 
 test("the settings bridge retains every shipped command and tool in canonical order", () => {
   expect(createCopyChannelAllowSource().read()).toEqual(shippedAllows);
+});
+
+test("engine routes stay within the requested namespace and expose their shipped verbs", () => {
+  expect(engineRoutes("engine")).toContainEqual({ group: "top", verbs: ["status"] });
+  expect(engineRoutes("not-a-shipped-namespace")).toEqual([]);
+  expect(dispatcherCommands()).toContain("doctor");
+});
+
+test("engine route admission delegates reads and rejects an unadmitted mutation", () => {
+  expect(engineRouteAdmission({ admitted: { "aidlc-state.ts": ["get"] }, words: ["state", "get"] })).toBe("admitted");
+  expect(engineRouteAdmission({ admitted: { "aidlc-state.ts": ["get"] }, words: ["state", "set"] })).toBe("refused");
 });

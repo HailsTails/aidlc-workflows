@@ -1,4 +1,5 @@
-import { copyChannelDispatcherCommands, copyChannelToolScripts } from "../../../core/tools/aidlc.ts";
+import type { DelegateShellFacts, EngineRoute } from "../application/ports/delegate-shell.ts";
+import { ROUTES, admittedEngineRoute, copyChannelDispatcherCommands, copyChannelToolScripts } from "../../../core/tools/aidlc.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { CopyChannelAllows, CopyChannelAllowSource } from "../application/ports/copy-channel.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
@@ -17,3 +18,12 @@ export const createCopyChannelAllowSource = (): DispatcherAllowSource => ({
     }
   },
 } satisfies CopyChannelAllowSource);
+
+export const dispatcherCommands = (): readonly string[] => copyChannelDispatcherCommands();
+
+export const engineRoutes = (namespace: string): readonly EngineRoute[] => ROUTES
+  .filter((route) => route.namespace === namespace && route.classification !== "routing-only")
+  .map(({ group, verbs }) => ({ group, verbs }));
+
+export const engineRouteAdmission: DelegateShellFacts["engineRouteAdmission"] = ({ admitted, words }) =>
+  admittedEngineRoute(admitted, words) ? "admitted" : "refused";
