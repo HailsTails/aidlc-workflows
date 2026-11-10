@@ -1,3 +1,4 @@
+import { createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
 import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
 import { createOpenCodeSettingsRenderer } from "../hosts/opencode/projection/settings-renderer.ts";
 import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
@@ -145,5 +146,13 @@ test("Codex agents directly register the native factory without authored capture
   expect(hostAgentInputs("codex")).toEqual([]);
   expect(hostAgentMembers(codex)).toEqual({ ok: true, value: {
     host: codex, inputs: [], render: codexAgents,
+  } });
+});
+
+test("Cursor settings capture only its authored CLI settings and hook registration", () => {
+  const cursor = host({ name: "cursor", directory: ".cursor" });
+  expect(hostSettingsInputs("cursor")).toEqual(["cli.json", "hooks.json"]);
+  expect(hostSettingsMembers(cursor)).toEqual({ ok: true, value: {
+    host: cursor, inputs: [source("cli.json"), source("hooks.json")], render: createCursorSettingsRenderer,
   } });
 });
