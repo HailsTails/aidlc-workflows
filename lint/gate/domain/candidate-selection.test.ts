@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { needsCandidateLegacy } from "./candidate-selection.ts";
+import { candidateBuildTests, needsCandidateLegacy } from "./candidate-selection.ts";
 
 const KIRO_IDE_HOST_DATA_CHANGE = [
   "harness/kiro-ide/manifest.ts",
@@ -22,6 +22,24 @@ describe("a candidate that reaches the retained matrix helper", () => {
 
   test("a settings wiring change that updates the matrix helper needs none either", () => {
     expect(needsCandidateLegacy(SETTINGS_WIRING_CHANGE)).toBe(false);
+  });
+});
+
+describe("a candidate that moves a build helper", () => {
+  test("the onboarding and harness-bindings helpers need no legacy runtime suite", () => {
+    const helpers = ["scripts/onboarding.ts", "scripts/harness-bindings.ts"];
+
+    expect(needsCandidateLegacy(helpers)).toBe(false);
+  });
+
+  test("each helper selects its own focused tests", () => {
+    expect(candidateBuildTests(["scripts/onboarding.ts"])).toEqual([
+      "tests/unit/t151-onboarding-skeleton.test.ts",
+      "tests/unit/t239-documentation-parity.test.ts",
+    ]);
+    expect(candidateBuildTests(["scripts/harness-bindings.ts"])).toEqual([
+      "tests/unit/t-own-harness-bindings.test.ts",
+    ]);
   });
 });
 

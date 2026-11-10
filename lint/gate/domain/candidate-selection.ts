@@ -7,6 +7,11 @@ const BUILD_TESTS: Readonly<Record<string, readonly string[]>> = {
     "tests/unit/t-earlier-skill-tables-refresh.test.ts",
     "tests/unit/t-skill-body-carriers.test.ts",
   ],
+  "scripts/harness-bindings.ts": ["tests/unit/t-own-harness-bindings.test.ts"],
+  "scripts/onboarding.ts": [
+    "tests/unit/t151-onboarding-skeleton.test.ts",
+    "tests/unit/t239-documentation-parity.test.ts",
+  ],
 };
 
 export const candidateBuildTests = (paths: readonly string[]): readonly string[] =>
