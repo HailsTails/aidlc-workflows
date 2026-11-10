@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { methodAssertion, methodSyntaxFor, purityOf } from "./restrictions.ts";
+import {
+  hostBundleRefusalsFor,
+  methodAssertion,
+  methodSyntaxFor,
+  purityOf,
+} from "./restrictions.ts";
 
 describe("purityOf", () => {
   test("domain and application are pure", () => {
@@ -21,5 +26,21 @@ describe("methodSyntaxFor", () => {
 
   test("every other layer is refused the assertion", () => {
     expect(methodSyntaxFor("projection", "domain")).toBe(methodAssertion);
+  });
+});
+
+describe("hostBundleImportRestrictions", () => {
+  test("a host's own folder named like a context is not a context reach", () => {
+    expect(hostBundleRefusalsFor("./projection/delegate-shell-deny.ts")).toEqual([]);
+  });
+
+  test("climbing out of the host into a context's internals is refused", () => {
+    expect(hostBundleRefusalsFor("../../projection/application/use-cases/render.ts")).toHaveLength(1);
+    expect(hostBundleRefusalsFor("../../../projection/adapters/render.ts")).toHaveLength(1);
+  });
+
+  test("a context's published surface stays reachable", () => {
+    expect(hostBundleRefusalsFor("../../../projection/domain/projection.ts")).toEqual([]);
+    expect(hostBundleRefusalsFor("../../../projection/application/ports/agents.ts")).toEqual([]);
   });
 });

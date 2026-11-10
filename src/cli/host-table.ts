@@ -1,3 +1,4 @@
+import { CURSOR_SETTINGS_INPUTS, createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
 import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
 import { OPENCODE_SETTINGS_INPUTS, createOpenCodeSettingsRenderer } from "../hosts/opencode/projection/settings-renderer.ts";
 import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
@@ -91,6 +92,7 @@ export const hostSurfaceMembers = (host: HostIdentity): HostSurfaceMembers | nul
 };
 
 const HOST_SETTINGS_MEMBERS = [
+  { name: "cursor", inputs: CURSOR_SETTINGS_INPUTS, render: createCursorSettingsRenderer },
   { name: "opencode", inputs: OPENCODE_SETTINGS_INPUTS, render: createOpenCodeSettingsRenderer },
   { name: "kiro-ide", inputs: KIRO_IDE_SETTINGS_INPUTS, render: createKiroIdeSettingsRenderer },
   { name: "codex", inputs: CODEX_SETTINGS_INPUTS, render: createCodexSettingsRenderer },

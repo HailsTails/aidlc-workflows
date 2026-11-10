@@ -121,13 +121,6 @@ const manifest: HarnessManifest = {
   ],
 
   harnessFiles: [
-    { src: "hooks.json", dst: "hooks.json" },
-    // Project-level permissions: pre-approve AI-DLC's own workflow commands
-    // (the dispatcher's engine commands and the aidlc-*.ts tools) so the
-    // forwarding loop is not interrupted by a prompt per engine call.
-    // .cursor/cli.json is the ONLY project-level CLI config Cursor reads
-    // (permissions only, documented contract).
-    { src: "cli.json", dst: "cli.json" },
     // The copy runtime's non-destructive installer, run from the extracted
     // runtime (`bun "$RUNTIME_ROOT/cursor/install.ts" your-project`). It merges
     // the project-owned Cursor config and onboarding surfaces before copying.
