@@ -2,6 +2,8 @@ import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { Agent, TieredModel } from "../../../workflow-definition/domain/agent.ts";
 import type { AgentSlug } from "../../../workflow-definition/domain/identities.ts";
+import type { MethodSource } from "../../../workflow-definition/domain/method-source.ts";
+import type { TokenBindings } from "../../domain/template-token.ts";
 import type { Method } from "../../../workflow-definition/domain/method.ts";
 import type { Tier } from "../../../workflow-definition/domain/vocabulary.ts";
 import type { AuthoredHostFile } from "../../domain/host-surface.ts";
@@ -49,6 +51,11 @@ export type TomlAgentModelPolicy = (request: {
 }) => Result<string, ProjectionRefusal>;
 
 export type AgentRenderingInputs = {
+  readonly tokens: TokenBindings;
+  readonly persona: AgentPersonaPreparer;
+  readonly documents: AgentDocumentSurface;
+  readonly tomlModels: TomlAgentModelPolicy;
+  readonly inlineAgents: ReadonlySet<AgentSlug>;
   readonly host: HostIdentity;
   readonly channel: DistributionChannel;
   readonly files: readonly AuthoredHostFile[];
@@ -63,6 +70,9 @@ export type HostAgentRenderer = (
 ) => Pick<Harness, "renderAgent" | "renderConductorAgent">;
 
 export type AgentProjectionRequest = {
+  readonly reviewerAgents: ReadonlySet<AgentSlug>;
+  readonly tokens: TokenBindings;
+  readonly sources: readonly MethodSource[];
   readonly method: Method;
   readonly render: HostAgentRenderer;
   readonly host: HostIdentity;

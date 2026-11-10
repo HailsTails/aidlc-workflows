@@ -116,7 +116,8 @@ test("the real root omits unregistered agent hosts", async () => {
   const root = createPackageBuildRoot({ platform: { fileSystem: createInMemoryFileSystem({ files }),
     processRunner, yaml }, outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
-  expect(root.projectAgents({ host: host({ name: "claude", directory: ".claude" }), method: core.method,
+  expect(root.projectAgents({ host: host({ name: "fixture-host", directory: ".fixture" }), method: core.method,
+    sources: core.sources, reviewerAgents: new Set(), tokens: tokenBindingsFixture({ harnessDir: ".claude" }),
     files: [], prepare: accepted, channel: "copy", modelCap: null })).toEqual(accepted([]));
 });
 
@@ -125,6 +126,7 @@ test("the real root renders a captured Kiro conductor without replacing its mode
     processRunner, yaml }, outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   expect(root.projectAgents({ host: host({ name: "kiro", directory: ".kiro" }), method: core.method,
+    sources: core.sources, reviewerAgents: new Set(), tokens: tokenBindingsFixture({ harnessDir: ".kiro" }),
     files: [
       { source: source("agents/aidlc.json"), content: { kind: "text", text: '{ "model": "personal" }\r\n' } },
       { source: source("agents/aidlc-architect-agent.json"), content: { kind: "text", text:

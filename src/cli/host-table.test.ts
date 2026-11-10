@@ -6,8 +6,8 @@ import { hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMemb
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 
 test("an unregistered host has no agent inputs or accidental Kiro members", () => {
-  expect(hostAgentInputs("claude")).toEqual([]);
-  expect(hostAgentMembers(host({ name: "claude", directory: ".claude" })))
+  expect(hostAgentInputs("fixture-host")).toEqual([]);
+  expect(hostAgentMembers(host({ name: "fixture-host", directory: ".fixture" })))
     .toEqual({ ok: true, value: null });
 });
 
@@ -67,4 +67,12 @@ test("the Kiro CLI settings registration does not claim the Kiro IDE route", () 
   expect(hostSettingsInputs("kiro-ide")).toEqual([]);
   expect(hostSettingsMembers(host({ name: "kiro-ide", directory: ".kiro" })))
     .toEqual({ ok: true, value: null });
+});
+
+import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
+
+test("Claude uses the native agent factory with captured Method sources and no authored host agent input", () => {
+  const identity = host({ name: "claude", directory: ".claude" });
+  expect(hostAgentInputs("claude")).toEqual([]);
+  expect(hostAgentMembers(identity)).toEqual({ ok: true, value: { host: identity, render: claudeAgents, inputs: [] } });
 });

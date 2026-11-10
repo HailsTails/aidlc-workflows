@@ -1,3 +1,4 @@
+import { tokenBindingsFixture } from "../../src/projection/fixtures/token-bindings.fixture.ts";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -270,6 +271,9 @@ function producesConductorAgent(name: ShippedHarnessName, manifest: HarnessManif
   const authored = join(HARNESS_ROOT, name, conductor);
   if (!existsSync(authored)) fail(name, "agent producer's captured conductor source is missing");
   const rendered = member.value.render({ host, channel: "copy",
+    tokens: tokenBindingsFixture({ harnessDir: manifest.harnessDir }),
+    persona: () => accepted(""), documents: () => accepted(""), tomlModels: () => accepted(""),
+    inlineAgents: new Set(),
     files: [{ source: conductor,
       content: { kind: "text", text: readFileSync(authored, "utf8") } }],
     prepare: accepted, formatDocuments: new Set(),

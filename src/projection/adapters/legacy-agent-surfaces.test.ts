@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { host, source } from "../../kernel/fixtures/values.fixture.ts";
 import { agent } from "../../workflow-definition/fixtures/identities.fixture.ts";
-import { legacyAgentModelPolicy, legacyAgentTiersData, legacyCliModelPolicy } from "./legacy-agent-surfaces.ts";
+import { legacyAgentModelPolicy, legacyAgentTiersData, legacyCliModelPolicy, legacyMarkdownAgentSurface, legacyTomlAgentModels } from "./legacy-agent-surfaces.ts";
 
 test("Kiro inherits its session model under the frozen policy", () => {
   expect(legacyAgentModelPolicy(null)({ host: host({ name: "kiro", directory: ".kiro" }),
@@ -63,4 +63,37 @@ test("captured UTF-8 BOM bytes retain the legacy JSON refusal", () => {
   expect(legacyCliModelPolicy(null)({ source: source("settings/cli.json"),
     content: { kind: "bytes", bytes: new Uint8Array([239, 187, 191, 123, 125]) } }))
     .toMatchObject({ ok: false, refusal: { kind: "render-failed", concept: "settings", name: "settings/cli.json" } });
+});
+
+import type { CoreAgent } from "../../workflow-definition/domain/agent.ts";
+import { methodSource } from "../../workflow-definition/fixtures/method-source.fixture.ts";
+
+const surfaceAgent = (): CoreAgent => ({ slug: agent("aidlc-example-agent"),
+  source: methodSource({ kind: "agent", within: "aidlc-example-agent.md" }),
+  displayName: "Example", description: "Role", examples: [], owner: { kind: "core" },
+  model: { kind: "tier", tier: "balanced" }, tools: { disallowed: [] }, maxTurns: null,
+  persona: { text: "Persona", headings: [] }, additions: { afterPreflight: [], endOfBody: [] } });
+
+test("omitted Markdown models preserve removal and appended lines without consulting host model policy", () => {
+  expect(legacyMarkdownAgentSurface({ host: host({ name: "unknown", directory: ".unknown" }), cap: null })({
+    agent: surfaceAgent(), content: "---\nname: Example\ntier: balanced\nmodel: old\ndisallowedTools: Task\n---\nPersona\n",
+    frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
+      removeKeys: ["disallowedTools"], afterProjectionLines: ["tools: Read"] },
+  })).toEqual({ ok: true, value: "---\nname: Example\ntools: Read\n---\nPersona\n" });
+});
+
+test("a frozen Markdown formatting failure remains a refusal naming the actual agent", () => {
+  expect(legacyMarkdownAgentSurface({ host: host({ name: "claude", directory: ".claude" }), cap: null })({
+    agent: surfaceAgent(), content: "No frontmatter",
+    frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
+      removeKeys: [], afterProjectionLines: [] },
+  })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
+    reason: "agent markdown has no closed frontmatter block" } });
+});
+
+test("the TOML bridge refuses an unsupported host before native model serialization", () => {
+  expect(legacyTomlAgentModels({ host: host({ name: "unknown", directory: ".unknown" }), cap: null })({
+    agent: surfaceAgent(), content: 'name = "example"\n',
+  })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
+    reason: "The frozen model policy has no host unknown." } });
 });

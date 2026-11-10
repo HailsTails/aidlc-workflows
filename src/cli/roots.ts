@@ -26,6 +26,7 @@ import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
 import type { CompiledMethodFiles, Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostTokenChoices, TokenBindings } from "../projection/domain/template-token.ts";
 import type { AgentSlug } from "../workflow-definition/domain/identities.ts";
+import type { MethodSource } from "../workflow-definition/domain/method-source.ts";
 import type { Method } from "../workflow-definition/domain/method.ts";
 import type { Tier } from "../workflow-definition/domain/vocabulary.ts";
 import type {
@@ -153,6 +154,9 @@ export type HostSourcesRequest = {
 };
 
 export type HostAgentsRequest = {
+  readonly reviewerAgents: ReadonlySet<AgentSlug>;
+  readonly tokens: TokenBindings;
+  readonly sources: readonly MethodSource[];
   readonly host: HostIdentity;
   readonly method: Method;
   readonly files: readonly AuthoredHostFile[];

@@ -1,3 +1,4 @@
+import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
 import { KIRO_SETTINGS_INPUTS, createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 import { createClaudeDocumentRenderer } from "../hosts/claude/projection/document-renderer.ts";
 import type { DocumentRenderingInputs } from "../projection/application/ports/documents.ts";
@@ -26,7 +27,10 @@ import { KIRO_AGENT_JSON, kiroAgents } from "../hosts/kiro/projection/json-agent
 import type { ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers, HostSettingsMembers } from "./roots.ts";
 
-const AGENT_MEMBERS = [{ name: "kiro", inputs: KIRO_AGENT_JSON, render: kiroAgents }] as const;
+const AGENT_MEMBERS = [
+  { name: "kiro", inputs: KIRO_AGENT_JSON, render: kiroAgents },
+  { name: "claude", inputs: [], render: claudeAgents },
+] as const;
 
 export const hostAgentInputs = (name: string): readonly string[] =>
   AGENT_MEMBERS.find((entry) => entry.name === name)?.inputs ?? [];
