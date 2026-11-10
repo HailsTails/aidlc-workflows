@@ -3,11 +3,31 @@ import { join } from "node:path";
 import { failureOutput } from "../domain/failure-output.ts";
 import type { Command, CommandResult, CommandRunner } from "../application/ports.ts";
 import { temporaryEnvironment } from "./run-temp.ts";
+import { progressLines } from "./runner-progress.ts";
 
 type Spawned = Awaited<ReturnType<typeof Bun.spawn>>;
 
-const textOf = async (stream: ReadableStream<Uint8Array> | number | undefined): Promise<string> =>
-  stream instanceof ReadableStream ? new Response(stream).text() : "";
+const textOf = async (stream: ReadableStream<Uint8Array> | number | undefined): Promise<string> => {
+  if (!(stream instanceof ReadableStream)) return "";
+  const forward = progressLines((line) => process.stderr.write(line));
+  const decoder = new TextDecoder();
+  const reader = stream.getReader();
+  let output = "";
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      const text = decoder.decode(next.value, { stream: true });
+      output += text;
+      forward(text);
+    }
+    const tail = decoder.decode();
+    forward(tail);
+    return output + tail;
+  } finally {
+    reader.releaseLock();
+  }
+};
 
 const settled = async (child: Spawned): Promise<CommandResult> => {
   const [stdout, stderr, exitCode] = await Promise.all([

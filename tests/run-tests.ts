@@ -8,6 +8,9 @@
 
 import { type spawn, spawnSync } from "node:child_process";
 import {
+  observeProgress, runnerProgress, RUNNER_PROGRESS_PREFIX, PROGRESS_INTERVAL_MS,
+} from "../lint/gate/adapters/runner-progress.ts";
+import {
   appendFileSync,
   copyFileSync,
   existsSync,
@@ -362,6 +365,11 @@ if (args.e2ePlan) {
 
 function prepareGeneratedTrees(): void {
   if (process.env[PACKAGE_READY_ENV] === "1") return;
+  observeProgress(() => {
+    process.stderr.write(`${RUNNER_PROGRESS_PREFIX}setup: waiting for projection lock; ` +
+      `file total unknown; lock ${PACKAGE_LOCK}; ` +
+      `existing timeout ${NATIVE_COMPILE_TIMEOUT_MS / 1000}s\n`);
+  });
   mkdirSync(dirname(PACKAGE_LOCK), { recursive: true });
   const lock = acquirePackageLock({
     lockPath: PACKAGE_LOCK,
@@ -380,6 +388,10 @@ function prepareGeneratedTrees(): void {
   }
   let generationFailed = false;
   try {
+    observeProgress(() => {
+      process.stderr.write(`${RUNNER_PROGRESS_PREFIX}setup: building generated projections; ` +
+        "file total unknown; synchronous stage, no intermediate progress available\n");
+    });
     const generated = spawnSync(BUN, [join(REPO_ROOT, "scripts", "package.ts")], {
       cwd: REPO_ROOT,
       env: process.env,
@@ -554,6 +566,18 @@ let totalTests = 0;
 let totalFailed = 0;
 const resultRows: ResultRow[] = [];
 const fileExecutions = new Map<string, FileExecution>();
+let progress: ReturnType<typeof runnerProgress> | undefined;
+let progressTimer: ReturnType<typeof setInterval> | undefined;
+
+function reportProgress(): void {
+  observeProgress(() => {
+    if (!progress || !effectiveTestFiles) return;
+    process.stderr.write(`${progress.line({
+      files: effectiveTestFiles.map(resultName), outcomes: fileExecutions,
+      logs: args.verbose ? logDir : "temporary logs; use --verbose to retain per-file logs",
+    })}\n`);
+  });
+}
 let isolatedRunError = false;
 let isolatedInterrupted = false;
 const isolatedAbort = new AbortController();
@@ -1044,6 +1068,18 @@ function writeTestLog(file: string, row: ResultRow, rc: number, body: string): v
 }
 
 async function runBunTestFile(
+  ...parameters: Parameters<typeof runBunTestFileBody>
+): Promise<FileExecution | undefined> {
+  const name = resultName(parameters[0]);
+  progress?.start(name);
+  try {
+    return await runBunTestFileBody(...parameters);
+  } finally {
+    progress?.finish(name);
+  }
+}
+
+async function runBunTestFileBody(
   file: string, parallelMode = false, context?: IsolatedFileContext, force = false, attempt = 1,
 ): Promise<FileExecution | undefined> {
   if (captureFailure) throw captureFailure;
@@ -2042,6 +2078,10 @@ async function main(): Promise<number> {
   }
   effectiveTestFiles = [...new Set([...requested, ...requiredPrerequisites])];
   resultNames = undefined;
+  progress = runnerProgress(Date.now);
+  reportProgress();
+  progressTimer = setInterval(reportProgress, PROGRESS_INTERVAL_MS);
+  progressTimer.unref();
   if (args.matrixPlan) {
     matrixModule = await import("./lib/test-matrix.ts");
     const { planE2eFile } = await import("./lib/e2e-plan.ts");
@@ -2181,6 +2221,8 @@ async function main(): Promise<number> {
 
 try {
   const rc = await main();
+  clearInterval(progressTimer);
+  reportProgress();
   if (isolatedGitConfig !== NULL_DEVICE) rmSync(isolatedGitConfig, { force: true });
   writeVerboseSummary();
   if (cleanupLogDir) rmSync(logDir, { recursive: true, force: true });
@@ -2190,6 +2232,8 @@ try {
   sealMatrixReceipt();
   process.exit(runFailed() ? runnerFailureExitCode(failedFiles) : rc);
 } catch (err) {
+  clearInterval(progressTimer);
+  reportProgress();
   isolatedRunError = true;
   runnerFailure ??= String(err);
   isolatedAbort.abort();
