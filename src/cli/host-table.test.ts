@@ -1,3 +1,5 @@
+import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
+import { createKiroIdeSettingsRenderer } from "../hosts/kiro-ide/projection/settings-renderer.ts";
 import { createCodexDocumentRenderer } from "../hosts/codex/projection/document-renderer.ts";
 import { createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
 import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
@@ -24,12 +26,11 @@ test("the Kiro table captures the conductor and every native persona", () => {
     "agents/aidlc-operations-agent.json",
   ]);
 });
-test("the Kiro IDE host table uses policy-rendered data and all five native placements", () => {
+test("the Kiro IDE host table uses policy-rendered data and the four remaining native placements", () => {
   const members = hostSurfaceMembers(host({ name: "kiro-ide", directory: ".kiro" }));
   expect(members).not.toBeNull();
   expect(members?.placements).toEqual([
     { source: "steering/aidlc-active-memory.md", destination: ".kiro/steering/aidlc-active-memory.md" },
-    { source: "agents/aidlc-aidlc.md", destination: ".kiro/agents/aidlc-aidlc.md" },
     { source: "hooks/aidlc-kiro-adapter.ts", destination: ".kiro/hooks/aidlc-kiro-adapter.ts" },
     { source: "hooks/aidlc-kiro-tool-names.ts", destination: ".kiro/hooks/aidlc-kiro-tool-names.ts" },
     { source: "dot-gitignore", destination: ".gitignore" },
@@ -65,10 +66,21 @@ test("Kiro settings capture exactly its CLI settings and two shipped hook regist
   } });
 });
 
-test("the Kiro CLI settings registration does not claim the Kiro IDE route", () => {
-  expect(hostSettingsInputs("kiro-ide")).toEqual([]);
-  expect(hostSettingsMembers(host({ name: "kiro-ide", directory: ".kiro" })))
-    .toEqual({ ok: true, value: null });
+test("Kiro IDE settings and conductor have distinct native members", () => {
+  const ide = host({ name: "kiro-ide", directory: ".kiro" });
+  expect(hostSettingsInputs("kiro-ide")).toEqual([
+    "settings/cli.json", "hooks/aidlc-record-human-turn.json", "hooks/aidlc-guard-tool-call.json",
+    "hooks/aidlc-log-subagent.json", "hooks/aidlc-session-start.json", "hooks/aidlc-continue-workflow.json",
+  ]);
+  expect(hostSettingsMembers(ide)).toEqual({ ok: true, value: { host: ide, render: createKiroIdeSettingsRenderer,
+    inputs: [source("settings/cli.json"), source("hooks/aidlc-record-human-turn.json"),
+      source("hooks/aidlc-guard-tool-call.json"), source("hooks/aidlc-log-subagent.json"),
+      source("hooks/aidlc-session-start.json"), source("hooks/aidlc-continue-workflow.json")],
+  } });
+  expect(hostAgentInputs("kiro-ide")).toEqual(["agents/aidlc-aidlc.md"]);
+  expect(hostAgentMembers(ide)).toEqual({ ok: true, value: {
+    host: ide, inputs: [source("agents/aidlc-aidlc.md")], render: kiroIdeAgents,
+  } });
 });
 
 import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
