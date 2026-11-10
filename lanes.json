@@ -136,6 +136,9 @@
         "tests/unit/t303-packager-orchestrator-skill-path.test.ts",
         "tests/unit/t230-dispatcher-routes.test.ts",
         "tests/integration/t188-plugin-compose.serial.test.ts",
+        "tests/unit/t-question-options-fit-the-box.test.ts",
+        "tests/unit/t294-document-extractors-seam.test.ts",
+        "tests/unit/t151-onboarding-skeleton.test.ts",
         "scripts/earlier-release-regions.ts"
       ],
       "notOwned": [
