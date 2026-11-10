@@ -103,6 +103,7 @@
         "src/hosts/claude/projection/**",
         "src/hosts/claude/build.ts",
         "src/hosts/claude/host-data{,.test}.ts",
+        "src/hosts/claude/{distribution,onboarding-fills}{,.test}.ts",
         "src/cli/adapters/routes/projection/**",
         "harness/*/**",
         "src/packaging/**",
@@ -117,6 +118,7 @@
         "src/projection/adapters/compiled-method-file{,.test}.ts",
         "docs/reference/15-stage-definition.md",
         "docs/harness-engineering/09-porting-to-a-new-harness.md",
+        "docs/reference/06-hooks-and-tools.md",
         "scripts/package.ts",
         "scripts/manifest-types.ts",
         "harness/claude/manifest.ts",
@@ -258,12 +260,13 @@
     "hosts-c": {
       "name": "Projection for kiro, kiro-ide, cursor and copilot (one ticket at a time)",
       "agent": "codex/hosts-c",
-      "owns": ["src/hosts/{kiro,kiro-ide,cursor,copilot}/**", "src/cli/host-table{,.test}.ts"],
+      "owns": ["src/hosts/{kiro,kiro-ide,cursor,copilot}/**", "src/cli/host-table{,.test}.ts", "docs/guide/harnesses/kiro-ide.md"],
       "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {
         "harness/copilot/emit.ts": ["*"],
-        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"]
+        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"],
+        "harness/kiro-ide/delegate-shell-deny.ts": ["*"]
       }
     },
     "hosts-b": {
@@ -273,6 +276,7 @@
         "src/hosts/{codex,opencode}/projection/**",
         "src/hosts/{codex,opencode}/build.ts",
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
+        "src/hosts/{codex,opencode}/{distribution,onboarding-fills}{,.test}.ts",
         "harness/codex/manifest.ts",
         "harness/opencode/manifest.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
@@ -290,6 +294,7 @@
         "src/hosts/{codex,opencode}/projection/**",
         "src/hosts/{codex,opencode}/build.ts",
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
+        "src/hosts/{codex,opencode}/{distribution,onboarding-fills}{,.test}.ts",
         "harness/codex/manifest.ts",
         "harness/opencode/manifest.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",

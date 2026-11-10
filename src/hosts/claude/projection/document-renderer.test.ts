@@ -5,8 +5,7 @@ import { ONBOARDING_TEMPLATES_FIXTURE, documentRenderingInputsFixture,
   protocolDocumentFixture } from "../../../projection/fixtures/document-rendering.fixture.ts";
 import { createClaudeDocumentRenderer } from "./document-renderer.ts";
 
-const bindingHeadings = ["Claude Code", "Kiro CLI", "Kiro IDE", "Codex CLI", "Cursor", "opencode", "GitHub Copilot"];
-const renderer = createClaudeDocumentRenderer({ ...documentRenderingInputsFixture({ harnessDir: ".claude" }), bindingHeadings });
+const renderer = createClaudeDocumentRenderer(documentRenderingInputsFixture({ harnessDir: ".claude" }));
 
 test("Claude combines neutral and native onboarding with one token substitution", () => {
   expect(renderer.renderOnboarding({ templates: ONBOARDING_TEMPLATES_FIXTURE, method: methodSliceFixture }))
@@ -43,7 +42,7 @@ test("invalid neutral onboarding remains an onboarding refusal at its actual des
 
 test("final document bytes are not rebound after the native renderer", () => {
   const inputs = documentRenderingInputsFixture({ harnessDir: ".claude" });
-  const native = createClaudeDocumentRenderer({ ...inputs, bindingHeadings, tokens: { ...inputs.tokens, ["INVOKE"]: "{{HARNESS_DIR}}" } });
+  const native = createClaudeDocumentRenderer({ ...inputs, tokens: { ...inputs.tokens, ["INVOKE"]: "{{HARNESS_DIR}}" } });
   expect(native.placeNeutralDocument({ document: { source: source("knowledge/one.md"), role: "knowledge",
     content: { kind: "text", text: "Run {{INVOKE}}" } } })).toEqual({ ok: true, value: [{
     path: path(".claude/knowledge/one.md"), mode: "regular", availability: "always",

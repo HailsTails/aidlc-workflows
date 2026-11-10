@@ -1,13 +1,15 @@
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
-import type { DocumentRenderingInputs, HostDocumentRenderer } from "../../../projection/application/ports/documents.ts";
+import type { HostDocumentRenderer } from "../../../projection/application/ports/documents.ts";
 import type { Rendering } from "../../../projection/application/ports/harness.ts";
 import { keepOwnHarnessBindings } from "../../../projection/domain/harness-bindings.ts";
 import type { NeutralDocument } from "../../../projection/domain/neutral-surface.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "../../../projection/domain/onboarding.ts";
 import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts";
 import type { TokenBindings } from "../../../projection/domain/template-token.ts";
+
+import { CLAUDE_BINDING_HEADING } from "../host-data.ts";
 
 const decode = (content: FileContent): string => content.kind === "text" ? content.text
   : new TextDecoder("utf-8", { ignoreBOM: true }).decode(content.bytes);
@@ -24,7 +26,7 @@ const placeDocument = (document: NeutralDocument, inputs: {
   if (!path.ok) return refused({ kind: "render-failed", concept: "neutral-document",
     name: document.source, reason: "The document destination must be project-relative." });
   const bound = bind(decode(document.content), tokens);
-  const content = document.role === "protocol" ? keepOwnHarnessBindings({ content: bound, ownHeading: "Claude Code",
+  const content = document.role === "protocol" ? keepOwnHarnessBindings({ content: bound, ownHeading: CLAUDE_BINDING_HEADING,
     expectedHeadings: bindingHeadings, file: document.source })
     : accepted(bound);
   return content.ok ? accepted([{ path: path.value, content: { kind: "text", text: content.value },
@@ -32,9 +34,7 @@ const placeDocument = (document: NeutralDocument, inputs: {
     : refused({ kind: "render-failed", concept: "neutral-document", name: document.source, reason: content.refusal });
 };
 
-export const createClaudeDocumentRenderer = (inputs: DocumentRenderingInputs & {
-  readonly bindingHeadings: readonly string[];
-}): ReturnType<HostDocumentRenderer> => ({
+export const createClaudeDocumentRenderer: HostDocumentRenderer = (inputs) => ({
   renderOnboarding: ({ templates }): Rendering => {
     const neutral = renderNeutralOnboarding(templates.neutral);
     if (!neutral.ok) return onboardingFailure(neutral.refusal);

@@ -1,3 +1,4 @@
+import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
 import { host } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { projectPath } from "../../kernel/values.ts";
@@ -26,6 +27,11 @@ export const SCRATCH_HOST_DATA: HostData = {
 const nothing = (): Rendering => accepted([]);
 
 export const SCRATCH_AGENT_INPUTS: AgentRenderingInputs = {
+  tokens: tokenBindingsFixture({ harnessDir: ".scratch" }),
+  persona: () => accepted(""),
+  documents: () => accepted(""),
+  tomlModels: () => accepted(""),
+  inlineAgents: new Set(),
   host: SCRATCH_HOST,
   channel: "copy",
   files: [],

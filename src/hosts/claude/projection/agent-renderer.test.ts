@@ -6,7 +6,8 @@ import type { ProjectionRefusal } from "../../../projection/domain/projection.ts
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import { agentSlug } from "../../../workflow-definition/domain/identities.ts";
 import { methodSource } from "../../../workflow-definition/fixtures/method-source.fixture.ts";
-import { createClaudeAgentRenderer } from "./agent-renderer.ts";
+import { SCRATCH_AGENT_INPUTS } from "../../../projection/fixtures/scratch-host.fixture.ts";
+import { claudeAgents } from "./agent-renderer.ts";
 
 const agent: Agent = {
   slug: accept(agentSlug("aidlc-example-agent")),
@@ -18,11 +19,13 @@ const agent: Agent = {
 const markdown = "---\nmodel: sonnet\neffort: high\ndisallowedTools: Task\nmaxTurns: 12\n---\nPersona\n";
 
 test("Claude's native Markdown uses the frozen effort surface without rewriting its persona", () => {
-  const renderer = createClaudeAgentRenderer((request) => {
-    expect(request).toEqual({ agent, effortKey: "effort" });
+  const renderer = claudeAgents({ ...SCRATCH_AGENT_INPUTS, documents: (request) => {
+    expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+      frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
+        removeKeys: [], afterProjectionLines: [] } });
     return accepted(markdown);
-  });
-  expect(renderer({ agent, knowledge: [] })).toEqual(accepted([{
+  } });
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([{
     path: path(".claude/agents/aidlc-example-agent.md"),
     content: { kind: "text", text: markdown }, mode: "regular", availability: "always",
     origin: { kind: "method-source", path: agent.source },
@@ -32,6 +35,10 @@ test("Claude's native Markdown uses the frozen effort surface without rewriting 
 test("a frozen model refusal reaches the build caller without a partial agent file", () => {
   const refusal: ProjectionRefusal = { kind: "render-failed", concept: "agent",
     name: "aidlc-example-agent", reason: "Model policy refused this projection" };
-  const renderer = createClaudeAgentRenderer(() => refused(refusal));
-  expect(renderer({ agent, knowledge: [] })).toEqual(refused(refusal));
+  const renderer = claudeAgents({ ...SCRATCH_AGENT_INPUTS, documents: () => refused(refusal) });
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(refused(refusal));
+});
+
+test("Claude has no separate conductor agent file", () => {
+  expect(claudeAgents(SCRATCH_AGENT_INPUTS).renderConductorAgent({ knowledge: [] })).toEqual(accepted([]));
 });

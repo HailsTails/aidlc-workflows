@@ -1,6 +1,8 @@
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
+export const CLAUDE_BINDING_HEADING = "Claude Code";
+
 export const CLAUDE_HOST_DATA = {
   "productName": "Claude Code",
   "configNextStep": "open Claude Code in this project (if it is already open in " +

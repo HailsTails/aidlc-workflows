@@ -1,13 +1,14 @@
+import { createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
 import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
 import { expect, test } from "bun:test";
 import { host, source } from "../kernel/fixtures/values.fixture.ts";
-import { hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
+import { hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 
 test("an unregistered host has no agent inputs or accidental Kiro members", () => {
-  expect(hostAgentInputs("claude")).toEqual([]);
-  expect(hostAgentMembers(host({ name: "claude", directory: ".claude" })))
+  expect(hostAgentInputs("fixture-host")).toEqual([]);
+  expect(hostAgentMembers(host({ name: "fixture-host", directory: ".fixture" })))
     .toEqual({ ok: true, value: null });
 });
 
@@ -67,4 +68,42 @@ test("the Kiro CLI settings registration does not claim the Kiro IDE route", () 
   expect(hostSettingsInputs("kiro-ide")).toEqual([]);
   expect(hostSettingsMembers(host({ name: "kiro-ide", directory: ".kiro" })))
     .toEqual({ ok: true, value: null });
+});
+
+import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
+
+test("Claude uses the native agent factory with captured Method sources and no authored host agent input", () => {
+  const identity = host({ name: "claude", directory: ".claude" });
+  expect(hostAgentInputs("claude")).toEqual([]);
+  expect(hostAgentMembers(identity)).toEqual({ ok: true, value: { host: identity, render: claudeAgents, inputs: [] } });
+});
+
+test("the Codex settings table registers its native factory without authored files", () => {
+  const codex = host({ name: "codex", directory: ".codex" });
+  expect(hostSettingsInputs("codex")).toEqual([]);
+  expect(hostSettingsMembers(codex)).toEqual({ ok: true, value: {
+    host: codex, inputs: [], render: createCodexSettingsRenderer,
+  } });
+  expect(hostSettingsMembers(host({ name: "opencode", directory: ".aidlc" })))
+    .toEqual({ ok: true, value: null });
+});
+
+test("the documents root receives every registered binding heading", () => {
+  expect(hostBindingHeadings()).toEqual([
+    "Claude Code", "Kiro CLI", "Kiro IDE", "Codex CLI", "Cursor", "opencode", "GitHub Copilot",
+  ]);
+});
+
+test("Kiro documents are registered with no authored capture and the shared heading vocabulary", () => {
+  const members = hostDocumentMembers(host({ name: "kiro", directory: ".kiro" }));
+  expect(members?.inputs).toEqual([]);
+  const renderer = members?.render(documentRenderingInputsFixture({ harnessDir: ".kiro" }));
+  expect(renderer?.placeNeutralDocument({ document: {
+    source: source("aidlc-common/protocols/missing.md"), role: "protocol",
+    content: { kind: "text", text: "### Kiro CLI\nOnly\n" },
+  } })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "neutral-document",
+    name: "aidlc-common/protocols/missing.md",
+    reason: "harness bindings: aidlc-common/protocols/missing.md line 1: a binding run must name each tool once " +
+      "(found Kiro CLI; missing Claude Code, Kiro IDE, Codex CLI, Cursor, opencode, GitHub Copilot).",
+  } });
 });

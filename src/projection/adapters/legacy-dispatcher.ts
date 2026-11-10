@@ -1,8 +1,13 @@
 import { copyChannelDispatcherCommands, copyChannelToolScripts } from "../../../core/tools/aidlc.ts";
-import { accepted, refused } from "../../kernel/result.ts";
-import type { CopyChannelAllowSource } from "../application/ports/copy-channel.ts";
+import { accepted, refused, type Result } from "../../kernel/result.ts";
+import type { CopyChannelAllows, CopyChannelAllowSource } from "../application/ports/copy-channel.ts";
+import type { ProjectionRefusal } from "../domain/projection.ts";
 
-export const createCopyChannelAllowSource = (): CopyChannelAllowSource => ({
+type DispatcherAllowSource = {
+  read(): Result<CopyChannelAllows, Extract<ProjectionRefusal, { readonly kind: "render-failed" }>>;
+};
+
+export const createCopyChannelAllowSource = (): DispatcherAllowSource => ({
   read: () => {
     try {
       return accepted({ dispatcherCommands: copyChannelDispatcherCommands(), toolScripts: copyChannelToolScripts() });
@@ -11,4 +16,4 @@ export const createCopyChannelAllowSource = (): CopyChannelAllowSource => ({
         reason: error instanceof Error ? error.message : String(error) });
     }
   },
-});
+} satisfies CopyChannelAllowSource);

@@ -33,7 +33,6 @@ export const placeKiroAgentDocument = (file: AuthoredHostFile, request: {
   readonly content: FileContent;
   readonly allows: CopyChannelAllows;
 }): Rendering => {
-  // Allow-list serialization follows hook preparation, which observes overflow before it becomes null.
   const expanded = expandKiroAgentAllows({ file: { ...file, content: request.content }, allows: request.allows });
   if (!expanded.ok) return expanded;
   const path = projectPath(`.kiro/${file.source}`);

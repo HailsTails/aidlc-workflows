@@ -23,7 +23,8 @@ test("one document factory receives the inputs and renders onboarding before the
   const render = mock(() => ({ renderOnboarding, placeNeutralDocument }));
   expect(projectMethodDocuments({ ...request, render })).toEqual(accepted([onboarding, document]));
   expect(render).toHaveBeenCalledTimes(1);
-  expect(render).toHaveBeenCalledWith({ fills: request.fills, tokens: request.tokens });
+  expect(render).toHaveBeenCalledWith({ fills: request.fills, tokens: request.tokens,
+    bindingHeadings: request.bindingHeadings });
   expect(renderOnboarding).toHaveBeenCalledWith({ templates: ONBOARDING_TEMPLATES_FIXTURE, method: request.method });
   expect(placeNeutralDocument).toHaveBeenCalledWith({ document: conductor });
 });

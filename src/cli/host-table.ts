@@ -1,6 +1,8 @@
+import { createKiroDocumentRenderer } from "../hosts/kiro/projection/document-renderer.ts";
+import { CODEX_SETTINGS_INPUTS, createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
+import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
 import { KIRO_SETTINGS_INPUTS, createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 import { createClaudeDocumentRenderer } from "../hosts/claude/projection/document-renderer.ts";
-import type { DocumentRenderingInputs } from "../projection/application/ports/documents.ts";
 import type { HostDocumentMembers } from "./roots.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
@@ -8,12 +10,12 @@ import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS } from "../hosts/copilot
 import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
-import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS } from "../hosts/kiro/host-data.ts";
+import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING } from "../hosts/kiro/host-data.ts";
 import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS } from "../hosts/codex/host-data.ts";
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
-import { CLAUDE_HOST_DATA, CLAUDE_AUTHORED_PLACEMENTS } from "../hosts/claude/host-data.ts";
+import { CLAUDE_HOST_DATA, CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_BINDING_HEADING } from "../hosts/claude/host-data.ts";
 import { OPENCODE_SKILL_INPUTS, createOpenCodeSkillRenderer } from "../hosts/opencode/projection/skill-renderer.ts";
 import { KIRO_SKILL_INPUTS, createKiroSkillRenderer } from "../hosts/kiro/projection/skill-renderer.ts";
 import { CODEX_SKILL_INPUTS, createCodexSkillRenderer } from "../hosts/codex/projection/skill-renderer.ts";
@@ -26,7 +28,10 @@ import { KIRO_AGENT_JSON, kiroAgents } from "../hosts/kiro/projection/json-agent
 import type { ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers, HostSettingsMembers } from "./roots.ts";
 
-const AGENT_MEMBERS = [{ name: "kiro", inputs: KIRO_AGENT_JSON, render: kiroAgents }] as const;
+const AGENT_MEMBERS = [
+  { name: "kiro", inputs: KIRO_AGENT_JSON, render: kiroAgents },
+  { name: "claude", inputs: [], render: claudeAgents },
+] as const;
 
 export const hostAgentInputs = (name: string): readonly string[] =>
   AGENT_MEMBERS.find((entry) => entry.name === name)?.inputs ?? [];
@@ -79,6 +84,7 @@ export const hostSurfaceMembers = (host: HostIdentity): HostSurfaceMembers | nul
 };
 
 const HOST_SETTINGS_MEMBERS = [
+  { name: "codex", inputs: CODEX_SETTINGS_INPUTS, render: createCodexSettingsRenderer },
   { name: "kiro", inputs: KIRO_SETTINGS_INPUTS, render: createKiroSettingsRenderer },
   { name: "claude", inputs: CLAUDE_SETTINGS_INPUTS, render: createClaudeSettingsRenderer },
 ] as const;
@@ -97,8 +103,8 @@ export const hostSettingsMembers = (host: HostIdentity): Result<HostSettingsMemb
 };
 
 const HOST_BINDING_HEADINGS = [
-  { name: "claude", heading: "Claude Code" },
-  { name: "kiro", heading: "Kiro CLI" },
+  { name: "claude", heading: CLAUDE_BINDING_HEADING },
+  { name: "kiro", heading: KIRO_BINDING_HEADING },
   { name: "kiro-ide", heading: "Kiro IDE" },
   { name: "codex", heading: "Codex CLI" },
   { name: "cursor", heading: "Cursor" },
@@ -106,14 +112,16 @@ const HOST_BINDING_HEADINGS = [
   { name: "copilot", heading: "GitHub Copilot" },
 ] as const;
 
+export const hostBindingHeadings = (): readonly string[] => HOST_BINDING_HEADINGS.map((entry) => entry.heading);
+
 export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEntries(
   HOST_BINDING_HEADINGS.map((entry) => [entry.name, entry.heading]),
 );
 
-const HOST_DOCUMENT_MEMBERS = [{ name: "claude", inputs: [],
-  render: (inputs: DocumentRenderingInputs) => createClaudeDocumentRenderer({ ...inputs,
-    bindingHeadings: Object.values(BINDING_HEADINGS) }),
-}] as const;
+const HOST_DOCUMENT_MEMBERS = [
+  { name: "kiro", inputs: [], render: createKiroDocumentRenderer },
+  { name: "claude", inputs: [], render: createClaudeDocumentRenderer },
+] as const;
 
 export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | null => {
   const entry = HOST_DOCUMENT_MEMBERS.find((candidate) => candidate.name === host.distribution);

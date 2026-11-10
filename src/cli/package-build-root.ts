@@ -7,7 +7,7 @@ import type { ProjectRuntime } from "./roots.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
 import { hostAgentMembers, hostSkillMembers, hostSkillInputs, hostSurfaceMembers,
-  hostSettingsInputs, hostSettingsMembers, hostDocumentMembers } from "./host-table.ts";
+  hostSettingsInputs, hostSettingsMembers, hostDocumentMembers, hostBindingHeadings } from "./host-table.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
@@ -85,7 +85,7 @@ const documentsProjector = (request: {
     if (!surface.ok) return surface;
     const rendered = request.projection.projectDocuments({ method: documents.core.method,
       host: documents.host, render: members.render, surface: surface.value,
-      fills: documents.fills, tokens: documents.tokens });
+      fills: documents.fills, tokens: documents.tokens, bindingHeadings: hostBindingHeadings() });
     return rendered.ok ? rendered : refused([rendered.refusal]);
   };
 };

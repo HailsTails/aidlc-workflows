@@ -68,7 +68,7 @@ import {
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
-  hostAgentInputs, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers, hostSettingsInputs,
+  hostAgentInputs, hostAgentMembers, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers, hostSettingsInputs,
 } from "../src/cli/host-table.ts";
 import { distributionId, projectPath, sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
@@ -806,6 +806,13 @@ async function buildTree(
   const invoke = channel === "native" ? "aidlc" : `bun ${m.harnessDir}/tools/aidlc.ts`;
   const producer = runnerProducer(m);
   if (!producer.ok) throw new Error(`packager: ${m.name}: ${producer.refusal}`);
+  const hostInput = hostBuildInputs.get(m.name);
+  if (!hostInput) {
+    console.error(`Authored host sources were not captured for ${m.name}`);
+    process.exit(1);
+  }
+  const agentMembers = hostAgentMembers(hostInput.host);
+  if (!agentMembers.ok) throw new Error(JSON.stringify(agentMembers.refusal));
   const harnessDir = m.harnessDir;
   const treeRoot = join(outRoot, harnessDir);
   // Every harness projects onto ONE of the six flavors the tier module
@@ -822,6 +829,7 @@ async function buildTree(
   );
   const fmApplied = new Set<string>();
   for (const { src, dst } of m.coreDirs) {
+    if (src === "agents" && agentMembers.value !== null) continue;
     const srcDir = join(CORE_ROOT, src);
     if (!existsSync(srcDir)) continue;
     const finalDst = m.rulesRename && dst === "rules" ? m.rulesRename : dst;
@@ -885,11 +893,6 @@ async function buildTree(
   //    on Kiro - see aidlc-tiers.ts).
 
   const harnessSrcRoot = join(HARNESS_ROOT, m.name);
-  const hostInput = hostBuildInputs.get(m.name);
-  if (!hostInput) {
-    console.error(`Authored host sources were not captured for ${m.name}`);
-    process.exit(1);
-  }
   const prepareHostInput = (file: AuthoredHostFile) => prepareAuthoredHostFile({
     file, host: hostInput.host, manifest: m, root: harnessSrcRoot, invoke, letters,
   });
@@ -1065,6 +1068,12 @@ async function buildTree(
     writeProjectedFiles({ files: documents.value, projectRoot: outRoot });
   }
   const agents = packageBuildRoot.projectAgents({ host: hostInput.host, method: coreBuild.method,
+    rulesFolder: m.rulesRename ?? null,
+    reviewerAgents,
+    sources: coreBuild.sources,
+    tokens: { HARNESS_DIR: harnessDir, INVOKE: invoke, SKILL_INVOKE: null,
+      TOOL_PREFIX: substituteToken("{{TOOL_PREFIX}}", harnessDir, invoke, letters),
+      TRUSTED_NAMESPACE: TRUSTED_ROUTE_NAMESPACE, OPTION_LETTERS: letters },
     files: hostInput.files, prepare: prepareHostInput, channel, modelCap: TIER_CAP });
   if (!agents.ok) throw new Error(JSON.stringify(agents.refusal));
   writeProjectedFiles({ files: agents.value, projectRoot: outRoot });

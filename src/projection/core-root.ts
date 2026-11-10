@@ -1,3 +1,6 @@
+import { createAgentPersonaPreparer } from "./application/agent-persona.ts";
+import { inlineAgentSet } from "../workflow-definition/domain/method-participation.ts";
+import { legacyMarkdownAgentSurface, legacyTomlAgentModels } from "./adapters/legacy-agent-surfaces.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
 import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
 import { legacyCliModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
@@ -16,7 +19,7 @@ import { prepareLegacySkillTables } from "./adapters/legacy-skill-tables.ts";
 import { projectMethodSkills } from "./application/project-method-skills.ts";
 import { createCommandRenderers } from "./application/command-renderers.ts";
 import type { SessionSkillTreeReader } from "./application/ports/skills.ts";
-import { shippedFormatDocuments } from "./adapters/legacy-format-docs.ts";
+import { shippedFormatDocuments, delegatedSharedKnowledge } from "./adapters/legacy-format-docs.ts";
 import { projectMethodAgents } from "./application/project-method-agents.ts";
 import { legacyAgentModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
 import { createHostSurfaceReader } from "./application/host-source-files.ts";
@@ -64,8 +67,17 @@ export const createBuildProjection = (request: {
     projectAgents: (agents) => {
       const reading = allows.read();
       if (!reading.ok) return reading;
+      const persona = createAgentPersonaPreparer({ sources: agents.sources, tokens: agents.tokens,
+        directory: agents.host.directory, rulesFolder: agents.rulesFolder, reviewerAgents: agents.reviewerAgents,
+        sharedKnowledge: delegatedSharedKnowledge(agents.host.directory) });
+      const markdown = legacyMarkdownAgentSurface({ host: agents.host, cap: agents.modelCap });
       return projectMethodAgents({ method: agents.method,
         harness: agents.render({ host: agents.host, files: agents.files, prepare: agents.prepare,
+        tokens: agents.tokens, persona, documents: (request) => {
+          const prepared = persona(request);
+          return prepared.ok ? markdown({ ...request, content: prepared.value }) : prepared;
+        }, tomlModels: legacyTomlAgentModels({ host: agents.host, cap: agents.modelCap }),
+        inlineAgents: inlineAgentSet(agents.method),
         channel: agents.channel, models: legacyAgentModelPolicy(agents.modelCap),
         formatDocuments: shippedFormatDocuments(), allows: reading.value }) });
     },
