@@ -1,3 +1,4 @@
+import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
 import { createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
 import { createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
@@ -14,6 +15,11 @@ import { host, source } from "../kernel/fixtures/values.fixture.ts";
 import { hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
+
+test("Cursor documents directly register the native factory with no authored capture", () => {
+  const cursor = host({ name: "cursor", directory: ".cursor" });
+  expect(hostDocumentMembers(cursor)).toEqual({ host: cursor, inputs: [], render: createCursorDocumentRenderer });
+});
 
 test("Copilot settings register the native hooks factory without authored capture", () => {
   const copilot = host({ name: "copilot", directory: ".aidlc" });

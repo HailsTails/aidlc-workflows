@@ -1,3 +1,4 @@
+import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
 import { COPILOT_SETTINGS_INPUTS, createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
 import { CURSOR_SETTINGS_INPUTS, createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
@@ -16,7 +17,7 @@ import type { HostDocumentMembers } from "./roots.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
 import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS } from "../hosts/copilot/host-data.ts";
-import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS } from "../hosts/cursor/host-data.ts";
+import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
 import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING } from "../hosts/kiro/host-data.ts";
@@ -123,7 +124,7 @@ const HOST_BINDING_HEADINGS = [
   { name: "kiro", heading: KIRO_BINDING_HEADING },
   { name: "kiro-ide", heading: KIRO_IDE_BINDING_HEADING },
   { name: "codex", heading: CODEX_BINDING_HEADING },
-  { name: "cursor", heading: "Cursor" },
+  { name: "cursor", heading: CURSOR_BINDING_HEADING },
   { name: "opencode", heading: "opencode" },
   { name: "copilot", heading: "GitHub Copilot" },
 ] as const;
@@ -135,6 +136,7 @@ export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEnt
 );
 
 const HOST_DOCUMENT_MEMBERS = [
+  { name: "cursor", inputs: [], render: createCursorDocumentRenderer },
   { name: "kiro-ide", inputs: [], render: createKiroIdeDocumentRenderer },
   { name: "codex", inputs: [], render: createCodexDocumentRenderer },
   { name: "kiro", inputs: [], render: createKiroDocumentRenderer },

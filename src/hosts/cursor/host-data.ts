@@ -1,6 +1,8 @@
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
+export const CURSOR_BINDING_HEADING = "Cursor";
+
 export const CURSOR_HOST_DATA = {
   productName: "Cursor",
   configNextStep: "open this project in Cursor, then run `/aidlc --doctor`",
