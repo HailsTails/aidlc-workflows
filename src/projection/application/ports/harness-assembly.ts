@@ -41,6 +41,7 @@ export type HarnessAssemblyRequest = {
   readonly modelCap: Tier | null;
   readonly entrypoints: readonly SourcePath[];
   readonly fills: OnboardingFills;
+  readonly bindingHeadings: readonly string[];
   readonly projectRoot: URL;
   readonly commands: CommandSource;
   readonly reviewerAgents: ReadonlySet<AgentSlug>;
