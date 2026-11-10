@@ -46,7 +46,7 @@ import { transpilerCacheFolder } from "../lint/gate/adapters/transpiler-cache.ts
 import {
   changedLegacyCommand, legacyEnvironment, legacySuites,
 } from "../lint/gate/adapters/legacy-suites.ts";
-import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
+import { sourceSuites } from "../lint/gate/adapters/source-suites.ts";
 import { systemClock } from "../lint/gate/adapters/system-clock.ts";
 import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
@@ -175,7 +175,7 @@ const LEGACY_SHARD_SECONDS = 150;
 const LEGACY_WORKERS = Math.max(1, Number(process.env["AIDLC_GATE_TEST_WORKERS"]) || 8);
 
 const TEST_SUITES: readonly TestSuite[] = [
-  ...SOURCE_SUITES,
+  ...sourceSuites(BUN),
   ...legacySuites(
     { bun: BUN, environment: legacyEnvironment(process.env, TRANSPILER_CACHE) },
     {
