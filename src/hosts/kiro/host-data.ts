@@ -51,3 +51,5 @@ export const KIRO_AUTHORED_PLACEMENTS = [
   { source: "settings/mcp.json", destination: ".kiro/settings/mcp.json" },
   { source: "dot-gitignore", destination: ".gitignore" },
 ] as const satisfies readonly AuthoredPlacement[];
+
+export const KIRO_BINDING_HEADING = "Kiro CLI";

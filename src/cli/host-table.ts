@@ -1,3 +1,4 @@
+import { createKiroDocumentRenderer } from "../hosts/kiro/projection/document-renderer.ts";
 import { CODEX_SETTINGS_INPUTS, createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
 import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
 import { KIRO_SETTINGS_INPUTS, createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
@@ -9,7 +10,7 @@ import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS } from "../hosts/copilot
 import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
-import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS } from "../hosts/kiro/host-data.ts";
+import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING } from "../hosts/kiro/host-data.ts";
 import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS } from "../hosts/codex/host-data.ts";
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
@@ -103,7 +104,7 @@ export const hostSettingsMembers = (host: HostIdentity): Result<HostSettingsMemb
 
 const HOST_BINDING_HEADINGS = [
   { name: "claude", heading: CLAUDE_BINDING_HEADING },
-  { name: "kiro", heading: "Kiro CLI" },
+  { name: "kiro", heading: KIRO_BINDING_HEADING },
   { name: "kiro-ide", heading: "Kiro IDE" },
   { name: "codex", heading: "Codex CLI" },
   { name: "cursor", heading: "Cursor" },
@@ -117,9 +118,10 @@ export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEnt
   HOST_BINDING_HEADINGS.map((entry) => [entry.name, entry.heading]),
 );
 
-const HOST_DOCUMENT_MEMBERS = [{ name: "claude", inputs: [],
-  render: createClaudeDocumentRenderer,
-}] as const;
+const HOST_DOCUMENT_MEMBERS = [
+  { name: "kiro", inputs: [], render: createKiroDocumentRenderer },
+  { name: "claude", inputs: [], render: createClaudeDocumentRenderer },
+] as const;
 
 export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | null => {
   const entry = HOST_DOCUMENT_MEMBERS.find((candidate) => candidate.name === host.distribution);

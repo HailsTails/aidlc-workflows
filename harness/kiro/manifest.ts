@@ -202,8 +202,6 @@ const manifest: HarnessManifest = {
   // orchestrator skill (skills/aidlc/) is authored, not core.
   coreDirs: [
     { src: "tools", dst: "tools" },
-    { src: "aidlc-common", dst: "aidlc-common" },
-    { src: "knowledge", dst: "knowledge" },
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
     { src: "agents", dst: "agents" },

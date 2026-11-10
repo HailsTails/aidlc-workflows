@@ -93,3 +93,17 @@ test("the documents root receives every registered binding heading", () => {
     "Claude Code", "Kiro CLI", "Kiro IDE", "Codex CLI", "Cursor", "opencode", "GitHub Copilot",
   ]);
 });
+
+test("Kiro documents are registered with no authored capture and the shared heading vocabulary", () => {
+  const members = hostDocumentMembers(host({ name: "kiro", directory: ".kiro" }));
+  expect(members?.inputs).toEqual([]);
+  const renderer = members?.render(documentRenderingInputsFixture({ harnessDir: ".kiro" }));
+  expect(renderer?.placeNeutralDocument({ document: {
+    source: source("aidlc-common/protocols/missing.md"), role: "protocol",
+    content: { kind: "text", text: "### Kiro CLI\nOnly\n" },
+  } })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "neutral-document",
+    name: "aidlc-common/protocols/missing.md",
+    reason: "harness bindings: aidlc-common/protocols/missing.md line 1: a binding run must name each tool once " +
+      "(found Kiro CLI; missing Claude Code, Kiro IDE, Codex CLI, Cursor, opencode, GitHub Copilot).",
+  } });
+});
