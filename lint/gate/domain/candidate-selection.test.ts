@@ -32,6 +32,14 @@ describe("a candidate that moves a build helper", () => {
     expect(needsCandidateLegacy(helpers)).toBe(false);
   });
 
+  test("the agent-knowledge helper needs none and selects its two focused tests", () => {
+    expect(needsCandidateLegacy(["scripts/agent-knowledge.ts"])).toBe(false);
+    expect(candidateBuildTests(["scripts/agent-knowledge.ts"])).toEqual([
+      "tests/unit/t248-steering-content-delivery.test.ts",
+      "tests/unit/t-dispatched-agents-skip-format-docs.test.ts",
+    ]);
+  });
+
   test("each helper selects its own focused tests", () => {
     expect(candidateBuildTests(["scripts/onboarding.ts"])).toEqual([
       "tests/unit/t151-onboarding-skeleton.test.ts",

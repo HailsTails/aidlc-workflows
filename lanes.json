@@ -113,6 +113,7 @@
         "src/cli/legacy-runner-child{,.test}.ts",
         "src/cli/main{,.test}.ts",
         "src/cli/package-build-root{,.test}.ts",
+        "src/cli/host-table{,.test}.ts",
         "src/projection/adapters/compiled-method-file{,.test}.ts",
         "docs/reference/15-stage-definition.md",
         "docs/harness-engineering/09-porting-to-a-new-harness.md",
@@ -230,7 +231,8 @@
       "notOwned": [
         "src/cli/core-build-root{,.test}.ts",
         "src/cli/main{,.test}.ts",
-        "src/cli/package-build-root{,.test}.ts"
+        "src/cli/package-build-root{,.test}.ts",
+        "src/cli/host-table{,.test}.ts"
       ],
       "territory": ["execution", "cli"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
@@ -256,7 +258,7 @@
     "hosts-c": {
       "name": "Projection for kiro, kiro-ide, cursor and copilot (one ticket at a time)",
       "agent": "codex/hosts-c",
-      "owns": ["src/hosts/{kiro,kiro-ide,cursor,copilot}/**"],
+      "owns": ["src/hosts/{kiro,kiro-ide,cursor,copilot}/**", "src/cli/host-table{,.test}.ts"],
       "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {
@@ -273,7 +275,8 @@
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "harness/codex/manifest.ts",
         "harness/opencode/manifest.ts",
-        "src/workflow-definition/domain/method-references{,.test}.ts"
+        "src/workflow-definition/domain/method-references{,.test}.ts",
+        "src/cli/host-table{,.test}.ts"
       ],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {
@@ -289,7 +292,8 @@
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "harness/codex/manifest.ts",
         "harness/opencode/manifest.ts",
-        "src/workflow-definition/domain/method-references{,.test}.ts"
+        "src/workflow-definition/domain/method-references{,.test}.ts",
+        "src/cli/host-table{,.test}.ts"
       ],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {

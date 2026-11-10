@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { renameRulesFolder } from "../src/projection/domain/rules-folder.ts";
 import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
 import type { FileContent } from "../src/kernel/file-content.ts";
 import type { HostIdentity } from "../src/kernel/host.ts";
@@ -66,7 +67,9 @@ import {
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { hostAgentInputs, hostSkillInputs, hostSurfaceMembers, hostSettingsInputs } from "../src/cli/host-table.ts";
+import {
+  hostAgentInputs, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers, hostSettingsInputs,
+} from "../src/cli/host-table.ts";
 import { distributionId, projectPath, sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
   DistributionChannel, ProjectedFile,
@@ -251,20 +254,6 @@ function substituteToken(
   return substituteInvocationTokens(lettered.replace(HARNESS_TOKEN, harnessDir), harnessDir, invoke);
 }
 
-// Rewrite in-prose `<harnessDir>/rules/` → `<harnessDir>/<rulesRename>/` for a
-// harness that renames its rules dir (kiro: steering, codex: aidlc-rules).
-// Anchored on the post-substitution harness-dir form so it can't touch an
-// unrelated `rules/` mention. No-op when rulesRename is null (claude).
-function applyRulesRename(s: string, harnessDir: string, rulesRename: string | null): string {
-  if (!rulesRename) return s;
-  // Codex's native Starlark permission file is not an AIDLC markdown rule.
-  const escapedHarnessDir = harnessDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return s.replace(
-    new RegExp(`${escapedHarnessDir}/rules/(?!default\\.rules)`, "g"),
-    `${harnessDir}/${rulesRename}/`,
-  );
-}
-
 const coreAgentForFile = (source: string) => {
   const file = basename(source).replace(/\.json$/, ".md");
   return coreBuild.method.agents.find((agent) => agent.owner.kind === "core"
@@ -321,7 +310,7 @@ function transform(
       s = injectDelegatedKnowledgePreflight(s, agentName, harnessDir);
     }
     s = substituteToken(s, harnessDir, invoke, letters);
-    s = applyRulesRename(s, harnessDir, rulesRename);
+    s = renameRulesFolder({ text: s, harnessDir, rulesFolder: rulesRename });
     if (harness) s = projectTierFrontmatter(s, srcPath, harness);
     // Cursor, opencode, and Copilot persona bodies read the method by path:
     // the engine's git-ignored copy of the active space's memory
@@ -926,7 +915,7 @@ async function buildTree(
 
   // 2b. Split neutral project instructions from each harness's native setup.
   // Claude and Copilot keep both parts in their single always-on file.
-  if (m.onboarding) {
+  if (m.onboarding && hostDocumentMembers(hostInput.host) === null) {
     const { dst, projectRoot, harnessDst, fills } = m.onboarding;
     const neutral = renderNeutralOnboarding(readFileSync(ONBOARDING_SKELETON, "utf-8"));
     const harnessSkeleton = readFileSync(HARNESS_ONBOARDING_SKELETON, "utf-8");
@@ -1065,6 +1054,16 @@ async function buildTree(
       TRUSTED_NAMESPACE: TRUSTED_ROUTE_NAMESPACE, OPTION_LETTERS: letters } });
   if (!settings.ok) throw new Error(JSON.stringify(settings.refusal));
   writeProjectedFiles({ files: settings.value, projectRoot: outRoot });
+  if (m.onboarding) {
+    const documents = await packageBuildRoot.projectDocuments({
+      host: hostInput.host, core: coreBuild,
+      fills: m.onboarding.fills,
+      tokens: { HARNESS_DIR: harnessDir, INVOKE: invoke, SKILL_INVOKE: null,
+        TOOL_PREFIX: substituteToken("{{TOOL_PREFIX}}", harnessDir, invoke, letters),
+        TRUSTED_NAMESPACE: TRUSTED_ROUTE_NAMESPACE, OPTION_LETTERS: letters } });
+    if (!documents.ok) throw new Error(JSON.stringify(documents.refusal));
+    writeProjectedFiles({ files: documents.value, projectRoot: outRoot });
+  }
   const agents = packageBuildRoot.projectAgents({ host: hostInput.host, method: coreBuild.method,
     files: hostInput.files, prepare: prepareHostInput, channel, modelCap: TIER_CAP });
   if (!agents.ok) throw new Error(JSON.stringify(agents.refusal));

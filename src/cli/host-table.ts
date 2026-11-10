@@ -1,3 +1,6 @@
+import { createClaudeDocumentRenderer } from "../hosts/claude/projection/document-renderer.ts";
+import type { DocumentRenderingInputs } from "../projection/application/ports/documents.ts";
+import type { HostDocumentMembers } from "./roots.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
 import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS } from "../hosts/copilot/host-data.ts";
@@ -89,4 +92,28 @@ export const hostSettingsMembers = (host: HostIdentity): Result<HostSettingsMemb
   if (failed && !failed.ok) return refused({ kind: "render-failed", concept: "settings",
     name: failed.refusal.raw, reason: "The authored settings input is not a portable source path." });
   return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
+};
+
+const HOST_BINDING_HEADINGS = [
+  { name: "claude", heading: "Claude Code" },
+  { name: "kiro", heading: "Kiro CLI" },
+  { name: "kiro-ide", heading: "Kiro IDE" },
+  { name: "codex", heading: "Codex CLI" },
+  { name: "cursor", heading: "Cursor" },
+  { name: "opencode", heading: "opencode" },
+  { name: "copilot", heading: "GitHub Copilot" },
+] as const;
+
+export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEntries(
+  HOST_BINDING_HEADINGS.map((entry) => [entry.name, entry.heading]),
+);
+
+const HOST_DOCUMENT_MEMBERS = [{ name: "claude", inputs: [],
+  render: (inputs: DocumentRenderingInputs) => createClaudeDocumentRenderer({ ...inputs,
+    bindingHeadings: Object.values(BINDING_HEADINGS) }),
+}] as const;
+
+export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | null => {
+  const entry = HOST_DOCUMENT_MEMBERS.find((candidate) => candidate.name === host.distribution);
+  return entry ? { host, inputs: entry.inputs, render: entry.render } : null;
 };
