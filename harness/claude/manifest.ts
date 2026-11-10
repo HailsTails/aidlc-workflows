@@ -126,8 +126,6 @@ const manifest: HarnessManifest = {
   // aidlc/active-memory/ via the .claude/rules/aidlc.md @-stub (a harnessFile).
   coreDirs: [
     { src: "tools", dst: "tools" },
-    { src: "aidlc-common", dst: "aidlc-common" },
-    { src: "knowledge", dst: "knowledge" },
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
     { src: "hooks", dst: "hooks" },

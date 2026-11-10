@@ -1,3 +1,4 @@
+import type { NeutralReading, DocumentProjection } from "./documents.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { AuthoredHostFile } from "../../domain/host-surface.ts";
 import type { CompiledMethodFiles, ProjectionRefusal } from "../../domain/projection.ts";
@@ -11,6 +12,8 @@ import type { SettingsProjection } from "./settings.ts";
 import type { SessionSkillReading, SkillProjection } from "./skills.ts";
 
 export interface BuildProjection {
+  readonly readNeutral: NeutralReading;
+  readonly projectDocuments: DocumentProjection;
   readonly projectSettings: SettingsProjection;
   readonly readRuntime: RuntimeReading;
   readonly projectRuntime: RuntimeProjection;

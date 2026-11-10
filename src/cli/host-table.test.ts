@@ -1,6 +1,7 @@
+import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
 import { expect, test } from "bun:test";
-import { host } from "../kernel/fixtures/values.fixture.ts";
-import { hostAgentInputs, hostAgentMembers, hostSurfaceMembers } from "./host-table.ts";
+import { host, source } from "../kernel/fixtures/values.fixture.ts";
+import { hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers } from "./host-table.ts";
 
 test("an unregistered host has no agent inputs or accidental Kiro members", () => {
   expect(hostAgentInputs("claude")).toEqual([]);
@@ -34,4 +35,17 @@ test("the Kiro IDE host table uses policy-rendered data and all five native plac
   expect(hostData?.productName).toBe("Kiro");
   expect(hostData?.pluginAgentFrontmatter?.copy).toContain("policy for plugin-agent");
   expect(hostData?.pluginAgentFrontmatter?.native).toEqual(hostData?.pluginAgentFrontmatter?.copy);
+});
+
+test("host composition preserves the legacy binding refusal and missing-heading order", () => {
+  const renderer = hostDocumentMembers(host({ name: "claude", directory: ".claude" }))
+    ?.render(documentRenderingInputsFixture({ harnessDir: ".claude" }));
+  expect(renderer?.placeNeutralDocument({ document: {
+    source: source("aidlc-common/protocols/missing.md"), role: "protocol",
+    content: { kind: "text", text: "### Claude Code\nOnly\n" },
+  } })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "neutral-document",
+    name: "aidlc-common/protocols/missing.md",
+    reason: "harness bindings: aidlc-common/protocols/missing.md line 1: a binding run must name each tool once " +
+      "(found Claude Code; missing Kiro CLI, Kiro IDE, Codex CLI, Cursor, opencode, GitHub Copilot).",
+  } });
 });

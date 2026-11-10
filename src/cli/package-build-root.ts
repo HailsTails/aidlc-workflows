@@ -1,3 +1,5 @@
+import type { ProjectDocuments } from "./roots.ts";
+import type { NeutralSurface } from "../projection/domain/neutral-surface.ts";
 import { createBuildPackaging } from "../packaging/core-root.ts";
 import type { VersionStamp } from "../projection/application/ports/runtime.ts";
 import type { SharedRuntime } from "../projection/domain/neutral-surface.ts";
@@ -5,7 +7,7 @@ import type { ProjectRuntime } from "./roots.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
 import { hostAgentMembers, hostSkillMembers, hostSkillInputs, hostSurfaceMembers,
-  hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
+  hostSettingsInputs, hostSettingsMembers, hostDocumentMembers } from "./host-table.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
@@ -69,6 +71,25 @@ const runtimeProjector = (request: {
   };
 };
 
+const documentsProjector = (request: {
+  readonly projection: Pick<BuildProjection, "readNeutral" | "projectDocuments">;
+  readonly core: URL;
+}): ProjectDocuments => {
+  let captured: Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>> | undefined;
+  return async (documents) => {
+    const members = hostDocumentMembers(documents.host);
+    if (members === null) return accepted([]);
+    const surface = await (captured ??= request.projection.readNeutral({
+      core: request.core, sources: documents.core.sources,
+    }));
+    if (!surface.ok) return surface;
+    const rendered = request.projection.projectDocuments({ method: documents.core.method,
+      host: documents.host, render: members.render, surface: surface.value,
+      fills: documents.fills, tokens: documents.tokens });
+    return rendered.ok ? rendered : refused([rendered.refusal]);
+  };
+};
+
 export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const loading = createAuthoredMethodLoading({ reader: request.platform.fileSystem,
     parser: request.platform.yaml, outliner: request.outliner });
@@ -83,6 +104,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
       project: (target) => projectFor({ authored: loaded.value, target }, projection.serializeMethod) }) : loaded;
   };
   return {
+    projectDocuments: documentsProjector({ projection, core: request.sources.core }),
     projectRuntime: runtimeProjector({ projection, core: request.sources.core,
       stamp: createBuildPackaging().stamp }),
     loadCore: () => core ??= loadCore(),

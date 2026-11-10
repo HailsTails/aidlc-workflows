@@ -11,6 +11,7 @@ const fileSystem = createInMemoryFileSystem({ files: {} });
 const processRunner = createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) });
 const yaml = createInMemoryYamlParser({ documents: {} });
 const root: PackageBuildRoot = {
+  projectDocuments: mock<PackageBuildRoot["projectDocuments"]>(),
   projectSettings: mock<PackageBuildRoot["projectSettings"]>(),
   projectRuntime: mock<PackageBuildRoot["projectRuntime"]>(),
   projectHostSurface: mock<PackageBuildRoot["projectHostSurface"]>(),
