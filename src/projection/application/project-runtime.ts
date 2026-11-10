@@ -23,7 +23,8 @@ const runtimeFile = (request: {
 const runtimeData = (request: {
   readonly host: HostIdentity; readonly name: RuntimeDataName; readonly content: FileContent;
 }): Rendering => {
-  const path = projectPath(`${request.host.directory}/tools/data/${request.name}.json`);
+  const name = request.name === "settings-schema" ? "aidlc-settings.schema" : request.name;
+  const path = projectPath(`${request.host.directory}/tools/data/${name}.json`);
   return path.ok ? accepted([{ path: path.value, content: request.content,
     mode: "regular", availability: "always", origin: { kind: "runtime-data", name: request.name } }])
     : refused({ kind: "render-failed", concept: "host-data", name: request.name,
@@ -40,5 +41,9 @@ export const projectRuntime: RuntimeProjection = (request) => {
       tokens: request.tokens }),
     runtimeData({ host: request.host, name: "agent-tiers", content: request.runtime.agentTiers }),
     runtimeData({ host: request.host, name: "settings-schema", content: request.runtime.settingsSchema }),
+    runtimeData({ host: request.host, name: "stage-graph",
+      content: { kind: "text", text: request.compiled.graph } }),
+    runtimeData({ host: request.host, name: "scope-grid",
+      content: { kind: "text", text: request.compiled.grid } }),
   ]);
 };

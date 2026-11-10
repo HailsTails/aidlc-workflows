@@ -2,6 +2,7 @@ import { asFolder, type TreeSelection, type UnreadableTreeFile } from "../../ker
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { sourcePath } from "../../kernel/values.ts";
 import type { AuthoredTree, MethodRefusal } from "../domain/refusals.ts";
+import { methodFileKind } from "../domain/method-source.ts";
 import type { AuthoredTreeReader, CapturedMethodFiles, CapturedPluginFiles,
   CapturedSourceFile, MethodReading } from "./ports.ts";
 
@@ -32,7 +33,7 @@ const captureFolder = async (request: {
 };
 
 const coreSelection: TreeSelection = (entry) => entry.kind === "folder"
-  || (entry.kind === "file" && entry.within.endsWith(".md")) ? "read" : "skip";
+  || (entry.kind === "file" && methodFileKind(entry.within) === "method-document") ? "read" : "skip";
 const pluginSelection: TreeSelection = (entry) => entry.kind === "other" ? "skip" : "read";
 
 const methodFolders = ["stages", "agents", "scopes", "sensors", "memory", "knowledge"] as const;
@@ -45,7 +46,7 @@ type CapturedFolder = {
 const methodGroups = (folders: readonly CapturedFolder[]): CapturedMethodFiles => {
   const markdown = (folder: string): readonly CapturedSourceFile[] =>
     (folders.find((group) => group.folder === folder)?.files ?? [])
-      .filter((file) => file.within.endsWith(".md"));
+      .filter((file) => methodFileKind(file.within) === "method-document");
   return { stages: markdown("stages"), agents: markdown("agents"), scopes: markdown("scopes"),
     sensors: markdown("sensors"), rules: markdown("memory"), knowledge: markdown("knowledge") };
 };

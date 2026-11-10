@@ -1,3 +1,7 @@
+import { claudeDistribution } from "../hosts/claude/distribution.ts";
+import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
+import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
+import type { HostBuildTable } from "./roots.ts";
 import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
 import { COPILOT_SETTINGS_INPUTS, createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
@@ -25,7 +29,9 @@ import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING } fro
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
-import { CLAUDE_HOST_DATA, CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_BINDING_HEADING } from "../hosts/claude/host-data.ts";
+import {
+  CLAUDE_HOST_DATA, CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_BINDING_HEADING, CLAUDE_TOKENS, claudeHostIdentity,
+} from "../hosts/claude/host-data.ts";
 import { OPENCODE_SKILL_INPUTS, createOpenCodeSkillRenderer } from "../hosts/opencode/projection/skill-renderer.ts";
 import { KIRO_SKILL_INPUTS, createKiroSkillRenderer } from "../hosts/kiro/projection/skill-renderer.ts";
 import { CODEX_SKILL_INPUTS, createCodexSkillRenderer } from "../hosts/codex/projection/skill-renderer.ts";
@@ -147,3 +153,22 @@ export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | n
   const entry = HOST_DOCUMENT_MEMBERS.find((candidate) => candidate.name === host.distribution);
   return entry ? { host, inputs: entry.inputs, render: entry.render } : null;
 };
+
+const claudeBuildMembers = (): HostBuildTable => {
+  const identity = claudeHostIdentity();
+  if (!identity.ok) return [];
+  const host = identity.value;
+  const agents = hostAgentMembers(host);
+  const skills = hostSkillMembers(host);
+  const settings = hostSettingsMembers(host);
+  const documents = hostDocumentMembers(host);
+  const surface = hostSurfaceMembers(host);
+  if (!agents.ok || !skills.ok || !settings.ok || agents.value === null || skills.value === null ||
+    settings.value === null || documents === null || surface === null) return [];
+  return [{ host, tokens: CLAUDE_TOKENS, renderData: surface.renderData, placements: surface.placements,
+    agents: agents.value, skills: skills.value, settings: settings.value, documents,
+    commands: claudeCommandPath, fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: CLAUDE_BINDING_HEADING,
+    distribution: claudeDistribution }];
+};
+
+export const HOST_BUILD_MEMBERS: HostBuildTable = claudeBuildMembers();

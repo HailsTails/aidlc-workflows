@@ -1,3 +1,4 @@
+import { HOST_BUILD_MEMBERS } from "./host-table.ts";
 const outliner = { outline: (text: string) => ({ text, headings: [] }) };
 import { expect, mock, test } from "bun:test";
 import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
@@ -11,9 +12,10 @@ const fileSystem = createInMemoryFileSystem({ files: {} });
 const processRunner = createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) });
 const yaml = createInMemoryYamlParser({ documents: {} });
 const root: PackageBuildRoot = {
+  projectHost: mock<PackageBuildRoot["projectHost"]>(),
+  readHostDistribution: mock<PackageBuildRoot["readHostDistribution"]>(),
   projectDocuments: mock<PackageBuildRoot["projectDocuments"]>(),
   projectSettings: mock<PackageBuildRoot["projectSettings"]>(),
-  projectRuntime: mock<PackageBuildRoot["projectRuntime"]>(),
   projectHostSurface: mock<PackageBuildRoot["projectHostSurface"]>(),
   projectSkills: mock<PackageBuildRoot["projectSkills"]>(),
   projectAgents: mock<PackageBuildRoot["projectAgents"]>(),
@@ -34,7 +36,8 @@ test("the entry constructs each implementer once and binds its instance to the c
   expect(createNodeProcessRunner).toHaveBeenCalledTimes(1);
   expect(createBunYamlParser).toHaveBeenCalledTimes(1);
   expect(createPackageBuildRoot).toHaveBeenCalledTimes(1);
-  expect(createPackageBuildRoot).toHaveBeenCalledWith({ outliner, platform: { fileSystem, processRunner, yaml },
+  expect(createPackageBuildRoot).toHaveBeenCalledWith({ hosts: HOST_BUILD_MEMBERS, outliner,
+    platform: { fileSystem, processRunner, yaml },
     sources: { core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url) },
     runnerFrames: new URL("../../.cache/runner-frames/", import.meta.url),
   });

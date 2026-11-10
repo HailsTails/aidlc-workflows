@@ -121,9 +121,7 @@ describe("t151 neutral and native onboarding", () => {
 
   test("every harness ships complete onboarding in both invocation channels", () => {
     for (const harness of HARNESS_MATRIX) {
-      // The manifest-owned fills module has the shared renderer contract.
-      const fillsModule = require(harness.onboardingFills) as { default: OnboardingFills };
-      const fills = fillsModule.default;
+      const fills = harness.fills;
       for (const native of [false, true]) {
         const root = readFileSync(native ? releasePath(harness.onboardingDist) : harness.onboardingDist, "utf-8");
         const setup = readFileSync(native ? releasePath(harness.harnessOnboardingDist) : harness.harnessOnboardingDist, "utf-8");

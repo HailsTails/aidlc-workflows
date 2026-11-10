@@ -41,6 +41,7 @@ import {
 } from "../harness/fixtures.ts";
 import {
   HARNESS_MATRIX, harnessByName, validateManifest, agentFrontmatterGrantsIdeTools,
+  legacyHarnessManifest, fullHostView,
 } from "../harness/harness-matrix.ts";
 import { runnerProducer, orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 import { discoverSiblingRepos, listIntents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
@@ -120,38 +121,66 @@ test("native entry location has its own declared value and standard default", ()
 });
 
 test.each([
-  "claude", "codex", "copilot", "cursor", "kiro", "kiro-ide", "opencode",
+  "codex", "copilot", "cursor", "kiro", "kiro-ide", "opencode",
 ] as const)(
   "%s: either producer retains the host's declared layout and include surfaces", (name) => {
     const harness = harnessByName(name);
     expect(validateManifest(
-      name, { ...harness.manifest, skipRunnerGen: true, emit: () => undefined },
+      name, { ...legacyHarnessManifest(name), skipRunnerGen: true, emit: () => undefined },
       harness.capabilities,
     )).toBeUndefined();
     expect(validateManifest(
-      name, { ...harness.manifest, skipRunnerGen: false, emit: () => undefined },
+      name, { ...legacyHarnessManifest(name), skipRunnerGen: false, emit: () => undefined },
       harness.capabilities,
     )).toBeUndefined();
   },
 );
 
 test("the validator still rejects an incorrect declared native layout", () => {
-  const harness = harnessByName("claude");
-  expect(() => validateManifest("claude", { ...harness.manifest,
+  const harness = harnessByName("codex");
+  expect(() => validateManifest("codex", { ...legacyHarnessManifest("codex"),
     orchestratorSkillPath: "wrong/skills/aidlc/SKILL.md" }, harness.capabilities))
     .toThrow(new Error(
-      "harness matrix [claude]: skillsRoot does not agree with manifest.orchestratorSkillPath",
+      "harness matrix [codex]: skillsRoot does not agree with manifest.orchestratorSkillPath",
     ));
 });
 
 test("the matrix uses the same producer refusal as the package caller", () => {
-  const harness = harnessByName("claude");
+  const harness = harnessByName("codex");
   expect(() => validateManifest(
-    "claude", { ...harness.manifest, skipRunnerGen: true, emit: null },
+    "codex", { ...legacyHarnessManifest("codex"), skipRunnerGen: true, emit: null },
     harness.capabilities,
   )).toThrow(new Error(
-    "harness matrix [claude]: Delegated runner production requires a manifest emit function.",
+    "harness matrix [codex]: Delegated runner production requires a manifest emit function.",
   ));
+});
+
+test("the complete Claude route remains in the matrix after its legacy manifest retires", () => {
+  const harness = harnessByName("claude");
+  expect(existsSync(join(harness.authoredRoot, "manifest.ts"))).toBe(false);
+  expect(harness.manifest.harnessDir).toBe(".claude");
+  expect(harness.manifest.orchestratorSkillPath).toBe(".claude/skills/aidlc/SKILL.md");
+  expect(harness.fills.invoke).toBe("/aidlc");
+  expect(harness.manifest.rootIntegrations).toHaveLength(2);
+});
+
+test("the native matrix rejects wrong root, onboarding and memory capabilities", () => {
+  const harness = harnessByName("claude");
+  expect(() => fullHostView("claude", { ...harness.capabilities, rootFiles: [] })).toThrow(
+    "harness matrix [claude]: " +
+      "full-host root files do not agree with the generated descriptor",
+  );
+  expect(() => fullHostView("claude", { ...harness.capabilities,
+    onboarding: { ...harness.capabilities.onboarding, harnessDist: ".claude/wrong.md" } })).toThrow(
+    "harness matrix [claude]: " +
+      "full-host onboarding does not agree with the generated descriptor",
+  );
+  expect(() => fullHostView("claude", {
+    ...harness.capabilities, memoryInclude: "cursor-rule",
+  })).toThrow(
+    "harness matrix [claude]: " +
+      "memoryInclude does not agree with the registered include surfaces",
+  );
 });
 test(
   "the shared tools declaration check admits agent headers and rejects unrelated additions",

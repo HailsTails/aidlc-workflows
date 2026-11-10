@@ -1,3 +1,4 @@
+import type { HostDataRenderer } from "./application/ports/host-surface.ts";
 import { agent } from "../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../workflow-definition/fixtures/method-source.fixture.ts";
 import { expect, mock, test } from "bun:test";
@@ -133,4 +134,16 @@ test("agent composition absorbs knowledge for a core agent appointed only by the
     additions: { afterPreflight: [], endOfBody: [] },
   }, text: "authored-file", knowledge: "absorbed", reading: "whole-files" }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\nPersona\n\n---\n\n<!-- Absorbed at build time from knowledge/aidlc-product-agent/check.md - edit that file, not this generated copy. -->\n\nPlugin reviewer knowledge\n"));
+});
+
+test("Projection exposes the exact facts instance its native data route receives", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
+    runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
+    runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
+  const renderData = mock<HostDataRenderer>(() => ({ productName: "Facts", configNextStep: "Open", rulesFolder: null }));
+  projection.projectHostSurface({ host: identity, files: [], placements: [], prepare: accepted,
+    tokens: tokenBindingsFixture({ harnessDir: ".claude" }), channel: "copy", renderData });
+  expect(renderData).toHaveBeenCalledTimes(1);
+  expect(renderData.mock.calls[0]?.[0]?.delegateShellFacts).toBe(projection.delegateShellFacts);
 });

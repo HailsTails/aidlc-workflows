@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 import { renameRulesFolder } from "../src/projection/domain/rules-folder.ts";
+import { bindCopiedSource } from "../src/projection/domain/source-binding.ts";
+import { z } from "zod";
+import type { HostBuildMembers } from "../src/cli/roots.ts";
+import type { HostDistribution } from "../src/packaging/domain/payload.ts";
 import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
 import type { FileContent } from "../src/kernel/file-content.ts";
 import type { HostIdentity } from "../src/kernel/host.ts";
@@ -68,7 +72,7 @@ import {
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
-  hostAgentInputs, hostAgentMembers, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers,
+  hostAgentInputs, hostAgentMembers, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers, HOST_BUILD_MEMBERS,
 } from "../src/cli/host-table.ts";
 import { distributionId, projectPath, sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
@@ -131,7 +135,7 @@ import {
 import { copyChannelDispatcherCommands, ROUTES, TOOLS } from "../core/tools/aidlc.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
-import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
+import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../src/packaging/adapters/legacy-distribution.ts";
 import { kiroIdeSteering } from "../core/tools/aidlc-includes.ts";
 import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
 
@@ -207,10 +211,10 @@ const OPTION_LETTERS_TOKEN = /\{\{OPTION_LETTERS\}\}/g;
 // one-core-many-harnesses promise. Sorted so the default build/--check order is
 // stable (claude first by name).
 function discoverHarnessNames(): string[] {
-  if (!existsSync(HARNESS_ROOT)) return [];
-  return readdirSync(HARNESS_ROOT)
-    .filter((n) => existsSync(join(HARNESS_ROOT, n, "manifest.ts")))
-    .sort();
+  const legacy = existsSync(HARNESS_ROOT) ? readdirSync(HARNESS_ROOT)
+    .filter((n) => existsSync(join(HARNESS_ROOT, n, "manifest.ts"))) : [];
+  return [...new Set([...legacy, ...HOST_BUILD_MEMBERS.filter((member) => member.distribution)
+    .map((member) => member.host.distribution)])].sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -550,7 +554,11 @@ function writeSettingsSchemaData(treeRoot: string): void {
   writeFileSync(dst, `${JSON.stringify(AIDLC_SETTINGS_SCHEMA, null, 2)}\n`);
 }
 
-function writeProjectionData(outRoot: string, treeRoot: string, m: HarnessManifest): void {
+type DistributionView = Pick<HarnessManifest, "name" | "harnessDir" | "productName" | "configNextStep"
+  | "choiceName" | "choiceNote" | "firstRunSteps" | "editorTerminalApp" | "cliFirst" | "rootIntegrations"
+  | "onboarding" | "harnessFiles" | "nativeReplacements" | "nativeRootIntegrations">;
+
+function writeProjectionData(outRoot: string, treeRoot: string, m: DistributionView): void {
   if (!harnessChoiceTextIsPlain(m)) {
     throw new Error(`[${m.name}] choiceName or choiceNote is not text the harness lists can show`);
   }
@@ -1079,7 +1087,7 @@ function nativeDispatcherCommands(): string[] {
 // A manifest's nativeReplacements, applied before the generic rewrite, which
 // would otherwise turn their copy-channel text into retired or unresolvable
 // engine spellings.
-function applyNativeReplacements(outRoot: string, m: HarnessManifest): void {
+function applyNativeReplacements(outRoot: string, m: DistributionView): void {
   for (const { from, to } of m.nativeReplacements ?? []) {
     let found = false;
     for (const file of walk(outRoot)) {
@@ -1095,8 +1103,8 @@ function applyNativeReplacements(outRoot: string, m: HarnessManifest): void {
   }
 }
 
-function rewriteKiroNativeAllowlists(outRoot: string, m: HarnessManifest): void {
-  if (m.tierFlavor !== "kiro") return;
+function rewriteKiroNativeAllowlists(outRoot: string, m: DistributionView): void {
+  if (m.name !== "kiro" && m.name !== "kiro-ide") return;
   const agentsDir = join(outRoot, m.harnessDir, "agents");
   const pluginAgentData = join(outRoot, m.harnessDir, PLUGIN_AGENT_DATA);
   for (const file of [...walk(agentsDir), ...(existsSync(pluginAgentData) ? [pluginAgentData] : [])]) {
@@ -1147,8 +1155,8 @@ function rewriteKiroNativeAllowlists(outRoot: string, m: HarnessManifest): void 
   }
 }
 
-function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): void {
-  if (m.tierFlavor !== "claude") return;
+function rewriteClaudeNativePermissions(outRoot: string, m: DistributionView): void {
+  if (m.name !== "claude") return;
   const settingsPath = join(outRoot, m.harnessDir, "settings.json");
   const value = JSON.parse(readFileSync(settingsPath, "utf-8")) as {
     permissions?: { allow?: unknown };
@@ -1170,8 +1178,8 @@ function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): vo
   writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function rewriteCursorNativePermissions(outRoot: string, m: HarnessManifest): void {
-  if (m.tierFlavor !== "cursor") return;
+function rewriteCursorNativePermissions(outRoot: string, m: DistributionView): void {
+  if (m.name !== "cursor") return;
   const cliPath = join(outRoot, m.harnessDir, "cli.json");
   const value = JSON.parse(readFileSync(cliPath, "utf-8")) as {
     permissions?: { allow?: unknown; deny?: unknown };
@@ -1228,7 +1236,7 @@ function rewriteNativeOnboarding(value: string, exactReads = false): string {
 // A copyOnly harness file ships in the copy runtime alone. The native tree
 // drops it and the root integration of the same path, so `aidlc config` never
 // writes it into a project.
-function dropCopyOnlyFiles(outRoot: string, m: HarnessManifest): void {
+function dropCopyOnlyFiles(outRoot: string, m: DistributionView): void {
   const copyOnly = m.harnessFiles.filter((file) => file.copyOnly);
   if (copyOnly.length === 0) return;
   for (const file of copyOnly) {
@@ -1243,7 +1251,7 @@ function dropCopyOnlyFiles(outRoot: string, m: HarnessManifest): void {
   writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
 }
 
-function projectNativeRootIntegrations(outRoot: string, m: HarnessManifest): void {
+function projectNativeRootIntegrations(outRoot: string, m: DistributionView): void {
   const additions = m.nativeRootIntegrations ?? [];
   if (additions.length === 0) return;
   const descriptorPath = join(outRoot, m.harnessDir, PROJECTION_DATA);
@@ -1286,7 +1294,7 @@ function projectedNamespaceInvocationViolations(
 
 function rewriteNativeInvocations(
   outRoot: string,
-  m: HarnessManifest,
+  m: DistributionView,
   copyRoot: string,
 ): void {
   dropCopyOnlyFiles(outRoot, m);
@@ -1392,13 +1400,13 @@ function rewriteNativeInvocations(
       `"${trustedCommand(".*")}"`,
     );
     value = substituteInvocationTokens(value, m.harnessDir, "aidlc");
-    value = rewriteNativeOnboarding(value, m.tierFlavor === "claude" || m.tierFlavor === "cursor" || m.tierFlavor === "kiro");
+    value = rewriteNativeOnboarding(value, ["claude", "cursor", "kiro", "kiro-ide"].includes(m.name));
     writeFileSync(file, value);
   }
   rewriteKiroNativeAllowlists(outRoot, m);
   rewriteClaudeNativePermissions(outRoot, m);
   rewriteCursorNativePermissions(outRoot, m);
-  if (m.tierFlavor === "codex") {
+  if (m.name === "codex") {
     const { emitDefaultRules, emitTrustSeed } = require(
       join(HARNESS_ROOT, m.name, "emit.ts"),
     ) as {
@@ -1585,27 +1593,127 @@ function loadManifest(name: string): HarnessManifest {
   return mod.default;
 }
 
+type RoutedHost = { members: HostBuildMembers; distribution: HostDistribution };
+
+function routedHost(name: string): RoutedHost | null {
+  const members = HOST_BUILD_MEMBERS.find((candidate) =>
+    candidate.host.distribution === name && candidate.distribution);
+  if (!members) return null;
+  const distribution = packageBuildRoot.readHostDistribution({ host: members.host });
+  if (!distribution.ok) throw new Error(JSON.stringify(distribution.refusal));
+  return { members, distribution: distribution.value };
+}
+
+function routedHistory(distribution: HostDistribution, path: string) {
+  const prior = distribution.priorIntegrations.find((candidate) => candidate.integration === path);
+  if (!prior) return undefined;
+  const wholeFileHashes = [...prior.wholeFileHashes];
+  const jsonEntryHashes = Object.fromEntries(Object.entries(prior.entryHashes)
+    .map(([key, hashes]) => [key, [...hashes]]));
+  return { ...(wholeFileHashes.length ? { wholeFileHashes } : {}),
+    ...(Object.keys(jsonEntryHashes).length ? { jsonEntryHashes } : {}) };
+}
+
+function routedIntegrations(distribution: HostDistribution): HarnessManifest["rootIntegrations"] {
+  return distribution.layout.rootIntegrations.map((integration) => {
+    const legacySignatures = routedHistory(distribution, integration.path);
+    return { path: integration.path, policy: integration.policy,
+      ...("marker" in integration ? { marker: integration.marker } : {}),
+      ...("sharing" in integration && integration.sharing !== "exclusive"
+        ? { shared: integration.sharing } : {}),
+      ...("key" in integration ? { jsonKey: integration.key } : {}),
+      ...(integration.presence === "optional" ? { optional: true } : {}),
+      ...(legacySignatures ? { legacySignatures } : {}),
+    };
+  });
+}
+
+function routedListing(distribution: HostDistribution) {
+  const { listing } = distribution;
+  return { ...listing,
+    firstRunSteps: listing.firstRunSteps ? [...listing.firstRunSteps] : undefined,
+    cliFirst: listing.cliFirst ? { ...listing.cliFirst, env: [...listing.cliFirst.env],
+      firstRunSteps: [...listing.cliFirst.firstRunSteps] } : undefined };
+}
+
+function routedView(request: {
+  members: HostBuildMembers; distribution: HostDistribution; files: readonly ProjectedFile[];
+}): DistributionView {
+  const { members, distribution, files } = request;
+  const descriptorPath = `${members.host.directory}/tools/data/harness.json`;
+  const descriptor = files.find((file) => file.path === descriptorPath);
+  if (!descriptor) {
+    throw new Error(`The full host omitted its descriptor: ${members.host.distribution}`);
+  }
+  const decoded: unknown = JSON.parse(hostContentBytes(descriptor.content).toString("utf-8"));
+  const metadata = z.object({ productName: z.string(), configNextStep: z.string() })
+    .safeParse(decoded);
+  if (!metadata.success) {
+    throw new Error(`The rendered host descriptor is invalid: ${members.host.distribution}`);
+  }
+  const onboarding = files.find((file) =>
+    file.origin.kind === "rendered" && file.origin.concept === "onboarding");
+  const within = onboarding?.path.startsWith(`${members.host.directory}/`)
+    ? onboarding.path.slice(members.host.directory.length + 1) : undefined;
+  return { name: members.host.distribution, harnessDir: members.host.directory,
+    ...metadata.data, ...routedListing(distribution),
+    rootIntegrations: routedIntegrations(distribution),
+    harnessFiles: distribution.native.copyOnly.map((path) =>
+      ({ src: path, dst: path, projectRoot: true, copyOnly: true })),
+    nativeReplacements: [...distribution.native.replacements],
+    ...(onboarding ? { onboarding: { dst: within ?? onboarding.path,
+      projectRoot: within === undefined, fills: members.fills } } : {}),
+  };
+}
+
+async function buildHost({ name, outRoot, channel }: {
+  readonly name: string; readonly outRoot: string; readonly channel: DistributionChannel;
+}): Promise<DistributionView> {
+  const routed = routedHost(name);
+  if (!routed) {
+    const manifest = loadManifest(name);
+    await buildTree(manifest, outRoot, channel);
+    return manifest;
+  }
+  const captured = hostBuildInputs.get(name);
+  if (!captured) throw new Error(`Authored host sources were not captured for ${name}`);
+  const { members } = routed;
+  const tokens = { ...members.tokens, HARNESS_DIR: members.host.directory,
+    ...channelTokens({ channel, directory: members.host.directory,
+      prefix: TRUSTED_COMMAND_PREFIX, namespace: TRUSTED_ROUTE_NAMESPACE }) };
+  const rendered = await packageBuildRoot.projectHost({ host: captured.host, core: coreBuild,
+    files: captured.files, prepare: (file) => prepareHostSource({ host: captured.host, file,
+      steps: [(content) => bindCopiedSource({ source: file.source, content, tokens })] }),
+    tokens, channel, modelCap: TIER_CAP, entrypoints: shippedSettingsEntrypoints(CORE_ROOT),
+    projectRoot: pathToFileURL(outRoot), reviewerAgents });
+  if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
+  writeProjectedFiles({ files: rendered.value.projection.files, projectRoot: outRoot });
+  const treeRoot = join(outRoot, members.host.directory);
+  emitPluginAuthoringData(treeRoot);
+  const view = routedView({ ...routed, files: rendered.value.projection.files });
+  writeProjectionData(outRoot, treeRoot, view);
+  return view;
+}
+
 // ---------------------------------------------------------------------------
 // write mode: regenerate dist/<name> in place (clean-sweep).
 // ---------------------------------------------------------------------------
 async function writeHarness(name: string): Promise<void> {
-  const m = loadManifest(name);
   const distDir = join(REPO_ROOT, "dist", name);
   // dist/<name>/ is one generated root. Sweep that root, not selected
   // subdirectories, so removed/renamed project-root outputs cannot linger.
   // Siblings at dist/ (plugins and unrelated local assets) remain outside this
   // harness-owned boundary.
   if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
-  await buildTree(m, distDir);
+  const m = await buildHost({ name, outRoot: distDir, channel: "copy" });
   console.log(`[${name}] regenerated dist/${name}/${m.harnessDir}`);
 }
 
 async function writeReleaseHarness(name: string): Promise<void> {
-  const m = loadManifest(name);
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  await buildTree(m, releaseDir, "native");
+  const m = await buildHost({ name, outRoot: releaseDir, channel: "native" });
   rewriteNativeInvocations(releaseDir, m, copyRoot);
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
@@ -1615,7 +1723,7 @@ async function writeReleaseHarness(name: string): Promise<void> {
 // native wording) and skips the part, which has no extension, so the part
 // takes the rewritten text again: config and the engine merge AI-DLC's text
 // from it, and a native install must never be told it needs bun.
-function syncRootBlockParts(outRoot: string, m: HarnessManifest): void {
+function syncRootBlockParts(outRoot: string, m: DistributionView): void {
   for (const integration of m.rootIntegrations) {
     const part = integration.policy === "managed-block"
       ? integration.marker || basename(integration.path)
@@ -1706,15 +1814,29 @@ const PLUGINS_ROOT = join(REPO_ROOT, "plugins");
 // consumed directly by the checkout emitter, and emitted into every tools/data
 // bundle for the standalone builder. Native placements supplement legacy rows.
 let pluginTargetCache: PluginTargetTable | null = null;
+function routedPluginTarget(name: string, routed: RoutedHost): PluginTarget {
+  const plugin = routed.distribution.plugin;
+  const kind = z.enum(["store", "kiro", "kiro-ide", "cursor"]).safeParse(plugin.format);
+  if (!kind.success) {
+    throw new Error(`The legacy plugin emitter does not support format ${plugin.format}`);
+  }
+  return { harnessName: name, manifestDir: plugin.manifestDir,
+    marketplaceDir: plugin.marketplaceDir, hostCatalogue: plugin.catalogue === "written",
+    harnessLeaf: routed.members.host.directory, kind: kind.data,
+    installRoots: [...plugin.installRoots] };
+}
+
 function pluginTargets(): PluginTargetTable {
   if (pluginTargetCache) return pluginTargetCache;
   pluginTargetCache = {};
   for (const harnessName of discoverHarnessNames()) {
+    const routed = routedHost(harnessName);
+    if (routed) {
+      pluginTargetCache[harnessName] = routedPluginTarget(harnessName, routed);
+      continue;
+    }
     const manifest = loadManifest(harnessName);
-    const installRoots = new Set<string>([
-      manifest.harnessDir,
-      "aidlc",
-    ]);
+    const installRoots = new Set<string>([manifest.harnessDir, "aidlc"]);
     const addTopLevel = (path: string): void => {
       const top = path.split(/[\\/]/).filter(Boolean)[0];
       if (top) installRoots.add(top);
@@ -1847,7 +1969,9 @@ function cleanWriteOutputs(request: { harnesses: string[]; kind: "full" | "named
 function assertIdenticalRootIntegrations(root: string, harnesses: string[]): void {
   const owners = new Map<string, { harness: string; bytes: Buffer }>();
   for (const name of harnesses) {
-    for (const integration of loadManifest(name).rootIntegrations) {
+    const routed = routedHost(name);
+    const integrations = routed ? routedIntegrations(routed.distribution) : loadManifest(name).rootIntegrations;
+    for (const integration of integrations) {
       if (integration.shared !== "identical") continue;
       const bytes = readFileSync(join(root, name, integration.path));
       const previous = owners.get(integration.path);
@@ -1868,12 +1992,11 @@ async function buildCheckPass(request: {
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
   for (const name of harnesses) {
-    const manifest = loadManifest(name);
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
-    await buildTree(manifest, copyRoot);
-    await buildTree(manifest, nativeRoot, "native");
-    rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
+    await buildHost({ name, outRoot: copyRoot, channel: "copy" });
+    const view = await buildHost({ name, outRoot: nativeRoot, channel: "native" });
+    rewriteNativeInvocations(nativeRoot, view, copyRoot);
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
   assertIdenticalRootIntegrations(releaseRoot, harnesses);
@@ -1965,7 +2088,7 @@ const named = argv.find((a) => !a.startsWith("--"));
 // named target builds just that one.
 const targets = named ? [named] : discoverHarnessNames();
 
-if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
+if (named && !discoverHarnessNames().includes(named)) {
   console.error(
     `unknown harness "${named}" (have: ${discoverHarnessNames().join(", ") || "none"})`,
   );
@@ -1989,10 +2112,17 @@ const hostBuildInputs = new Map<string, {
   readonly host: HostIdentity; readonly files: readonly AuthoredHostFile[];
 }>();
 for (const name of targets) {
-  const manifest = loadManifest(name);
-  const captured = await packageBuildRoot.readHostSources({ name, directory: manifest.harnessDir,
-    root: pathToFileURL(join(HARNESS_ROOT, name)), copied: manifest.harnessFiles.map((file) => file.src),
-    required: [...(manifest.emit?.authoredInputs ?? []), ...hostAgentInputs(name)] });
+  const routed = routedHost(name);
+  const manifest = routed ? undefined : loadManifest(name);
+  const directory = routed?.members.host.directory ?? manifest?.harnessDir;
+  if (!directory) throw new Error(`The host has no directory: ${name}`);
+  const required = routed ? [...routed.members.agents.inputs, ...routed.members.skills.inputs,
+    ...routed.members.settings.inputs, ...routed.members.documents.inputs,
+    ...routed.members.placements.map((placement) => placement.source)]
+    : [...(manifest?.emit?.authoredInputs ?? []), ...hostAgentInputs(name)];
+  const captured = await packageBuildRoot.readHostSources({ name, directory,
+    root: pathToFileURL(join(HARNESS_ROOT, name)),
+    copied: manifest?.harnessFiles.map((file) => file.src) ?? [], required });
   if (!captured.ok) {
     console.error(JSON.stringify(captured.refusal));
     process.exit(1);

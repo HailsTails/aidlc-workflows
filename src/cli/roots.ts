@@ -214,16 +214,6 @@ export type HostSettingsRequest = {
 
 export type ProjectSettings = (request: HostSettingsRequest) => Rendering;
 
-export type HostRuntimeRequest = {
-  readonly host: HostIdentity;
-  readonly method: Method;
-  readonly tokens: TokenBindings;
-};
-
-export type ProjectRuntime = (
-  request: HostRuntimeRequest,
-) => Promise<Result<readonly ProjectedFile[], readonly ProjectionRefusal[]>>;
-
 export type HostDocumentsRequest = {
   readonly host: HostIdentity;
   readonly core: CoreBuild;
@@ -240,10 +230,14 @@ export type CapturedHostSources = {
   readonly files: readonly AuthoredHostFile[];
 };
 
+export type ReadHostDistribution = (request: {
+  readonly host: HostIdentity;
+}) => Result<HostDistribution, readonly (KernelRefusal | ProjectionRefusal)[]>;
 export interface PackageBuildRoot {
+  readonly projectHost: ProjectHost;
+  readonly readHostDistribution: ReadHostDistribution;
   readonly projectDocuments: ProjectDocuments;
   readonly projectSettings: ProjectSettings;
-  readonly projectRuntime: ProjectRuntime;
   readonly projectHostSurface: ProjectHostSurface;
   readonly projectSkills: ProjectSkills;
   readonly projectAgents: ProjectAgents;
@@ -256,6 +250,7 @@ export interface PackageBuildRoot {
 }
 
 export type CreatePackageBuildRoot = (createPackageBuildRootArgs: {
+  readonly hosts: HostBuildTable;
   readonly platform: Platform;
   readonly outliner: MarkdownOutliner;
   readonly sources: BuildSources;

@@ -1,3 +1,5 @@
+import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
+import { claudeDistribution } from "../hosts/claude/distribution.ts";
 import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
 import { createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
@@ -12,7 +14,8 @@ import { createCodexSettingsRenderer } from "../hosts/codex/projection/settings-
 import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
 import { expect, test } from "bun:test";
 import { host, source } from "../kernel/fixtures/values.fixture.ts";
-import { hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
+import {
+  HOST_BUILD_MEMBERS, hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 
@@ -164,6 +167,14 @@ test("OpenCode settings register the native settings and captured plugin produce
     host: opencode, inputs: [source("opencode.json"), source("plugin/aidlc-opencode-adapter.ts")],
     render: createOpenCodeSettingsRenderer,
   } });
+});
+
+test("Claude enters the full table only with every real concept, native fills and distribution", () => {
+  expect(HOST_BUILD_MEMBERS).toHaveLength(1);
+  expect(HOST_BUILD_MEMBERS[0]?.host).toEqual(host({ name: "claude", directory: ".claude" }));
+  expect(HOST_BUILD_MEMBERS[0]?.fills).toBe(CLAUDE_ONBOARDING_FILLS);
+  expect(HOST_BUILD_MEMBERS[0]?.distribution).toBe(claudeDistribution);
+  expect(HOST_BUILD_MEMBERS[0]?.bindingHeading).toBe("Claude Code");
 });
 
 test("Codex agents directly register the native factory without authored capture", () => {

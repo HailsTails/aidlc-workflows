@@ -1,17 +1,17 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174485,
+  "total": 174383,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
-    "aidlc/no-comments": 113222,
+    "aidlc/no-comments": 113146,
     "complexity": 3075,
     "Context boundary": 48,
     "Harness branching": 431,
     "max-depth": 2125,
-    "max-len": 48863,
+    "max-len": 48837,
     "max-lines-per-function": 3526,
     "max-params": 1766,
     "Monolith": 47,
@@ -1349,14 +1349,6 @@
       "max-depth": 2,
       "prefer-const": 1,
       "no-nested-ternary": 6
-    },
-    "harness/claude/manifest.ts": {
-      "aidlc/no-comments": 73,
-      "max-len": 15
-    },
-    "harness/claude/onboarding.fills.ts": {
-      "aidlc/no-comments": 3,
-      "max-len": 11
     },
     "harness/codex/emit.ts": {
       "aidlc/no-comments": 58,

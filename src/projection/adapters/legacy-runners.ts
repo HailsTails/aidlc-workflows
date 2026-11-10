@@ -153,3 +153,12 @@ export const prepareLegacyRunners = async (request: LegacyRunnerRequest,
   const removed = await ports.scratch.removeFolder({ folder: frame.value });
   return removed.ok ? source : failedSource(`The private runner frame could not be removed: ${removed.refusal.code}`);
 };
+
+export const prepareLegacyRunnersInFrame = async (request: CommandSourceRequest, frame: {
+  readonly folder: URL; readonly ports: RunnerPorts;
+}): Promise<CommandSource> => {
+  const scopes = captureCommandScopes(request);
+  if (!scopes.ok) return { read: () => refused(scopes.refusal) };
+  return executeFrame({ ...request, projectRoot: frame.folder, temporaryRoot: frame.folder },
+    { scratch: frame.folder, scopes: scopes.value, ports: frame.ports });
+};
