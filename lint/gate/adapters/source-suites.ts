@@ -1,14 +1,10 @@
-import { CONTEXTS } from "../../context-map.ts";
-import { HARNESS_FOLDER_NAMES } from "../../harness-folders.ts";
 import type { TestSuite } from "../application/tests-check.ts";
 
-const folderSuite = (root: string): TestSuite => ({
-  name: root,
-  triggers: ["src/**", "scripts/package.ts"],
-  tests: [`${root}/**/*.test.ts`],
-});
-
-export const SOURCE_SUITES: readonly TestSuite[] = [
-  ...CONTEXTS.map((context) => folderSuite(`src/${context}`)),
-  ...HARNESS_FOLDER_NAMES.map((harness) => folderSuite(`src/hosts/${harness}`)),
+export const sourceSuites = (bun: string): readonly TestSuite[] => [
+  {
+    name: "src",
+    triggers: ["src/**", "scripts/package.ts"],
+    tests: ["src/**/*.test.ts"],
+    command: () => ({ label: "bun test ./src", argv: [bun, "test", "./src"] }),
+  },
 ];
