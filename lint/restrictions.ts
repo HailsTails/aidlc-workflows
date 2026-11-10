@@ -224,7 +224,7 @@ const PUBLISHED_TO_HOSTS = "domain/|application/(boundary-ports|ports(/[\\w-]+)?
 
 const contextReachFromHosts = (published: string): ImportRestriction[] =>
   CONTEXTS.filter((context) => context !== "kernel").map((context) => ({
-    regex: `(^|/)${context}/(?!${published})`,
+    regex: `(?<!^[.])(^|/)${context}/(?!${published})`,
     message:
       `Host bundle: a host implements ports. Import only ${context}'s domain, ` +
       "application/ports.ts or application/boundary-ports.ts; the root wires the rest.",
@@ -235,6 +235,11 @@ export const hostBundleImportRestrictions = (): ImportRestriction[] => [
   ...testSupportRestriction("adapters"),
   monolithReachBack,
 ];
+
+export const hostBundleRefusalsFor = (specifier: string): readonly ImportRestriction[] =>
+  hostBundleImportRestrictions().filter((restriction) =>
+    new RegExp(restriction.regex).test(specifier),
+  );
 
 export const hostTestImportRestrictions = (): ImportRestriction[] => [
   ...contextReachFromHosts(`${PUBLISHED_TO_HOSTS}|fixtures/`),
