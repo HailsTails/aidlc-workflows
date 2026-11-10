@@ -75,6 +75,7 @@ export type HostBuildMembers = {
   readonly settings: ConceptMembers<HostSettingsRenderer>;
   readonly documents: ConceptMembers<HostDocumentRenderer>;
   readonly fills: OnboardingFills;
+  readonly bindingHeading: string;
   readonly distribution?: HostDistributionReader;
 };
 
