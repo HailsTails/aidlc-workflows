@@ -33,3 +33,4 @@ export const CODEX_AUTHORED_PLACEMENTS = [
   { source: "hooks/aidlc-codex-adapter.ts", destination: ".codex/hooks/aidlc-codex-adapter.ts" },
   { source: "dot-gitignore", destination: ".gitignore" },
 ] as const satisfies readonly AuthoredPlacement[];
+export const CODEX_BINDING_HEADING = "Codex CLI";

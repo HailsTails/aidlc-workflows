@@ -1,3 +1,4 @@
+import { createCodexDocumentRenderer } from "../hosts/codex/projection/document-renderer.ts";
 import { createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
 import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
 import { expect, test } from "bun:test";
@@ -106,4 +107,9 @@ test("Kiro documents are registered with no authored capture and the shared head
     reason: "harness bindings: aidlc-common/protocols/missing.md line 1: a binding run must name each tool once " +
       "(found Kiro CLI; missing Claude Code, Kiro IDE, Codex CLI, Cursor, opencode, GitHub Copilot).",
   } });
+});
+
+test("Codex documents directly register the native renderer without authored capture", () => {
+  const codex = host({ name: "codex", directory: ".codex" });
+  expect(hostDocumentMembers(codex)).toEqual({ host: codex, inputs: [], render: createCodexDocumentRenderer });
 });
