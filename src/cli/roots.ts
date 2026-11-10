@@ -12,6 +12,7 @@ import type { Result } from "../kernel/result.ts";
 import type { KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout, HostDistribution } from "../packaging/domain/payload.ts";
+import type { DelegateShellFacts } from "../projection/application/ports/delegate-shell.ts";
 import type { AuthoredFilePreparer } from "../projection/application/ports/host-sources.ts";
 import type { CommandPlacement, CommandSource } from "../projection/application/ports/commands.ts";
 import type { Harness, Rendering } from "../projection/application/ports/harness.ts";
@@ -81,7 +82,11 @@ export type HostBuildMembers = {
   readonly distribution?: HostDistributionReader;
 };
 
-export type HostDistributionReader = () => Result<HostDistribution, KernelRefusal>;
+export type HostDistributionInputs = {
+  readonly delegateShellFacts: DelegateShellFacts;
+};
+
+export type HostDistributionReader = (inputs: HostDistributionInputs) => Result<HostDistribution, KernelRefusal>;
 
 export type HostBuildTable = readonly HostBuildMembers[];
 
