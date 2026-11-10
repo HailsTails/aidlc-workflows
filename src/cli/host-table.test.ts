@@ -2,7 +2,7 @@ import { createCodexSettingsRenderer } from "../hosts/codex/projection/settings-
 import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
 import { expect, test } from "bun:test";
 import { host, source } from "../kernel/fixtures/values.fixture.ts";
-import { hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
+import { hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 
@@ -86,4 +86,10 @@ test("the Codex settings table registers its native factory without authored fil
   } });
   expect(hostSettingsMembers(host({ name: "opencode", directory: ".aidlc" })))
     .toEqual({ ok: true, value: null });
+});
+
+test("the documents root receives every registered binding heading", () => {
+  expect(hostBindingHeadings()).toEqual([
+    "Claude Code", "Kiro CLI", "Kiro IDE", "Codex CLI", "Cursor", "opencode", "GitHub Copilot",
+  ]);
 });

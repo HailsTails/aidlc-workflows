@@ -87,6 +87,7 @@ export const knowledgeDocumentFixture = (): NeutralDocument => ({
 export const documentRenderingInputsFixture = ({ harnessDir }: {
   readonly harnessDir: string;
 }): DocumentRenderingInputs => ({
+  bindingHeadings: ["Claude Code", "Kiro CLI", "Kiro IDE", "Codex CLI", "Cursor", "opencode", "GitHub Copilot"],
   fills: ONBOARDING_FILLS_FIXTURE,
   tokens: tokenBindingsFixture({ harnessDir }),
 });
