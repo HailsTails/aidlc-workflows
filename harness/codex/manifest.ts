@@ -92,8 +92,6 @@ const manifest: HarnessManifest = {
   // discovery reads only the emitted .toml).
   coreDirs: [
     { src: "tools", dst: "tools" },
-    { src: "aidlc-common", dst: "aidlc-common" },
-    { src: "knowledge", dst: "knowledge" },
     { src: "rules", dst: "aidlc-rules" },
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
