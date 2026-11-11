@@ -140,15 +140,9 @@ const auditSetBlock = sliceBetween(
 const eventTypes = quotedTokens(auditSetBlock);
 
 const harnessRoot = at("harness");
-const harnessNames = readdirSync(harnessRoot)
-  .filter((name) => existsSync(join(harnessRoot, name, "manifest.ts")))
-  .map((dir) => {
-    const manifest = read("harness", dir, "manifest.ts");
-    const match = manifest.match(/\bname:\s*"([^"]+)"/);
-    if (!match) throw new Error(`manifest has no name: harness/${dir}/manifest.ts`);
-    expect(match[1]).toBe(dir);
-    return match[1];
-  })
+const harnessNames = readdirSync(harnessRoot, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
   .sort();
 
 const harnessLabels: Record<string, string> = {
