@@ -57,6 +57,7 @@ import {
 import { OPENCODE_SKILL_INPUTS, createOpenCodeSkillRenderer } from "../hosts/opencode/projection/skill-renderer.ts";
 import { KIRO_SKILL_INPUTS, createKiroSkillRenderer } from "../hosts/kiro/projection/skill-renderer.ts";
 import { CODEX_SKILL_INPUTS, createCodexSkillRenderer } from "../hosts/codex/projection/skill-renderer.ts";
+import { copilotAgents } from "../hosts/copilot/projection/agent-renderer.ts";
 import { createClaudeSkillRenderer } from "../hosts/claude/projection/skill-renderer.ts";
 import { CLAUDE_SKILL_INPUTS } from "../hosts/claude/projection/skill-renderer.ts";
 import type { HostIdentity } from "../kernel/host.ts";
@@ -67,6 +68,7 @@ import type { ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers, HostSettingsMembers } from "./roots.ts";
 
 const AGENT_MEMBERS = [
+  { name: "copilot", inputs: [], render: copilotAgents },
   { name: "cursor", inputs: [], render: cursorAgents },
   { name: "opencode", inputs: [], render: openCodeAgents },
   { name: "codex", inputs: [], render: codexAgents },
