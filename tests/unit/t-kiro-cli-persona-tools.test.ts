@@ -1,5 +1,3 @@
-// covers: file:src/hosts/kiro/projection/agent-renderer.ts, file:harness/kiro-ide/manifest.ts
-//    file:scripts/package.ts
 // Kiro CLI's 3.0 engine loads each persona's prompt .md beside its agent JSON
 // as an agent of the same name, and a dispatch runs that one (#1394): with no
 // tools line the reviewer had only disclose_context, report_progress,
