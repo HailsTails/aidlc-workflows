@@ -1,6 +1,8 @@
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
+export const OPENCODE_BINDING_HEADING = "opencode";
+
 export const OPENCODE_HOST_DATA = {
   productName: "opencode",
   configNextStep: "run `opencode`, then `/aidlc --doctor`",
