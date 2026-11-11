@@ -22,7 +22,6 @@ export const EMIT_FILES: readonly string[] = [
   "harness/copilot/manifest.ts",
   "harness/cursor/manifest.ts",
   "harness/kiro-ide/manifest.ts",
-  "harness/kiro/manifest.ts",
   "harness/opencode/manifest.ts",
   "scripts/manifest-types.ts",
 ];

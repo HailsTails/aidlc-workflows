@@ -462,6 +462,11 @@ export function onboardingSpec({ directory, onboarding, fills }: {
     ...(native === null ? {} : { harnessDst: native }), fills };
 }
 
+export function onboardingFillsSource(name: ShippedHarnessName): string {
+  const native = `src/hosts/${name}/onboarding-fills.ts`;
+  return existsSync(join(REPO_ROOT, native)) ? native : `harness/${name}/onboarding.fills.ts`;
+}
+
 export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapabilities): {
   manifest: ShippedHarness["manifest"]; fills: OnboardingFills;
 } | null {
