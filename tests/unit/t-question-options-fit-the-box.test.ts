@@ -77,7 +77,7 @@ describe("the questions file fits the harness's question box", () => {
   });
 
   test("a harness whose box takes five or more keeps A-E", () => {
-    const unlimited = HARNESS_NAMES.filter((name) => questionOptions(name) === undefined);
+    const unlimited = HARNESS_NAMES.filter((name) => (questionOptions(name) ?? 5) >= 5);
     expect(unlimited.length).toBeGreaterThan(0);
     for (const name of unlimited) expect(lettersIn(name), name).toEqual(["A-E", "A-E", "A-E"]);
   });

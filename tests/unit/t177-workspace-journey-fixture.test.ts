@@ -40,8 +40,8 @@ import {
   setupWorkspaceJourney,
 } from "../harness/fixtures.ts";
 import {
-  HARNESS_MATRIX, harnessByName, validateManifest, agentFrontmatterGrantsIdeTools,
-  legacyHarnessManifest, fullHostView, onboardingSpec,
+  HARNESS_MATRIX, harnessByName, agentFrontmatterGrantsIdeTools,
+  fullHostView, onboardingSpec,
 } from "../harness/harness-matrix.ts";
 import { runnerProducer, orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 import { discoverSiblingRepos, listIntents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
@@ -118,41 +118,6 @@ test("native entry location has its own declared value and standard default", ()
     harnessDir: ".host", orchestratorSkillPath: "native/skills/aidlc/SKILL.md",
   }))
     .toBe("native/skills/aidlc/SKILL.md");
-});
-
-test.each([
-  "copilot",
-] as const)(
-  "%s: either producer retains the host's declared layout and include surfaces", (name) => {
-    const harness = harnessByName(name);
-    expect(validateManifest(
-      name, { ...legacyHarnessManifest(name), skipRunnerGen: true, emit: () => undefined },
-      harness.capabilities,
-    )).toBeUndefined();
-    expect(validateManifest(
-      name, { ...legacyHarnessManifest(name), skipRunnerGen: false, emit: () => undefined },
-      harness.capabilities,
-    )).toBeUndefined();
-  },
-);
-
-test("the validator still rejects an incorrect declared native layout", () => {
-  const harness = harnessByName("copilot");
-  expect(() => validateManifest("copilot", { ...legacyHarnessManifest("copilot"),
-    orchestratorSkillPath: "wrong/skills/aidlc/SKILL.md" }, harness.capabilities))
-    .toThrow(new Error(
-      "harness matrix [copilot]: skillsRoot does not agree with manifest.orchestratorSkillPath",
-    ));
-});
-
-test("the matrix uses the same producer refusal as the package caller", () => {
-  const harness = harnessByName("copilot");
-  expect(() => validateManifest(
-    "copilot", { ...legacyHarnessManifest("copilot"), skipRunnerGen: true, emit: null },
-    harness.capabilities,
-  )).toThrow(new Error(
-    "harness matrix [copilot]: Delegated runner production requires a manifest emit function.",
-  ));
 });
 
 test("the complete Claude route remains in the matrix after its legacy manifest retires", () => {
