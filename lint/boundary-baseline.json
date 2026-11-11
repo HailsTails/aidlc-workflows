@@ -1,17 +1,17 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174365,
+  "total": 174349,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
-    "aidlc/no-comments": 113142,
+    "aidlc/no-comments": 113138,
     "complexity": 3075,
     "Context boundary": 48,
     "Harness branching": 431,
     "max-depth": 2125,
-    "max-len": 48823,
+    "max-len": 48811,
     "max-lines-per-function": 3526,
     "max-params": 1766,
     "Monolith": 47,
@@ -1368,10 +1368,6 @@
     "harness/codex/manifest.ts": {
       "aidlc/no-comments": 61,
       "max-len": 5
-    },
-    "harness/codex/onboarding.fills.ts": {
-      "aidlc/no-comments": 4,
-      "max-len": 12
     },
     "harness/copilot/emit.ts": {
       "aidlc/no-comments": 47,
