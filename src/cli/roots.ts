@@ -13,6 +13,7 @@ import type { KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { DistributionLayout, HostDistribution } from "../packaging/domain/payload.ts";
 import type { DelegateShellFacts } from "../projection/application/ports/delegate-shell.ts";
+import type { ConceptMembers, HostProjectionParts } from "../projection/application/ports/host-parts.ts";
 import type { AuthoredFilePreparer } from "../projection/application/ports/host-sources.ts";
 import type { CommandPlacement, CommandSource } from "../projection/application/ports/commands.ts";
 import type { Harness, Rendering } from "../projection/application/ports/harness.ts";
@@ -25,7 +26,7 @@ import type { AuthoredHostFile, AuthoredPlacement } from "../projection/domain/h
 import type { DistributionChannel, ProjectedFile } from "../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
 import type { CompiledMethodFiles, Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
-import type { HostTokenChoices, TokenBindings } from "../projection/domain/template-token.ts";
+import type { TokenBindings } from "../projection/domain/template-token.ts";
 import type { AgentSlug } from "../workflow-definition/domain/identities.ts";
 import type { MethodSource } from "../workflow-definition/domain/method-source.ts";
 import type { Method } from "../workflow-definition/domain/method.ts";
@@ -50,11 +51,6 @@ export type BuildHost = {
   readonly layout: DistributionLayout;
 };
 
-export type ConceptMembers<Render> = {
-  readonly inputs: readonly SourcePath[];
-  readonly render: Render;
-};
-
 export type HostConceptMembers<Render> = ConceptMembers<Render> & {
   readonly host: HostIdentity;
 };
@@ -67,18 +63,8 @@ export type HostSettingsMembers = HostConceptMembers<HostSettingsRenderer>;
 
 export type HostDocumentMembers = HostConceptMembers<HostDocumentRenderer>;
 
-export type HostBuildMembers = {
+export type HostBuildMembers = HostProjectionParts & {
   readonly host: HostIdentity;
-  readonly tokens: HostTokenChoices;
-  readonly renderData: HostDataRenderer;
-  readonly placements: readonly AuthoredPlacement[];
-  readonly agents: ConceptMembers<HostAgentRenderer>;
-  readonly commands: CommandPlacement;
-  readonly skills: ConceptMembers<HostSkillRenderer>;
-  readonly settings: ConceptMembers<HostSettingsRenderer>;
-  readonly documents: ConceptMembers<HostDocumentRenderer>;
-  readonly fills: OnboardingFills;
-  readonly bindingHeading: string;
   readonly distribution: HostDistributionReader;
 };
 
@@ -87,6 +73,14 @@ export type HostDistributionInputs = {
 };
 
 export type HostDistributionReader = (inputs: HostDistributionInputs) => Result<HostDistribution, KernelRefusal>;
+
+export type HostModule = {
+  readonly host: HostIdentity;
+  readonly projection: HostProjectionParts;
+  readonly distribution: HostDistributionReader;
+};
+
+export type { ConceptMembers };
 
 export type HostBuildTable = readonly HostBuildMembers[];
 
