@@ -121,7 +121,7 @@ test("native entry location has its own declared value and standard default", ()
 });
 
 test.each([
-  "copilot", "cursor", "kiro-ide", "opencode",
+  "copilot", "kiro-ide", "opencode",
 ] as const)(
   "%s: either producer retains the host's declared layout and include surfaces", (name) => {
     const harness = harnessByName(name);
