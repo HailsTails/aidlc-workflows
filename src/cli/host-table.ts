@@ -8,6 +8,9 @@ import { codexCommandPath } from "../hosts/codex/projection/command-renderer.ts"
 import { cursorDistribution } from "../hosts/cursor/distribution.ts";
 import { CURSOR_ONBOARDING_FILLS } from "../hosts/cursor/onboarding-fills.ts";
 import { cursorCommandPath } from "../hosts/cursor/projection/command-renderer.ts";
+import { kiroIdeDistribution } from "../hosts/kiro-ide/distribution.ts";
+import { KIRO_IDE_ONBOARDING_FILLS } from "../hosts/kiro-ide/onboarding-fills.ts";
+import { kiroIdeCommandPath } from "../hosts/kiro-ide/projection/command-renderer.ts";
 import { kiroDistribution } from "../hosts/kiro/distribution.ts";
 import { KIRO_ONBOARDING_FILLS } from "../hosts/kiro/onboarding-fills.ts";
 import { kiroCommandPath } from "../hosts/kiro/projection/command-renderer.ts";
@@ -30,7 +33,9 @@ import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";
 import { KIRO_SETTINGS_INPUTS, createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 import { createClaudeDocumentRenderer } from "../hosts/claude/projection/document-renderer.ts";
 import type { HostDocumentMembers } from "./roots.ts";
-import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING } from "../hosts/kiro-ide/host-data.ts";
+import {
+  KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TOKENS, kiroIdeHostIdentity,
+} from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
 import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING } from "../hosts/copilot/host-data.ts";
 import {
@@ -190,6 +195,9 @@ const ROUTED_ENTRIES: readonly HostEntry[] = [
     fills: CODEX_ONBOARDING_FILLS, bindingHeading: CODEX_BINDING_HEADING, distribution: codexDistribution },
   { identity: cursorHostIdentity, tokens: CURSOR_TOKENS, commands: cursorCommandPath,
     fills: CURSOR_ONBOARDING_FILLS, bindingHeading: CURSOR_BINDING_HEADING, distribution: cursorDistribution },
+  { identity: kiroIdeHostIdentity, tokens: KIRO_IDE_TOKENS, commands: kiroIdeCommandPath,
+    fills: KIRO_IDE_ONBOARDING_FILLS, bindingHeading: KIRO_IDE_BINDING_HEADING,
+    distribution: kiroIdeDistribution },
 ];
 
 const buildMembers = (entry: HostEntry): HostBuildTable => {

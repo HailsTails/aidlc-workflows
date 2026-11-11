@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { KIRO_IDE_HOST_DATA, KIRO_IDE_TOKENS, KIRO_IDE_AUTHORED_PLACEMENTS } from "./host-data.ts";
+import { host } from "../../kernel/fixtures/values.fixture.ts";
+import { kiroIdeHostIdentity, KIRO_IDE_HOST_DATA, KIRO_IDE_TOKENS, KIRO_IDE_AUTHORED_PLACEMENTS } from "./host-data.ts";
 
 test("Kiro IDE declares its native runtime facts", () => {
   expect(KIRO_IDE_HOST_DATA).toEqual({
@@ -79,4 +80,8 @@ test("Kiro IDE places its authored conductor, helpers, memory reference and giti
     "destination": ".gitignore"
   }
 ]);
+});
+
+test("Kiro IDE owns its checked distribution identity and native directory", () => {
+  expect(kiroIdeHostIdentity()).toEqual({ ok: true, value: host({ name: "kiro-ide", directory: ".kiro" }) });
 });

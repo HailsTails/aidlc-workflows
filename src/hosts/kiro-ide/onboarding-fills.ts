@@ -1,32 +1,26 @@
-// harness/kiro-ide/onboarding.fills.ts — onboarding-doc fills for the Kiro row
-// that serves both Kiro IDE 1.x and Kiro CLI v3.
-// The packager fills core/templates/onboarding-harness.md into the always-on
-// dist/kiro-ide/.kiro/steering/aidlc-onboarding.md, with .kiro token projection.
-// The root AGENTS.md stays neutral, identical to the other sharing harnesses.
+import type { OnboardingFills } from "../../projection/domain/neutral-surface.ts";
 
-import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
-
-const fills: OnboardingFills = {
+export const KIRO_IDE_ONBOARDING_FILLS: OnboardingFills = {
   invoke: "/aidlc",
   slots: {
-    frontmatter: "---\ninclusion: always\n---",
-    title_block: `# AI-DLC on Kiro
+    ["frontmatter"]: "---\ninclusion: always\n---",
+    ["title_block"]: `# AI-DLC on Kiro
 
 This project uses AI-DLC (AI-Driven Development Life Cycle) for structured development, running on **Kiro** — Kiro IDE and Kiro CLI read the same \`.kiro/\` tree. The workspace shell ships in \`.kiro/\` (no setup command); describe what you want to build and it sets up the workflow for you. Run \`/aidlc\` followed by a scope or project description to begin. Run \`/aidlc --doctor\` to validate your setup, \`/aidlc --version\` to print the framework version, \`/aidlc --stage <slug>\` to jump to a specific stage, \`/aidlc --phase <name>\` to jump to a phase, \`/aidlc --depth <level>\` to override depth, \`/aidlc --test-strategy <level>\` to override test volume, \`/aidlc --review <class>\` to cap stage reviews (adversarial, advisory, none). Run \`/aidlc compose "<task>"\` to get a plan tailored to that task (works up front, from a scan report via \`--report <path>\`, and mid-workflow to re-shape the pending stages - every proposal stops at an approve/edit/reject gate).`,
 
-    prereq_bullets: `- **Kiro IDE 1.1.70+ or Kiro CLI 2.24.1+**: the oldest builds this install has been checked on (\`/aidlc --doctor\` warns about an older \`kiro-cli\`; it cannot read the Kiro IDE version). Sign in and select Claude Opus 4.8 as the chat model before starting a workflow (the model picker in Kiro IDE, \`/model\` in Kiro CLI).
+    ["prereq_bullets"]: `- **Kiro IDE 1.1.70+ or Kiro CLI 2.24.1+**: the oldest builds this install has been checked on (\`/aidlc --doctor\` warns about an older \`kiro-cli\`; it cannot read the Kiro IDE version). Sign in and select Claude Opus 4.8 as the chat model before starting a workflow (the model picker in Kiro IDE, \`/model\` in Kiro CLI).
 - **Kiro CLI engine**: start Kiro CLI with \`kiro-cli --v3\`. Kiro CLI's v2 engine runs none of the \`.kiro/hooks/\` registrations, and Kiro CLI 2.33.0 or later takes the engine only from the command line or your own Kiro CLI settings, not from \`.kiro/settings/cli.json\`, which asks older releases for the v3 engine and the \`aidlc\` agent.
 - **bun**: Required for the CLI tools and hook scripts (tracking progress, writing the decision log, deciding what runs next). Install via \`curl -fsSL https://bun.sh/install | bash\`. Its hooks run with the PATH Kiro was started with: Kiro CLI, or Kiro IDE opened from a terminal, uses that terminal's PATH, so \`bun --version\` working there is enough. If Kiro IDE is opened from the dock or a desktop icon and its hooks do not run, run \`bun .kiro/tools/aidlc.ts doctor\` in such a terminal: its Runtime hook PATH row names the directory to add and where, so dock launches work after a restart. Until then, open the IDE from that terminal.
 - **Activation**: In Kiro IDE, new chats start on Kiro's Default agent, so choose **aidlc** in the chat panel's agent picker first (on Default, Kiro asks you to approve each command AI-DLC runs), then type the whole \`/aidlc ...\` request before pressing Enter. In Kiro CLI, start \`kiro-cli --v3\` in the project; it opens on the \`aidlc\` agent. The first time, Kiro CLI 2.33.0 or later asks whether you trust this workspace: if you know what is in this folder, choose "Trust, continue", since Kiro CLI loads the folder's hooks and agents only then ("Don't trust" exits). \`/aidlc\` loads the shipped \`skills/aidlc/SKILL.md\`, which drives the workflow. The \`.kiro/hooks/aidlc-*.json\` hook files register when a session starts, on both surfaces.
 - **Permissions**: the conductor and delegation-target agent \`.md\` files carry \`tools:\` grants and \`permissions.rules\` capability rules. The conductor delegates through the dispatch tool that runs each specialist under its own rules (\`invoke_sub_agent\` in Kiro IDE, \`orchestrate_subagent\` in Kiro CLI). The approval gates plus your Kiro permission settings remain the control boundary.`,
 
-    prereq_bullets_tail: "",
+    ["prereq_bullets_tail"]: "",
 
-    agents_note: `On Kiro the \`/aidlc\` command loads \`skills/aidlc/SKILL.md\` as the conductor, and \`agents/aidlc-aidlc.md\` exposes that conductor in the agent selector (and is Kiro CLI's default agent). The full 14-role roster supplies the four delegated stages (2.1 pipeline, 2.2 subagent, 2.4 mob, 3.5 subagent), reviewer passes, and composer requests through Markdown personas with \`tools:\` grants and \`permissions.rules\`. This distribution ships no agent-v1 JSON files.`,
+    ["agents_note"]: `On Kiro the \`/aidlc\` command loads \`skills/aidlc/SKILL.md\` as the conductor, and \`agents/aidlc-aidlc.md\` exposes that conductor in the agent selector (and is Kiro CLI's default agent). The full 14-role roster supplies the four delegated stages (2.1 pipeline, 2.2 subagent, 2.4 mob, 3.5 subagent), reviewer passes, and composer requests through Markdown personas with \`tools:\` grants and \`permissions.rules\`. This distribution ships no agent-v1 JSON files.`,
 
-    structure_extra: "",
+    ["structure_extra"]: "",
 
-    sections_before_resumption: `## What's different on this harness
+    ["sections_before_resumption"]: `## What's different on this harness
 
 This is the same AI-DLC core that ships to every harness: the same ordered steps, the same approval gates, and the same written record of what was decided, rendered onto Kiro. On Kiro IDE and Kiro CLI:
 
@@ -41,8 +35,6 @@ This is the same AI-DLC core that ships to every harness: the same ordered steps
 The guide for this Kiro distribution (install, hook wiring, and harness differences) is \`docs/guide/harnesses/kiro-ide.md\`.
 `,
 
-    sections_after_resumption: "",
+    ["sections_after_resumption"]: "",
   },
 };
-
-export default fills;

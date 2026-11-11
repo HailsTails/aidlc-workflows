@@ -138,7 +138,7 @@ import { copyChannelDispatcherCommands, ROUTES, TOOLS } from "../core/tools/aidl
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../src/packaging/adapters/legacy-distribution.ts";
-import { kiroIdeSteering } from "../core/tools/aidlc-includes.ts";
+import { kiroIdeSteeringText } from "../src/projection/adapters/legacy-includes.ts";
 import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -946,7 +946,7 @@ async function buildTree(
   // IDE does not expand file references there), so a fresh install's first
   // chat already holds the shipped memory the engine would write.
   if (m.name === "kiro-ide") {
-    writeFileSync(join(treeRoot, "steering", "aidlc-active-memory.md"), kiroIdeSteering(outRoot, "default").text);
+    writeFileSync(join(treeRoot, "steering", "aidlc-active-memory.md"), kiroIdeSteeringText(outRoot, "default"));
   }
 
   // 2d. Emit the active-space cursor (aidlc/active-space -> "default") — part of
@@ -1668,6 +1668,8 @@ async function buildHost({ name, outRoot, channel }: {
   if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
   writeProjectedFiles({ files: rendered.value.projection.files, projectRoot: outRoot });
   const treeRoot = join(outRoot, members.host.directory);
+  const steering = join(treeRoot, "steering", "aidlc-active-memory.md");
+  if (existsSync(steering)) writeFileSync(steering, kiroIdeSteeringText(outRoot, "default"));
   emitPluginAuthoringData(treeRoot);
   const view = routedView({ ...routed, files: rendered.value.projection.files });
   writeProjectionData(outRoot, treeRoot, view);
