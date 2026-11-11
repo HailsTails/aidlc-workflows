@@ -11,13 +11,16 @@ import { createCursorSettingsRenderer } from "../hosts/cursor/projection/setting
 import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
 import { openCodeAgents } from "../hosts/opencode/projection/agent-renderer.ts";
 import { createOpenCodeSettingsRenderer } from "../hosts/opencode/projection/settings-renderer.ts";
-import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
 import { createKiroIdeSettingsRenderer } from "../hosts/kiro-ide/projection/settings-renderer.ts";
 import { createCodexDocumentRenderer } from "../hosts/codex/projection/document-renderer.ts";
 import { createCodexSettingsRenderer } from "../hosts/codex/projection/settings-renderer.ts";
 import { documentRenderingInputsFixture } from "../projection/fixtures/document-rendering.fixture.ts";
 import { expect, test } from "bun:test";
-import { host, source } from "../kernel/fixtures/values.fixture.ts";
+import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
+import { accept } from "../kernel/fixtures/accept.ts";
+import { SCRATCH_AGENT_INPUTS } from "../projection/fixtures/scratch-host.fixture.ts";
+import { agent } from "../workflow-definition/fixtures/identities.fixture.ts";
+import { methodSource } from "../workflow-definition/fixtures/method-source.fixture.ts";
 import {
   HOST_BUILD_MEMBERS, hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
@@ -128,8 +131,30 @@ test("Kiro IDE settings and conductor have distinct native members", () => {
   } });
   expect(hostAgentInputs("kiro-ide")).toEqual(["agents/aidlc-aidlc.md"]);
   expect(hostAgentMembers(ide)).toEqual({ ok: true, value: {
-    host: ide, inputs: [source("agents/aidlc-aidlc.md")], render: kiroIdeAgents,
+    host: ide, inputs: [source("agents/aidlc-aidlc.md")], render: expect.any(Function),
   } });
+});
+
+test("the Kiro IDE composition binds its persona port to the real Kiro renderer", () => {
+  const members = accept(hostAgentMembers(host({ name: "kiro-ide", directory: ".kiro" })));
+  const rendering = members?.render({ ...SCRATCH_AGENT_INPUTS,
+    host: host({ name: "kiro-ide", directory: ".kiro" }),
+    inlineAgents: new Set([agent("aidlc-architect-agent")]),
+    documents: () => ({ ok: true, value: "---\nname: architect\n---\nPersona\n" }),
+  });
+  expect(rendering?.renderAgent({ agent: {
+    slug: agent("aidlc-architect-agent"), source: methodSource({ kind: "agent", within: "aidlc-architect-agent.md" }),
+    displayName: "Architect", description: "Architecture", owner: { kind: "core" },
+    model: { kind: "tier", tier: "judgment" }, examples: [], tools: { disallowed: ["Task"] }, maxTurns: null,
+    persona: { text: "# Architect\n", headings: [] }, additions: { afterPreflight: [], endOfBody: [] },
+  }, knowledge: [] })).toEqual({ ok: true, value: [
+    { path: path(".kiro/agents/aidlc-architect-agent.md"), mode: "regular", availability: "always",
+      origin: { kind: "method-source", path: methodSource({ kind: "agent", within: "aidlc-architect-agent.md" }) },
+      content: { kind: "text", text: expect.stringContaining('tools: ["read", "write", "shell"]\nincludeMcpJson: true\npermissions:\n') } },
+    { path: path(".kiro/aidlc-common/personas/aidlc-architect-agent.md"), mode: "regular", availability: "always",
+      origin: { kind: "method-source", path: methodSource({ kind: "agent", within: "aidlc-architect-agent.md" }) },
+      content: { kind: "text", text: "---\nname: architect\n---\nPersona\n" } },
+  ] });
 });
 
 import { claudeAgents } from "../hosts/claude/projection/agent-renderer.ts";

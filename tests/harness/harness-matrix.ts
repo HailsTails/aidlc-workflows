@@ -1,3 +1,6 @@
+import {
+  DELEGATE_SHELL_FACTS,
+} from "../../src/projection/fixtures/delegate-shell-facts.fixture.ts";
 import { tokenBindingsFixture } from "../../src/projection/fixtures/token-bindings.fixture.ts";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -281,6 +284,7 @@ function producesConductorAgent(name: ShippedHarnessName,
   const authored = join(HARNESS_ROOT, name, conductor);
   if (!existsSync(authored)) fail(name, "agent producer's captured conductor source is missing");
   const rendered = member.value.render({ host, channel: "copy",
+    delegateShellFacts: DELEGATE_SHELL_FACTS,
     tokens: tokenBindingsFixture({ harnessDir: manifest.harnessDir }),
     persona: () => accepted(""), documents: () => accepted(""), tomlModels: () => accepted(""),
     inlineAgents: new Set(),

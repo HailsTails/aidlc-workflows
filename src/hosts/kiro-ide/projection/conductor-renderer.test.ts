@@ -1,3 +1,4 @@
+import { DELEGATE_SHELL_FACTS } from "../../../projection/fixtures/delegate-shell-facts.fixture.ts";
 import { tokenBindingsFixture } from "../../../projection/fixtures/token-bindings.fixture.ts";
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../../kernel/result.ts";
@@ -6,7 +7,9 @@ import type { AgentRenderingInputs } from "../../../projection/application/ports
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import { agent } from "../../../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../../../workflow-definition/fixtures/method-source.fixture.ts";
-import { kiroIdeAgents } from "./agent-renderer.ts";
+import { createKiroIdeAgents } from "./agent-renderer.ts";
+
+const kiroIdeAgents = createKiroIdeAgents({ personas: () => () => accepted([]) });
 
 const agentFixture: Agent = {
   slug: agent("aidlc-architect-agent"), source: methodSource({ kind: "agent", within: "aidlc-architect-agent.md" }),
@@ -21,6 +24,7 @@ const expanded = { ...file, content: { kind: "text" as const,
 const prepared = { ...file, content: { kind: "text" as const,
   text: 'before\n        - "aidlc engine *"\n        - "aidlc doctor"\nafter\n' } };
 const inputs: AgentRenderingInputs = {
+  delegateShellFacts: DELEGATE_SHELL_FACTS,
   tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
   documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(),
   host: host({ name: "kiro-ide", directory: ".kiro" }), channel: "native", files: [file],
@@ -38,7 +42,7 @@ test("conductor expands authored invocation first then prepares once at its nati
   expect(prepare).toHaveBeenCalledWith(expanded);
 });
 
-test("D5 leaves persona rendering with the existing emitter", () => {
+test("persona delegation does not invoke the conductor preparer", () => {
   const prepare = mock(() => accepted(prepared));
   expect(kiroIdeAgents({ ...inputs, prepare }).renderAgent({ agent: agentFixture, knowledge: [] })).toEqual(accepted([]));
   expect(prepare).not.toHaveBeenCalled();
