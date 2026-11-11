@@ -1,9 +1,9 @@
 import type { HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
+import { projectActiveMemoryReferences as projectSharedActiveMemoryReferences } from "../../../projection/domain/active-memory.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 
-const projectActiveMemoryReferences = (raw: string): string => raw
-  .replaceAll("aidlc/spaces/<active-space>/memory/", "aidlc/active-memory/")
+const projectActiveMemoryReferences = (raw: string): string => projectSharedActiveMemoryReferences(raw)
   .replaceAll(".aidlc/rules/aidlc-org.md", "aidlc/active-memory/org.md")
   .replaceAll(".aidlc/rules/aidlc-team.md", "aidlc/active-memory/team.md")
   .replaceAll(".aidlc/rules/aidlc-project.md", "aidlc/active-memory/project.md")
