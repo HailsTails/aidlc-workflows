@@ -175,7 +175,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
       project: (target) => projectFor({ authored: loaded.value, target }, projection.serializeMethod) }) : loaded;
   };
   return {
-    readHostDistribution: readDistribution,
+    settingsCapabilities: projection.settingsCapabilities, readHostDistribution: readDistribution,
     projectHost: hostProjector({ projection, hosts: request.hosts, readDistribution,
       capture: fullHostCapture({ projection, core: request.sources.core, stamp: createBuildPackaging().stamp,
         readSessions, readNeutral }) }),

@@ -19,7 +19,7 @@ import type { Harness, Rendering } from "../projection/application/ports/harness
 import type { HostAgentRenderer } from "../projection/application/ports/agents.ts";
 import type { HostDataRenderer } from "../projection/application/ports/host-surface.ts";
 import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
-import type { HostSettingsRenderer } from "../projection/application/ports/settings.ts";
+import type { HostSettingsRenderer, SettingsCapabilities } from "../projection/application/ports/settings.ts";
 import type { HostSkillRenderer } from "../projection/application/ports/skills.ts";
 import type { AuthoredHostFile, AuthoredPlacement } from "../projection/domain/host-surface.ts";
 import type { DistributionChannel, ProjectedFile } from "../projection/domain/projected-file.ts";
@@ -234,6 +234,7 @@ export type ReadHostDistribution = (request: {
   readonly host: HostIdentity;
 }) => Result<HostDistribution, readonly (KernelRefusal | ProjectionRefusal)[]>;
 export interface PackageBuildRoot {
+  readonly settingsCapabilities: SettingsCapabilities;
   readonly projectHost: ProjectHost;
   readonly readHostDistribution: ReadHostDistribution;
   readonly projectDocuments: ProjectDocuments;

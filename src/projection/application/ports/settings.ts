@@ -34,6 +34,8 @@ export type SettingsRenderingInputs = {
   readonly entrypoints: readonly SourcePath[];
 };
 
+export type SettingsCapabilities = Pick<SettingsRenderingInputs, "extendedSubprocessTimeoutMs" | "hookTrust">;
+
 export type HostSettingsRenderer = (
   inputs: SettingsRenderingInputs,
 ) => Pick<Harness, "renderSettings" | "renderHookRegistrations">;

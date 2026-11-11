@@ -32,7 +32,7 @@ import type { BuildProjection } from "./application/ports/build-projection.ts";
 import type { HostFileReader } from "./application/ports/host-sources.ts";
 import type { LegacyRunnerProcess, LegacyRunnerScratch } from "./application/ports/legacy-runner.ts";
 import type { AgentProjectionRequest, AgentRenderingInputs } from "./application/ports/agents.ts";
-import type { SettingsProjectionRequest, SettingsRenderingInputs } from "./application/ports/settings.ts";
+import type { SettingsCapabilities, SettingsProjectionRequest, SettingsRenderingInputs } from "./application/ports/settings.ts";
 import type { CopyChannelAllows, CopyChannelAllowSource } from "./application/ports/copy-channel.ts";
 import type { HarnessAssembly, HarnessAssemblyRequest } from "./application/ports/harness-assembly.ts";
 import type { DelegateShellFacts } from "./application/ports/delegate-shell.ts";
@@ -56,18 +56,19 @@ const agentInputs = ({ agents, allows, facts }: {
     models: legacyAgentModelPolicy(agents.modelCap), formatDocuments: shippedFormatDocuments(), allows, delegateShellFacts: facts };
 };
 
-const settingsInputs = ({ settings, allows, timeoutMs }: {
-  readonly settings: SettingsProjectionRequest; readonly allows: CopyChannelAllows; readonly timeoutMs: number;
+const settingsInputs = ({ settings, allows, capabilities }: {
+  readonly settings: SettingsProjectionRequest; readonly allows: CopyChannelAllows;
+  readonly capabilities: SettingsCapabilities;
 }): SettingsRenderingInputs => ({ files: settings.files, prepare: settings.prepare,
   tokens: settings.tokens, channel: settings.channel, entrypoints: settings.entrypoints, allows,
-  extendedSubprocessTimeoutMs: timeoutMs, hookTrust: legacyHookTrustHash,
-  cliModels: legacyCliModelPolicy(settings.modelCap) });
+  ...capabilities, cliModels: legacyCliModelPolicy(settings.modelCap) });
 
-const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, allows, facts, timeoutMs, tables }: {
+const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, allows, facts, capabilities, tables }: {
   readonly assembly: HarnessAssemblyRequest;
   readonly surface: Pick<Harness, "renderHostData" | "placeAuthoredFile">;
   readonly rulesFolder: string | null; readonly commands: CommandSource;
-  readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts; readonly timeoutMs: number; readonly tables: SkillTableRenderer;
+  readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts; readonly capabilities: SettingsCapabilities;
+  readonly tables: SkillTableRenderer;
 }): Harness => {
   const commands = createCommandRenderers({ source, place: assembly.renderers.commandPlacement });
   const skills = assembly.renderers.skills({ files: assembly.files, prepare: assembly.prepare,
@@ -76,7 +77,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
     ...assembly.renderers.agents(agentInputs({ agents: { ...assembly,
       render: assembly.renderers.agents, rulesFolder }, allows, facts })),
     ...assembly.renderers.settings(settingsInputs({ settings: { ...assembly,
-      render: assembly.renderers.settings }, allows, timeoutMs })),
+      render: assembly.renderers.settings }, allows, capabilities })),
     ...assembly.renderers.documents({ fills: assembly.fills, tokens: assembly.tokens,
       bindingHeadings: assembly.bindingHeadings }),
     ...surface,
@@ -89,7 +90,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
 };
 
 const harnessAssembler = (ports: {
-  readonly allows: CopyChannelAllowSource; readonly facts: DelegateShellFacts; readonly timeoutMs: number;
+  readonly allows: CopyChannelAllowSource; readonly facts: DelegateShellFacts; readonly capabilities: SettingsCapabilities;
   readonly scratch: LegacyRunnerScratch; readonly processRunner: LegacyRunnerProcess;
   readonly frames: URL; readonly child: URL;
 }): HarnessAssembly => async (assembly) => {
@@ -107,7 +108,7 @@ const harnessAssembler = (ports: {
     harnessDir: assembly.host.directory, harnessName: assembly.host.distribution,
     files: [...runtime.value, ...descriptor.value] }, ports);
   return formatting.ok ? accepted(assembledMembers({ assembly, surface, rulesFolder: hostData.rulesFolder,
-    allows: reading.value, facts: ports.facts, timeoutMs: ports.timeoutMs, ...formatting.value })) : refused([formatting.refusal]);
+    allows: reading.value, facts: ports.facts, capabilities: ports.capabilities, ...formatting.value })) : refused([formatting.refusal]);
 };
 
 export const createHostedMethodProjection = (hosted: HostedHarness) => createProjectMethodForHarness({
@@ -121,17 +122,19 @@ export const createBuildProjection = (request: {
   readonly runnerFrames: URL; readonly runnerChild: URL;
 }): BuildProjection => {
   const allows = createCopyChannelAllowSource();
-  const timeoutMs = extendedSubprocessTimeoutMs();
   const facts = delegateShellFacts();
+  const settingsCapabilities: SettingsCapabilities = {
+    extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(), hookTrust: legacyHookTrustHash };
   return {
-    delegateShellFacts: facts,
-    assembleHarness: harnessAssembler({ allows, facts, timeoutMs, scratch: request.runnerScratch,
+    delegateShellFacts: facts, settingsCapabilities,
+    assembleHarness: harnessAssembler({ allows, facts, capabilities: settingsCapabilities, scratch: request.runnerScratch,
       processRunner: request.runnerProcess, frames: request.runnerFrames, child: request.runnerChild }),
     projectWorkspace,
     projectSettings: (settings) => {
       const reading = allows.read();
       return reading.ok ? projectMethodSettings({ method: settings.method,
-        harness: settings.render(settingsInputs({ settings, allows: reading.value, timeoutMs })) }) : reading;
+        harness: settings.render(settingsInputs({ settings, allows: reading.value,
+          capabilities: settingsCapabilities })) }) : reading;
     },
     projectRuntime, readMemoryCompanions: createMemoryCompanionReading(request.sessionFiles),
     readNeutral: createNeutralReading({ files: request.hostFiles, tree: request.sessionFiles }),
