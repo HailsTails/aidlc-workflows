@@ -214,6 +214,7 @@
         "src/cli/main{,.test}.ts",
         "src/cli/package-build-root{,.test}.ts",
         "src/cli/host-table{,.test}.ts",
+        "scripts/package-release.ts",
         "src/cli/eighth-host.test.ts",
         "src/projection/core-root{,.test}.ts",
         "harness/codex/manifest.ts",
