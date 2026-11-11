@@ -2,6 +2,9 @@ import { claudeDistribution } from "../hosts/claude/distribution.ts";
 import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
 import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
 import type { HostBuildMembers, HostBuildTable } from "./roots.ts";
+import { codexDistribution } from "../hosts/codex/distribution.ts";
+import { CODEX_ONBOARDING_FILLS } from "../hosts/codex/onboarding-fills.ts";
+import { codexCommandPath } from "../hosts/codex/projection/command-renderer.ts";
 import { kiroDistribution } from "../hosts/kiro/distribution.ts";
 import { KIRO_ONBOARDING_FILLS } from "../hosts/kiro/onboarding-fills.ts";
 import { kiroCommandPath } from "../hosts/kiro/projection/command-renderer.ts";
@@ -31,7 +34,9 @@ import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING } 
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
 import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TOKENS, kiroHostIdentity } from "../hosts/kiro/host-data.ts";
-import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING } from "../hosts/codex/host-data.ts";
+import {
+  CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TOKENS, codexHostIdentity,
+} from "../hosts/codex/host-data.ts";
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
@@ -176,6 +181,8 @@ const ROUTED_ENTRIES: readonly HostEntry[] = [
     fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: CLAUDE_BINDING_HEADING, distribution: claudeDistribution },
   { identity: kiroHostIdentity, tokens: KIRO_TOKENS, commands: kiroCommandPath,
     fills: KIRO_ONBOARDING_FILLS, bindingHeading: KIRO_BINDING_HEADING, distribution: kiroDistribution },
+  { identity: codexHostIdentity, tokens: CODEX_TOKENS, commands: codexCommandPath,
+    fills: CODEX_ONBOARDING_FILLS, bindingHeading: CODEX_BINDING_HEADING, distribution: codexDistribution },
 ];
 
 const buildMembers = (entry: HostEntry): HostBuildTable => {

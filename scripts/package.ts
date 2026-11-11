@@ -1406,31 +1406,6 @@ function rewriteNativeInvocations(
   rewriteKiroNativeAllowlists(outRoot, m);
   rewriteClaudeNativePermissions(outRoot, m);
   rewriteCursorNativePermissions(outRoot, m);
-  if (m.name === "codex") {
-    const { emitDefaultRules, emitTrustSeed } = require(
-      join(HARNESS_ROOT, m.name, "emit.ts"),
-    ) as {
-      emitDefaultRules: (
-        harnessDir: string,
-        invoke: string,
-        trustedNamespace: string,
-      ) => string;
-      emitTrustSeed: (
-        harnessDir: string,
-        harnessName: string,
-        invoke: string,
-        trustedNamespace: string,
-      ) => string;
-    };
-    writeFileSync(
-      join(outRoot, m.harnessDir, "rules", "default.rules"),
-      emitDefaultRules(m.harnessDir, "aidlc", TRUSTED_ROUTE_NAMESPACE),
-    );
-    writeFileSync(
-      join(outRoot, m.harnessDir, "trust-seed.toml"),
-      emitTrustSeed(m.harnessDir, m.name, "aidlc", TRUSTED_ROUTE_NAMESPACE),
-    );
-  }
   // Before the copy's hashes are recorded below, so a part that changed here
   // still has its copy bytes recognized, and --check builds it the same way.
   syncRootBlockParts(outRoot, m);
