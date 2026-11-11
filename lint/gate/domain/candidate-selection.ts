@@ -28,5 +28,17 @@ const PHASE_ONE = [
   "tests/{unit,smoke,integration,e2e}/**/*.test.ts",
 ];
 
+export const testsNamingDeleted = (request: {
+  readonly deleted: readonly string[];
+  readonly tests: readonly string[];
+  readonly textOf: (test: string) => string;
+}): readonly string[] =>
+  request.deleted.length === 0
+    ? []
+    : request.tests.filter((test) => {
+        const text = request.textOf(test);
+        return request.deleted.some((path) => text.includes(path));
+      });
+
 export const needsCandidateLegacy = (paths: readonly string[]): boolean =>
   paths.some((path) => !globMatcher(PHASE_ONE)(path));

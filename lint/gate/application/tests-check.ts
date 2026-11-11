@@ -1,4 +1,8 @@
-import { candidateBuildTests, needsCandidateLegacy } from "../domain/candidate-selection.ts";
+import {
+  candidateBuildTests,
+  needsCandidateLegacy,
+  testsNamingDeleted,
+} from "../domain/candidate-selection.ts";
 import { presentPaths } from "../domain/change.ts";
 import {
   classifyFailures,
@@ -134,11 +138,23 @@ const suiteRuns = (dependencies: TestsDependencies, scope: GateScope): readonly 
       heavy: suite.heavy === true,
     }));
 
+const namingDeleted = (
+  dependencies: TestsDependencies,
+  scope: GateScope,
+): readonly string[] =>
+  testsNamingDeleted({
+    deleted: scope.changes.filter((change) => change.kind === "deleted").map((c) => c.path),
+    tests: dependencies.workspace.filesMatching(dependencies.looseTests),
+    textOf: (test) => dependencies.workspace.read(test) ?? "",
+  });
+
 const looseRun = (
   dependencies: TestsDependencies, scope: GateScope, covered: ReadonlySet<string>,
 ): readonly Run[] => {
   const candidates = [
-    ...presentPaths(scope.changes), ...candidateBuildTests(pathsOf(scope.changes)),
+    ...presentPaths(scope.changes),
+    ...candidateBuildTests(pathsOf(scope.changes)),
+    ...namingDeleted(dependencies, scope),
   ];
   const files = [...new Set(candidates)]
     .filter(globMatcher(dependencies.looseTests))

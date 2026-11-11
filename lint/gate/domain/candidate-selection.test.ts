@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { candidateBuildTests, needsCandidateLegacy } from "./candidate-selection.ts";
+import {
+  candidateBuildTests,
+  needsCandidateLegacy,
+  testsNamingDeleted,
+} from "./candidate-selection.ts";
 
 const KIRO_IDE_HOST_DATA_CHANGE = [
   "harness/kiro-ide/manifest.ts",
@@ -58,5 +62,28 @@ describe("a candidate that touches shipped runtime or other test helpers", () =>
 
   test("another test helper still needs them", () => {
     expect(needsCandidateLegacy(["tests/harness/fixtures.ts"])).toBe(true);
+  });
+});
+
+describe("a candidate that deletes a file", () => {
+  const texts: Readonly<Record<string, string>> = {
+    "tests/unit/names-it.test.ts": "const path = 'harness/claude/onboarding.fills.ts';",
+    "tests/unit/names-another.test.ts": "const path = 'harness/codex/onboarding.fills.ts';",
+    "tests/unit/names-none.test.ts": "const path = 'src/cli/main.ts';",
+  };
+  const request = (deleted: readonly string[]) => ({
+    deleted,
+    tests: Object.keys(texts),
+    textOf: (test: string) => texts[test] ?? "",
+  });
+
+  test("selects the tests whose text names the deleted file", () => {
+    expect(testsNamingDeleted(request(["harness/claude/onboarding.fills.ts"]))).toEqual([
+      "tests/unit/names-it.test.ts",
+    ]);
+  });
+
+  test("selects nothing when nothing is deleted", () => {
+    expect(testsNamingDeleted(request([]))).toEqual([]);
   });
 });
