@@ -38,6 +38,15 @@ describe("IMPLEMENTERS", () => {
         factory: "createBunContentDigester",
         hermeticTest: "src/kernel/content-digester.hermetic.test.ts",
       },
+      {
+        capability: "tool-bundler",
+        file: "src/packaging/adapters/bun-tool-bundler.ts",
+        port: "src/packaging/application/ports.ts",
+        globals: ["Bun.build"],
+        factory: "createBunToolBundler",
+        fakeSeam: "src/packaging/fixtures/tool-bundler.fake.ts",
+        hermeticTest: "src/packaging/adapters/bun-tool-bundler.hermetic.test.ts",
+      },
     ]);
   });
 });
