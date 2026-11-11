@@ -2,6 +2,7 @@ import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { HostSettingsRenderer, SettingsRenderingInputs } from "../../../projection/application/ports/settings.ts";
 import type { Rendering } from "../../../projection/application/ports/harness.ts";
+import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts";
 import { HOOK_WIRING } from "./hook-wiring.ts";
 
 export const COPILOT_SETTINGS_INPUTS = [] as const;
@@ -22,7 +23,25 @@ const renderHooks = (inputs: SettingsRenderingInputs): Rendering => {
     reason: "The Copilot hook destination must be project-relative." });
 };
 
+const renderLauncher = (inputs: SettingsRenderingInputs): Rendering => {
+  const path = projectPath(inputs.launcher.path);
+  const text = bindTemplateTokens({ text: inputs.launcher.body({ invocation: "{{INVOKE}}" }),
+    tokens: inputs.tokens, selected: ["INVOKE"] });
+  return path.ok ? accepted([{
+    path: path.value, mode: "executable", availability: "always", content: { kind: "text", text },
+    origin: { kind: "rendered", concept: "hook-registration", name: "aidlc-engine" },
+  }]) : refused({ kind: "render-failed", concept: "hook-registration", name: "aidlc-engine",
+    reason: "The Copilot engine launcher destination must be project-relative." });
+};
+
+const renderHookSurface = (inputs: SettingsRenderingInputs): Rendering => {
+  const hooks = renderHooks(inputs);
+  if (!hooks.ok) return hooks;
+  const launcher = renderLauncher(inputs);
+  return launcher.ok ? accepted([...hooks.value, ...launcher.value]) : launcher;
+};
+
 export const createCopilotSettingsRenderer: HostSettingsRenderer = (inputs) => ({
   renderSettings: () => accepted([]),
-  renderHookRegistrations: () => renderHooks(inputs),
+  renderHookRegistrations: () => renderHookSurface(inputs),
 });
