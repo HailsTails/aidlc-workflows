@@ -30,6 +30,16 @@
       "factory": "createBunYamlParser",
       "fakeSeam": "src/kernel/fixtures/yaml-parser.fake.ts",
       "hermeticTest": "src/kernel/yaml-parser.hermetic.test.ts"
+    },
+    {
+      "capability": "content-digester",
+      "file": "src/kernel/content-digester.ts",
+      "port": "src/kernel/content-digester-port.ts",
+      "modules": [],
+      "globals": ["Bun.CryptoHasher"],
+      "factory": "createBunContentDigester",
+      "fakeSeam": "src/kernel/fixtures/content-digester.fake.ts",
+      "hermeticTest": "src/kernel/content-digester.hermetic.test.ts"
     }
   ]
 }

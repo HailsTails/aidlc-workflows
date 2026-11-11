@@ -1,7 +1,10 @@
 Accepted
 Brand
+BunDigestLib
 BunYamlLib
+ContentDigester
 ContentHash
+CreateBunContentDigesterArgs
 CreateBunYamlParserArgs
 CreateNodeFileSystemArgs
 CreateNodeProcessRunnerArgs
@@ -52,6 +55,7 @@ accepted
 asFolder
 brand
 contentHash
+createBunContentDigester
 createBunYamlParser
 createNodeFileSystem
 createNodeProcessRunner
