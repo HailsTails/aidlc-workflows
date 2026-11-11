@@ -230,7 +230,7 @@ describe("documentation parity derives current behavior from authored implementa
       ["docs", "guide", "agents", "architect-agent.md"],
       ["docs", "harness-engineering", "03-adding-an-agent.md"],
       ["docs", "reference", "agents", "README.md"],
-      ["harness", "codex", "emit.ts"],
+      ["src", "hosts", "codex", "projection", "agent-renderer.ts"],
     ]) {
       const text = normalized(read(...path));
       expect(text, path.join("/")).not.toContain(
@@ -900,7 +900,7 @@ describe("documentation parity derives current behavior from authored implementa
         ["docs", "reference", "05-agent-system.md"],
         ["docs", "reference", "14-claude-features.md"],
         ["docs", "reference", "agents", "README.md"],
-        ["harness", "codex", "emit.ts"],
+        ["src", "hosts", "codex", "projection", "agent-renderer.ts"],
         ["scripts", "package.ts"],
         ["tests", "unit", "t216-agent-tier-projection.test.ts"],
       ];

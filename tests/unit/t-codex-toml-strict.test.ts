@@ -1,4 +1,4 @@
-// covers: file:harness/codex/emit.ts
+// covers: file:src/hosts/codex/projection/settings-renderer.ts
 
 import { NATIVE_FIXTURE_SETUP_TIMEOUT_MS } from "../harness/test-budget.ts";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
