@@ -202,7 +202,7 @@
       }
     },
     "composition": {
-      "name": "Composition: F2-2 to F2-7, F3-2 to F3-7, T-M2-9 and T-M2-10, one slice at a time; dot named it the single Fable lane for Q116 (Q117). Retired when T-M2-10 lands, and its paths return to integration. harness/cursor/manifest.ts joined when AR6 landed; harness/kiro-ide/manifest.ts joins it when AR5 lands. src/projection/core-root{,.test}.ts is hosts-c's for AR5 only and returns here when AR5 lands",
+      "name": "Composition: F2-2 to F2-7, F3-2 to F3-7, T-M2-9 and T-M2-10, one slice at a time; dot named it the single Fable lane for Q116 (Q117). Retired when T-M2-10 lands, and its paths return to integration. harness/cursor/manifest.ts joined when AR6 landed; harness/kiro-ide/manifest.ts joins it when AR5 lands. src/projection/core-root{,.test}.ts is hosts-c's for AR5 only and returns here when AR5 lands. F3-4's ten named readers (the nine KIRO_HOOK_COMMAND_SUFFIX consumers and t-kiro-cli-persona-tools, for its covers header only) are granted for F3-4 and F3-5 and leave when F3-5 lands",
       "agent": "claude/fable",
       "owns": [
         "scripts/package.ts",
@@ -221,6 +221,16 @@
         "harness/cursor/manifest.ts",
         "harness/copilot/manifest.ts",
         "harness/{codex,opencode,copilot}/emit.ts",
+        "scripts/ci-update-from-previous.ts",
+        "tests/harness/scope-run.ts",
+        "tests/smoke/t148-kiro-file-structure.test.ts",
+        "tests/unit/t-ci-update-from-previous.test.ts",
+        "tests/unit/t-kiro-hook-exit-code.test.ts",
+        "tests/unit/t-native-install-hooks.test.ts",
+        "tests/unit/t-scope-hosts.test.ts",
+        "tests/unit/t147-kiro-hook-adapter.test.ts",
+        "tests/unit/t221-reviewer-scope-hook.test.ts",
+        "tests/unit/t-kiro-cli-persona-tools.test.ts",
         "harness/{codex,opencode,kiro,kiro-ide,cursor,copilot}/onboarding.fills.ts",
         "tests/unit/t248-steering-content-delivery.test.ts",
         "tests/unit/t64.test.ts",
