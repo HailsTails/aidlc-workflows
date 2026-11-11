@@ -146,8 +146,7 @@ const HARNESS_CAPABILITIES = {
   "kiro-ide": {
     harnessDir: ".kiro",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".kiro/steering/aidlc-onboarding.md",
     },

@@ -29,7 +29,9 @@ import {
   shellDenyLines,
 } from "../../src/hosts/kiro-ide/projection/delegate-shell-deny.ts";
 import { delegateShellFacts } from "../../src/projection/adapters/delegate-shell-facts.ts";
-import onboardingFills from "./onboarding.fills.ts";
+import {
+  KIRO_IDE_ONBOARDING_FILLS as onboardingFills,
+} from "../../src/hosts/kiro-ide/onboarding-fills.ts";
 
 const DELEGATION_AGENTS = [
   "aidlc-composer-agent",
