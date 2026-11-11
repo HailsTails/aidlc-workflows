@@ -43,7 +43,6 @@ import {
   HARNESS_MATRIX, harnessByName, agentFrontmatterGrantsIdeTools,
   fullHostView, onboardingSpec,
 } from "../harness/harness-matrix.ts";
-import { runnerProducer, orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 import { discoverSiblingRepos, listIntents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 
 setDefaultTimeout(NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
@@ -91,33 +90,6 @@ describe("t177 workspace-journey fixture (deterministic, no LLM)", () => {
       expect(existsSync(journey.root)).toBe(false);
     }, CASE_TIMEOUT_MS);
   }
-});
-
-test("an omitted flag leaves standard production with the packager", () => {
-  expect(runnerProducer({ emit: null })).toEqual({ ok: true, value: "standard" });
-});
-
-test("an emitter for other surfaces does not take standard runner ownership", () => {
-  expect(runnerProducer({ skipRunnerGen: false, emit: () => undefined }))
-    .toEqual({ ok: true, value: "standard" });
-});
-
-test("the flag delegates runner production to a real emitter", () => {
-  expect(runnerProducer({ skipRunnerGen: true, emit: () => undefined }))
-    .toEqual({ ok: true, value: "emit" });
-});
-
-test("delegation without an emitter is a refusal", () => {
-  expect(runnerProducer({ skipRunnerGen: true, emit: null })).toEqual({ ok: false,
-    refusal: "Delegated runner production requires a manifest emit function." });
-});
-
-test("native entry location has its own declared value and standard default", () => {
-  expect(orchestratorSkillLocation({ harnessDir: ".host" })).toBe(".host/skills/aidlc/SKILL.md");
-  expect(orchestratorSkillLocation({
-    harnessDir: ".host", orchestratorSkillPath: "native/skills/aidlc/SKILL.md",
-  }))
-    .toBe("native/skills/aidlc/SKILL.md");
 });
 
 test("the complete Claude route remains in the matrix after its legacy manifest retires", () => {

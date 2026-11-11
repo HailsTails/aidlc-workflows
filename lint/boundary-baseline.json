@@ -1568,21 +1568,6 @@
       "max-depth": 2,
       "max-len": 1
     },
-    "scripts/harness-bindings.ts": {
-      "aidlc/no-comments": 16,
-      "complexity": 1,
-      "max-depth": 1,
-      "max-len": 2
-    },
-    "scripts/manifest-types.ts": {
-      "aidlc/no-comments": 85,
-      "One owner": 8,
-      "max-len": 2
-    },
-    "scripts/onboarding.ts": {
-      "aidlc/no-comments": 27,
-      "max-len": 1
-    },
     "scripts/package-release.ts": {
       "aidlc/no-comments": 5,
       "Context boundary": 2,

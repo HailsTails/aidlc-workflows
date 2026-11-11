@@ -17,12 +17,9 @@ const recordName = (file: string): string => {
 export const EMIT_FILES: readonly string[] = [
   "harness/copilot/emit.ts",
   "harness/copilot/manifest.ts",
-  "scripts/manifest-types.ts",
 ];
 
-export const MEMBER_TYPES: Readonly<Record<string, readonly string[]>> = {
-  "scripts/manifest-types.ts": ["EmitContext"],
-};
+export const MEMBER_TYPES: Readonly<Record<string, readonly string[]>> = {};
 
 const declarationsRecordOf = (file: string): MonolithRecordFiles => ({
   file,

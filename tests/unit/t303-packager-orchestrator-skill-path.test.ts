@@ -6,15 +6,13 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
-import { orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 
 describe("t303 manifest-owned orchestrator skill path", () => {
   test("every harness declares an in-tree emitted skill that exists in dist", async () => {
     for (const { name, manifest } of HARNESS_MATRIX) {
-      expect(manifest.orchestratorSkillPath).toBeDefined();
-      const rel = orchestratorSkillLocation(manifest);
+      const rel = manifest.orchestratorSkillPath;
       expect(rel.length).toBeGreaterThan(0);
       expect(isAbsolute(rel)).toBe(false);
       expect(rel.split(/[\\/]/)).not.toContain("..");
@@ -27,10 +25,7 @@ describe("t303 manifest-owned orchestrator skill path", () => {
   // and its question rules name under the harness folder must be there.
   test("every file an emitted skill names under its harness folder exists from the project root", async () => {
     for (const { name, manifest } of HARNESS_MATRIX) {
-      const skill = join(
-        REPO_ROOT, "dist", name,
-        orchestratorSkillLocation(manifest),
-      );
+      const skill = join(REPO_ROOT, "dist", name, manifest.orchestratorSkillPath);
       const reference = new RegExp(`\`(${manifest.harnessDir.replace(".", "\\.")}/[^\`\\s]+)\``, "g");
       let named = 0;
       for (const file of readdirSync(dirname(skill)).filter((entry) => entry.endsWith(".md"))) {
@@ -43,13 +38,5 @@ describe("t303 manifest-owned orchestrator skill path", () => {
       }
       expect(named, name).toBeGreaterThan(0);
     }
-  });
-
-  test("the shared resolver supplies the default or declared native entry", () => {
-    expect(orchestratorSkillLocation({ harnessDir: ".native" }))
-      .toBe(".native/skills/aidlc/SKILL.md");
-    expect(orchestratorSkillLocation({ harnessDir: ".native",
-      orchestratorSkillPath: "native-skills/aidlc/SKILL.md" }))
-      .toBe("native-skills/aidlc/SKILL.md");
   });
 });

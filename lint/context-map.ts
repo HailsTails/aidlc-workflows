@@ -177,9 +177,6 @@ export const LEGACY_TERRITORY: LegacyTerritory = {
   ),
   projection: [
     "scripts/package.ts",
-    "scripts/manifest-types.ts",
-    "scripts/onboarding.ts",
-    "scripts/harness-bindings.ts",
     "scripts/package-sources.ts",
     ...tools("tiers", "runner-gen", "plugin-emit", "plugin-build"),
   ],

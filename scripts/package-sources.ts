@@ -15,11 +15,8 @@ const INPUT_DIRS = ["core", "harness", "plugins", "src", "scripts/plugin-hooks-t
 const INPUT_FILES = [
   "scripts/package.ts",
   "scripts/package-sources.ts",
-  "scripts/manifest-types.ts",
   "scripts/agent-knowledge.ts",
   "scripts/copy-era-files.json",
-  "scripts/harness-bindings.ts",
-  "scripts/onboarding.ts",
 ];
 
 const IGNORED_INPUT_PATHS = [

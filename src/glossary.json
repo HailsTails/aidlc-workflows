@@ -418,7 +418,7 @@
 {"name":"AuthoredPluginBuild","context":"workflow-definition","kind":"concept","definition":"The Method compiled with the authored plugins, and the plugins a build targets."},
 {"name":"MarkdownOutliner","context":"workflow-definition","kind":"port","definition":"Port: outlines a Markdown body using AI-DLC's one Markdown interpreter."},
 {"name":"Channel","context":"packaging","kind":"concept","definition":"How a payload ships: copy (runtime as source) or native (runtime as binary).","legacy":["Layout"]},
-{"name":"DistributionLayout","context":"packaging","kind":"concept","definition":"The install facts a host declares: root integrations and managed directories.","legacy":["HarnessManifest","HarnessLocation"]},
+{"name":"DistributionLayout","context":"packaging","kind":"concept","definition":"The install facts a host declares: root integrations and managed directories.","legacy":["HarnessLocation"]},
 {"name":"DistributionLayouts","context":"packaging","kind":"port","definition":"Port: the layout each host declares, read by Packaging."},
 {"name":"NativeReleases","context":"packaging","kind":"port","definition":"Port: the native release each host declares, read by Packaging when it lays out the native channel."},
 {"name":"NativeCommandRoutes","context":"packaging","kind":"port","definition":"Port: the dispatcher's trusted command prefix, namespace and delegate tools, a trusted command for a suffix, and the namespace invocations a native file names that do not resolve; the build root serves it from the dispatcher bridges."},

@@ -30,27 +30,11 @@ describe("a candidate that reaches the retained matrix helper", () => {
 });
 
 describe("a candidate that moves a build helper", () => {
-  test("the onboarding and harness-bindings helpers need no legacy runtime suite", () => {
-    const helpers = ["scripts/onboarding.ts", "scripts/harness-bindings.ts"];
-
-    expect(needsCandidateLegacy(helpers)).toBe(false);
-  });
-
   test("the agent-knowledge helper needs none and selects its two focused tests", () => {
     expect(needsCandidateLegacy(["scripts/agent-knowledge.ts"])).toBe(false);
     expect(candidateBuildTests(["scripts/agent-knowledge.ts"])).toEqual([
       "tests/unit/t248-steering-content-delivery.test.ts",
       "tests/unit/t-dispatched-agents-skip-format-docs.test.ts",
-    ]);
-  });
-
-  test("each helper selects its own focused tests", () => {
-    expect(candidateBuildTests(["scripts/onboarding.ts"])).toEqual([
-      "tests/unit/t151-onboarding-skeleton.test.ts",
-      "tests/unit/t239-documentation-parity.test.ts",
-    ]);
-    expect(candidateBuildTests(["scripts/harness-bindings.ts"])).toEqual([
-      "tests/unit/t-own-harness-bindings.test.ts",
     ]);
   });
 });
