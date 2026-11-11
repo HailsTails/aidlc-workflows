@@ -2,6 +2,7 @@ import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
 import { claudeDistribution } from "../hosts/claude/distribution.ts";
 import { createCopilotDocumentRenderer } from "../hosts/copilot/projection/document-renderer.ts";
 import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
+import { cursorAgents } from "../hosts/cursor/projection/agent-renderer.ts";
 import { createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
 import { createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
@@ -19,6 +20,12 @@ import {
   HOST_BUILD_MEMBERS, hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
+
+test("Cursor agents register the native factory without an authored host input", () => {
+  const cursor = host({ name: "cursor", directory: ".cursor" });
+  expect(hostAgentInputs("cursor")).toEqual([]);
+  expect(hostAgentMembers(cursor)).toEqual({ ok: true, value: { host: cursor, inputs: [], render: cursorAgents } });
+});
 
 test("Copilot documents directly register the native combined factory without authored capture", () => {
   const copilot = host({ name: "copilot", directory: ".aidlc" });

@@ -1,10 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
+import { path } from "../../../kernel/fixtures/values.fixture.ts";
 import { brand } from "../../../kernel/brand.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import type { AgentSlug } from "../../../workflow-definition/domain/identities.ts";
 import type { MethodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
-import { cursorAgentRenderer } from "./agent-renderer.ts";
+import { SCRATCH_AGENT_INPUTS } from "../../../projection/fixtures/scratch-host.fixture.ts";
+import { cursorAgents } from "./agent-renderer.ts";
 
 const quality: Agent = {
   slug: brand<AgentSlug>("aidlc-quality-agent"),
@@ -31,15 +33,15 @@ const tierless = {
   reason: "No tier.",
 } as const;
 
-describe("cursorAgentRenderer", () => {
+describe("cursorAgents", () => {
   test("writes a native subagent that reads the engine's copy of the active memory", () => {
     expect(
-      cursorAgentRenderer(() => accepted(SURFACED))({ agent: quality, knowledge: [] }),
+      cursorAgents({ ...SCRATCH_AGENT_INPUTS, documents: () => accepted(SURFACED) }).renderAgent({ agent: quality, knowledge: [] }),
     ).toMatchObject({
       ok: true,
       value: [
         {
-          path: ".cursor/agents/aidlc-quality-agent.md",
+          path: path(".cursor/agents/aidlc-quality-agent.md"),
           content: {
             kind: "text",
             text:
@@ -47,7 +49,7 @@ describe("cursorAgentRenderer", () => {
               "Read aidlc/active-memory/team.md first.\n",
           },
           mode: "regular",
-          origin: { kind: "method-source", path: "agents/aidlc-quality-agent.md" },
+          origin: { kind: "method-source", path: quality.source },
           availability: "always",
         },
       ],
@@ -56,15 +58,43 @@ describe("cursorAgentRenderer", () => {
 
   test("hands the agent to the model surface as it is", () => {
     const surface = mock(() => accepted(SURFACED));
-    cursorAgentRenderer(surface)({ agent: quality, knowledge: [] });
+    cursorAgents({ ...SCRATCH_AGENT_INPUTS, documents: surface }).renderAgent({ agent: quality, knowledge: [] });
 
-    expect(surface).toHaveBeenCalledWith({ agent: quality });
+    expect(surface).toHaveBeenCalledWith(expect.objectContaining({ agent: quality }));
   });
 
   test("passes on the model surface's own refusal", () => {
-    expect(cursorAgentRenderer(() => refused(tierless))({ agent: quality, knowledge: [] })).toEqual({
+    expect(cursorAgents({ ...SCRATCH_AGENT_INPUTS, documents: () => refused(tierless) }).renderAgent({ agent: quality, knowledge: [] })).toEqual({
       ok: false,
       refusal: tierless,
     });
   });
+});
+
+test("Cursor's agent factory requests the exact authored effort surface before its memory rewrite", () => {
+  const documents = mock(() => accepted(SURFACED));
+  expect(cursorAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent: quality, knowledge: [] })).toEqual(
+    accepted([{
+      path: path(".cursor/agents/aidlc-quality-agent.md"),
+      content: { kind: "text", text: "---\nname: aidlc-quality-agent\ndisallowedTools: Task\n---\nRead aidlc/active-memory/team.md first.\n" },
+      mode: "regular", availability: "always",
+      origin: { kind: "method-source", path: quality.source },
+    }]),
+  );
+  expect(documents).toHaveBeenCalledWith({
+    agent: quality, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    frontmatter: {
+      model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
+      removeKeys: [], afterProjectionLines: [],
+    },
+  });
+});
+
+test("Cursor's factory preserves a shared document refusal without a partial file", () => {
+  expect(cursorAgents({ ...SCRATCH_AGENT_INPUTS, documents: () => refused(tierless) })
+    .renderAgent({ agent: quality, knowledge: [] })).toEqual(refused(tierless));
+});
+
+test("Cursor has no separate conductor agent file", () => {
+  expect(cursorAgents(SCRATCH_AGENT_INPUTS).renderConductorAgent({ knowledge: [] })).toEqual(accepted([]));
 });
