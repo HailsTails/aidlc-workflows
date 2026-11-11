@@ -23,8 +23,9 @@ export const CONTEXT_MAP: Readonly<Record<ContextName, ContextRule>> = {
     readsFileFormatsOf: [],
     composesRootsOf: [],
     instead:
-      "The kernel holds shared identity values and the one file-system implementer behind its " +
-      "node-free port; move anything richer into its context.",
+      "The kernel holds shared identity values and the one implementer of each platform " +
+      "capability (file system, process runner, YAML parser, content digester) behind its " +
+      "node-free port, as lint/implementers.json registers them; move anything richer into its context.",
   },
   "workflow-definition": {
     dependsOn: ["kernel"],
