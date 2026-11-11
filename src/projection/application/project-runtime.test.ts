@@ -5,6 +5,7 @@ import { tokenBindingsFixture } from "../fixtures/token-bindings.fixture.ts";
 import { projectRuntime } from "./project-runtime.ts";
 
 const request = { host: host({ name: "native", directory: ".native" }),
+  compiled: { graph: "graph {{INVOKE}}", grid: "grid {{HARNESS_DIR}}" },
   tokens: tokenBindingsFixture({ harnessDir: ".native" }), runtime: {
     files: [{ source: source("tools/run.ts"), content: { kind: "text", text: "{{INVOKE}}" } },
       { source: source("hooks/icon.bin"), content: { kind: "bytes", bytes: new Uint8Array([0, 255]) } }],
@@ -23,8 +24,12 @@ test("one projection places captured runtime, stamped version and untouched gene
       mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/aidlc-version.ts") } },
     { path: path(".native/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers {{INVOKE}}" },
       mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
-    { path: path(".native/tools/data/settings-schema.json"), content: { kind: "text", text: "schema {{HARNESS_DIR}}" },
+    { path: path(".native/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema {{HARNESS_DIR}}" },
       mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "settings-schema" } },
+    { path: path(".native/tools/data/stage-graph.json"), content: { kind: "text", text: "graph {{INVOKE}}" },
+      mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "stage-graph" } },
+    { path: path(".native/tools/data/scope-grid.json"), content: { kind: "text", text: "grid {{HARNESS_DIR}}" },
+      mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "scope-grid" } },
   ]));
 });
 

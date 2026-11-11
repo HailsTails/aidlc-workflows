@@ -4,7 +4,6 @@
     "core/tools/aidlc-init.ts": 14964,
     "core/tools/aidlc-lib.ts": 42322,
     "core/tools/aidlc-orchestrate.ts": 23490,
-    "harness/claude/manifest.ts": 279,
     "harness/codex/emit.ts": 446,
     "harness/codex/manifest.ts": 168,
     "harness/copilot/emit.ts": 207,

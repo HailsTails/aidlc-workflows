@@ -3,16 +3,18 @@ import type { Result } from "../../kernel/result.ts";
 import type { DistributionId } from "../../kernel/values.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { MethodSource } from "../../workflow-definition/domain/method-source.ts";
-import type { NeutralSurface, SharedRuntime } from "../domain/neutral-surface.ts";
-import type { Projection, ProjectionRefusal } from "../domain/projection.ts";
+import type { MemoryCompanion, NeutralSurface, SharedRuntime } from "../domain/neutral-surface.ts";
+import type { CompiledMethodFiles, Projection, ProjectionRefusal } from "../domain/projection.ts";
 
 export type ProjectMethodRequest = {
+  readonly companions: readonly MemoryCompanion[];
   readonly harness: DistributionId;
   readonly method: Method;
   readonly sources: readonly MethodSource[];
   readonly surface: NeutralSurface;
   readonly hostFiles: readonly AuthoredHostFile[];
   readonly runtime: SharedRuntime;
+  readonly compiled: CompiledMethodFiles;
 };
 
 export interface ProjectMethodForHarness {

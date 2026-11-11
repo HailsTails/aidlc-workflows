@@ -1,3 +1,6 @@
+import type { HarnessAssembly } from "./harness-assembly.ts";
+import type { MemoryCompanionReading, WorkspaceProjection } from "./workspace.ts";
+import type { DelegateShellFacts } from "./delegate-shell.ts";
 import type { NeutralReading, DocumentProjection } from "./documents.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { AuthoredHostFile } from "../../domain/host-surface.ts";
@@ -12,6 +15,10 @@ import type { SettingsProjection } from "./settings.ts";
 import type { SessionSkillReading, SkillProjection } from "./skills.ts";
 
 export interface BuildProjection {
+  readonly assembleHarness: HarnessAssembly;
+  readonly projectWorkspace: WorkspaceProjection;
+  readonly readMemoryCompanions: MemoryCompanionReading;
+  readonly delegateShellFacts: DelegateShellFacts;
   readonly readNeutral: NeutralReading;
   readonly projectDocuments: DocumentProjection;
   readonly projectSettings: SettingsProjection;

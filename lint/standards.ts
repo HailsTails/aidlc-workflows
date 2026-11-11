@@ -18,6 +18,10 @@ const IGNORED = [
   "tests/fixtures/markdown-goldens/**",
 ];
 
+export const aidlcPlugin = {
+  rules: { "no-comments": noComments, "node-import-protocol": nodeImportProtocol },
+};
+
 export const standardsConfig: Linter.Config[] = [
   { name: "aidlc/ignores", ignores: IGNORED },
   {
@@ -25,7 +29,7 @@ export const standardsConfig: Linter.Config[] = [
     files: ["**/*.ts"],
     languageOptions: { parser: tsParser, sourceType: "module" },
     plugins: {
-      aidlc: { rules: { "no-comments": noComments, "node-import-protocol": nodeImportProtocol } },
+      aidlc: aidlcPlugin,
       "@typescript-eslint": tseslint.plugin,
     },
     linterOptions: { reportUnusedDisableDirectives: "off" },
