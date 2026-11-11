@@ -4,6 +4,7 @@ import { bindCopiedSource } from "../src/projection/domain/source-binding.ts";
 import { z } from "zod";
 import type { HostBuildMembers } from "../src/cli/roots.ts";
 import type { HostDistribution } from "../src/packaging/domain/payload.ts";
+import { trustEntries } from "../src/hosts/codex/projection/settings-renderer.ts";
 import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
 import type { FileContent } from "../src/kernel/file-content.ts";
 import type { HostIdentity } from "../src/kernel/host.ts";
@@ -66,6 +67,7 @@ import {
   isAbsolute,
   join,
   posix,
+  win32,
   relative,
   sep,
 } from "node:path";
@@ -1406,31 +1408,6 @@ function rewriteNativeInvocations(
   rewriteKiroNativeAllowlists(outRoot, m);
   rewriteClaudeNativePermissions(outRoot, m);
   rewriteCursorNativePermissions(outRoot, m);
-  if (m.name === "codex") {
-    const { emitDefaultRules, emitTrustSeed } = require(
-      join(HARNESS_ROOT, m.name, "emit.ts"),
-    ) as {
-      emitDefaultRules: (
-        harnessDir: string,
-        invoke: string,
-        trustedNamespace: string,
-      ) => string;
-      emitTrustSeed: (
-        harnessDir: string,
-        harnessName: string,
-        invoke: string,
-        trustedNamespace: string,
-      ) => string;
-    };
-    writeFileSync(
-      join(outRoot, m.harnessDir, "rules", "default.rules"),
-      emitDefaultRules(m.harnessDir, "aidlc", TRUSTED_ROUTE_NAMESPACE),
-    );
-    writeFileSync(
-      join(outRoot, m.harnessDir, "trust-seed.toml"),
-      emitTrustSeed(m.harnessDir, m.name, "aidlc", TRUSTED_ROUTE_NAMESPACE),
-    );
-  }
   // Before the copy's hashes are recorded below, so a part that changed here
   // still has its copy bytes recognized, and --check builds it the same way.
   syncRootBlockParts(outRoot, m);
@@ -1785,28 +1762,19 @@ if (argv[0] === "codex" && argv[1] === "trust") {
     }
   }
   const resolvedProject = project ?? failTrustArgs("--project is required");
-  const { trustEntries } = require(join(HARNESS_ROOT, "codex", "emit.ts")) as {
-    trustEntries: (
-      project: string,
-      hooksJson: string | undefined,
-      harnessDir: string,
-      harnessName: string,
-      invoke: string,
-      trustedNamespace: string,
-    ) => string;
-  };
-  // The checkout's dist/codex runs its hooks as `bun .codex/tools/aidlc.ts ...`,
-  // so hash those commands: a native `aidlc ...` hash trusts none of them.
-  console.log(
-    trustEntries(
-      resolvedProject,
-      hooksJson ?? undefined,
-      ".codex",
-      "codex",
-      substituteInvocationTokens("{{INVOKE}}", ".codex"),
-      TRUSTED_ROUTE_NAMESPACE,
-    ),
-  );
+  const projectPath = win32.isAbsolute(resolvedProject) &&
+    (!posix.isAbsolute(resolvedProject) || resolvedProject.startsWith("//")) ? win32 : posix;
+  const trusted = trustEntries({
+    hooksJsonPath: hooksJson ?? projectPath.join(resolvedProject, ".codex", "hooks.json"),
+    harnessName: "codex",
+    invoke: substituteInvocationTokens("{{INVOKE}}", ".codex"),
+    trustedNamespace: TRUSTED_ROUTE_NAMESPACE,
+  }, packageBuildRoot.settingsCapabilities);
+  if (!trusted.ok) {
+    console.error(trusted.refusal.reason);
+    process.exit(1);
+  }
+  console.log(trusted.value);
   process.exit(0);
 }
 

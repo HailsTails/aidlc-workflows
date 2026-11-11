@@ -85,8 +85,7 @@ const HARNESS_CAPABILITIES = {
   codex: {
     harnessDir: ".codex",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".codex/onboarding.md",
     },
@@ -127,8 +126,7 @@ const HARNESS_CAPABILITIES = {
   cursor: {
     harnessDir: ".cursor",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".cursor/rules/aidlc-onboarding.mdc",
     },
@@ -460,6 +458,11 @@ export function onboardingSpec({ directory, onboarding, fills }: {
     ? null : insideDirectory(directory, onboarding.harnessDist);
   return { dst: neutral ?? onboarding.dist, ...(neutral === null ? { projectRoot: true } : {}),
     ...(native === null ? {} : { harnessDst: native }), fills };
+}
+
+export function onboardingFillsSource(name: ShippedHarnessName): string {
+  const native = `src/hosts/${name}/onboarding-fills.ts`;
+  return existsSync(join(REPO_ROOT, native)) ? native : `harness/${name}/onboarding.fills.ts`;
 }
 
 export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapabilities): {

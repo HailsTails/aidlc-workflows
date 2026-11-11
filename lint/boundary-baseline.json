@@ -1,19 +1,19 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174365,
+  "total": 173992,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
-    "aidlc/no-comments": 113142,
-    "complexity": 3075,
+    "aidlc/no-comments": 112832,
+    "complexity": 3073,
     "Context boundary": 48,
     "Harness branching": 431,
     "max-depth": 2125,
-    "max-len": 48823,
-    "max-lines-per-function": 3526,
-    "max-params": 1766,
+    "max-len": 48766,
+    "max-lines-per-function": 3524,
+    "max-params": 1764,
     "Monolith": 47,
     "no-control-regex": 17,
     "no-irregular-whitespace": 12,
@@ -1350,13 +1350,6 @@
       "prefer-const": 1,
       "no-nested-ternary": 6
     },
-    "harness/codex/emit.ts": {
-      "aidlc/no-comments": 58,
-      "max-len": 5,
-      "max-lines-per-function": 2,
-      "max-params": 2,
-      "complexity": 2
-    },
     "harness/codex/hooks/aidlc-codex-adapter.ts": {
       "aidlc/no-comments": 284,
       "max-depth": 9,
@@ -1364,14 +1357,6 @@
       "max-len": 10,
       "max-lines-per-function": 1,
       "no-nested-ternary": 2
-    },
-    "harness/codex/manifest.ts": {
-      "aidlc/no-comments": 61,
-      "max-len": 5
-    },
-    "harness/codex/onboarding.fills.ts": {
-      "aidlc/no-comments": 4,
-      "max-len": 12
     },
     "harness/copilot/emit.ts": {
       "aidlc/no-comments": 47,
@@ -1415,14 +1400,6 @@
       "max-params": 4,
       "no-nested-ternary": 1
     },
-    "harness/cursor/manifest.ts": {
-      "aidlc/no-comments": 73,
-      "max-len": 1
-    },
-    "harness/cursor/onboarding.fills.ts": {
-      "aidlc/no-comments": 4,
-      "max-len": 15
-    },
     "harness/kiro-ide/hooks/aidlc-kiro-adapter.ts": {
       "aidlc/no-comments": 887,
       "max-len": 118,
@@ -1452,10 +1429,6 @@
       "max-len": 20,
       "max-depth": 12,
       "no-nested-ternary": 2
-    },
-    "harness/kiro/manifest.ts": {
-      "aidlc/no-comments": 110,
-      "max-len": 19
     },
     "harness/opencode/emit.ts": {
       "aidlc/no-comments": 29,

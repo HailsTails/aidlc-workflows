@@ -26,7 +26,7 @@ import {
   tracedToCompletion,
   uncheckedHarnesses,
 } from "../../scripts/ci-update-from-previous.ts";
-import kiroManifest from "../../harness/kiro/manifest.ts";
+import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -226,7 +226,7 @@ describe("ci-update-from-previous helpers", () => {
     expect(found("codex", ".codex")).toContain("bun .codex/tools/aidlc.ts engine adapter codex continue-workflow");
     expect(found("copilot", ".github")).toContain("bun .aidlc/hooks/aidlc-copilot-adapter.ts guard-tool-call");
     expect(found("cursor", ".cursor")).toContain("bun .cursor/hooks/aidlc-cursor-adapter.ts guards");
-    expect(found("kiro", ".kiro")).toContain(`bun .kiro/tools/aidlc.ts engine adapter kiro continue-workflow${kiroManifest.hookCommandSuffix}`);
+    expect(found("kiro", ".kiro")).toContain(`bun .kiro/tools/aidlc.ts engine adapter kiro continue-workflow${KIRO_HOOK_COMMAND_SUFFIX}`);
     expect(found("kiro-ide", ".kiro")).toContain("bun .kiro/tools/aidlc.ts engine adapter kiro-ide guard-tool-call");
   });
 

@@ -547,3 +547,10 @@ test("the full host preserves neutral source failures instead of returning parti
     kind: "neutral-source-unreadable", source: source("templates/onboarding.md"), reason: "permission-denied",
   }]));
 });
+
+test("the root hands the Projection-bound settings capabilities to its callers", () => {
+  const fileSystem = createInMemoryFileSystem({ files });
+  const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem, processRunner, yaml },
+    outliner, sources, runnerFrames });
+  expect(root.settingsCapabilities.extendedSubprocessTimeoutMs).toBeGreaterThan(0);
+});

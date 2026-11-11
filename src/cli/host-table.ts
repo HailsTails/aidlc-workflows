@@ -2,6 +2,12 @@ import { claudeDistribution } from "../hosts/claude/distribution.ts";
 import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
 import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
 import type { HostBuildMembers, HostBuildTable } from "./roots.ts";
+import { codexDistribution } from "../hosts/codex/distribution.ts";
+import { CODEX_ONBOARDING_FILLS } from "../hosts/codex/onboarding-fills.ts";
+import { codexCommandPath } from "../hosts/codex/projection/command-renderer.ts";
+import { cursorDistribution } from "../hosts/cursor/distribution.ts";
+import { CURSOR_ONBOARDING_FILLS } from "../hosts/cursor/onboarding-fills.ts";
+import { cursorCommandPath } from "../hosts/cursor/projection/command-renderer.ts";
 import { kiroDistribution } from "../hosts/kiro/distribution.ts";
 import { KIRO_ONBOARDING_FILLS } from "../hosts/kiro/onboarding-fills.ts";
 import { kiroCommandPath } from "../hosts/kiro/projection/command-renderer.ts";
@@ -27,11 +33,15 @@ import type { HostDocumentMembers } from "./roots.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
 import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING } from "../hosts/copilot/host-data.ts";
-import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING } from "../hosts/cursor/host-data.ts";
+import {
+  CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_TOKENS, cursorHostIdentity,
+} from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
 import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TOKENS, kiroHostIdentity } from "../hosts/kiro/host-data.ts";
-import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING } from "../hosts/codex/host-data.ts";
+import {
+  CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TOKENS, codexHostIdentity,
+} from "../hosts/codex/host-data.ts";
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "../hosts/kiro-ide/projection/skill-renderer.ts";
@@ -176,6 +186,10 @@ const ROUTED_ENTRIES: readonly HostEntry[] = [
     fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: CLAUDE_BINDING_HEADING, distribution: claudeDistribution },
   { identity: kiroHostIdentity, tokens: KIRO_TOKENS, commands: kiroCommandPath,
     fills: KIRO_ONBOARDING_FILLS, bindingHeading: KIRO_BINDING_HEADING, distribution: kiroDistribution },
+  { identity: codexHostIdentity, tokens: CODEX_TOKENS, commands: codexCommandPath,
+    fills: CODEX_ONBOARDING_FILLS, bindingHeading: CODEX_BINDING_HEADING, distribution: codexDistribution },
+  { identity: cursorHostIdentity, tokens: CURSOR_TOKENS, commands: cursorCommandPath,
+    fills: CURSOR_ONBOARDING_FILLS, bindingHeading: CURSOR_BINDING_HEADING, distribution: cursorDistribution },
 ];
 
 const buildMembers = (entry: HostEntry): HostBuildTable => {

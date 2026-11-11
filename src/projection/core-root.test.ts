@@ -11,6 +11,8 @@ import { tokenBindingsFixture } from "./fixtures/token-bindings.fixture.ts";
 import type { HostAgentRenderer } from "./application/ports/agents.ts";
 import type { HostSettingsRenderer } from "./application/ports/settings.ts";
 import { createBuildProjection } from "./core-root.ts";
+import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
+import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
 
 const identity = host({ name: "claude", directory: ".claude" });
 
@@ -147,4 +149,14 @@ test("Projection exposes the exact facts instance its native data route receives
     tokens: tokenBindingsFixture({ harnessDir: ".claude" }), channel: "copy", renderData });
   expect(renderData).toHaveBeenCalledTimes(1);
   expect(renderData.mock.calls[0]?.[0]?.delegateShellFacts).toBe(projection.delegateShellFacts);
+});
+
+test("Projection binds the settings capabilities once for every renderer and caller", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
+    runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
+    runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
+  expect(projection.settingsCapabilities).toEqual({
+    extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(), hookTrust: legacyHookTrustHash,
+  });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { candidateBuildTests, needsCandidateLegacy } from "./candidate-selection.ts";
+import {
+  candidateBuildTests,
+  needsCandidateLegacy,
+  testsNamingDeleted,
+} from "./candidate-selection.ts";
 
 const KIRO_IDE_HOST_DATA_CHANGE = [
   "harness/kiro-ide/manifest.ts",
@@ -58,5 +62,55 @@ describe("a candidate that touches shipped runtime or other test helpers", () =>
 
   test("another test helper still needs them", () => {
     expect(needsCandidateLegacy(["tests/harness/fixtures.ts"])).toBe(true);
+  });
+});
+
+describe("a candidate that deletes a file", () => {
+  const texts: Readonly<Record<string, string>> = {
+    "tests/unit/names-it.test.ts": "const path = 'harness/claude/onboarding.fills.ts';",
+    "tests/unit/names-another.test.ts": "const path = 'harness/codex/onboarding.fills.ts';",
+    "tests/unit/names-none.test.ts": "const path = 'src/cli/main.ts';",
+  };
+  const request = (deleted: readonly string[]) => ({
+    deleted,
+    tests: Object.keys(texts),
+    textOf: (test: string) => texts[test] ?? "",
+  });
+
+  test("selects the tests whose text names the deleted file", () => {
+    expect(testsNamingDeleted(request(["harness/claude/onboarding.fills.ts"]))).toEqual([
+      "tests/unit/names-it.test.ts",
+    ]);
+  });
+
+  test("selects a test that builds the path from its segments", () => {
+    const built: Readonly<Record<string, string>> = {
+      "tests/unit/builds-it.test.ts": 'readFileSync(join(REPO, "harness", h, "emit.ts"))',
+      "tests/unit/templates-it.test.ts": ["readFileSync(`harness/", "$", "{h}/emit.ts`)"].join(""),
+      "tests/unit/other-file.test.ts": 'join(REPO, "harness", h, "manifest.ts")',
+    };
+    const selected = testsNamingDeleted({
+      deleted: ["harness/codex/emit.ts"],
+      tests: Object.keys(built),
+      textOf: (test) => built[test] ?? "",
+    });
+
+    expect(selected).toEqual(["tests/unit/builds-it.test.ts", "tests/unit/templates-it.test.ts"]);
+  });
+
+  test("selects nothing when nothing is deleted", () => {
+    expect(testsNamingDeleted(request([]))).toEqual([]);
+  });
+});
+
+describe("a candidate that moves only the gate's ratchet records", () => {
+  test("a host's retired records need no legacy runtime suite", () => {
+    const records = [
+      "lint/boundary-baseline.json",
+      "tests/ratchets/monolith-lines.json",
+      "tests/ratchets/harness-kiro-manifest-declarations.txt",
+    ];
+
+    expect(needsCandidateLegacy(records)).toBe(false);
   });
 });

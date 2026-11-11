@@ -1,3 +1,6 @@
+import type { HostIdentity } from "../../kernel/host.ts";
+import { accepted, type Result } from "../../kernel/result.ts";
+import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
@@ -34,3 +37,10 @@ export const CODEX_AUTHORED_PLACEMENTS = [
   { source: "dot-gitignore", destination: ".gitignore" },
 ] as const satisfies readonly AuthoredPlacement[];
 export const CODEX_BINDING_HEADING = "Codex CLI";
+
+export const codexHostIdentity = (): Result<HostIdentity, KernelRefusal> => {
+  const distribution = distributionId("codex");
+  if (!distribution.ok) return distribution;
+  const directory = projectPath(".codex");
+  return directory.ok ? accepted({ distribution: distribution.value, directory: directory.value }) : directory;
+};

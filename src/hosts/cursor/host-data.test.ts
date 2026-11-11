@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { CURSOR_HOST_DATA, CURSOR_TOKENS, CURSOR_AUTHORED_PLACEMENTS } from "./host-data.ts";
+import { host } from "../../kernel/fixtures/values.fixture.ts";
+import { cursorHostIdentity, CURSOR_HOST_DATA, CURSOR_TOKENS, CURSOR_AUTHORED_PLACEMENTS } from "./host-data.ts";
 
 test("Cursor declares its conversation and explicit-only runner surface", () => {
   expect(CURSOR_HOST_DATA).toEqual({
@@ -22,5 +23,10 @@ test("Cursor places its native rules and adapter without taking settings or copy
     { source: "rules-aidlc-phase-operation.mdc", destination: ".cursor/rules/aidlc-phase-operation.mdc" },
     { source: "hooks/aidlc-cursor-adapter.ts", destination: ".cursor/hooks/aidlc-cursor-adapter.ts" },
     { source: "dot-gitignore", destination: ".gitignore" },
+    { source: "install.ts", destination: "install.ts" },
   ]);
+});
+
+test("Cursor owns its checked distribution identity and native directory", () => {
+  expect(cursorHostIdentity()).toEqual({ ok: true, value: host({ name: "cursor", directory: ".cursor" }) });
 });

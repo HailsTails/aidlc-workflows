@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { CODEX_HOST_DATA, CODEX_TOKENS, CODEX_AUTHORED_PLACEMENTS } from "./host-data.ts";
+import { host } from "../../kernel/fixtures/values.fixture.ts";
+import { codexHostIdentity, CODEX_HOST_DATA, CODEX_TOKENS, CODEX_AUTHORED_PLACEMENTS } from "./host-data.ts";
 
 test("Codex declares its exact native runtime facts", () => {
   expect(CODEX_HOST_DATA).toEqual({
@@ -41,4 +42,8 @@ test("Codex owns its adapter and project-root gitignore placements", () => {
     { source: "hooks/aidlc-codex-adapter.ts", destination: ".codex/hooks/aidlc-codex-adapter.ts" },
     { source: "dot-gitignore", destination: ".gitignore" },
   ]);
+});
+
+test("Codex owns its checked distribution identity and native directory", () => {
+  expect(codexHostIdentity()).toEqual({ ok: true, value: host({ name: "codex", directory: ".codex" }) });
 });

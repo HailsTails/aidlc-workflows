@@ -2,7 +2,7 @@ import { stringify } from "smol-toml";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
-import type { HostSettingsRenderer, SettingsRenderingInputs } from "../../../projection/application/ports/settings.ts";
+import type { HostSettingsRenderer, SettingsCapabilities } from "../../../projection/application/ports/settings.ts";
 import type { Rendering } from "../../../projection/application/ports/harness.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { RenderedConcept } from "../../../projection/domain/projected-file.ts";
@@ -12,18 +12,17 @@ type SettingsFailure = Extract<ProjectionRefusal, { readonly kind: "render-faile
 type HookCommand = { readonly harnessName: string; readonly invoke: string; readonly trustedNamespace: string };
 
 export const CODEX_SETTINGS_INPUTS = [] as const;
-type CodexSettingsCapabilities = Pick<SettingsRenderingInputs, "extendedSubprocessTimeoutMs" | "hookTrust">;
 
 const adapterCmd = ({ harnessName, target, trustedNamespace }: { harnessName: string; target: string; trustedNamespace: string }) => `{{INVOKE}} ${trustedNamespace} adapter ${harnessName} ${target}`;
 
-function hookTimeoutSeconds(target: string, capabilities: CodexSettingsCapabilities): number {
+function hookTimeoutSeconds(target: string, capabilities: SettingsCapabilities): number {
   const ordinary = capabilities.extendedSubprocessTimeoutMs / 1000;
   return target === "continue-workflow" || target === "audit-and-sensors"
     ? ordinary * 2
     : ordinary;
 }
 
-function emitHooksJson({ invoke, harnessName, trustedNamespace }: HookCommand, capabilities: CodexSettingsCapabilities): string {
+function emitHooksJson({ invoke, harnessName, trustedNamespace }: HookCommand, capabilities: SettingsCapabilities): string {
   const hooks = HOOK_WIRING.reduce<Record<string, readonly Record<string, unknown>[]>>(
     (groups, { event, matcher, target }) => ({
       ...groups,
@@ -103,7 +102,7 @@ export function trustEntries({ hooksJsonPath, harnessName, invoke, trustedNamesp
   readonly harnessName: string;
   readonly invoke: string;
   readonly trustedNamespace: string | undefined;
-}, capabilities: CodexSettingsCapabilities): Result<string, SettingsFailure> {
+}, capabilities: SettingsCapabilities): Result<string, SettingsFailure> {
   if (!trustedNamespace) return refused({ kind: "render-failed", concept: "hook-registration",
     name: "hooks.json", reason: "trusted route namespace is required" });
   const entries = HOOK_WIRING.reduce<Result<TrustState, SettingsFailure>>(
@@ -136,7 +135,7 @@ export function trustEntries({ hooksJsonPath, harnessName, invoke, trustedNamesp
   }
 }
 
-export function emitTrustSeed({ harnessDir, harnessName, invoke, trustedNamespace }: Omit<HookCommand, "trustedNamespace"> & { readonly harnessDir: string; readonly trustedNamespace: string | undefined }, capabilities: CodexSettingsCapabilities): Result<string, SettingsFailure> {
+export function emitTrustSeed({ harnessDir, harnessName, invoke, trustedNamespace }: Omit<HookCommand, "trustedNamespace"> & { readonly harnessDir: string; readonly trustedNamespace: string | undefined }, capabilities: SettingsCapabilities): Result<string, SettingsFailure> {
   const entries = trustEntries({ hooksJsonPath: `<PROJECT_DIR>/${harnessDir}/hooks.json`,
     harnessName, invoke, trustedNamespace }, capabilities);
   if (!entries.ok) return entries;
@@ -166,7 +165,7 @@ const file = ({ name, text, concept }: { name: string; text: string; concept: Re
     mode: "regular", availability: "always", origin: { kind: "rendered", concept, name } }]);
 };
 
-const hookFiles = ({ harnessDir, invoke, trustedNamespace, harnessName }: HookCommand & { readonly harnessDir: string }, capabilities: CodexSettingsCapabilities): Rendering => {
+const hookFiles = ({ harnessDir, invoke, trustedNamespace, harnessName }: HookCommand & { readonly harnessDir: string }, capabilities: SettingsCapabilities): Rendering => {
       const hooks = file({ name: "hooks.json", text: emitHooksJson({ invoke, harnessName, trustedNamespace }, capabilities), concept: "hook-registration" });
       if (!hooks.ok) return hooks;
       const seedText = emitTrustSeed({ harnessDir, harnessName, invoke, trustedNamespace }, capabilities);

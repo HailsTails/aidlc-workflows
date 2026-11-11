@@ -1,6 +1,6 @@
 // t145-packaging-parity: the package determinism and clean-build guard.
 //
-// covers: file:scripts/package.ts, file:harness/claude/manifest.ts, file:harness/codex/emit.ts
+// covers: file:scripts/package.ts, file:src/hosts/codex/projection/settings-renderer.ts
 //
 // WHAT. The one-core-N-harnesses layout makes dist/ a GENERATED artifact: `bun
 // scripts/package.ts` projects the harness-neutral core/ tree + harness/<name>/

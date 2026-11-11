@@ -121,7 +121,7 @@ test("native entry location has its own declared value and standard default", ()
 });
 
 test.each([
-  "codex", "copilot", "cursor", "kiro-ide", "opencode",
+  "copilot", "kiro-ide", "opencode",
 ] as const)(
   "%s: either producer retains the host's declared layout and include surfaces", (name) => {
     const harness = harnessByName(name);
@@ -137,21 +137,21 @@ test.each([
 );
 
 test("the validator still rejects an incorrect declared native layout", () => {
-  const harness = harnessByName("codex");
-  expect(() => validateManifest("codex", { ...legacyHarnessManifest("codex"),
+  const harness = harnessByName("opencode");
+  expect(() => validateManifest("opencode", { ...legacyHarnessManifest("opencode"),
     orchestratorSkillPath: "wrong/skills/aidlc/SKILL.md" }, harness.capabilities))
     .toThrow(new Error(
-      "harness matrix [codex]: skillsRoot does not agree with manifest.orchestratorSkillPath",
+      "harness matrix [opencode]: skillsRoot does not agree with manifest.orchestratorSkillPath",
     ));
 });
 
 test("the matrix uses the same producer refusal as the package caller", () => {
-  const harness = harnessByName("codex");
+  const harness = harnessByName("opencode");
   expect(() => validateManifest(
-    "codex", { ...legacyHarnessManifest("codex"), skipRunnerGen: true, emit: null },
+    "opencode", { ...legacyHarnessManifest("opencode"), skipRunnerGen: true, emit: null },
     harness.capabilities,
   )).toThrow(new Error(
-    "harness matrix [codex]: Delegated runner production requires a manifest emit function.",
+    "harness matrix [opencode]: Delegated runner production requires a manifest emit function.",
   ));
 });
 
