@@ -1,5 +1,5 @@
 import { expect, mock, test } from "bun:test";
-import type { DelegateShellFacts } from "../../../projection/application/ports/delegate-shell.ts";
+import { DELEGATE_SHELL_FACTS as facts } from "../../../projection/fixtures/delegate-shell-facts.fixture.ts";
 import {
   copyChannelDelegateShellDeny,
   kiroIdeDelegateShellPolicy,
@@ -9,19 +9,6 @@ import {
   shellDenyLines,
   splitShellDeny,
 } from "./delegate-shell-deny.ts";
-
-const facts: DelegateShellFacts = {
-  engineNamespace: "engine",
-  engineRoutes: [],
-  dispatcherCommands: [],
-  launcherGlobalFlags: [],
-  workspaceNouns: [],
-  workspaceRead: () => "other",
-  admittedVerbs: () => ({}),
-  engineRouteAdmission: () => "refused",
-  lifecycleAdmission: () => "admitted",
-  trustedCommand: () => "unused",
-};
 
 test("copy denies the inherited tools, engine and exact dispatcher commands in order", () => {
   expect(copyChannelDelegateShellDeny({

@@ -1,5 +1,59 @@
 import { describe, expect, mock, test } from "bun:test";
-import { kiroIdePermissionLines } from "./agent-renderer.ts";
+import { createKiroIdeAgents, kiroIdePermissionLines, type KiroIdePersonaRendering } from "./agent-renderer.ts";
+import { accepted, refused } from "../../../kernel/result.ts";
+import { host } from "../../../kernel/fixtures/values.fixture.ts";
+import { agent } from "../../../workflow-definition/fixtures/identities.fixture.ts";
+import { methodSource } from "../../../workflow-definition/fixtures/method-source.fixture.ts";
+import type { Agent } from "../../../workflow-definition/domain/agent.ts";
+import { SCRATCH_AGENT_INPUTS } from "../../../projection/fixtures/scratch-host.fixture.ts";
+import { DELEGATE_SHELL_FACTS } from "../../../projection/fixtures/delegate-shell-facts.fixture.ts";
+
+const architect: Agent = {
+  slug: agent("aidlc-architect-agent"), source: methodSource({ kind: "agent", within: "aidlc-architect-agent.md" }),
+  displayName: "Architect", description: "Architecture", owner: { kind: "core" },
+  model: { kind: "tier", tier: "judgment" }, examples: [], tools: { disallowed: ["Task"] }, maxTurns: null,
+  persona: { text: "# Architect\n", headings: [] }, additions: { afterPreflight: [], endOfBody: [] },
+};
+
+const surfaced = "---\nname: architect\nmodel: selected\n---\nRead .kiro/steering/project.md.\n";
+
+test("Kiro IDE gives its persona port the exact in-parts model and native policy profile", () => {
+  const documents = mock(() => accepted(surfaced));
+  const admittedVerbs = mock(DELEGATE_SHELL_FACTS.admittedVerbs);
+  const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
+  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS,
+    host: host({ name: "kiro-ide", directory: ".kiro" }), documents,
+    delegateShellFacts: { ...DELEGATE_SHELL_FACTS, admittedVerbs, dispatcherCommands: ["--fixture"] },
+  });
+  expect(personas).toHaveBeenCalledTimes(1);
+  const profile = personas.mock.calls[0]?.[0];
+  expect(profile?.modelSurface({ agent: architect, removeKeys: ["disallowedTools"] })).toEqual(accepted(surfaced));
+  expect(documents).toHaveBeenCalledWith({ agent: architect,
+    text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+    frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
+      insertBeforeKeys: [], removeKeys: ["disallowedTools"], afterProjectionLines: [] },
+  });
+  expect(profile?.promptLines(architect)).toContain('        - "bun .kiro/tools/aidlc.ts --fixture"');
+  expect(admittedVerbs).toHaveBeenCalledWith("aidlc-architect-agent");
+  expect(profile?.inlineReading(architect)).toBe("dispatched-only");
+});
+
+test("Kiro IDE selects inline reading from the captured inline-agent set", () => {
+  const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
+  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, inlineAgents: new Set([architect.slug]) });
+  expect(personas.mock.calls[0]?.[0].inlineReading(architect)).toBe("reads-inline");
+});
+
+test("Kiro IDE preserves its document refusal and uses the persona port's exact renderer", () => {
+  const failure = { kind: "render-failed", concept: "agent", name: "aidlc-architect-agent", reason: "No source." } as const;
+  const renderAgent = mock(() => refused(failure));
+  const personas = mock<KiroIdePersonaRendering>(() => renderAgent);
+  const rendering = createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, documents: () => refused(failure) });
+  expect(personas.mock.calls[0]?.[0].modelSurface({ agent: architect, removeKeys: [] })).toEqual(refused(failure));
+  expect(rendering.renderAgent).toBe(renderAgent);
+  expect(rendering.renderAgent({ agent: architect, knowledge: [] })).toEqual(refused(failure));
+  expect(renderAgent).toHaveBeenCalledWith({ agent: architect, knowledge: [] });
+});
 
 const policy = { shellDeny: () => ["    - capability: shell", "      effect: deny",
   "      match:", '        - "forbidden engine route"'], riskyForms: ["$", ">"] };

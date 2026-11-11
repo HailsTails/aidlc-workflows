@@ -40,8 +40,8 @@ import type { HostedHarness, Harness } from "./application/ports/harness.ts";
 import type { SkillTableRenderer } from "./domain/neutral-surface.ts";
 import type { CommandSource } from "./application/ports/commands.ts";
 
-const agentInputs = ({ agents, allows }: {
-  readonly agents: AgentProjectionRequest; readonly allows: CopyChannelAllows;
+const agentInputs = ({ agents, allows, facts }: {
+  readonly agents: AgentProjectionRequest; readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts;
 }): AgentRenderingInputs => {
   const persona = createAgentPersonaPreparer({ sources: agents.sources, tokens: agents.tokens,
     directory: agents.host.directory, rulesFolder: agents.rulesFolder, reviewerAgents: agents.reviewerAgents,
@@ -53,7 +53,7 @@ const agentInputs = ({ agents, allows }: {
       return prepared.ok ? markdown({ ...request, content: prepared.value }) : prepared;
     }, tomlModels: legacyTomlAgentModels({ host: agents.host, cap: agents.modelCap }),
     inlineAgents: inlineAgentSet(agents.method), channel: agents.channel,
-    models: legacyAgentModelPolicy(agents.modelCap), formatDocuments: shippedFormatDocuments(), allows };
+    models: legacyAgentModelPolicy(agents.modelCap), formatDocuments: shippedFormatDocuments(), allows, delegateShellFacts: facts };
 };
 
 const settingsInputs = ({ settings, allows, timeoutMs }: {
@@ -63,18 +63,18 @@ const settingsInputs = ({ settings, allows, timeoutMs }: {
   extendedSubprocessTimeoutMs: timeoutMs, hookTrust: legacyHookTrustHash,
   cliModels: legacyCliModelPolicy(settings.modelCap) });
 
-const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, allows, timeoutMs, tables }: {
+const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, allows, facts, timeoutMs, tables }: {
   readonly assembly: HarnessAssemblyRequest;
   readonly surface: Pick<Harness, "renderHostData" | "placeAuthoredFile">;
   readonly rulesFolder: string | null; readonly commands: CommandSource;
-  readonly allows: CopyChannelAllows; readonly timeoutMs: number; readonly tables: SkillTableRenderer;
+  readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts; readonly timeoutMs: number; readonly tables: SkillTableRenderer;
 }): Harness => {
   const commands = createCommandRenderers({ source, place: assembly.renderers.commandPlacement });
   const skills = assembly.renderers.skills({ files: assembly.files, prepare: assembly.prepare,
     tokens: assembly.tokens, tables });
   return { tokens: assembly.tokens,
     ...assembly.renderers.agents(agentInputs({ agents: { ...assembly,
-      render: assembly.renderers.agents, rulesFolder }, allows })),
+      render: assembly.renderers.agents, rulesFolder }, allows, facts })),
     ...assembly.renderers.settings(settingsInputs({ settings: { ...assembly,
       render: assembly.renderers.settings }, allows, timeoutMs })),
     ...assembly.renderers.documents({ fills: assembly.fills, tokens: assembly.tokens,
@@ -107,7 +107,7 @@ const harnessAssembler = (ports: {
     harnessDir: assembly.host.directory, harnessName: assembly.host.distribution,
     files: [...runtime.value, ...descriptor.value] }, ports);
   return formatting.ok ? accepted(assembledMembers({ assembly, surface, rulesFolder: hostData.rulesFolder,
-    allows: reading.value, timeoutMs: ports.timeoutMs, ...formatting.value })) : refused([formatting.refusal]);
+    allows: reading.value, facts: ports.facts, timeoutMs: ports.timeoutMs, ...formatting.value })) : refused([formatting.refusal]);
 };
 
 export const createHostedMethodProjection = (hosted: HostedHarness) => createProjectMethodForHarness({
@@ -150,7 +150,7 @@ export const createBuildProjection = (request: {
     projectAgents: (agents) => {
       const reading = allows.read();
       return reading.ok ? projectMethodAgents({ method: agents.method,
-        harness: agents.render(agentInputs({ agents, allows: reading.value })) }) : reading;
+        harness: agents.render(agentInputs({ agents, allows: reading.value, facts })) }) : reading;
     },
     readHostSources: (capture) => createHostSurfaceReader({ ...capture, reader: request.hostFiles }).read({ host: capture.host }),
     prepareCommandSource: (command) => prepareLegacyRunners({ ...command, temporaryRoot: request.runnerFrames }, {
