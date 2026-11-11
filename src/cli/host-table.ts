@@ -10,6 +10,9 @@ import { CURSOR_ONBOARDING_FILLS } from "../hosts/cursor/onboarding-fills.ts";
 import { cursorCommandPath } from "../hosts/cursor/projection/command-renderer.ts";
 import { kiroIdeDistribution } from "../hosts/kiro-ide/distribution.ts";
 import { openCodeCommandPath } from "../hosts/opencode/projection/command-renderer.ts";
+import { copilotCommandPath } from "../hosts/copilot/projection/command-renderer.ts";
+import { copilotDistribution } from "../hosts/copilot/distribution.ts";
+import { COPILOT_ONBOARDING_FILLS } from "../hosts/copilot/onboarding-fills.ts";
 import { openCodeDistribution } from "../hosts/opencode/distribution.ts";
 import { OPENCODE_ONBOARDING_FILLS } from "../hosts/opencode/onboarding-fills.ts";
 import { KIRO_IDE_ONBOARDING_FILLS } from "../hosts/kiro-ide/onboarding-fills.ts";
@@ -41,7 +44,9 @@ import {
   KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TOKENS, kiroIdeHostIdentity,
 } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
-import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING } from "../hosts/copilot/host-data.ts";
+import {
+  COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING, COPILOT_TOKENS, copilotHostIdentity,
+} from "../hosts/copilot/host-data.ts";
 import {
   CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_TOKENS, cursorHostIdentity,
 } from "../hosts/cursor/host-data.ts";
@@ -207,6 +212,8 @@ const ROUTED_ENTRIES: readonly HostEntry[] = [
     distribution: kiroIdeDistribution },
   { identity: openCodeHostIdentity, tokens: OPENCODE_TOKENS, commands: openCodeCommandPath,
     fills: OPENCODE_ONBOARDING_FILLS, bindingHeading: OPENCODE_BINDING_HEADING, distribution: openCodeDistribution },
+  { identity: copilotHostIdentity, tokens: COPILOT_TOKENS, commands: copilotCommandPath,
+    fills: COPILOT_ONBOARDING_FILLS, bindingHeading: COPILOT_BINDING_HEADING, distribution: copilotDistribution },
 ];
 
 export type HostBuildRefusal = {

@@ -22,9 +22,15 @@ export type HookTrustHash = (identity: HookTrustIdentity) => string;
 
 export type CliModelPolicy = (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
 
+export type EngineLauncher = {
+  readonly path: string;
+  readonly body: (request: { readonly invocation: string }) => string;
+};
+
 export type SettingsRenderingInputs = {
   readonly extendedSubprocessTimeoutMs: number;
   readonly hookTrust: HookTrustHash;
+  readonly launcher: EngineLauncher;
   readonly cliModels: CliModelPolicy;
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;

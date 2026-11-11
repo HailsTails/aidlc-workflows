@@ -3,6 +3,7 @@ import { inlineAgentSet } from "../workflow-definition/domain/method-participati
 import { legacyMarkdownAgentSurface, legacyTomlAgentModels, legacyCliModelPolicy,
   legacyAgentTiersData, legacyAgentModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
+import { legacyEngineLauncher } from "./adapters/legacy-launcher.ts";
 import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
 import { createNeutralReading } from "./adapters/neutral-surface-files.ts";
 import { projectMethodDocuments } from "./application/project-method-documents.ts";
@@ -40,6 +41,8 @@ import type { HostedHarness, Harness } from "./application/ports/harness.ts";
 import type { SkillTableRenderer } from "./domain/neutral-surface.ts";
 import type { CommandSource } from "./application/ports/commands.ts";
 
+type SettingsBindings = SettingsCapabilities & Pick<SettingsRenderingInputs, "launcher">;
+
 const agentInputs = ({ agents, allows, facts }: {
   readonly agents: AgentProjectionRequest; readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts;
 }): AgentRenderingInputs => {
@@ -58,7 +61,7 @@ const agentInputs = ({ agents, allows, facts }: {
 
 const settingsInputs = ({ settings, allows, capabilities }: {
   readonly settings: SettingsProjectionRequest; readonly allows: CopyChannelAllows;
-  readonly capabilities: SettingsCapabilities;
+  readonly capabilities: SettingsBindings;
 }): SettingsRenderingInputs => ({ files: settings.files, prepare: settings.prepare,
   tokens: settings.tokens, channel: settings.channel, entrypoints: settings.entrypoints, allows,
   ...capabilities, cliModels: legacyCliModelPolicy(settings.modelCap) });
@@ -67,7 +70,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
   readonly assembly: HarnessAssemblyRequest;
   readonly surface: Pick<Harness, "renderHostData" | "placeAuthoredFile">;
   readonly rulesFolder: string | null; readonly commands: CommandSource;
-  readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts; readonly capabilities: SettingsCapabilities;
+  readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts; readonly capabilities: SettingsBindings;
   readonly tables: SkillTableRenderer;
 }): Harness => {
   const commands = createCommandRenderers({ source, place: assembly.renderers.commandPlacement });
@@ -90,7 +93,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
 };
 
 const harnessAssembler = (ports: {
-  readonly allows: CopyChannelAllowSource; readonly facts: DelegateShellFacts; readonly capabilities: SettingsCapabilities;
+  readonly allows: CopyChannelAllowSource; readonly facts: DelegateShellFacts; readonly capabilities: SettingsBindings;
   readonly scratch: LegacyRunnerScratch; readonly processRunner: LegacyRunnerProcess;
   readonly frames: URL; readonly child: URL;
 }): HarnessAssembly => async (assembly) => {
@@ -125,16 +128,17 @@ export const createBuildProjection = (request: {
   const facts = delegateShellFacts();
   const settingsCapabilities: SettingsCapabilities = {
     extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(), hookTrust: legacyHookTrustHash };
+  const bindings: SettingsBindings = { ...settingsCapabilities, launcher: legacyEngineLauncher };
   return {
     delegateShellFacts: facts, settingsCapabilities,
-    assembleHarness: harnessAssembler({ allows, facts, capabilities: settingsCapabilities, scratch: request.runnerScratch,
+    assembleHarness: harnessAssembler({ allows, facts, capabilities: bindings, scratch: request.runnerScratch,
       processRunner: request.runnerProcess, frames: request.runnerFrames, child: request.runnerChild }),
     projectWorkspace,
     projectSettings: (settings) => {
       const reading = allows.read();
       return reading.ok ? projectMethodSettings({ method: settings.method,
         harness: settings.render(settingsInputs({ settings, allows: reading.value,
-          capabilities: settingsCapabilities })) }) : reading;
+          capabilities: bindings })) }) : reading;
     },
     projectRuntime, readMemoryCompanions: createMemoryCompanionReading(request.sessionFiles),
     readNeutral: createNeutralReading({ files: request.hostFiles, tree: request.sessionFiles }),

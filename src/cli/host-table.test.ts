@@ -1,4 +1,6 @@
 import { createOpenCodeDocumentRenderer } from "../hosts/opencode/projection/document-renderer.ts";
+import { COPILOT_ONBOARDING_FILLS } from "../hosts/copilot/onboarding-fills.ts";
+import { copilotDistribution } from "../hosts/copilot/distribution.ts";
 import { OPENCODE_ONBOARDING_FILLS } from "../hosts/opencode/onboarding-fills.ts";
 import { openCodeDistribution } from "../hosts/opencode/distribution.ts";
 import { KIRO_IDE_ONBOARDING_FILLS } from "../hosts/kiro-ide/onboarding-fills.ts";
@@ -221,14 +223,15 @@ test("OpenCode settings register the native settings and captured plugin produce
   } });
 });
 
-test("Claude, Kiro, Codex, Cursor, Kiro IDE and OpenCode enter the full table with every real concept, fills and distribution", () => {
-  expect(HOST_BUILD_MEMBERS).toHaveLength(6);
+test("Claude, Kiro, Codex, Cursor, Kiro IDE, OpenCode and Copilot enter the full table with every real concept, fills and distribution", () => {
+  expect(HOST_BUILD_MEMBERS).toHaveLength(7);
   expect(HOST_BUILD_MEMBERS[0]?.host).toEqual(host({ name: "claude", directory: ".claude" }));
   expect(HOST_BUILD_MEMBERS[1]?.host).toEqual(host({ name: "kiro", directory: ".kiro" }));
   expect(HOST_BUILD_MEMBERS[2]?.host).toEqual(host({ name: "codex", directory: ".codex" }));
   expect(HOST_BUILD_MEMBERS[3]?.host).toEqual(host({ name: "cursor", directory: ".cursor" }));
   expect(HOST_BUILD_MEMBERS[4]?.host).toEqual(host({ name: "kiro-ide", directory: ".kiro" }));
   expect(HOST_BUILD_MEMBERS[5]?.host).toEqual(host({ name: "opencode", directory: ".aidlc" }));
+  expect(HOST_BUILD_MEMBERS[6]?.host).toEqual(host({ name: "copilot", directory: ".aidlc" }));
   expect(HOST_BUILD_MEMBERS[0]?.fills).toBe(CLAUDE_ONBOARDING_FILLS);
   expect(HOST_BUILD_MEMBERS[0]?.distribution).toBe(claudeDistribution);
   expect(HOST_BUILD_MEMBERS[0]?.bindingHeading).toBe("Claude Code");
@@ -247,6 +250,9 @@ test("Claude, Kiro, Codex, Cursor, Kiro IDE and OpenCode enter the full table wi
   expect(HOST_BUILD_MEMBERS[5]?.fills).toBe(OPENCODE_ONBOARDING_FILLS);
   expect(HOST_BUILD_MEMBERS[5]?.distribution).toBe(openCodeDistribution);
   expect(HOST_BUILD_MEMBERS[5]?.bindingHeading).toBe("opencode");
+  expect(HOST_BUILD_MEMBERS[6]?.fills).toBe(COPILOT_ONBOARDING_FILLS);
+  expect(HOST_BUILD_MEMBERS[6]?.distribution).toBe(copilotDistribution);
+  expect(HOST_BUILD_MEMBERS[6]?.bindingHeading).toBe("GitHub Copilot");
 });
 
 test("Codex agents directly register the native factory without authored capture", () => {

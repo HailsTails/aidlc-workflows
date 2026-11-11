@@ -35,7 +35,9 @@
 //     there) — the doctor probes exactly that.
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
-import onboardingFills from "./onboarding.fills.ts";
+import {
+  COPILOT_ONBOARDING_FILLS as onboardingFills,
+} from "../../src/hosts/copilot/onboarding-fills.ts";
 import emit from "./emit.ts";
 import { COPILOT_HOST_DATA } from "../../src/hosts/copilot/host-data.ts";
 
