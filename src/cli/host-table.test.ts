@@ -27,11 +27,14 @@ import { documentRenderingInputsFixture } from "../projection/fixtures/document-
 import { expect, test } from "bun:test";
 import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import { accept } from "../kernel/fixtures/accept.ts";
+import { accepted, refused } from "../kernel/result.ts";
+import { CLAUDE_TOKENS, claudeHostIdentity } from "../hosts/claude/host-data.ts";
+import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
 import { SCRATCH_AGENT_INPUTS } from "../projection/fixtures/scratch-host.fixture.ts";
 import { agent } from "../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../workflow-definition/fixtures/method-source.fixture.ts";
 import {
-  HOST_BUILD_MEMBERS, hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
+  HOST_BUILD_MEMBERS, HOST_BUILD_REFUSALS, hostBuildMembers, type HostEntry, hostBindingHeadings, hostDocumentMembers, hostAgentInputs, hostAgentMembers, hostSurfaceMembers,
   hostSettingsInputs, hostSettingsMembers } from "./host-table.ts";
 import { createKiroSettingsRenderer } from "../hosts/kiro/projection/settings-renderer.ts";
 
@@ -273,4 +276,31 @@ test("OpenCode agents directly register the native factory without authored capt
 test("OpenCode documents directly register the native renderer without authored capture", () => {
   const opencode = host({ name: "opencode", directory: ".aidlc" });
   expect(hostDocumentMembers(opencode)).toEqual({ host: opencode, inputs: [], render: createOpenCodeDocumentRenderer });
+});
+
+const claudeEntry: HostEntry = {
+  identity: claudeHostIdentity, tokens: CLAUDE_TOKENS, commands: claudeCommandPath,
+  fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: "Claude Code", distribution: claudeDistribution,
+};
+
+test("every routed host builds, so the table reports no refusals", () => {
+  expect(HOST_BUILD_REFUSALS).toEqual([]);
+});
+
+test("a host entry whose identity refuses names the identity member and keeps the identity's own refusal", () => {
+  const identityRefusal = { kind: "invalid-distribution-id", raw: "" };
+  expect(hostBuildMembers({ ...claudeEntry, identity: () => refused(identityRefusal) })).toEqual(refused({
+    kind: "host-build-refused", member: "identity", host: null, reason: identityRefusal }));
+});
+
+test("a host with no registered members names the first missing member and the host", () => {
+  const scratch = host({ name: "scratch", directory: ".scratch" });
+  expect(hostBuildMembers({ ...claudeEntry, identity: () => accepted(scratch) })).toEqual(refused({
+    kind: "host-build-refused", member: "agents", host: "scratch",
+    reason: "No members are registered for this host in the host table." }));
+});
+
+test("a complete host entry is accepted with its identity", () => {
+  const built = hostBuildMembers(claudeEntry);
+  expect(built.ok && built.value.host).toEqual(host({ name: "claude", directory: ".claude" }));
 });

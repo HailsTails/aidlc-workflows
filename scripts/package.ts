@@ -74,7 +74,8 @@ import {
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
-  hostAgentInputs, hostAgentMembers, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers, HOST_BUILD_MEMBERS,
+  hostAgentInputs, hostAgentMembers, hostSkillInputs, hostSurfaceMembers, hostDocumentMembers,
+  HOST_BUILD_MEMBERS, HOST_BUILD_REFUSALS,
 } from "../src/cli/host-table.ts";
 import { distributionId, projectPath, sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
@@ -2052,6 +2053,12 @@ if (argv[0] === "plugin" && argv[1] === "build") {
     process.exit(1);
   }
   process.exit(0);
+}
+
+if (HOST_BUILD_REFUSALS.length > 0) {
+  for (const refusal of HOST_BUILD_REFUSALS) console.error(JSON.stringify(refusal));
+  console.error("A host in the host table cannot be built. Fix the member each line names in src/cli/host-table.ts.");
+  process.exit(1);
 }
 
 const check = argv.includes("--check");
