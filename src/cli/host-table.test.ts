@@ -1,3 +1,4 @@
+import { createOpenCodeDocumentRenderer } from "../hosts/opencode/projection/document-renderer.ts";
 import { KIRO_IDE_ONBOARDING_FILLS } from "../hosts/kiro-ide/onboarding-fills.ts";
 import { kiroIdeDistribution } from "../hosts/kiro-ide/distribution.ts";
 import { CODEX_ONBOARDING_FILLS } from "../hosts/codex/onboarding-fills.ts";
@@ -261,4 +262,9 @@ test("OpenCode agents directly register the native factory without authored capt
   expect(hostAgentMembers(opencode)).toEqual({ ok: true, value: {
     host: opencode, inputs: [], render: openCodeAgents,
   } });
+});
+
+test("OpenCode documents directly register the native renderer without authored capture", () => {
+  const opencode = host({ name: "opencode", directory: ".aidlc" });
+  expect(hostDocumentMembers(opencode)).toEqual({ host: opencode, inputs: [], render: createOpenCodeDocumentRenderer });
 });
