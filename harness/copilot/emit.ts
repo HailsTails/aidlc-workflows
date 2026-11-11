@@ -16,7 +16,7 @@
 // it never replaces the directory. All emissions are aidlc-prefixed so the
 // merge is collision-free.
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
 import {
@@ -35,24 +35,6 @@ function emit(ctx: EmitContext): void {
   const { coreRoot, distRoot, harnessDir, substituteToken } = ctx;
   const SHELL = join(distRoot, ".github");
   const emissions: Array<{ path: string; content: () => string }> = [];
-
-  // The packager rendered AGENTS.md (onboarding) before emit runs; its
-  // skeleton names skills under <harnessDir>/skills/, but Copilot discovers
-  // skills ONLY at .github/skills/. Rewrite the path family in place (the
-  // codex idiom: its prose rewrite maps the same skeleton lines onto
-  // .agents/skills/). Anchored on the slash-suffixed form — the one
-  // permitted transform class.
-  const agentsMdPath = join(distRoot, "AGENTS.md");
-  if (existsSync(agentsMdPath)) {
-    emissions.push({
-      path: agentsMdPath,
-      content: () =>
-        readFileSync(agentsMdPath, "utf-8").replaceAll(
-          `${harnessDir}/skills/`,
-          ".github/skills/",
-        ),
-    });
-  }
 
   for (const agent of ctx.method.agents) {
     const captured = ctx.sources.find((source) => source.path === agent.source
