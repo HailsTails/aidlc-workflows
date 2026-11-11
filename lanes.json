@@ -203,7 +203,7 @@
       }
     },
     "composition": {
-      "name": "Composition: F2-2 to F2-7, F3-2 to F3-7, T-M2-9 and T-M2-10, one slice at a time; dot named it the single Fable lane for Q116 (Q117). Retired when T-M2-10 lands, and its paths return to integration. harness/cursor/manifest.ts joined when AR6 landed, and harness/kiro-ide/manifest.ts when AR5 landed, which also returned src/projection/core-root{,.test}.ts from hosts-c. t181, t274 and t-kiro-typed-harness-names read each host's fills path, so they stay through F2-7. E3's two OpenCode files and AR7's Copilot agent renderer are composition's for those two tickets only, by the 07:38 UTC ruling, and return to their host lanes as each ticket lands. src/projection/adapters/legacy-launcher{,.test}.ts is composition's for F2-7's launcher bridge and returns to integration when F2-7 lands",
+      "name": "Packaging wiring (Claude): scripts/package.ts, the package build root and the host table for Q122, Q140 and Q47's Packaging tickets, one at a time (Q146). The session that held these as composition keeps them; the retired F2 and F3 slices' other paths returned to their lanes at T-M2-10",
       "agent": "claude/fable",
       "owns": [
         "scripts/package.ts",
@@ -215,12 +215,7 @@
         "src/cli/package-build-root{,.test}.ts",
         "src/cli/host-table{,.test}.ts",
         "src/cli/eighth-host.test.ts",
-        "src/projection/adapters/legacy-launcher{,.test}.ts",
-        "src/hosts/opencode/projection/document-renderer{,.test}.ts",
-        "src/hosts/opencode/host-data{,.test}.ts",
-        "src/hosts/copilot/projection/agent-renderer{,.test}.ts",
         "src/projection/core-root{,.test}.ts",
-        "src/projection/adapters/legacy-includes{,.test}.ts",
         "harness/codex/manifest.ts",
         "harness/opencode/manifest.ts",
         "harness/kiro/manifest.ts",
@@ -228,9 +223,6 @@
         "harness/cursor/manifest.ts",
         "harness/copilot/manifest.ts",
         "harness/{codex,opencode,copilot}/emit.ts",
-        "tests/unit/t181-conductor-skill-parity.test.ts",
-        "tests/unit/t274-voice-parity.test.ts",
-        "tests/unit/t-kiro-typed-harness-names.test.ts",
         "harness/{codex,opencode,kiro,kiro-ide,cursor,copilot}/onboarding.fills.ts",
         "tests/unit/t248-steering-content-delivery.test.ts",
         "tests/unit/t64.test.ts",
@@ -314,7 +306,7 @@
         "src/cli/host-table{,.test}.ts",
         "docs/guide/harnesses/kiro-ide.md"
       ],
-      "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**", "src/hosts/copilot/projection/agent-renderer{,.test}.ts"],
+      "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {}
     },
@@ -329,7 +321,6 @@
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/cli/host-table{,.test}.ts"
       ],
-      "notOwned": ["src/hosts/opencode/projection/document-renderer{,.test}.ts", "src/hosts/opencode/host-data{,.test}.ts"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {}
     },
@@ -344,7 +335,6 @@
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/cli/host-table{,.test}.ts"
       ],
-      "notOwned": ["src/hosts/opencode/projection/document-renderer{,.test}.ts", "src/hosts/opencode/host-data{,.test}.ts"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {}
     },
