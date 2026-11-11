@@ -87,3 +87,15 @@ describe("a candidate that deletes a file", () => {
     expect(testsNamingDeleted(request([]))).toEqual([]);
   });
 });
+
+describe("a candidate that moves only the gate's ratchet records", () => {
+  test("a host's retired records need no legacy runtime suite", () => {
+    const records = [
+      "lint/boundary-baseline.json",
+      "tests/ratchets/monolith-lines.json",
+      "tests/ratchets/harness-kiro-manifest-declarations.txt",
+    ];
+
+    expect(needsCandidateLegacy(records)).toBe(false);
+  });
+});

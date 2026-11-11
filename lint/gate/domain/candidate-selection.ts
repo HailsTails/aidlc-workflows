@@ -24,7 +24,7 @@ export const candidateBuildTests = (paths: readonly string[]): readonly string[]
 const PHASE_ONE = [
   "src/**", "lint/**", "scripts/package.ts", ...Object.keys(BUILD_TESTS),
   ...CLEAN_ZONE.files, ...SCAFFOLDING_ZONE.files,
-  "docs/**/*.md", "harness/**", "tests/harness/harness-matrix.ts",
+  "docs/**/*.md", "harness/**", "tests/harness/harness-matrix.ts", "tests/ratchets/**",
   "tests/{unit,smoke,integration,e2e}/**/*.test.ts",
 ];
 
