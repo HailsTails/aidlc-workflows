@@ -17,6 +17,11 @@ describe("legacy suites", () => {
     expect(environment).toEqual({ PATH: "/bin", HOME: "/home/x" });
   });
 
+  test("the runner keeps PATHEXT so a spawned shell finds a .cmd launcher on PATH", () => {
+    const environment = legacyEnvironment({ PATH: "C:\bin", PATHEXT: ".COM;.EXE;.CMD" });
+    expect(environment).toEqual({ PATH: "C:\bin", PATHEXT: ".COM;.EXE;.CMD" });
+  });
+
   test("both legacy suites run the repository runner with the explicit environment", () => {
     const environment = { PATH: "/bin" };
     const suites = legacySuites({ bun: "bun", environment });
