@@ -1,6 +1,0 @@
-KIRO_V3_WAYS_BACK
-PERSONA_PROMPT_LINES
-default
-emitAgents
-manifest
-modelSurface

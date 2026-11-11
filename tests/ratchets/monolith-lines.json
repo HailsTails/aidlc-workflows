@@ -10,7 +10,6 @@
     "harness/copilot/manifest.ts": 270,
     "harness/cursor/manifest.ts": 231,
     "harness/kiro-ide/manifest.ts": 469,
-    "harness/kiro/manifest.ts": 317,
     "harness/opencode/emit.ts": 176,
     "harness/opencode/manifest.ts": 181,
     "scripts/manifest-types.ts": 495
