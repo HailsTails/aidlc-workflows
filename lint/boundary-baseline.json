@@ -1,17 +1,17 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 173992,
+  "total": 173757,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
-    "aidlc/no-comments": 112832,
+    "aidlc/no-comments": 112634,
     "complexity": 3073,
     "Context boundary": 48,
     "Harness branching": 431,
     "max-depth": 2125,
-    "max-len": 48766,
+    "max-len": 48729,
     "max-lines-per-function": 3524,
     "max-params": 1764,
     "Monolith": 47,
@@ -1413,14 +1413,6 @@
       "aidlc/no-comments": 91,
       "no-nested-ternary": 1,
       "max-len": 1
-    },
-    "harness/kiro-ide/manifest.ts": {
-      "aidlc/no-comments": 193,
-      "max-len": 23
-    },
-    "harness/kiro-ide/onboarding.fills.ts": {
-      "aidlc/no-comments": 5,
-      "max-len": 14
     },
     "harness/kiro/hooks/aidlc-kiro-adapter.ts": {
       "aidlc/no-comments": 419,
