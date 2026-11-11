@@ -53,8 +53,9 @@ export const driftFinding = (drift: GoldenDrift): Finding => ({
   subject: `${drift.group} · ${drift.path}`,
   violation: `${drift.change} against the golden output`,
   fix:
-    "If the output change is deliberate, run `bun scripts/gate.ts --update-goldens` and " +
-    "commit tests/golden with a decision line; otherwise restore the behaviour.",
+    "Investigate the difference and correct the source until the output matches the pinned " +
+    "output contract. A deliberate change is not a reason to update the goldens; " +
+    "--update-goldens belongs to the upstream-pin workflow only.",
 });
 
 export const PLUGIN_MARKETPLACE_GROUP = "plugin-marketplaces";

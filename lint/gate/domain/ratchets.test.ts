@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { goldenDrift, goldenGroupOf } from "./golden.ts";
+import { driftFinding, goldenDrift, goldenGroupOf } from "./golden.ts";
 import { judgeKernelSurface } from "./kernel-surface.ts";
 import { isStale, LOCK_MAX_AGE_MS, type LockOwner } from "./machine-lock.ts";
 import { countLines, judgeMonolith, shrunkRecord } from "./monolith.ts";
@@ -122,5 +122,16 @@ describe("machine lock staleness", () => {
     const unread = { owner: undefined, ageMs: 1000, ownerAlive: false, host: "rin" };
     expect(isStale(unread)).toBe(false);
     expect(isStale({ ...unread, ageMs: 61_000 })).toBe(true);
+  });
+});
+
+describe("driftFinding", () => {
+  const drift = { group: "claude", path: "dist/claude/a.md", change: "changed" } as const;
+
+  test("sends the agent to the pinned output contract, never to updating the goldens", () => {
+    const { fix } = driftFinding(drift);
+
+    expect(fix).toContain("pinned output contract");
+    expect(fix).not.toContain("bun scripts/gate.ts --update-goldens");
   });
 });
