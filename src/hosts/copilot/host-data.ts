@@ -1,3 +1,6 @@
+import type { HostIdentity } from "../../kernel/host.ts";
+import { accepted, type Result } from "../../kernel/result.ts";
+import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
@@ -54,4 +57,12 @@ export const COPILOT_TOKENS = {
 export const COPILOT_AUTHORED_PLACEMENTS = [
   { source: "hooks/aidlc-copilot-adapter.ts", destination: ".aidlc/hooks/aidlc-copilot-adapter.ts" },
   { source: "dot-gitignore", destination: ".gitignore" },
+  { source: "dot-vscode-settings.json", destination: ".vscode/settings.json" },
 ] as const satisfies readonly AuthoredPlacement[];
+
+export const copilotHostIdentity = (): Result<HostIdentity, KernelRefusal> => {
+  const distribution = distributionId("copilot");
+  if (!distribution.ok) return distribution;
+  const directory = projectPath(".aidlc");
+  return directory.ok ? accepted({ distribution: distribution.value, directory: directory.value }) : directory;
+};

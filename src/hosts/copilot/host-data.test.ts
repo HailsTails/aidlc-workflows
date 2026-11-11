@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { COPILOT_HOST_DATA, COPILOT_TOKENS, COPILOT_AUTHORED_PLACEMENTS } from "./host-data.ts";
+import { host } from "../../kernel/fixtures/values.fixture.ts";
+import { copilotHostIdentity, COPILOT_HOST_DATA, COPILOT_TOKENS, COPILOT_AUTHORED_PLACEMENTS } from "./host-data.ts";
 
 test("Copilot declares one runtime surface for CLI and VS Code", () => {
   expect(COPILOT_HOST_DATA.productName).toBe("GitHub Copilot");
@@ -15,11 +16,16 @@ test("Copilot keeps runners typed-only and terminal output within the host limit
   expect(COPILOT_TOKENS).toEqual({ ["SKILL_INVOKE"]: null, ["OPTION_LETTERS"]: "A-E" });
 });
 
-test("Copilot places ancillary files without taking VS Code settings or documents", () => {
+test("Copilot places its adapter, gitignore and VS Code settings without taking documents", () => {
   expect(COPILOT_AUTHORED_PLACEMENTS).toEqual([
     { source: "hooks/aidlc-copilot-adapter.ts", destination: ".aidlc/hooks/aidlc-copilot-adapter.ts" },
     { source: "dot-gitignore", destination: ".gitignore" },
+    { source: "dot-vscode-settings.json", destination: ".vscode/settings.json" },
   ]);
+});
+
+test("Copilot owns its checked distribution identity and native directory", () => {
+  expect(copilotHostIdentity()).toEqual({ ok: true, value: host({ name: "copilot", directory: ".aidlc" }) });
 });
 
 test("Copilot declares the host-specific hook recovery instructions", () => {

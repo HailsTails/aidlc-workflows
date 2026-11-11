@@ -105,8 +105,7 @@ const HARNESS_CAPABILITIES = {
   copilot: {
     harnessDir: ".aidlc",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: "AGENTS.md",
     },
@@ -429,13 +428,18 @@ function validateFullHostAgentsAndPlugin(name: ShippedHarnessName,
   }
 }
 
+function nativeOnboardingPath(capabilities: HarnessCapabilities): string | undefined {
+  const { harnessDist } = capabilities.onboarding;
+  return harnessDist.startsWith(`${capabilities.harnessDir}/`) ? harnessDist : undefined;
+}
+
 function validateFullHostLayout({ name, descriptor, capabilities }: {
   name: ShippedHarnessName; descriptor: ProjectionDescriptor; capabilities: HarnessCapabilities;
 }): void {
   if (descriptor.distribution !== name || descriptor.harnessDir !== capabilities.harnessDir) {
     fail(name, "full-host identity does not agree with the generated descriptor");
   }
-  if (descriptor.onboarding !== capabilities.onboarding.harnessDist) {
+  if (descriptor.onboarding !== nativeOnboardingPath(capabilities)) {
     fail(name, "full-host onboarding does not agree with the generated descriptor");
   }
   const roots = descriptor.rootIntegrations.map((root) => root.path).sort();
