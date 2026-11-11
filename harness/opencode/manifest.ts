@@ -110,8 +110,6 @@ const manifest: HarnessManifest = {
   // opencode-native subagent copies in .opencode/agents/ are emitted.
   coreDirs: [
     { src: "tools", dst: "tools" },
-    { src: "aidlc-common", dst: "aidlc-common" },
-    { src: "knowledge", dst: "knowledge" },
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
     { src: "agents", dst: "agents" },

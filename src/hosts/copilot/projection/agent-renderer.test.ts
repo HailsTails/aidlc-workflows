@@ -1,12 +1,13 @@
 import { describe, expect, mock, test } from "bun:test";
 import { brand } from "../../../kernel/brand.ts";
-import type { ProjectPath } from "../../../kernel/values.ts";
+import { path } from "../../../kernel/fixtures/values.fixture.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
+import type { AgentDocumentSurface } from "../../../projection/application/ports/agents.ts";
+import { SCRATCH_AGENT_INPUTS } from "../../../projection/fixtures/scratch-host.fixture.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import type { AgentSlug } from "../../../workflow-definition/domain/identities.ts";
 import type { MethodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
-import { copilotAgentRenderer, type CopilotModelSurface,
-  type CopilotRuntimeSurface } from "./agent-renderer.ts";
+import { copilotAgents } from "./agent-renderer.ts";
 
 const delivery: Agent = {
   slug: brand<AgentSlug>("aidlc-delivery-agent"),
@@ -24,121 +25,84 @@ const delivery: Agent = {
 
 const unrestricted: Agent = { ...delivery, tools: { disallowed: [] } };
 
-const surfacing: CopilotModelSurface = () => accepted(
-  '---\nname: aidlc-delivery-agent\ntools: ["read"]\n---\n' +
-  "Read aidlc/spaces/<active-space>/memory/org.md first.\n",
-);
+const NATIVE = '---\nname: aidlc-delivery-agent\ntools: ["read"]\n---\nRead aidlc/spaces/<active-space>/memory/org.md first.\n';
+const RUNTIME = "---\nname: aidlc-delivery-agent\ndisallowedTools: Task\n---\nRuntime. Read aidlc/spaces/<active-space>/memory/org.md first.\n";
+const NATIVE_PLACED = '---\nname: aidlc-delivery-agent\ntools: ["read"]\n---\nRead aidlc/active-memory/org.md first.\n';
+const RUNTIME_PLACED = "---\nname: aidlc-delivery-agent\ndisallowedTools: Task\n---\nRuntime. Read aidlc/active-memory/org.md first.\n";
 
-const runtimeSurfacing: CopilotRuntimeSurface = () => accepted(
-  "---\nname: aidlc-delivery-agent\ndisallowedTools: Task\n---\n" +
-  "Runtime knowledge. Read aidlc/spaces/<active-space>/memory/org.md first.\n",
-);
+const surfaces = () => mock().mockReturnValueOnce(accepted(NATIVE)).mockReturnValueOnce(accepted(RUNTIME));
 
-const noFrontmatter = {
-  kind: "render-failed",
-  concept: "agent",
-  name: "aidlc-delivery-agent",
-  reason: "No frontmatter.",
-} as const;
+const noFrontmatter = { kind: "render-failed", concept: "agent", name: "aidlc-delivery-agent", reason: "No frontmatter." } as const;
 
-describe("copilotAgentRenderer", () => {
-  test("keeps runtime and native policies distinct and places both active-memory personas", () => {
-    expect(copilotAgentRenderer(surfacing, runtimeSurfacing)({ agent: delivery, knowledge: [] })).toEqual({
-      ok: true,
-      value: [
-        {
-          path: brand<ProjectPath>(".aidlc/agents/aidlc-delivery-agent.md"),
-          content: {
-            kind: "text",
-            text: "---\nname: aidlc-delivery-agent\ndisallowedTools: Task\n---\n" +
-              "Runtime knowledge. Read aidlc/active-memory/org.md first.\n",
-          },
-          mode: "regular",
-          origin: { kind: "method-source", path: brand<MethodSourcePath>("aidlc-common/agents/aidlc-delivery-agent.md") },
-          availability: "always",
-        },
-        {
-          path: brand<ProjectPath>(".github/agents/aidlc-delivery-agent.md"),
-          content: {
-            kind: "text",
-            text: '---\nname: aidlc-delivery-agent\ntools: ["read"]\n---\n' +
-              "Read aidlc/active-memory/org.md first.\n",
-          },
-          mode: "regular",
-          origin: { kind: "method-source", path: brand<MethodSourcePath>("aidlc-common/agents/aidlc-delivery-agent.md") },
-          availability: "always",
-        },
-      ],
+const render = (agent: Agent, documents: AgentDocumentSurface = surfaces()) =>
+  copilotAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent, knowledge: [] });
+
+describe("copilotAgents", () => {
+  test("places the runtime and native personas with the engine's copy of the active memory", () => {
+    expect(render(delivery)).toEqual(accepted([
+      { path: path(".aidlc/agents/aidlc-delivery-agent.md"), mode: "regular", availability: "always",
+        origin: { kind: "method-source", path: delivery.source },
+        content: { kind: "text", text: RUNTIME_PLACED } },
+      { path: path(".github/agents/aidlc-delivery-agent.md"), mode: "regular", availability: "always",
+        origin: { kind: "method-source", path: delivery.source },
+        content: { kind: "text", text: NATIVE_PLACED } },
+    ]));
+  });
+
+  test("requests the native persona preflight-only, model omitted, with the Task denial as a worker allowlist", () => {
+    const documents = surfaces();
+    render(delivery, documents);
+    expect(documents).toHaveBeenCalledWith({
+      agent: delivery, text: "authored-file", knowledge: "preflight-only", reading: "whole-files",
+      frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
+        removeKeys: ["disallowedTools"],
+        afterProjectionLines: ['tools: ["read", "edit", "search", "execute", "web", "todo"]'] },
     });
   });
 
-  test("turns the Task denial into a native allowlist without Copilot's agent tool", () => {
-    const surface = mock(surfacing);
-    const runtime = mock(runtimeSurfacing);
-    copilotAgentRenderer(surface, runtime)({ agent: delivery, knowledge: [] });
-    expect(surface).toHaveBeenCalledWith({
-      agent: delivery,
-      removeKeys: ["disallowedTools"],
-      afterProjectionLines: ['tools: ["read", "edit", "search", "execute", "web", "todo"]'],
+  test("requests the runtime persona absorbed, with the projected model and its denial kept", () => {
+    const documents = surfaces();
+    render(delivery, documents);
+    expect(documents).toHaveBeenCalledWith({
+      agent: delivery, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+      frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
+        removeKeys: [], afterProjectionLines: [] },
     });
-    expect(runtime).toHaveBeenCalledWith({ agent: delivery });
   });
 
   test("an agent that denies nothing gets no native allowlist", () => {
-    const surface = mock(surfacing);
-    copilotAgentRenderer(surface, runtimeSurfacing)({ agent: unrestricted, knowledge: [] });
-    expect(surface).toHaveBeenCalledWith({
-      agent: unrestricted,
-      removeKeys: ["disallowedTools"],
-      afterProjectionLines: [],
-    });
+    const documents = surfaces();
+    render(unrestricted, documents);
+    expect(documents).toHaveBeenCalledWith(expect.objectContaining({ knowledge: "preflight-only",
+      frontmatter: expect.objectContaining({ afterProjectionLines: [] }) }));
+  });
+
+  test("has no separate conductor agent file", () => {
+    expect(copilotAgents(SCRATCH_AGENT_INPUTS).renderConductorAgent({ knowledge: [] })).toEqual(accepted([]));
   });
 });
 
-describe("copilotAgentRenderer refusals", () => {
+describe("copilotAgents refusals", () => {
   test("refuses a denial Copilot cannot enforce before either surface runs", () => {
-    const surface = mock(surfacing);
-    const runtime = mock(runtimeSurfacing);
-    expect(copilotAgentRenderer(surface, runtime)({
-      agent: { ...delivery, tools: { disallowed: ["Task", "WebSearch"] } },
-      knowledge: [],
-    })).toEqual({
-      ok: false,
-      refusal: {
-        kind: "render-failed",
-        concept: "agent",
-        name: "aidlc-delivery-agent",
-        reason: "Copilot can only project a Task denial, not: Task, WebSearch.",
-      },
-    });
-    expect(surface).not.toHaveBeenCalled();
-    expect(runtime).not.toHaveBeenCalled();
+    const documents = surfaces();
+    expect(render({ ...delivery, tools: { disallowed: ["Task", "WebSearch"] } }, documents)).toEqual(refused({
+      kind: "render-failed", concept: "agent", name: "aidlc-delivery-agent",
+      reason: "Copilot can only project a Task denial, not: Task, WebSearch." }));
+    expect(documents).not.toHaveBeenCalled();
   });
 
-  test("passes on the native surface's own refusal", () => {
-    expect(copilotAgentRenderer(() => refused(noFrontmatter), runtimeSurfacing)({
-      agent: delivery, knowledge: [],
-    })).toEqual({ ok: false, refusal: noFrontmatter });
+  test("passes on the native surface's own refusal without a partial pair", () => {
+    expect(render(delivery, mock(() => refused(noFrontmatter)))).toEqual(refused(noFrontmatter));
   });
 
   test("refuses the whole pair when the runtime surface refuses", () => {
-    expect(copilotAgentRenderer(surfacing, () => refused(noFrontmatter))({
-      agent: delivery, knowledge: [],
-    })).toEqual({ ok: false, refusal: noFrontmatter });
+    const documents = mock().mockReturnValueOnce(accepted(NATIVE)).mockReturnValueOnce(refused(noFrontmatter));
+    expect(render(delivery, documents)).toEqual(refused(noFrontmatter));
   });
 
   test("refuses an invalid destination without emitting either surface", () => {
-    expect(copilotAgentRenderer(surfacing, runtimeSurfacing)({
-      agent: { ...delivery, slug: brand<AgentSlug>("../../escape") },
-      knowledge: [],
-    })).toEqual({
-      ok: false,
-      refusal: {
-        kind: "render-failed",
-        concept: "agent",
-        name: "../../escape",
-        reason: "The Copilot agent destinations must be project-relative paths.",
-      },
-    });
+    expect(render({ ...delivery, slug: brand<AgentSlug>("../../escape") })).toEqual(refused({
+      kind: "render-failed", concept: "agent", name: "../../escape",
+      reason: "The Copilot agent destinations must be project-relative paths." }));
   });
 });

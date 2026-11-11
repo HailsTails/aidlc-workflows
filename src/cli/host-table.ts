@@ -15,6 +15,7 @@ import { kiroDistribution } from "../hosts/kiro/distribution.ts";
 import { KIRO_ONBOARDING_FILLS } from "../hosts/kiro/onboarding-fills.ts";
 import { kiroCommandPath } from "../hosts/kiro/projection/command-renderer.ts";
 import { createCopilotDocumentRenderer } from "../hosts/copilot/projection/document-renderer.ts";
+import { createOpenCodeDocumentRenderer } from "../hosts/opencode/projection/document-renderer.ts";
 import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
 import { cursorAgents } from "../hosts/cursor/projection/agent-renderer.ts";
 import { COPILOT_SETTINGS_INPUTS, createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
@@ -42,7 +43,7 @@ import {
   CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_TOKENS, cursorHostIdentity,
 } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
-import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
+import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS, OPENCODE_BINDING_HEADING } from "../hosts/opencode/host-data.ts";
 import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TOKENS, kiroHostIdentity } from "../hosts/kiro/host-data.ts";
 import {
   CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TOKENS, codexHostIdentity,
@@ -56,6 +57,7 @@ import {
 import { OPENCODE_SKILL_INPUTS, createOpenCodeSkillRenderer } from "../hosts/opencode/projection/skill-renderer.ts";
 import { KIRO_SKILL_INPUTS, createKiroSkillRenderer } from "../hosts/kiro/projection/skill-renderer.ts";
 import { CODEX_SKILL_INPUTS, createCodexSkillRenderer } from "../hosts/codex/projection/skill-renderer.ts";
+import { copilotAgents } from "../hosts/copilot/projection/agent-renderer.ts";
 import { createClaudeSkillRenderer } from "../hosts/claude/projection/skill-renderer.ts";
 import { CLAUDE_SKILL_INPUTS } from "../hosts/claude/projection/skill-renderer.ts";
 import type { HostIdentity } from "../kernel/host.ts";
@@ -66,6 +68,7 @@ import type { ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers, HostSettingsMembers } from "./roots.ts";
 
 const AGENT_MEMBERS = [
+  { name: "copilot", inputs: [], render: copilotAgents },
   { name: "cursor", inputs: [], render: cursorAgents },
   { name: "opencode", inputs: [], render: openCodeAgents },
   { name: "codex", inputs: [], render: codexAgents },
@@ -153,7 +156,7 @@ const HOST_BINDING_HEADINGS = [
   { name: "kiro-ide", heading: KIRO_IDE_BINDING_HEADING },
   { name: "codex", heading: CODEX_BINDING_HEADING },
   { name: "cursor", heading: CURSOR_BINDING_HEADING },
-  { name: "opencode", heading: "opencode" },
+  { name: "opencode", heading: OPENCODE_BINDING_HEADING },
   { name: "copilot", heading: COPILOT_BINDING_HEADING },
 ] as const;
 
@@ -165,6 +168,7 @@ export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEnt
 
 const HOST_DOCUMENT_MEMBERS = [
   { name: "copilot", inputs: [], render: createCopilotDocumentRenderer },
+  { name: "opencode", inputs: [], render: createOpenCodeDocumentRenderer },
   { name: "cursor", inputs: [], render: createCursorDocumentRenderer },
   { name: "kiro-ide", inputs: [], render: createKiroIdeDocumentRenderer },
   { name: "codex", inputs: [], render: createCodexDocumentRenderer },
