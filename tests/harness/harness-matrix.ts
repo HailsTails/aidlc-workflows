@@ -82,8 +82,7 @@ const HARNESS_CAPABILITIES = {
   codex: {
     harnessDir: ".codex",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".codex/onboarding.md",
     },

@@ -11,7 +11,7 @@
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import { CODEX_HOST_DATA } from "../../src/hosts/codex/host-data.ts";
 import emit from "./emit.ts";
-import onboardingFills from "./onboarding.fills.ts";
+import { CODEX_ONBOARDING_FILLS as onboardingFills } from "../../src/hosts/codex/onboarding-fills.ts";
 
 const manifest: HarnessManifest = {
   name: "codex",
