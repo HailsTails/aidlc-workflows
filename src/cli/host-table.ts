@@ -184,7 +184,7 @@ export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | n
   return entry ? { host, inputs: entry.inputs, render: entry.render } : null;
 };
 
-type HostEntry = {
+export type HostEntry = {
   readonly identity: () => Result<HostIdentity, unknown>;
   readonly tokens: HostBuildMembers["tokens"];
   readonly commands: HostBuildMembers["commands"];
@@ -209,21 +209,44 @@ const ROUTED_ENTRIES: readonly HostEntry[] = [
     fills: OPENCODE_ONBOARDING_FILLS, bindingHeading: OPENCODE_BINDING_HEADING, distribution: openCodeDistribution },
 ];
 
-const buildMembers = (entry: HostEntry): HostBuildTable => {
-  const identity = entry.identity();
-  if (!identity.ok) return [];
-  const host = identity.value;
-  const agents = hostAgentMembers(host);
-  const skills = hostSkillMembers(host);
-  const settings = hostSettingsMembers(host);
-  const documents = hostDocumentMembers(host);
-  const surface = hostSurfaceMembers(host);
-  if (!agents.ok || !skills.ok || !settings.ok || agents.value === null || skills.value === null ||
-    settings.value === null || documents === null || surface === null) return [];
-  return [{ host, tokens: entry.tokens, renderData: surface.renderData, placements: surface.placements,
-    agents: agents.value, skills: skills.value, settings: settings.value, documents,
-    commands: entry.commands, fills: entry.fills, bindingHeading: entry.bindingHeading,
-    distribution: entry.distribution }];
+export type HostBuildRefusal = {
+  readonly kind: "host-build-refused";
+  readonly member: "identity" | "agents" | "skills" | "settings" | "documents" | "surface";
+  readonly host: string | null;
+  readonly reason: unknown;
 };
 
-export const HOST_BUILD_MEMBERS: HostBuildTable = ROUTED_ENTRIES.flatMap(buildMembers);
+const refusedMember = ({ member, host, reason }: {
+  readonly member: HostBuildRefusal["member"]; readonly host: HostIdentity | null; readonly reason: unknown;
+}): HostBuildRefusal => ({ kind: "host-build-refused", member, host: host?.distribution ?? null, reason });
+
+const NOT_REGISTERED = "No members are registered for this host in the host table.";
+
+export const hostBuildMembers = (entry: HostEntry): Result<HostBuildMembers, HostBuildRefusal> => {
+  const identity = entry.identity();
+  if (!identity.ok) return refused(refusedMember({ member: "identity", host: null, reason: identity.refusal }));
+  const host = identity.value;
+  const agents = hostAgentMembers(host);
+  if (!agents.ok) return refused(refusedMember({ member: "agents", host, reason: agents.refusal }));
+  if (agents.value === null) return refused(refusedMember({ member: "agents", host, reason: NOT_REGISTERED }));
+  const skills = hostSkillMembers(host);
+  if (!skills.ok) return refused(refusedMember({ member: "skills", host, reason: skills.refusal }));
+  if (skills.value === null) return refused(refusedMember({ member: "skills", host, reason: NOT_REGISTERED }));
+  const settings = hostSettingsMembers(host);
+  if (!settings.ok) return refused(refusedMember({ member: "settings", host, reason: settings.refusal }));
+  if (settings.value === null) return refused(refusedMember({ member: "settings", host, reason: NOT_REGISTERED }));
+  const documents = hostDocumentMembers(host);
+  if (documents === null) return refused(refusedMember({ member: "documents", host, reason: NOT_REGISTERED }));
+  const surface = hostSurfaceMembers(host);
+  if (surface === null) return refused(refusedMember({ member: "surface", host, reason: NOT_REGISTERED }));
+  return accepted({ host, tokens: entry.tokens, renderData: surface.renderData, placements: surface.placements,
+    agents: agents.value, skills: skills.value, settings: settings.value, documents,
+    commands: entry.commands, fills: entry.fills, bindingHeading: entry.bindingHeading,
+    distribution: entry.distribution });
+};
+
+const BUILT = ROUTED_ENTRIES.map(hostBuildMembers);
+
+export const HOST_BUILD_MEMBERS: HostBuildTable = BUILT.flatMap((built) => built.ok ? [built.value] : []);
+
+export const HOST_BUILD_REFUSALS: readonly HostBuildRefusal[] = BUILT.flatMap((built) => built.ok ? [] : [built.refusal]);
