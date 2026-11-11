@@ -25,7 +25,9 @@
 //     adapter self-filters) to aidlc-cursor-adapter.ts, which normalizes
 //     payloads and subprocess-pipes into the byte-shared core hooks.
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
-import onboardingFills from "./onboarding.fills.ts";
+import {
+  CURSOR_ONBOARDING_FILLS as onboardingFills,
+} from "../../src/hosts/cursor/onboarding-fills.ts";
 import { CURSOR_HOST_DATA } from "../../src/hosts/cursor/host-data.ts";
 import { cursorCommandPath } from "../../src/hosts/cursor/projection/command-renderer.ts";
 
