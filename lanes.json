@@ -112,37 +112,21 @@
         "src/cli/adapters/routes/{packaging,installation}/**",
         "src/cli/core-build-root{,.test}.ts",
         "src/cli/legacy-runner-child{,.test}.ts",
-        "src/cli/main{,.test}.ts",
-        "src/cli/package-build-root{,.test}.ts",
-        "src/cli/host-table{,.test}.ts",
         "src/projection/adapters/compiled-method-file{,.test}.ts",
         "docs/reference/15-stage-definition.md",
         "docs/harness-engineering/09-porting-to-a-new-harness.md",
         "docs/reference/06-hooks-and-tools.md",
-        "scripts/package.ts",
-        "scripts/manifest-types.ts",
         "harness/claude/manifest.ts",
-        "harness/kiro/manifest.ts",
-        "harness/cursor/manifest.ts",
-        "harness/kiro-ide/manifest.ts",
-        "harness/copilot/manifest.ts",
         "scripts/agent-knowledge.ts",
-        "tests/unit/t248-steering-content-delivery.test.ts",
-        "tests/unit/t64.test.ts",
-        "tests/unit/t-package-sources.test.ts",
-        "tests/unit/t177-workspace-journey-fixture.test.ts",
-        "tests/harness/harness-matrix.ts",
-        "tests/smoke/t123-skills-spec-conformance.test.ts",
-        "tests/unit/t303-packager-orchestrator-skill-path.test.ts",
-        "tests/unit/t230-dispatcher-routes.test.ts",
-        "tests/integration/t188-plugin-compose.serial.test.ts",
-        "tests/unit/t-question-options-fit-the-box.test.ts",
-        "tests/unit/t294-document-extractors-seam.test.ts",
-        "tests/unit/t151-onboarding-skeleton.test.ts",
         "scripts/earlier-release-regions.ts"
       ],
       "notOwned": [
         "harness/{codex,opencode}/manifest.ts",
+        "src/projection/core-root{,.test}.ts",
+        "src/projection/adapters/legacy-includes{,.test}.ts",
+        "harness/{kiro,kiro-ide,cursor,copilot}/manifest.ts",
+        "harness/{codex,opencode,copilot}/emit.ts",
+        "harness/{codex,opencode,kiro,kiro-ide,cursor,copilot}/onboarding.fills.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts"
       ],
       "territory": ["workflow-definition", "projection", "packaging", "installation"],
@@ -194,11 +178,6 @@
           "RuleFile",
           "SensorFile"
         ],
-        "scripts/package.ts": ["writeHarnessData", "buildTree", "loadManifest", "writeHarness"],
-        "scripts/manifest-types.ts": ["*"],
-        "scripts/onboarding.ts": ["*"],
-        "scripts/harness-bindings.ts": ["*"],
-        "harness/copilot/manifest.ts": ["*"],
         "core/tools/aidlc-tiers.ts": ["TierProjection", "TIER_PROJECTIONS", "Harness"],
         "core/tools/aidlc-runner-gen.ts": ["*"],
         "core/tools/aidlc-init.ts": ["RootContribution", "Baseline", "PreparedRefreshSource", "PlannedAction"],
@@ -222,6 +201,64 @@
         "scripts/package-release.ts": ["*"]
       }
     },
+    "composition": {
+      "name": "Composition: F2-2 to F2-7, F3-2 to F3-7, T-M2-9 and T-M2-10, one slice at a time; dot named it the single Fable lane for Q116 (Q117). Retired when T-M2-10 lands, and its paths return to integration",
+      "agent": "claude/fable",
+      "owns": [
+        "scripts/package.ts",
+        "scripts/manifest-types.ts",
+        "scripts/harness-bindings.ts",
+        "scripts/onboarding.ts",
+        "scripts/package-sources.ts",
+        "src/cli/main{,.test}.ts",
+        "src/cli/package-build-root{,.test}.ts",
+        "src/cli/host-table{,.test}.ts",
+        "src/cli/eighth-host.test.ts",
+        "src/projection/core-root{,.test}.ts",
+        "src/projection/adapters/legacy-includes{,.test}.ts",
+        "harness/codex/manifest.ts",
+        "harness/opencode/manifest.ts",
+        "harness/kiro/manifest.ts",
+        "harness/kiro-ide/manifest.ts",
+        "harness/cursor/manifest.ts",
+        "harness/copilot/manifest.ts",
+        "harness/{codex,opencode,copilot}/emit.ts",
+        "harness/{codex,opencode,kiro,kiro-ide,cursor,copilot}/onboarding.fills.ts",
+        "tests/unit/t248-steering-content-delivery.test.ts",
+        "tests/unit/t64.test.ts",
+        "tests/unit/t-package-sources.test.ts",
+        "tests/unit/t177-workspace-journey-fixture.test.ts",
+        "tests/harness/harness-matrix.ts",
+        "tests/smoke/t123-skills-spec-conformance.test.ts",
+        "tests/unit/t303-packager-orchestrator-skill-path.test.ts",
+        "tests/unit/t230-dispatcher-routes.test.ts",
+        "tests/integration/t188-plugin-compose.serial.test.ts",
+        "tests/unit/t-question-options-fit-the-box.test.ts",
+        "tests/unit/t294-document-extractors-seam.test.ts",
+        "tests/unit/t151-onboarding-skeleton.test.ts",
+        "tests/unit/t150-codex-packaging.test.ts",
+        "tests/unit/t239-documentation-parity.test.ts",
+        "tests/unit/t-own-harness-bindings.test.ts",
+        "tests/integration/t305-build-test-loopback-prose.test.ts",
+        "tests/unit/t-lone-letter-reading.test.ts",
+        "tests/unit/t-long-question-asked-once.test.ts",
+        "tests/integration/t145-packaging-parity.test.ts",
+        "tests/unit/t-codex-earlier-refresh.test.ts",
+        "tests/unit/t-codex-rules-match-aidlc-commands.test.ts",
+        "tests/unit/t-codex-toml-strict.test.ts"
+      ],
+      "consumes": ["src/kernel/**"],
+      "monolithDeletions": {
+        "scripts/package.ts": ["writeHarnessData", "buildTree", "loadManifest", "writeHarness"],
+        "scripts/manifest-types.ts": ["*"],
+        "scripts/onboarding.ts": ["*"],
+        "scripts/harness-bindings.ts": ["*"],
+        "harness/{codex,opencode}/{manifest,emit}.ts": ["*"],
+        "harness/{kiro,kiro-ide,cursor,copilot}/manifest.ts": ["*"],
+        "harness/copilot/emit.ts": ["*"],
+        "harness/{codex,opencode,kiro,kiro-ide,cursor,copilot}/onboarding.fills.ts": ["*"]
+      }
+    },
     "D": {
       "name": "Workflow Execution",
       "agent": "codex",
@@ -237,7 +274,8 @@
         "src/cli/core-build-root{,.test}.ts",
         "src/cli/main{,.test}.ts",
         "src/cli/package-build-root{,.test}.ts",
-        "src/cli/host-table{,.test}.ts"
+        "src/cli/host-table{,.test}.ts",
+        "src/cli/eighth-host.test.ts"
       ],
       "territory": ["execution", "cli"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
@@ -266,10 +304,7 @@
       "owns": ["src/hosts/{kiro,kiro-ide,cursor,copilot}/**", "src/cli/host-table{,.test}.ts", "docs/guide/harnesses/kiro-ide.md"],
       "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
-      "monolithDeletions": {
-        "harness/copilot/emit.ts": ["*"],
-        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"]
-      }
+      "monolithDeletions": {}
     },
     "hosts-b": {
       "name": "Projection for codex and opencode (supervised, one ticket at a time)",
@@ -279,15 +314,11 @@
         "src/hosts/{codex,opencode}/build.ts",
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "src/hosts/{codex,opencode}/{distribution,onboarding-fills}{,.test}.ts",
-        "harness/codex/manifest.ts",
-        "harness/opencode/manifest.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/cli/host-table{,.test}.ts"
       ],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
-      "monolithDeletions": {
-        "harness/{codex,opencode}/{manifest,emit}.ts": ["*"]
-      }
+      "monolithDeletions": {}
     },
     "hosts-b-cover": {
       "name": "Cover for hosts-b's codex and opencode work, run by dot's worker; this entry is deleted when hosts-b claims a queue row again (Q86)",
@@ -297,15 +328,11 @@
         "src/hosts/{codex,opencode}/build.ts",
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "src/hosts/{codex,opencode}/{distribution,onboarding-fills}{,.test}.ts",
-        "harness/codex/manifest.ts",
-        "harness/opencode/manifest.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/cli/host-table{,.test}.ts"
       ],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
-      "monolithDeletions": {
-        "harness/{codex,opencode}/{manifest,emit}.ts": ["*"]
-      }
+      "monolithDeletions": {}
     },
     "runtime-golden": {
       "name": "Runtime oracle (Phase 2 prep)",
