@@ -3567,18 +3567,17 @@ describe("t230 dispatcher help and errors", () => {
     const start = lines.indexOf("HARNESSES");
     expect(start, "config help has a HARNESSES list").toBeGreaterThan(0);
     const rows = lines.slice(start + 1, lines.indexOf("", start)).map((line) => line.trim().split(/\s{2,}/));
-    const ids = readdirSync(join(REPO_ROOT, "harness"))
-      .filter((name) => existsSync(join(REPO_ROOT, "harness", name, "manifest.ts")))
-      .sort();
     const expected: string[][] = [];
-    for (const id of ids) {
-      const manifest = (await import(join(REPO_ROOT, "harness", id, "manifest.ts"))).default as {
+    for (const harness of [...HARNESS_MATRIX].sort((left, right) => left.name.localeCompare(right.name))) {
+      const listing = JSON.parse(readFileSync(join(harness.engineRoot, "tools", "data",
+        "aidlc-projection.json"), "utf8")) as {
         productName: string;
         choiceName?: string;
         choiceNote?: string;
       };
-      const words = manifest.choiceName ?? manifest.productName;
-      expected.push([typedHarnessName(id), manifest.choiceNote ? `${words} (${manifest.choiceNote})` : words]);
+      const words = listing.choiceName ?? listing.productName;
+      expected.push([typedHarnessName(harness.name),
+        listing.choiceNote ? `${words} (${listing.choiceNote})` : words]);
     }
     expect(rows).toEqual(expected);
   }, NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);

@@ -30,7 +30,7 @@ import {
   KiroIdeScopeHost,
   kiroIdeWired,
 } from "../harness/scope-hosts.ts";
-import kiroManifest from "../../harness/kiro/manifest.ts";
+import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
 
 const json = (path: string) => JSON.parse(readFileSync(join(REPO_ROOT, path), "utf-8"));
 const codexWiring = json("dist/codex/.codex/hooks.json");
@@ -213,7 +213,7 @@ describe("Copilot CLI: .github/hooks/aidlc.json and Copilot's own payloads", () 
 
 describe("Kiro CLI: the agent JSON's hooks and Kiro CLI 2.29's own payloads", () => {
   const agent = (name: string) => json(`dist/kiro/.kiro/agents/${name}.json`);
-  const kiro = (target: string) => `bun .kiro/tools/aidlc.ts engine adapter kiro ${target}${kiroManifest.hookCommandSuffix}`;
+  const kiro = (target: string) => `bun .kiro/tools/aidlc.ts engine adapter kiro ${target}${KIRO_HOOK_COMMAND_SUFFIX}`;
   const cli = json("tests/fixtures/kiro-hook-payloads/cli-2.29.0.json") as Record<string, Record<string, unknown>>;
 
   test("a matcher is a glob over the tool's name and its alias, as the CLI reads it", () => {

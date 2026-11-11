@@ -1,4 +1,4 @@
-// covers: tool:aidlc-init, function:typedHarnessName, function:harnessIdFromTyped, function:harnessArgsAsIds, function:harnessNameFor, file:harness/kiro/onboarding.fills.ts
+// covers: tool:aidlc-init, function:typedHarnessName, function:harnessIdFromTyped, function:harnessArgsAsIds, function:harnessNameFor, file:src/hosts/kiro/onboarding-fills.ts
 //
 // What a person types after --harness for the two Kiro harnesses: `kiro` is
 // Kiro (Kiro IDE and Kiro CLI v3, the `kiro-ide` tree) and `kiro-v2` is Kiro
