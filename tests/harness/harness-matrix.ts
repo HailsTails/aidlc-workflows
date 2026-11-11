@@ -166,8 +166,7 @@ const HARNESS_CAPABILITIES = {
   kiro: {
     harnessDir: ".kiro",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".kiro/steering/aidlc-onboarding.md",
     },
@@ -445,6 +444,20 @@ function validateFullHostLayout({ name, descriptor, capabilities }: {
   }
 }
 
+function insideDirectory(directory: string, path: string): string | null {
+  return path.startsWith(`${directory}/`) ? path.slice(directory.length + 1) : null;
+}
+
+export function onboardingSpec({ directory, onboarding, fills }: {
+  directory: string; onboarding: { dist: string; harnessDist: string }; fills: OnboardingFills;
+}): NonNullable<ShippedHarness["manifest"]["onboarding"]> {
+  const neutral = insideDirectory(directory, onboarding.dist);
+  const native = onboarding.harnessDist === onboarding.dist
+    ? null : insideDirectory(directory, onboarding.harnessDist);
+  return { dst: neutral ?? onboarding.dist, ...(neutral === null ? { projectRoot: true } : {}),
+    ...(native === null ? {} : { harnessDst: native }), fills };
+}
+
 export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapabilities): {
   manifest: ShippedHarness["manifest"]; fills: OnboardingFills;
 } | null {
@@ -456,9 +469,6 @@ export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapa
   }
   const descriptor = fullHostDescriptor(name, member.host.directory);
   validateFullHostLayout({ name, descriptor, capabilities });
-  if (descriptor.onboarding !== capabilities.onboarding.dist) {
-    fail(name, "the full-host matrix needs its declared neutral onboarding view");
-  }
   const includes = new Set(member.placements.map((placement) => placement.destination));
   const importsMemory = includes.has(`${member.host.directory}/rules/aidlc.md`);
   if ((capabilities.memoryInclude === "claude-import") !== importsMemory) {
@@ -468,8 +478,8 @@ export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapa
   return { fills: member.fills, manifest: { name, harnessDir: descriptor.harnessDir,
     rootIntegrations: descriptor.rootIntegrations,
     orchestratorSkillPath: `${capabilities.skillsRoot}/aidlc/SKILL.md`,
-    onboarding: { dst: descriptor.onboarding.slice(descriptor.harnessDir.length + 1),
-      fills: member.fills },
+    onboarding: onboardingSpec({ directory: descriptor.harnessDir,
+      onboarding: capabilities.onboarding, fills: member.fills }),
   } };
 }
 

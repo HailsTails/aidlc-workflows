@@ -41,7 +41,7 @@ import {
 } from "../harness/fixtures.ts";
 import {
   HARNESS_MATRIX, harnessByName, validateManifest, agentFrontmatterGrantsIdeTools,
-  legacyHarnessManifest, fullHostView,
+  legacyHarnessManifest, fullHostView, onboardingSpec,
 } from "../harness/harness-matrix.ts";
 import { runnerProducer, orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 import { discoverSiblingRepos, listIntents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
@@ -121,7 +121,7 @@ test("native entry location has its own declared value and standard default", ()
 });
 
 test.each([
-  "codex", "copilot", "cursor", "kiro", "kiro-ide", "opencode",
+  "codex", "copilot", "cursor", "kiro-ide", "opencode",
 ] as const)(
   "%s: either producer retains the host's declared layout and include surfaces", (name) => {
     const harness = harnessByName(name);
@@ -162,6 +162,20 @@ test("the complete Claude route remains in the matrix after its legacy manifest 
   expect(harness.manifest.orchestratorSkillPath).toBe(".claude/skills/aidlc/SKILL.md");
   expect(harness.fills.invoke).toBe("/aidlc");
   expect(harness.manifest.rootIntegrations).toHaveLength(2);
+});
+
+test("the native matrix keeps split-host and root onboarding paths distinct", () => {
+  const fills = harnessByName("claude").fills;
+  expect(onboardingSpec({ directory: ".kiro", fills,
+    onboarding: { dist: "AGENTS.md", harnessDist: ".kiro/steering/aidlc-onboarding.md" } }))
+    .toEqual({ dst: "AGENTS.md", projectRoot: true,
+      harnessDst: "steering/aidlc-onboarding.md", fills });
+  expect(onboardingSpec({ directory: ".claude", fills,
+    onboarding: { dist: ".claude/CLAUDE.md", harnessDist: ".claude/CLAUDE.md" } }))
+    .toEqual({ dst: "CLAUDE.md", fills });
+  expect(onboardingSpec({ directory: ".aidlc", fills,
+    onboarding: { dist: "AGENTS.md", harnessDist: "AGENTS.md" } }))
+    .toEqual({ dst: "AGENTS.md", projectRoot: true, fills });
 });
 
 test("the native matrix rejects wrong root, onboarding and memory capabilities", () => {

@@ -20,7 +20,7 @@
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import { kiroCommandPath } from "../../src/hosts/kiro/projection/command-renderer.ts";
 import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
-import onboardingFills from "./onboarding.fills.ts";
+import { KIRO_ONBOARDING_FILLS as onboardingFills } from "../../src/hosts/kiro/onboarding-fills.ts";
 import { KIRO_HOST_DATA } from "../../src/hosts/kiro/host-data.ts";
 
 const manifest: HarnessManifest = {
