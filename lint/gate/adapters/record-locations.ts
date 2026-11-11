@@ -16,9 +16,7 @@ const recordName = (file: string): string => {
 
 export const EMIT_FILES: readonly string[] = [
   "harness/copilot/emit.ts",
-  "harness/opencode/emit.ts",
   "harness/copilot/manifest.ts",
-  "harness/opencode/manifest.ts",
   "scripts/manifest-types.ts",
 ];
 

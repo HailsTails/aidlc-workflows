@@ -1,8 +1,0 @@
-PLUGIN_TOOL_IMPORTS
-authoredInputs
-authoredShellEmissions
-default
-embedShippedEntrypoints
-emit
-projectActiveMemoryReferences
-projectedToolImports
