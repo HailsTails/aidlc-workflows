@@ -4,6 +4,7 @@ import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.t
 import type { HostBuildTable } from "./roots.ts";
 import { createCopilotDocumentRenderer } from "../hosts/copilot/projection/document-renderer.ts";
 import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
+import { cursorAgents } from "../hosts/cursor/projection/agent-renderer.ts";
 import { COPILOT_SETTINGS_INPUTS, createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
 import { CURSOR_SETTINGS_INPUTS, createCursorSettingsRenderer } from "../hosts/cursor/projection/settings-renderer.ts";
@@ -46,6 +47,7 @@ import type { ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers, HostSettingsMembers } from "./roots.ts";
 
 const AGENT_MEMBERS = [
+  { name: "cursor", inputs: [], render: cursorAgents },
   { name: "opencode", inputs: [], render: openCodeAgents },
   { name: "codex", inputs: [], render: codexAgents },
   { name: "kiro-ide", inputs: ["agents/aidlc-aidlc.md"], render: kiroIdeAgents },

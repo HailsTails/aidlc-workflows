@@ -27,16 +27,6 @@
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
 import { CURSOR_HOST_DATA } from "../../src/hosts/cursor/host-data.ts";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { modelAgentName, resolveModelPolicy,
-  writeMarkdownAgentSurface } from "../../core/tools/aidlc-model-policy.ts";
-import { absorbReviewerKnowledge,
-  injectDelegatedKnowledgePreflight } from "../../scripts/agent-knowledge.ts";
-import { accepted, refused } from "../../src/kernel/result.ts";
-import type { ProjectionRefusal } from "../../src/projection/domain/projection.ts";
-import { cursorAgentRenderer,
-  type CursorModelSurface } from "../../src/hosts/cursor/projection/agent-renderer.ts";
 import { cursorCommandPath } from "../../src/hosts/cursor/projection/command-renderer.ts";
 
 const manifest: HarnessManifest = {
@@ -141,44 +131,6 @@ const manifest: HarnessManifest = {
   skipRunnerGen: true,
 
   emit(ctx): void {
-    for (const agent of ctx.method.agents) {
-      const legacyModelSurface: CursorModelSurface = (request) => {
-        if (request.agent.model.kind !== "tier") return refused<ProjectionRefusal>({
-          kind: "render-failed", concept: "agent", name: request.agent.slug,
-          reason: "This core-agent bridge requires an authored model tier.",
-        });
-        const captured = ctx.sources.find((source) => source.path === request.agent.source
-          && source.owner.kind === request.agent.owner.kind
-          && (source.owner.kind === "core" || (request.agent.owner.kind === "plugin"
-            && source.owner.plugin === request.agent.owner.plugin)));
-        if (!captured) return refused<ProjectionRefusal>({
-          kind: "render-failed", concept: "agent", name: request.agent.slug,
-          reason: "The accepted agent's authored source was not captured.",
-        });
-        const original = captured.content.kind === "text" ? captured.content.text
-          : Buffer.from(captured.content.bytes).toString("utf-8");
-        const prepared = ctx.substituteToken(injectDelegatedKnowledgePreflight(
-          absorbReviewerKnowledge({ content: original, agentName: request.agent.slug,
-            sourceRoot: ctx.coreRoot, reviewerAgents: ctx.reviewerAgents }),
-          request.agent.slug, ctx.harnessDir,
-        ));
-        const effective = resolveModelPolicy(null, modelAgentName(request.agent.slug),
-          request.agent.model.tier, "cursor", ctx.tierCap);
-        return accepted(writeMarkdownAgentSurface(prepared, effective, {
-          effortKey: "effort",
-        }));
-      };
-      const rendering = cursorAgentRenderer(legacyModelSurface)({
-        agent, knowledge: ctx.method.knowledge,
-      });
-      if (!rendering.ok) throw new Error(JSON.stringify(rendering.refusal));
-      for (const file of rendering.value) {
-        const destination = join(ctx.distRoot, file.path);
-        mkdirSync(dirname(destination), { recursive: true });
-        writeFileSync(destination,
-          file.content.kind === "text" ? file.content.text : file.content.bytes);
-      }
-    }
     ctx.emitCommands(cursorCommandPath);
   },
 
