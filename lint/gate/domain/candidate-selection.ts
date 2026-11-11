@@ -28,6 +28,22 @@ const PHASE_ONE = [
   "tests/{unit,smoke,integration,e2e}/**/*.test.ts",
 ];
 
+const QUOTES = ['"', "'", "`"];
+
+const builtFrom = (text: string, word: string): boolean => {
+  const openings = [...QUOTES, "}/"];
+  return openings.some((opening) =>
+    QUOTES.some((closing) => text.includes(`${opening}${word}${closing}`)),
+  );
+};
+
+const namesPath = (text: string, path: string): boolean => {
+  const [top = "", ...rest] = path.split("/");
+  const name = rest.at(-1) ?? "";
+  const topInPath = QUOTES.some((quote) => text.includes(`${quote}${top}${quote}`));
+  return text.includes(path) || (builtFrom(text, name) && (topInPath || text.includes(`${top}/`)));
+};
+
 export const testsNamingDeleted = (request: {
   readonly deleted: readonly string[];
   readonly tests: readonly string[];
@@ -37,7 +53,7 @@ export const testsNamingDeleted = (request: {
     ? []
     : request.tests.filter((test) => {
         const text = request.textOf(test);
-        return request.deleted.some((path) => text.includes(path));
+        return request.deleted.some((path) => namesPath(text, path));
       });
 
 export const needsCandidateLegacy = (paths: readonly string[]): boolean =>

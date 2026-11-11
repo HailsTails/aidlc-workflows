@@ -83,6 +83,21 @@ describe("a candidate that deletes a file", () => {
     ]);
   });
 
+  test("selects a test that builds the path from its segments", () => {
+    const built: Readonly<Record<string, string>> = {
+      "tests/unit/builds-it.test.ts": 'readFileSync(join(REPO, "harness", h, "emit.ts"))',
+      "tests/unit/templates-it.test.ts": ["readFileSync(`harness/", "$", "{h}/emit.ts`)"].join(""),
+      "tests/unit/other-file.test.ts": 'join(REPO, "harness", h, "manifest.ts")',
+    };
+    const selected = testsNamingDeleted({
+      deleted: ["harness/codex/emit.ts"],
+      tests: Object.keys(built),
+      textOf: (test) => built[test] ?? "",
+    });
+
+    expect(selected).toEqual(["tests/unit/builds-it.test.ts", "tests/unit/templates-it.test.ts"]);
+  });
+
   test("selects nothing when nothing is deleted", () => {
     expect(testsNamingDeleted(request([]))).toEqual([]);
   });
