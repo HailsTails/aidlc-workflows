@@ -14,7 +14,8 @@ import { CURSOR_SETTINGS_INPUTS, createCursorSettingsRenderer } from "../hosts/c
 import { codexAgents } from "../hosts/codex/projection/agent-renderer.ts";
 import { openCodeAgents } from "../hosts/opencode/projection/agent-renderer.ts";
 import { OPENCODE_SETTINGS_INPUTS, createOpenCodeSettingsRenderer } from "../hosts/opencode/projection/settings-renderer.ts";
-import { kiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
+import { createKiroIdeAgents } from "../hosts/kiro-ide/projection/agent-renderer.ts";
+import { kiroAgentRenderer } from "../hosts/kiro/projection/agent-renderer.ts";
 import { KIRO_IDE_SETTINGS_INPUTS, createKiroIdeSettingsRenderer } from "../hosts/kiro-ide/projection/settings-renderer.ts";
 import { createCodexDocumentRenderer } from "../hosts/codex/projection/document-renderer.ts";
 import { createKiroDocumentRenderer } from "../hosts/kiro/projection/document-renderer.ts";
@@ -53,7 +54,7 @@ const AGENT_MEMBERS = [
   { name: "cursor", inputs: [], render: cursorAgents },
   { name: "opencode", inputs: [], render: openCodeAgents },
   { name: "codex", inputs: [], render: codexAgents },
-  { name: "kiro-ide", inputs: ["agents/aidlc-aidlc.md"], render: kiroIdeAgents },
+  { name: "kiro-ide", inputs: ["agents/aidlc-aidlc.md"], render: createKiroIdeAgents({ personas: kiroAgentRenderer }) },
   { name: "kiro", inputs: KIRO_AGENT_JSON, render: kiroAgents },
   { name: "claude", inputs: [], render: claudeAgents },
 ] as const;

@@ -20,28 +20,11 @@ import { KIRO_IDE_HOST_DATA, KIRO_IDE_AGENT_SHELL, KIRO_IDE_OPEN_REST, KIRO_CLI_
 //     session start. IDE 0.x .kiro.hook files are not shipped: IDE 1.x never
 //     executes them.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import {
-  absorbReviewerKnowledge, injectDelegatedKnowledgePreflight,
-} from "../../scripts/agent-knowledge.ts";
-import {
-  modelAgentName, resolveModelPolicy, writeMarkdownAgentSurface,
-} from "../../core/tools/aidlc-model-policy.ts";
-import { accepted, refused } from "../../src/kernel/result.ts";
-import {
-  kiroAgentRenderer, type KiroModelSurface,
-} from "../../src/hosts/kiro/projection/agent-renderer.ts";
-import {
-  kiroIdePermissionLines,
-} from "../../src/hosts/kiro-ide/projection/agent-renderer.ts";
-import { inlineAgentSet } from "../../src/workflow-definition/domain/method-participation.ts";
-import type { EmitContext, HarnessManifest } from "../../scripts/manifest-types.ts";
+import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import { kiroIdeCommandPath } from "../../src/hosts/kiro-ide/projection/command-renderer.ts";
 import {
   copyChannelDelegateShellDeny,
   nativeDelegateShellDeny,
-  RISKY_SHELL_FORMS,
   riskyFormDenyLines,
   shellDenyLines,
 } from "../../src/hosts/kiro-ide/projection/delegate-shell-deny.ts";
@@ -74,62 +57,6 @@ const copyShellDeny = new Map<string, string[]>(
     ...riskyFormDenyLines(["bun .kiro/tools/aidlc"]),
   ]]),
 );
-const permissionPolicy = {
-  shellDeny: (agent: string): readonly string[] => copyShellDeny.get(agent) ?? [],
-  riskyForms: RISKY_SHELL_FORMS,
-};
-
-const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKeys }) => {
-  if (agent.model.kind !== "tier") return refused({
-    kind: "render-failed", concept: "agent", name: agent.slug,
-    reason: "This core-agent bridge requires an authored model tier.",
-  });
-  const source = ctx.sources.find((file) => file.path === agent.source &&
-    file.owner.kind === agent.owner.kind && (file.owner.kind === "core" ||
-      (agent.owner.kind === "plugin" && file.owner.plugin === agent.owner.plugin)));
-  if (source === undefined) return refused({
-    kind: "render-failed", concept: "agent", name: agent.slug,
-    reason: "This core-agent bridge requires captured agent text.",
-  });
-  const authored = source.content.kind === "text" ? source.content.text :
-    Buffer.from(source.content.bytes).toString("utf-8");
-  const raw = injectDelegatedKnowledgePreflight(
-    absorbReviewerKnowledge({ content: authored, agentName: agent.slug,
-      sourceRoot: ctx.coreRoot, reviewerAgents: ctx.reviewerAgents }),
-    agent.slug, ctx.harnessDir,
-  );
-  const substituted = ctx.substituteToken(raw);
-  const text = substituted.replace(/\.kiro\/rules\/(?!default\.rules)/g, ".kiro/steering/");
-  const effective = resolveModelPolicy(
-    null, modelAgentName(agent.slug), agent.model.tier, "kiro", ctx.tierCap,
-  );
-  return accepted(writeMarkdownAgentSurface(text, effective, {
-    effortKey: "effort", removeKeys: [...removeKeys],
-  }));
-};
-
-const emitAgents = (ctx: EmitContext): void => {
-  const inlineAgents = inlineAgentSet(ctx.method);
-  const renderAgent = kiroAgentRenderer({
-    modelSurface: modelSurface(ctx),
-    promptLines: (agent) => kiroIdePermissionLines(permissionPolicy)(agent.slug),
-    inlineReading: (agent) => inlineAgents.has(agent.slug)
-      ? "reads-inline" : "dispatched-only",
-  });
-  for (const agent of ctx.method.agents) {
-    const rendering = renderAgent({ agent, knowledge: ctx.method.knowledge });
-    if (!rendering.ok) throw new Error(JSON.stringify(rendering.refusal));
-    for (const file of rendering.value) {
-      if (file.content.kind !== "text") {
-        throw new Error(`Kiro IDE emitted non-text content for ${agent.slug}`);
-      }
-      const destination = join(ctx.distRoot, file.path);
-      mkdirSync(dirname(destination), { recursive: true });
-      writeFileSync(destination, file.content.text);
-    }
-  }
-};
-
 const manifest: HarnessManifest = {
   name: "kiro-ide",
   // One tree for Kiro IDE and Kiro CLI, so it is named after neither.
@@ -298,7 +225,6 @@ const manifest: HarnessManifest = {
   skipRunnerGen: true,
 
   emit(ctx): void {
-    emitAgents(ctx);
     ctx.emitCommands(kiroIdeCommandPath);
   },
 

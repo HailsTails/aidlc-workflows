@@ -10,6 +10,7 @@ import type { AuthoredHostFile } from "../../domain/host-surface.ts";
 import type { DistributionChannel } from "../../domain/projected-file.ts";
 import type { ProjectionRefusal } from "../../domain/projection.ts";
 import type { CopyChannelAllows } from "./copy-channel.ts";
+import type { DelegateShellFacts } from "./delegate-shell.ts";
 import type { Harness, Rendering } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
 
@@ -63,6 +64,7 @@ export type AgentRenderingInputs = {
   readonly models: AgentModelPolicy;
   readonly formatDocuments: ReadonlySet<string>;
   readonly allows: CopyChannelAllows;
+  readonly delegateShellFacts: DelegateShellFacts;
 };
 
 export type HostAgentRenderer = (

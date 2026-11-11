@@ -1,10 +1,19 @@
-import type { HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
-import type { Rendering } from "../../../projection/application/ports/harness.ts";
+import type { AgentDocumentRequest, HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
+import type { Harness, Rendering } from "../../../projection/application/ports/harness.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
-import type { DelegateShellPolicy } from "./delegate-shell-deny.ts";
+import { kiroIdeDelegateShellPolicy, type DelegateShellPolicy } from "./delegate-shell-deny.ts";
+
+export type KiroIdePersonaProfile = {
+  readonly modelSurface: (request: { readonly agent: AgentDocumentRequest["agent"]; readonly removeKeys: readonly string[] }) =>
+    Result<string, ProjectionRefusal>;
+  readonly promptLines: (agent: AgentDocumentRequest["agent"]) => readonly string[];
+  readonly inlineReading: (agent: AgentDocumentRequest["agent"]) => "reads-inline" | "dispatched-only";
+};
+
+export type KiroIdePersonaRendering = (profile: KiroIdePersonaProfile) => Harness["renderAgent"];
 
 const composerProposalPath = "aidlc/spaces/*/intents/.aidlc-engine/composer-proposal.json";
 const spacePaths = ["aidlc/spaces/**", ".aidlc/worktrees/*/aidlc/spaces/**"];
@@ -61,8 +70,18 @@ export const expandKiroIdeConductorAllows = (request: {
   return accepted(request.content.replace(engine, `${engine}${exact.join("")}`));
 };
 
-export const kiroIdeAgents: HostAgentRenderer = (inputs) => ({
-  renderAgent: () => accepted([]),
+export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePersonaRendering }): HostAgentRenderer => (inputs) => ({
+  renderAgent: personas({
+    modelSurface: ({ agent, removeKeys }) => inputs.documents({
+      agent, text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+      frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
+        insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
+    }),
+    promptLines: (agent) => kiroIdePermissionLines(kiroIdeDelegateShellPolicy({
+      facts: inputs.delegateShellFacts, directory: inputs.host.directory,
+    }))(agent.slug),
+    inlineReading: (agent) => inputs.inlineAgents.has(agent.slug) ? "reads-inline" : "dispatched-only",
+  }),
   renderConductorAgent: (): Rendering => {
     const file = inputs.files.find((candidate) => candidate.source === "agents/aidlc-aidlc.md");
     if (!file) return refused({ kind: "render-failed", concept: "agent", name: "agents/aidlc-aidlc.md",

@@ -90,6 +90,7 @@ test("agent composition supplies shipped allows to one native factory for the co
   expect(render).toHaveBeenCalledTimes(1);
   expect(render.mock.calls[0]?.[0].allows.dispatcherCommands).toContain("doctor");
   expect(render.mock.calls[0]?.[0].allows.toolScripts).toContain("aidlc-graph.ts");
+  expect(render.mock.calls[0]?.[0].delegateShellFacts).toBe(projection.delegateShellFacts);
 });
 
 test("agent composition exposes a missing captured source refusal without reconstructing Markdown", () => {
