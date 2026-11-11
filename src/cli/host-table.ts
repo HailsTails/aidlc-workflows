@@ -2,6 +2,7 @@ import { claudeDistribution } from "../hosts/claude/distribution.ts";
 import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
 import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
 import type { HostBuildTable } from "./roots.ts";
+import { createCopilotDocumentRenderer } from "../hosts/copilot/projection/document-renderer.ts";
 import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
 import { COPILOT_SETTINGS_INPUTS, createCopilotSettingsRenderer } from "../hosts/copilot/projection/settings-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "../hosts/kiro-ide/projection/document-renderer.ts";
@@ -20,7 +21,7 @@ import { createClaudeDocumentRenderer } from "../hosts/claude/projection/documen
 import type { HostDocumentMembers } from "./roots.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
-import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS } from "../hosts/copilot/host-data.ts";
+import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING } from "../hosts/copilot/host-data.ts";
 import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
@@ -132,7 +133,7 @@ const HOST_BINDING_HEADINGS = [
   { name: "codex", heading: CODEX_BINDING_HEADING },
   { name: "cursor", heading: CURSOR_BINDING_HEADING },
   { name: "opencode", heading: "opencode" },
-  { name: "copilot", heading: "GitHub Copilot" },
+  { name: "copilot", heading: COPILOT_BINDING_HEADING },
 ] as const;
 
 export const hostBindingHeadings = (): readonly string[] => HOST_BINDING_HEADINGS.map((entry) => entry.heading);
@@ -142,6 +143,7 @@ export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEnt
 );
 
 const HOST_DOCUMENT_MEMBERS = [
+  { name: "copilot", inputs: [], render: createCopilotDocumentRenderer },
   { name: "cursor", inputs: [], render: createCursorDocumentRenderer },
   { name: "kiro-ide", inputs: [], render: createKiroIdeDocumentRenderer },
   { name: "codex", inputs: [], render: createCodexDocumentRenderer },

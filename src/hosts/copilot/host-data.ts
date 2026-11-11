@@ -1,6 +1,8 @@
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
+export const COPILOT_BINDING_HEADING = "GitHub Copilot";
+
 export const COPILOT_HOST_DATA = {
   productName: "GitHub Copilot",
   configNextStep: "start Copilot CLI or VS Code agent mode, then run `/aidlc --doctor`",
