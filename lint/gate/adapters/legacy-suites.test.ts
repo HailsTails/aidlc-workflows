@@ -22,6 +22,11 @@ describe("legacy suites", () => {
     expect(environment).toEqual({ PATH: "C:\bin", PATHEXT: ".COM;.EXE;.CMD" });
   });
 
+  test("the runner keeps ComSpec so a spawned shell finds cmd.exe from a one-folder PATH", () => {
+    const kept = { PATH: "C:/bin", ComSpec: "C:/Windows/System32/cmd.exe" };
+    expect(legacyEnvironment(kept)).toEqual(kept);
+  });
+
   test("both legacy suites run the repository runner with the explicit environment", () => {
     const environment = { PATH: "/bin" };
     const suites = legacySuites({ bun: "bun", environment });

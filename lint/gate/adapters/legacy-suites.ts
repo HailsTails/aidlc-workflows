@@ -9,6 +9,7 @@ import { hasTestsOutsideNamedDescribes, topLevelDescribes } from "./describe-rea
 const INHERITED_NAMES = [
   "PATH",
   "PATHEXT",
+  "ComSpec",
   "SystemRoot",
   "HOME",
   "USERPROFILE",

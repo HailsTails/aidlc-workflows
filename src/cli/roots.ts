@@ -79,7 +79,7 @@ export type HostBuildMembers = {
   readonly documents: ConceptMembers<HostDocumentRenderer>;
   readonly fills: OnboardingFills;
   readonly bindingHeading: string;
-  readonly distribution?: HostDistributionReader;
+  readonly distribution: HostDistributionReader;
 };
 
 export type HostDistributionInputs = {

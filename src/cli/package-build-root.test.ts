@@ -409,7 +409,7 @@ const distributionMembers = (): HostBuildMembers => ({
   agents: { inputs: [], render: scratchAgentRenderer }, commands: scratchCommandPlacement,
   skills: { inputs: [], render: scratchSkillRenderer }, settings: { inputs: [], render: scratchSettingsRenderer },
   documents: { inputs: [], render: scratchDocumentRenderer }, fills: { invoke: "/aidlc", slots: {} },
-  bindingHeading: "Scratch",
+  bindingHeading: "Scratch", distribution: () => accepted(scratchHostDistributionFixture),
 });
 
 test("the public distribution reader supplies one captured facts instance without authored IO", () => {
@@ -426,14 +426,12 @@ test("the public distribution reader supplies one captured facts instance withou
   expect(readTree).not.toHaveBeenCalled();
 });
 
-test("unknown hosts and hosts lacking a distribution are refused by the public reader", () => {
+test("unknown hosts are refused by the public reader", () => {
   const root = createPackageBuildRoot({ hosts: [distributionMembers()],
     platform: { fileSystem: createInMemoryFileSystem({ files: {} }), processRunner, yaml },
     outliner, sources, runnerFrames });
   expect(root.readHostDistribution({ host: host({ name: "missing", directory: ".missing" }) }))
     .toEqual(refused([{ kind: "unknown-harness", harness: "missing" }]));
-  expect(root.readHostDistribution({ host: SCRATCH_HOST }))
-    .toEqual(refused([{ kind: "unknown-harness", harness: "scratch" }]));
 });
 
 test("the public reader preserves the native distribution's kernel refusal", () => {
