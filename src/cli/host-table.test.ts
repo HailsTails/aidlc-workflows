@@ -1,5 +1,7 @@
 import { CODEX_ONBOARDING_FILLS } from "../hosts/codex/onboarding-fills.ts";
 import { codexDistribution } from "../hosts/codex/distribution.ts";
+import { CURSOR_ONBOARDING_FILLS } from "../hosts/cursor/onboarding-fills.ts";
+import { cursorDistribution } from "../hosts/cursor/distribution.ts";
 import { KIRO_ONBOARDING_FILLS } from "../hosts/kiro/onboarding-fills.ts";
 import { kiroDistribution } from "../hosts/kiro/distribution.ts";
 import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
@@ -211,11 +213,12 @@ test("OpenCode settings register the native settings and captured plugin produce
   } });
 });
 
-test("Claude, Kiro and Codex enter the full table only with every real concept, fills and distribution", () => {
-  expect(HOST_BUILD_MEMBERS).toHaveLength(3);
+test("Claude, Kiro, Codex and Cursor enter the full table with every real concept, fills and distribution", () => {
+  expect(HOST_BUILD_MEMBERS).toHaveLength(4);
   expect(HOST_BUILD_MEMBERS[0]?.host).toEqual(host({ name: "claude", directory: ".claude" }));
   expect(HOST_BUILD_MEMBERS[1]?.host).toEqual(host({ name: "kiro", directory: ".kiro" }));
   expect(HOST_BUILD_MEMBERS[2]?.host).toEqual(host({ name: "codex", directory: ".codex" }));
+  expect(HOST_BUILD_MEMBERS[3]?.host).toEqual(host({ name: "cursor", directory: ".cursor" }));
   expect(HOST_BUILD_MEMBERS[0]?.fills).toBe(CLAUDE_ONBOARDING_FILLS);
   expect(HOST_BUILD_MEMBERS[0]?.distribution).toBe(claudeDistribution);
   expect(HOST_BUILD_MEMBERS[0]?.bindingHeading).toBe("Claude Code");
@@ -225,6 +228,9 @@ test("Claude, Kiro and Codex enter the full table only with every real concept, 
   expect(HOST_BUILD_MEMBERS[2]?.fills).toBe(CODEX_ONBOARDING_FILLS);
   expect(HOST_BUILD_MEMBERS[2]?.distribution).toBe(codexDistribution);
   expect(HOST_BUILD_MEMBERS[2]?.bindingHeading).toBe("Codex CLI");
+  expect(HOST_BUILD_MEMBERS[3]?.fills).toBe(CURSOR_ONBOARDING_FILLS);
+  expect(HOST_BUILD_MEMBERS[3]?.distribution).toBe(cursorDistribution);
+  expect(HOST_BUILD_MEMBERS[3]?.bindingHeading).toBe("Cursor");
 });
 
 test("Codex agents directly register the native factory without authored capture", () => {

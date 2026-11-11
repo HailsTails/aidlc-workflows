@@ -126,8 +126,7 @@ const HARNESS_CAPABILITIES = {
   cursor: {
     harnessDir: ".cursor",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".cursor/rules/aidlc-onboarding.mdc",
     },
