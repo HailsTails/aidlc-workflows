@@ -4,6 +4,8 @@
     {
       "capability": "symlinks",
       "cases": [
+        "t188 plugin compose — emit + compose the contribution seam > plugin build refuses a broken symlink outDir (no raw EEXIST stack)",
+        "t188 plugin compose — emit + compose the contribution seam > plugin build refuses a symlink outDir — plain and trailing-slash",
         "t243 archive and transaction safety > rollback restores file mode and symlink target and rejects a dangling symlink parent",
         "t243 archive and transaction safety > transaction rejects symlink traversal and restores every committed byte on fault",
         "t243 project initialization > a symlinked AGENTS.md is a root-integration conflict",

@@ -155,7 +155,7 @@ const distributionReader = (request: {
 }): ReadHostDistribution => ({ host }) => {
   const members = request.hosts.find((candidate) => candidate.host.distribution === host.distribution
     && candidate.host.directory === host.directory);
-  if (!members?.distribution) return refused([{ kind: "unknown-harness", harness: host.distribution }]);
+  if (!members) return refused([{ kind: "unknown-harness", harness: host.distribution }]);
   const distribution = members.distribution({ delegateShellFacts: request.projection.delegateShellFacts });
   return distribution.ok ? distribution : refused([distribution.refusal]);
 };

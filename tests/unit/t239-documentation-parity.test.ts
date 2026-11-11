@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import {
   CODEX_ONBOARDING_FILLS as codexOnboardingFills,
 } from "../../src/hosts/codex/onboarding-fills.ts";
-import { renderOnboarding } from "../../scripts/onboarding.ts";
+import { renderOnboarding } from "../../src/projection/domain/onboarding.ts";
 import { type Tier, TIER_PROJECTIONS, TIERS } from "../../core/tools/aidlc-tiers.ts";
 import { parseStageFrontmatter } from "../../core/tools/aidlc-lib.ts";
 import { compareVersions } from "../../core/tools/aidlc-channel.ts";
@@ -774,10 +774,12 @@ describe("documentation parity derives current behavior from authored implementa
   });
 
   test("Codex onboarding fills and rendered output name the emitted agent TOML directory", () => {
-    const rendered = renderOnboarding(
+    const onboarding = renderOnboarding(
       read("core", "templates", "onboarding-harness.md"),
       codexOnboardingFills,
     );
+    if (!onboarding.ok) throw new Error(onboarding.refusal);
+    const rendered = onboarding.value;
     for (const body of [rendered, read("dist", "codex", ".codex", "onboarding.md")]) {
       expect(body).toContain("`.codex/agents/` TOMLs");
       expect(body).not.toContain("transposed into `.agents/` TOMLs");

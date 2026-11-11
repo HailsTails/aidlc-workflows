@@ -16,20 +16,12 @@
 // protocol is a projection, so the bytes that ship are checked too.
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
+import { HARNESS_MATRIX, harnessByName } from "../harness/harness-matrix.ts";
 
-const HARNESS_NAMES = readdirSync(join(REPO_ROOT, "harness"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && existsSync(join(REPO_ROOT, "harness", entry.name, "manifest.ts")))
-  .map((entry) => entry.name)
-  .sort();
-
-const manifests = new Map<string, HarnessManifest>();
-for (const name of HARNESS_NAMES) {
-  manifests.set(name, (await import(join(REPO_ROOT, "harness", name, "manifest.ts"))).default as HarnessManifest);
-}
+const HARNESS_NAMES = HARNESS_MATRIX.map((harness) => harness.name);
 
 // Markdown wraps a bullet across lines; compare its words.
 function words(path: string): string {
@@ -48,7 +40,7 @@ describe("a question past the question box is asked once", () => {
   test("Step 3a asks it once as a numbered list, in core and in every shipped tree", () => {
     const sources = [join(REPO_ROOT, "core", "aidlc-common", "protocols", "stage-protocol.md")];
     for (const name of HARNESS_NAMES) {
-      sources.push(join(REPO_ROOT, "dist", name, manifests.get(name)?.harnessDir ?? "", "aidlc-common", "protocols", "stage-protocol.md"));
+      sources.push(join(REPO_ROOT, "dist", name, harnessByName(name).manifest.harnessDir, "aidlc-common", "protocols", "stage-protocol.md"));
     }
     for (const source of sources) {
       const text = words(source);

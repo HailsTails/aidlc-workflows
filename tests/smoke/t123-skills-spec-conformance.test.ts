@@ -67,7 +67,6 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { AIDLC_SRC } from "../harness/fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
-import { orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 import { defaultScopeBatch } from "../../dist/claude/.claude/tools/aidlc-runner-gen.ts";
 
 const STAGE_GRAPH = join(AIDLC_SRC, "tools", "data", "stage-graph.json");
@@ -179,7 +178,7 @@ describe("t123 (smoke) skills-spec conformance — every shipped skill set", () 
       expect(runner).not.toContain("\naidlc engine orchestrate next");
       expect(runner).not.toContain("{{HARNESS_DIR}}");
       const declaredRoot = join(harness.distRoot,
-        dirname(dirname(orchestratorSkillLocation(harness.manifest))));
+        dirname(dirname(harness.manifest.orchestratorSkillPath)));
       expect(declaredRoot).toBe(harness.skillsRoot);
       if (declaredRoot !== join(harness.engineRoot, "skills")) {
         expect(existsSync(join(harness.engineRoot, "skills"))).toBe(false);

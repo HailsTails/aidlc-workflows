@@ -1,11 +1,9 @@
-// covers: file:scripts/package.ts, file:src/hosts/claude/host-data.ts
-//
 // t-question-options-fit-the-box: the questions file gives each question no
 // more lettered options than the harness's question box shows besides its own
 // Other row, so the agent puts every question in the box whole. Claude Code's
 // AskUserQuestion takes four: a file lettered A-E had the person see "Invalid
 // tool parameters" before the box, or a box without one of the file's options.
-// The harness manifest owns the number (`questionOptions`); the packager writes
+// The host owns the number (its OPTION_LETTERS token); the packager writes
 // the letters into the prose the agent reads before it writes the file.
 //
 // Read from the generated dist/ trees: the letters are a projection, so the
@@ -14,22 +12,11 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import { HOST_BUILD_MEMBERS } from "../../src/cli/host-table.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 
-const LEGACY_NAMES = readdirSync(join(REPO_ROOT, "harness"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && existsSync(join(REPO_ROOT, "harness", entry.name, "manifest.ts")))
-  .map((entry) => entry.name)
-  .sort();
 const FULL_HOSTS = HOST_BUILD_MEMBERS.filter((member) => member.distribution);
-const HARNESS_NAMES = [...new Set([...LEGACY_NAMES,
-  ...FULL_HOSTS.map((member) => member.host.distribution)])].sort();
-
-const manifests = new Map<string, HarnessManifest>();
-for (const name of LEGACY_NAMES) {
-  manifests.set(name, (await import(join(REPO_ROOT, "harness", name, "manifest.ts"))).default as HarnessManifest);
-}
+const HARNESS_NAMES = FULL_HOSTS.map((member) => member.host.distribution).sort();
 
 // Where the agent reads that a question's options are lettered, in each tree.
 const LETTER_SITES: Array<{ file: string; line: RegExp }> = [
@@ -38,16 +25,18 @@ const LETTER_SITES: Array<{ file: string; line: RegExp }> = [
   { file: "aidlc-common/stages/ideation/intent-capture.md", line: /Include (A-[A-Z]) options with X \(Other\) as final option\./ },
 ];
 
-function engineRoot(name: string): string {
+function memberOf(name: string) {
   const member = FULL_HOSTS.find((candidate) => candidate.host.distribution === name);
-  const directory = member?.host.directory ?? manifests.get(name)?.harnessDir ?? "";
-  return join(REPO_ROOT, "dist", name, directory);
+  if (!member) throw new Error(`No registered host ${name}`);
+  return member;
 }
 
-function questionOptions(name: string): number | undefined {
-  const member = FULL_HOSTS.find((candidate) => candidate.host.distribution === name);
-  if (!member) return manifests.get(name)?.questionOptions;
-  const letters = member.tokens.OPTION_LETTERS;
+function engineRoot(name: string): string {
+  return join(REPO_ROOT, "dist", name, memberOf(name).host.directory);
+}
+
+function questionOptions(name: string): number {
+  const letters = memberOf(name).tokens.OPTION_LETTERS;
   if (!letters || !/^A-[B-E]$/.test(letters)) throw new Error(`Invalid host option letters: ${letters}`);
   return letters.charCodeAt(2) - 64;
 }
@@ -77,7 +66,7 @@ describe("the questions file fits the harness's question box", () => {
   });
 
   test("a harness whose box takes five or more keeps A-E", () => {
-    const unlimited = HARNESS_NAMES.filter((name) => (questionOptions(name) ?? 5) >= 5);
+    const unlimited = HARNESS_NAMES.filter((name) => questionOptions(name) >= 5);
     expect(unlimited.length).toBeGreaterThan(0);
     for (const name of unlimited) expect(lettersIn(name), name).toEqual(["A-E", "A-E", "A-E"]);
   });
