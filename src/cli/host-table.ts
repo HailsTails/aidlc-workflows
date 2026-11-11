@@ -9,6 +9,9 @@ import { cursorDistribution } from "../hosts/cursor/distribution.ts";
 import { CURSOR_ONBOARDING_FILLS } from "../hosts/cursor/onboarding-fills.ts";
 import { cursorCommandPath } from "../hosts/cursor/projection/command-renderer.ts";
 import { kiroIdeDistribution } from "../hosts/kiro-ide/distribution.ts";
+import { openCodeCommandPath } from "../hosts/opencode/projection/command-renderer.ts";
+import { openCodeDistribution } from "../hosts/opencode/distribution.ts";
+import { OPENCODE_ONBOARDING_FILLS } from "../hosts/opencode/onboarding-fills.ts";
 import { KIRO_IDE_ONBOARDING_FILLS } from "../hosts/kiro-ide/onboarding-fills.ts";
 import { kiroIdeCommandPath } from "../hosts/kiro-ide/projection/command-renderer.ts";
 import { kiroDistribution } from "../hosts/kiro/distribution.ts";
@@ -43,7 +46,7 @@ import {
   CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_TOKENS, cursorHostIdentity,
 } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
-import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS, OPENCODE_BINDING_HEADING } from "../hosts/opencode/host-data.ts";
+import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS, OPENCODE_BINDING_HEADING, OPENCODE_TOKENS, openCodeHostIdentity } from "../hosts/opencode/host-data.ts";
 import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TOKENS, kiroHostIdentity } from "../hosts/kiro/host-data.ts";
 import {
   CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TOKENS, codexHostIdentity,
@@ -200,6 +203,8 @@ const ROUTED_ENTRIES: readonly HostEntry[] = [
   { identity: kiroIdeHostIdentity, tokens: KIRO_IDE_TOKENS, commands: kiroIdeCommandPath,
     fills: KIRO_IDE_ONBOARDING_FILLS, bindingHeading: KIRO_IDE_BINDING_HEADING,
     distribution: kiroIdeDistribution },
+  { identity: openCodeHostIdentity, tokens: OPENCODE_TOKENS, commands: openCodeCommandPath,
+    fills: OPENCODE_ONBOARDING_FILLS, bindingHeading: OPENCODE_BINDING_HEADING, distribution: openCodeDistribution },
 ];
 
 const buildMembers = (entry: HostEntry): HostBuildTable => {
