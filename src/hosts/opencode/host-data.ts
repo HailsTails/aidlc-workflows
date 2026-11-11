@@ -1,3 +1,6 @@
+import type { HostIdentity } from "../../kernel/host.ts";
+import { accepted, type Result } from "../../kernel/result.ts";
+import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 
@@ -29,4 +32,12 @@ export const OPENCODE_TOKENS = {
 
 export const OPENCODE_AUTHORED_PLACEMENTS = [
   { source: "dot-gitignore", destination: ".gitignore" },
+  { source: "command/aidlc.md", destination: ".opencode/command/aidlc.md" },
 ] as const satisfies readonly AuthoredPlacement[];
+
+export const openCodeHostIdentity = (): Result<HostIdentity, KernelRefusal> => {
+  const distribution = distributionId("opencode");
+  if (!distribution.ok) return distribution;
+  const directory = projectPath(".aidlc");
+  return directory.ok ? accepted({ distribution: distribution.value, directory: directory.value }) : directory;
+};

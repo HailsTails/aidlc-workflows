@@ -186,8 +186,7 @@ const HARNESS_CAPABILITIES = {
   opencode: {
     harnessDir: ".aidlc",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".aidlc/onboarding.md",
     },

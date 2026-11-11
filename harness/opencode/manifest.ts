@@ -25,7 +25,7 @@
 //   - opencode auto-reads the project-root AGENTS.md (its primary rules file).
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
-import onboardingFills from "./onboarding.fills.ts";
+import { OPENCODE_ONBOARDING_FILLS as onboardingFills } from "../../src/hosts/opencode/onboarding-fills.ts";
 import { OPENCODE_HOST_DATA } from "../../src/hosts/opencode/host-data.ts";
 import emit from "./emit.ts";
 

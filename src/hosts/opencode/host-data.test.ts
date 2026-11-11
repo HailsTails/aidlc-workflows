@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { OPENCODE_HOST_DATA, OPENCODE_TOKENS, OPENCODE_AUTHORED_PLACEMENTS } from "./host-data.ts";
+import { host } from "../../kernel/fixtures/values.fixture.ts";
+import { openCodeHostIdentity, OPENCODE_HOST_DATA, OPENCODE_TOKENS, OPENCODE_AUTHORED_PLACEMENTS } from "./host-data.ts";
 
 test("OpenCode declares its exact native runtime facts", () => {
   expect(OPENCODE_HOST_DATA).toEqual({
@@ -26,8 +27,13 @@ test("OpenCode declares five-option questions and the existing invocation token 
   expect(OPENCODE_TOKENS).toEqual({ ["SKILL_INVOKE"]: null, ["OPTION_LETTERS"]: "A-E" });
 });
 
-test("OpenCode owns only its project-root gitignore placement", () => {
+test("OpenCode places its gitignore at the project root and its entry command in the native directory", () => {
   expect(OPENCODE_AUTHORED_PLACEMENTS).toEqual([
     { source: "dot-gitignore", destination: ".gitignore" },
+    { source: "command/aidlc.md", destination: ".opencode/command/aidlc.md" },
   ]);
+});
+
+test("OpenCode owns its checked distribution identity and native directory", () => {
+  expect(openCodeHostIdentity()).toEqual({ ok: true, value: host({ name: "opencode", directory: ".aidlc" }) });
 });
