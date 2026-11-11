@@ -1,5 +1,6 @@
+import { host } from "../../kernel/fixtures/values.fixture.ts";
 import { expect, test } from "bun:test";
-import { KIRO_BINDING_HEADING, KIRO_HOST_DATA, KIRO_TOKENS, KIRO_AUTHORED_PLACEMENTS } from "./host-data.ts";
+import { kiroHostIdentity, KIRO_BINDING_HEADING, KIRO_HOST_DATA, KIRO_TOKENS, KIRO_AUTHORED_PLACEMENTS } from "./host-data.ts";
 
 test("Kiro declares its v2 layout and conversation surface", () => {
   expect(KIRO_HOST_DATA.productName).toBe("Kiro CLI");
@@ -28,4 +29,8 @@ test("Kiro places ancillary authored files without taking the settings producer'
 
 test("Kiro owns its protocol binding heading", () => {
   expect(KIRO_BINDING_HEADING).toBe("Kiro CLI");
+});
+
+test("Kiro owns its checked distribution identity and native directory", () => {
+  expect(kiroHostIdentity()).toEqual({ ok: true, value: host({ name: "kiro", directory: ".kiro" }) });
 });

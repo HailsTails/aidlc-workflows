@@ -1,7 +1,10 @@
 import { claudeDistribution } from "../hosts/claude/distribution.ts";
 import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
 import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
-import type { HostBuildTable } from "./roots.ts";
+import type { HostBuildMembers, HostBuildTable } from "./roots.ts";
+import { kiroDistribution } from "../hosts/kiro/distribution.ts";
+import { KIRO_ONBOARDING_FILLS } from "../hosts/kiro/onboarding-fills.ts";
+import { kiroCommandPath } from "../hosts/kiro/projection/command-renderer.ts";
 import { createCopilotDocumentRenderer } from "../hosts/copilot/projection/document-renderer.ts";
 import { createCursorDocumentRenderer } from "../hosts/cursor/projection/document-renderer.ts";
 import { cursorAgents } from "../hosts/cursor/projection/agent-renderer.ts";
@@ -26,7 +29,7 @@ import { COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING
 import { CURSOR_HOST_DATA, CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING } from "../hosts/cursor/host-data.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "../hosts/claude/projection/settings-renderer.ts";
 import { OPENCODE_HOST_DATA, OPENCODE_AUTHORED_PLACEMENTS } from "../hosts/opencode/host-data.ts";
-import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING } from "../hosts/kiro/host-data.ts";
+import { KIRO_HOST_DATA, KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TOKENS, kiroHostIdentity } from "../hosts/kiro/host-data.ts";
 import { CODEX_HOST_DATA, CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING } from "../hosts/codex/host-data.ts";
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "../hosts/copilot/projection/skill-renderer.ts";
 import { CURSOR_SKILL_INPUTS, createCursorSkillRenderer } from "../hosts/cursor/projection/skill-renderer.ts";
@@ -158,8 +161,24 @@ export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | n
   return entry ? { host, inputs: entry.inputs, render: entry.render } : null;
 };
 
-const claudeBuildMembers = (): HostBuildTable => {
-  const identity = claudeHostIdentity();
+type HostEntry = {
+  readonly identity: () => Result<HostIdentity, unknown>;
+  readonly tokens: HostBuildMembers["tokens"];
+  readonly commands: HostBuildMembers["commands"];
+  readonly fills: HostBuildMembers["fills"];
+  readonly bindingHeading: string;
+  readonly distribution: NonNullable<HostBuildMembers["distribution"]>;
+};
+
+const ROUTED_ENTRIES: readonly HostEntry[] = [
+  { identity: claudeHostIdentity, tokens: CLAUDE_TOKENS, commands: claudeCommandPath,
+    fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: CLAUDE_BINDING_HEADING, distribution: claudeDistribution },
+  { identity: kiroHostIdentity, tokens: KIRO_TOKENS, commands: kiroCommandPath,
+    fills: KIRO_ONBOARDING_FILLS, bindingHeading: KIRO_BINDING_HEADING, distribution: kiroDistribution },
+];
+
+const buildMembers = (entry: HostEntry): HostBuildTable => {
+  const identity = entry.identity();
   if (!identity.ok) return [];
   const host = identity.value;
   const agents = hostAgentMembers(host);
@@ -169,10 +188,10 @@ const claudeBuildMembers = (): HostBuildTable => {
   const surface = hostSurfaceMembers(host);
   if (!agents.ok || !skills.ok || !settings.ok || agents.value === null || skills.value === null ||
     settings.value === null || documents === null || surface === null) return [];
-  return [{ host, tokens: CLAUDE_TOKENS, renderData: surface.renderData, placements: surface.placements,
+  return [{ host, tokens: entry.tokens, renderData: surface.renderData, placements: surface.placements,
     agents: agents.value, skills: skills.value, settings: settings.value, documents,
-    commands: claudeCommandPath, fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: CLAUDE_BINDING_HEADING,
-    distribution: claudeDistribution }];
+    commands: entry.commands, fills: entry.fills, bindingHeading: entry.bindingHeading,
+    distribution: entry.distribution }];
 };
 
-export const HOST_BUILD_MEMBERS: HostBuildTable = claudeBuildMembers();
+export const HOST_BUILD_MEMBERS: HostBuildTable = ROUTED_ENTRIES.flatMap(buildMembers);

@@ -33,6 +33,11 @@ describe("IMPLEMENTERS", () => {
         factory: "createBunYamlParser",
         hermeticTest: "src/kernel/yaml-parser.hermetic.test.ts",
       },
+      {
+        capability: "content-digester",
+        factory: "createBunContentDigester",
+        hermeticTest: "src/kernel/content-digester.hermetic.test.ts",
+      },
     ]);
   });
 });

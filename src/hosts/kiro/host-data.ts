@@ -1,3 +1,6 @@
+import type { HostIdentity } from "../../kernel/host.ts";
+import { accepted, type Result } from "../../kernel/result.ts";
+import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 export const KIRO_PROMPT_LINES: readonly string[] = [
@@ -53,3 +56,10 @@ export const KIRO_AUTHORED_PLACEMENTS = [
 ] as const satisfies readonly AuthoredPlacement[];
 
 export const KIRO_BINDING_HEADING = "Kiro CLI";
+
+export const kiroHostIdentity = (): Result<HostIdentity, KernelRefusal> => {
+  const distribution = distributionId("kiro");
+  if (!distribution.ok) return distribution;
+  const directory = projectPath(".kiro");
+  return directory.ok ? accepted({ distribution: distribution.value, directory: directory.value }) : directory;
+};

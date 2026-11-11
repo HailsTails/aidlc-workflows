@@ -1651,9 +1651,11 @@ function routedView(request: {
   if (!metadata.success) {
     throw new Error(`The rendered host descriptor is invalid: ${members.host.distribution}`);
   }
-  const onboarding = files.find((file) =>
+  const rendered = files.filter((file) =>
     file.origin.kind === "rendered" && file.origin.concept === "onboarding");
-  const within = onboarding?.path.startsWith(`${members.host.directory}/`)
+  const insideHost = (file: ProjectedFile): boolean => file.path.startsWith(`${members.host.directory}/`);
+  const onboarding = rendered.find(insideHost) ?? rendered[0];
+  const within = onboarding && insideHost(onboarding)
     ? onboarding.path.slice(members.host.directory.length + 1) : undefined;
   return { name: members.host.distribution, harnessDir: members.host.directory,
     ...metadata.data, ...routedListing(distribution),

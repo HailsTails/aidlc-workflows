@@ -1,3 +1,5 @@
+import { KIRO_ONBOARDING_FILLS } from "../hosts/kiro/onboarding-fills.ts";
+import { kiroDistribution } from "../hosts/kiro/distribution.ts";
 import { CLAUDE_ONBOARDING_FILLS } from "../hosts/claude/onboarding-fills.ts";
 import { claudeDistribution } from "../hosts/claude/distribution.ts";
 import { createCopilotDocumentRenderer } from "../hosts/copilot/projection/document-renderer.ts";
@@ -182,12 +184,16 @@ test("OpenCode settings register the native settings and captured plugin produce
   } });
 });
 
-test("Claude enters the full table only with every real concept, native fills and distribution", () => {
-  expect(HOST_BUILD_MEMBERS).toHaveLength(1);
+test("Claude and Kiro enter the full table only with every real concept, native fills and distribution", () => {
+  expect(HOST_BUILD_MEMBERS).toHaveLength(2);
   expect(HOST_BUILD_MEMBERS[0]?.host).toEqual(host({ name: "claude", directory: ".claude" }));
+  expect(HOST_BUILD_MEMBERS[1]?.host).toEqual(host({ name: "kiro", directory: ".kiro" }));
   expect(HOST_BUILD_MEMBERS[0]?.fills).toBe(CLAUDE_ONBOARDING_FILLS);
   expect(HOST_BUILD_MEMBERS[0]?.distribution).toBe(claudeDistribution);
   expect(HOST_BUILD_MEMBERS[0]?.bindingHeading).toBe("Claude Code");
+  expect(HOST_BUILD_MEMBERS[1]?.fills).toBe(KIRO_ONBOARDING_FILLS);
+  expect(HOST_BUILD_MEMBERS[1]?.distribution).toBe(kiroDistribution);
+  expect(HOST_BUILD_MEMBERS[1]?.bindingHeading).toBe("Kiro CLI");
 });
 
 test("Codex agents directly register the native factory without authored capture", () => {
