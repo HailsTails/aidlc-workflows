@@ -75,146 +75,141 @@ import { KIRO_AGENT_JSON, kiroAgents } from "../hosts/kiro/projection/json-agent
 import type { ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { HostAgentMembers, HostSkillMembers, HostSurfaceMembers, HostSettingsMembers } from "./roots.ts";
 
-const AGENT_MEMBERS = [
-  { name: "copilot", inputs: [], render: copilotAgents },
-  { name: "cursor", inputs: [], render: cursorAgents },
-  { name: "opencode", inputs: [], render: openCodeAgents },
-  { name: "codex", inputs: [], render: codexAgents },
-  { name: "kiro-ide", inputs: ["agents/aidlc-aidlc.md"], render: createKiroIdeAgents({ personas: kiroAgentRenderer }) },
-  { name: "kiro", inputs: KIRO_AGENT_JSON, render: kiroAgents },
-  { name: "claude", inputs: [], render: claudeAgents },
-] as const;
-
-export const hostAgentInputs = (name: string): readonly string[] =>
-  AGENT_MEMBERS.find((entry) => entry.name === name)?.inputs ?? [];
-
-export const hostAgentMembers = (host: HostIdentity):
-Result<HostAgentMembers | null, ProjectionRefusal> => {
-  const entry = AGENT_MEMBERS.find((candidate) => candidate.name === host.distribution);
-  if (!entry) return accepted(null);
-  const paths = entry.inputs.map(sourcePath);
-  const failed = paths.find((path) => !path.ok);
-  if (failed && !failed.ok) return refused({ kind: "render-failed", concept: "agent",
-    name: host.distribution, reason: `The authored agent input is invalid: ${failed.refusal.raw}` });
-  return accepted({ host, render: entry.render, inputs: paths.flatMap((path) => path.ok ? [path.value] : []) });
-};
-const HOST_SKILL_MEMBERS = [
-  { name: "copilot", inputs: COPILOT_SKILL_INPUTS, render: createCopilotSkillRenderer },
-  { name: "cursor", inputs: CURSOR_SKILL_INPUTS, render: createCursorSkillRenderer },
-  { name: "kiro-ide", inputs: KIRO_IDE_SKILL_INPUTS, render: createKiroIdeSkillRenderer },
-  { name: "opencode", inputs: OPENCODE_SKILL_INPUTS, render: createOpenCodeSkillRenderer },
-  { name: "kiro", inputs: KIRO_SKILL_INPUTS, render: createKiroSkillRenderer },
-  { name: "codex", inputs: CODEX_SKILL_INPUTS, render: createCodexSkillRenderer },
-  { name: "claude", inputs: CLAUDE_SKILL_INPUTS, render: createClaudeSkillRenderer },
-] as const;
-
-export const hostSkillInputs = (name: string): readonly string[] =>
-  HOST_SKILL_MEMBERS.find((entry) => entry.name === name)?.inputs ?? [];
-
-export const hostSkillMembers = (host: HostIdentity): Result<HostSkillMembers | null, ProjectionRefusal> => {
-  const entry = HOST_SKILL_MEMBERS.find((candidate) => candidate.name === host.distribution);
-  if (!entry) return accepted(null);
-  const paths = entry.inputs.map(sourcePath);
-  const failed = paths.find((path) => !path.ok);
-  if (failed && !failed.ok) return refused({ kind: "render-failed", concept: "orchestrator-skill",
-    name: failed.refusal.raw, reason: "The authored skill input is not a portable source path." });
-  return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
-};
-const HOST_SURFACE_MEMBERS = [
-  { name: "kiro-ide", renderData: kiroIdeHostData, placements: KIRO_IDE_AUTHORED_PLACEMENTS },
-  { name: "copilot", renderData: () => COPILOT_HOST_DATA, placements: COPILOT_AUTHORED_PLACEMENTS },
-  { name: "cursor", renderData: () => CURSOR_HOST_DATA, placements: CURSOR_AUTHORED_PLACEMENTS },
-  { name: "opencode", renderData: () => OPENCODE_HOST_DATA, placements: OPENCODE_AUTHORED_PLACEMENTS },
-  { name: "kiro", renderData: () => KIRO_HOST_DATA, placements: KIRO_AUTHORED_PLACEMENTS },
-  { name: "codex", renderData: () => CODEX_HOST_DATA, placements: CODEX_AUTHORED_PLACEMENTS },
-  { name: "claude", renderData: () => CLAUDE_HOST_DATA, placements: CLAUDE_AUTHORED_PLACEMENTS },
-] as const;
-
-export const hostSurfaceMembers = (host: HostIdentity): HostSurfaceMembers | null => {
-  const entry = HOST_SURFACE_MEMBERS.find((candidate) => candidate.name === host.distribution);
-  return entry ? { host, renderData: entry.renderData, placements: entry.placements } : null;
-};
-
-const HOST_SETTINGS_MEMBERS = [
-  { name: "copilot", inputs: COPILOT_SETTINGS_INPUTS, render: createCopilotSettingsRenderer },
-  { name: "cursor", inputs: CURSOR_SETTINGS_INPUTS, render: createCursorSettingsRenderer },
-  { name: "opencode", inputs: OPENCODE_SETTINGS_INPUTS, render: createOpenCodeSettingsRenderer },
-  { name: "kiro-ide", inputs: KIRO_IDE_SETTINGS_INPUTS, render: createKiroIdeSettingsRenderer },
-  { name: "codex", inputs: CODEX_SETTINGS_INPUTS, render: createCodexSettingsRenderer },
-  { name: "kiro", inputs: KIRO_SETTINGS_INPUTS, render: createKiroSettingsRenderer },
-  { name: "claude", inputs: CLAUDE_SETTINGS_INPUTS, render: createClaudeSettingsRenderer },
-] as const;
-
-export const hostSettingsInputs = (name: string): readonly string[] =>
-  HOST_SETTINGS_MEMBERS.find((entry) => entry.name === name)?.inputs ?? [];
-
-export const hostSettingsMembers = (host: HostIdentity): Result<HostSettingsMembers | null, ProjectionRefusal> => {
-  const entry = HOST_SETTINGS_MEMBERS.find((candidate) => candidate.name === host.distribution);
-  if (!entry) return accepted(null);
-  const paths = entry.inputs.map(sourcePath);
-  const failed = paths.find((path) => !path.ok);
-  if (failed && !failed.ok) return refused({ kind: "render-failed", concept: "settings",
-    name: failed.refusal.raw, reason: "The authored settings input is not a portable source path." });
-  return accepted({ host, inputs: paths.flatMap((path) => path.ok ? [path.value] : []), render: entry.render });
-};
-
-const HOST_BINDING_HEADINGS = [
-  { name: "claude", heading: CLAUDE_BINDING_HEADING },
-  { name: "kiro", heading: KIRO_BINDING_HEADING },
-  { name: "kiro-ide", heading: KIRO_IDE_BINDING_HEADING },
-  { name: "codex", heading: CODEX_BINDING_HEADING },
-  { name: "cursor", heading: CURSOR_BINDING_HEADING },
-  { name: "opencode", heading: OPENCODE_BINDING_HEADING },
-  { name: "copilot", heading: COPILOT_BINDING_HEADING },
-] as const;
-
-export const hostBindingHeadings = (): readonly string[] => HOST_BINDING_HEADINGS.map((entry) => entry.heading);
-
-export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEntries(
-  HOST_BINDING_HEADINGS.map((entry) => [entry.name, entry.heading]),
-);
-
-const HOST_DOCUMENT_MEMBERS = [
-  { name: "copilot", inputs: [], render: createCopilotDocumentRenderer },
-  { name: "opencode", inputs: [], render: createOpenCodeDocumentRenderer },
-  { name: "cursor", inputs: [], render: createCursorDocumentRenderer },
-  { name: "kiro-ide", inputs: [], render: createKiroIdeDocumentRenderer },
-  { name: "codex", inputs: [], render: createCodexDocumentRenderer },
-  { name: "kiro", inputs: [], render: createKiroDocumentRenderer },
-  { name: "claude", inputs: [], render: createClaudeDocumentRenderer },
-] as const;
-
-export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | null => {
-  const entry = HOST_DOCUMENT_MEMBERS.find((candidate) => candidate.name === host.distribution);
-  return entry ? { host, inputs: entry.inputs, render: entry.render } : null;
-};
-
 export type HostEntry = {
   readonly identity: () => Result<HostIdentity, unknown>;
   readonly tokens: HostBuildMembers["tokens"];
   readonly commands: HostBuildMembers["commands"];
   readonly fills: HostBuildMembers["fills"];
   readonly bindingHeading: string;
-  readonly distribution: NonNullable<HostBuildMembers["distribution"]>;
+  readonly distribution: HostBuildMembers["distribution"];
+  readonly renderData: HostSurfaceMembers["renderData"];
+  readonly placements: HostSurfaceMembers["placements"];
+  readonly agents: { readonly inputs: readonly string[]; readonly render: HostAgentMembers["render"] };
+  readonly skills: { readonly inputs: readonly string[]; readonly render: HostSkillMembers["render"] };
+  readonly settings: { readonly inputs: readonly string[]; readonly render: HostSettingsMembers["render"] };
+  readonly documents: { readonly inputs: HostDocumentMembers["inputs"]; readonly render: HostDocumentMembers["render"] };
 };
 
-const ROUTED_ENTRIES: readonly HostEntry[] = [
+const HOST_ENTRIES: readonly HostEntry[] = [
   { identity: claudeHostIdentity, tokens: CLAUDE_TOKENS, commands: claudeCommandPath,
-    fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: CLAUDE_BINDING_HEADING, distribution: claudeDistribution },
+    fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: CLAUDE_BINDING_HEADING, distribution: claudeDistribution,
+    renderData: () => CLAUDE_HOST_DATA, placements: CLAUDE_AUTHORED_PLACEMENTS,
+    agents: { inputs: [], render: claudeAgents },
+    skills: { inputs: CLAUDE_SKILL_INPUTS, render: createClaudeSkillRenderer },
+    settings: { inputs: CLAUDE_SETTINGS_INPUTS, render: createClaudeSettingsRenderer },
+    documents: { inputs: [], render: createClaudeDocumentRenderer } },
   { identity: kiroHostIdentity, tokens: KIRO_TOKENS, commands: kiroCommandPath,
-    fills: KIRO_ONBOARDING_FILLS, bindingHeading: KIRO_BINDING_HEADING, distribution: kiroDistribution },
-  { identity: codexHostIdentity, tokens: CODEX_TOKENS, commands: codexCommandPath,
-    fills: CODEX_ONBOARDING_FILLS, bindingHeading: CODEX_BINDING_HEADING, distribution: codexDistribution },
-  { identity: cursorHostIdentity, tokens: CURSOR_TOKENS, commands: cursorCommandPath,
-    fills: CURSOR_ONBOARDING_FILLS, bindingHeading: CURSOR_BINDING_HEADING, distribution: cursorDistribution },
+    fills: KIRO_ONBOARDING_FILLS, bindingHeading: KIRO_BINDING_HEADING, distribution: kiroDistribution,
+    renderData: () => KIRO_HOST_DATA, placements: KIRO_AUTHORED_PLACEMENTS,
+    agents: { inputs: KIRO_AGENT_JSON, render: kiroAgents },
+    skills: { inputs: KIRO_SKILL_INPUTS, render: createKiroSkillRenderer },
+    settings: { inputs: KIRO_SETTINGS_INPUTS, render: createKiroSettingsRenderer },
+    documents: { inputs: [], render: createKiroDocumentRenderer } },
   { identity: kiroIdeHostIdentity, tokens: KIRO_IDE_TOKENS, commands: kiroIdeCommandPath,
     fills: KIRO_IDE_ONBOARDING_FILLS, bindingHeading: KIRO_IDE_BINDING_HEADING,
-    distribution: kiroIdeDistribution },
+    distribution: kiroIdeDistribution, renderData: kiroIdeHostData, placements: KIRO_IDE_AUTHORED_PLACEMENTS,
+    agents: { inputs: ["agents/aidlc-aidlc.md"],
+      render: createKiroIdeAgents({ personas: kiroAgentRenderer }) },
+    skills: { inputs: KIRO_IDE_SKILL_INPUTS, render: createKiroIdeSkillRenderer },
+    settings: { inputs: KIRO_IDE_SETTINGS_INPUTS, render: createKiroIdeSettingsRenderer },
+    documents: { inputs: [], render: createKiroIdeDocumentRenderer } },
+  { identity: codexHostIdentity, tokens: CODEX_TOKENS, commands: codexCommandPath,
+    fills: CODEX_ONBOARDING_FILLS, bindingHeading: CODEX_BINDING_HEADING, distribution: codexDistribution,
+    renderData: () => CODEX_HOST_DATA, placements: CODEX_AUTHORED_PLACEMENTS,
+    agents: { inputs: [], render: codexAgents },
+    skills: { inputs: CODEX_SKILL_INPUTS, render: createCodexSkillRenderer },
+    settings: { inputs: CODEX_SETTINGS_INPUTS, render: createCodexSettingsRenderer },
+    documents: { inputs: [], render: createCodexDocumentRenderer } },
+  { identity: cursorHostIdentity, tokens: CURSOR_TOKENS, commands: cursorCommandPath,
+    fills: CURSOR_ONBOARDING_FILLS, bindingHeading: CURSOR_BINDING_HEADING, distribution: cursorDistribution,
+    renderData: () => CURSOR_HOST_DATA, placements: CURSOR_AUTHORED_PLACEMENTS,
+    agents: { inputs: [], render: cursorAgents },
+    skills: { inputs: CURSOR_SKILL_INPUTS, render: createCursorSkillRenderer },
+    settings: { inputs: CURSOR_SETTINGS_INPUTS, render: createCursorSettingsRenderer },
+    documents: { inputs: [], render: createCursorDocumentRenderer } },
   { identity: openCodeHostIdentity, tokens: OPENCODE_TOKENS, commands: openCodeCommandPath,
-    fills: OPENCODE_ONBOARDING_FILLS, bindingHeading: OPENCODE_BINDING_HEADING, distribution: openCodeDistribution },
+    fills: OPENCODE_ONBOARDING_FILLS, bindingHeading: OPENCODE_BINDING_HEADING, distribution: openCodeDistribution,
+    renderData: () => OPENCODE_HOST_DATA, placements: OPENCODE_AUTHORED_PLACEMENTS,
+    agents: { inputs: [], render: openCodeAgents },
+    skills: { inputs: OPENCODE_SKILL_INPUTS, render: createOpenCodeSkillRenderer },
+    settings: { inputs: OPENCODE_SETTINGS_INPUTS, render: createOpenCodeSettingsRenderer },
+    documents: { inputs: [], render: createOpenCodeDocumentRenderer } },
   { identity: copilotHostIdentity, tokens: COPILOT_TOKENS, commands: copilotCommandPath,
-    fills: COPILOT_ONBOARDING_FILLS, bindingHeading: COPILOT_BINDING_HEADING, distribution: copilotDistribution },
+    fills: COPILOT_ONBOARDING_FILLS, bindingHeading: COPILOT_BINDING_HEADING, distribution: copilotDistribution,
+    renderData: () => COPILOT_HOST_DATA, placements: COPILOT_AUTHORED_PLACEMENTS,
+    agents: { inputs: [], render: copilotAgents },
+    skills: { inputs: COPILOT_SKILL_INPUTS, render: createCopilotSkillRenderer },
+    settings: { inputs: COPILOT_SETTINGS_INPUTS, render: createCopilotSettingsRenderer },
+    documents: { inputs: [], render: createCopilotDocumentRenderer } },
 ];
+
+type RegisteredHost = { readonly host: HostIdentity; readonly entry: HostEntry };
+
+const REGISTERED_HOSTS: readonly RegisteredHost[] = HOST_ENTRIES.flatMap((entry) => {
+  const identity = entry.identity();
+  return identity.ok ? [{ host: identity.value, entry }] : [];
+});
+
+const entryNamed = (name: string): HostEntry | undefined =>
+  REGISTERED_HOSTS.find((registered) => registered.host.distribution === name)?.entry;
+
+const sourcePaths = (inputs: readonly string[]) => {
+  const paths = inputs.map(sourcePath);
+  const failed = paths.find((path) => !path.ok);
+  return failed && !failed.ok ? refused(failed.refusal)
+    : accepted(paths.flatMap((path) => path.ok ? [path.value] : []));
+};
+
+export const hostAgentInputs = (name: string): readonly string[] => entryNamed(name)?.agents.inputs ?? [];
+
+export const hostAgentMembers = (host: HostIdentity):
+Result<HostAgentMembers | null, ProjectionRefusal> => {
+  const entry = entryNamed(host.distribution);
+  if (!entry) return accepted(null);
+  const paths = sourcePaths(entry.agents.inputs);
+  if (!paths.ok) return refused({ kind: "render-failed", concept: "agent",
+    name: host.distribution, reason: `The authored agent input is invalid: ${paths.refusal.raw}` });
+  return accepted({ host, render: entry.agents.render, inputs: paths.value });
+};
+
+export const hostSkillInputs = (name: string): readonly string[] => entryNamed(name)?.skills.inputs ?? [];
+
+export const hostSkillMembers = (host: HostIdentity): Result<HostSkillMembers | null, ProjectionRefusal> => {
+  const entry = entryNamed(host.distribution);
+  if (!entry) return accepted(null);
+  const paths = sourcePaths(entry.skills.inputs);
+  if (!paths.ok) return refused({ kind: "render-failed", concept: "orchestrator-skill",
+    name: paths.refusal.raw, reason: "The authored skill input is not a portable source path." });
+  return accepted({ host, inputs: paths.value, render: entry.skills.render });
+};
+
+export const hostSurfaceMembers = (host: HostIdentity): HostSurfaceMembers | null => {
+  const entry = entryNamed(host.distribution);
+  return entry ? { host, renderData: entry.renderData, placements: entry.placements } : null;
+};
+
+export const hostSettingsInputs = (name: string): readonly string[] => entryNamed(name)?.settings.inputs ?? [];
+
+export const hostSettingsMembers = (host: HostIdentity): Result<HostSettingsMembers | null, ProjectionRefusal> => {
+  const entry = entryNamed(host.distribution);
+  if (!entry) return accepted(null);
+  const paths = sourcePaths(entry.settings.inputs);
+  if (!paths.ok) return refused({ kind: "render-failed", concept: "settings",
+    name: paths.refusal.raw, reason: "The authored settings input is not a portable source path." });
+  return accepted({ host, inputs: paths.value, render: entry.settings.render });
+};
+
+export const hostBindingHeadings = (): readonly string[] =>
+  REGISTERED_HOSTS.map((registered) => registered.entry.bindingHeading);
+
+export const BINDING_HEADINGS: Readonly<Record<string, string>> = Object.fromEntries(
+  REGISTERED_HOSTS.map((registered) => [registered.host.distribution, registered.entry.bindingHeading]),
+);
+
+export const hostDocumentMembers = (host: HostIdentity): HostDocumentMembers | null => {
+  const entry = entryNamed(host.distribution);
+  return entry ? { host, inputs: entry.documents.inputs, render: entry.documents.render } : null;
+};
 
 export type HostBuildRefusal = {
   readonly kind: "host-build-refused";
@@ -227,32 +222,26 @@ const refusedMember = ({ member, host, reason }: {
   readonly member: HostBuildRefusal["member"]; readonly host: HostIdentity | null; readonly reason: unknown;
 }): HostBuildRefusal => ({ kind: "host-build-refused", member, host: host?.distribution ?? null, reason });
 
-const NOT_REGISTERED = "No members are registered for this host in the host table.";
-
 export const hostBuildMembers = (entry: HostEntry): Result<HostBuildMembers, HostBuildRefusal> => {
   const identity = entry.identity();
   if (!identity.ok) return refused(refusedMember({ member: "identity", host: null, reason: identity.refusal }));
   const host = identity.value;
-  const agents = hostAgentMembers(host);
-  if (!agents.ok) return refused(refusedMember({ member: "agents", host, reason: agents.refusal }));
-  if (agents.value === null) return refused(refusedMember({ member: "agents", host, reason: NOT_REGISTERED }));
-  const skills = hostSkillMembers(host);
-  if (!skills.ok) return refused(refusedMember({ member: "skills", host, reason: skills.refusal }));
-  if (skills.value === null) return refused(refusedMember({ member: "skills", host, reason: NOT_REGISTERED }));
-  const settings = hostSettingsMembers(host);
-  if (!settings.ok) return refused(refusedMember({ member: "settings", host, reason: settings.refusal }));
-  if (settings.value === null) return refused(refusedMember({ member: "settings", host, reason: NOT_REGISTERED }));
-  const documents = hostDocumentMembers(host);
-  if (documents === null) return refused(refusedMember({ member: "documents", host, reason: NOT_REGISTERED }));
-  const surface = hostSurfaceMembers(host);
-  if (surface === null) return refused(refusedMember({ member: "surface", host, reason: NOT_REGISTERED }));
-  return accepted({ host, tokens: entry.tokens, renderData: surface.renderData, placements: surface.placements,
-    agents: agents.value, skills: skills.value, settings: settings.value, documents,
+  const agentInputs = sourcePaths(entry.agents.inputs);
+  if (!agentInputs.ok) return refused(refusedMember({ member: "agents", host, reason: agentInputs.refusal }));
+  const skillInputs = sourcePaths(entry.skills.inputs);
+  if (!skillInputs.ok) return refused(refusedMember({ member: "skills", host, reason: skillInputs.refusal }));
+  const settingInputs = sourcePaths(entry.settings.inputs);
+  if (!settingInputs.ok) return refused(refusedMember({ member: "settings", host, reason: settingInputs.refusal }));
+  return accepted({ host, tokens: entry.tokens, renderData: entry.renderData, placements: entry.placements,
+    agents: { host, render: entry.agents.render, inputs: agentInputs.value },
+    skills: { host, render: entry.skills.render, inputs: skillInputs.value },
+    settings: { host, render: entry.settings.render, inputs: settingInputs.value },
+    documents: { host, inputs: entry.documents.inputs, render: entry.documents.render },
     commands: entry.commands, fills: entry.fills, bindingHeading: entry.bindingHeading,
     distribution: entry.distribution });
 };
 
-const BUILT = ROUTED_ENTRIES.map(hostBuildMembers);
+const BUILT = HOST_ENTRIES.map(hostBuildMembers);
 
 export const HOST_BUILD_MEMBERS: HostBuildTable = BUILT.flatMap((built) => built.ok ? [built.value] : []);
 

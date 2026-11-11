@@ -29,8 +29,17 @@ import { documentRenderingInputsFixture } from "../projection/fixtures/document-
 import { expect, test } from "bun:test";
 import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import { accept } from "../kernel/fixtures/accept.ts";
-import { accepted, refused } from "../kernel/result.ts";
-import { CLAUDE_TOKENS, claudeHostIdentity } from "../hosts/claude/host-data.ts";
+import { refused } from "../kernel/result.ts";
+import {
+  CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_HOST_DATA, CLAUDE_TOKENS, claudeHostIdentity,
+} from "../hosts/claude/host-data.ts";
+import { createClaudeDocumentRenderer } from "../hosts/claude/projection/document-renderer.ts";
+import {
+  CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer,
+} from "../hosts/claude/projection/settings-renderer.ts";
+import {
+  CLAUDE_SKILL_INPUTS, createClaudeSkillRenderer,
+} from "../hosts/claude/projection/skill-renderer.ts";
 import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
 import { SCRATCH_AGENT_INPUTS } from "../projection/fixtures/scratch-host.fixture.ts";
 import { agent } from "../workflow-definition/fixtures/identities.fixture.ts";
@@ -227,9 +236,9 @@ test("Claude, Kiro, Codex, Cursor, Kiro IDE, OpenCode and Copilot enter the full
   expect(HOST_BUILD_MEMBERS).toHaveLength(7);
   expect(HOST_BUILD_MEMBERS[0]?.host).toEqual(host({ name: "claude", directory: ".claude" }));
   expect(HOST_BUILD_MEMBERS[1]?.host).toEqual(host({ name: "kiro", directory: ".kiro" }));
-  expect(HOST_BUILD_MEMBERS[2]?.host).toEqual(host({ name: "codex", directory: ".codex" }));
-  expect(HOST_BUILD_MEMBERS[3]?.host).toEqual(host({ name: "cursor", directory: ".cursor" }));
-  expect(HOST_BUILD_MEMBERS[4]?.host).toEqual(host({ name: "kiro-ide", directory: ".kiro" }));
+  expect(HOST_BUILD_MEMBERS[3]?.host).toEqual(host({ name: "codex", directory: ".codex" }));
+  expect(HOST_BUILD_MEMBERS[4]?.host).toEqual(host({ name: "cursor", directory: ".cursor" }));
+  expect(HOST_BUILD_MEMBERS[2]?.host).toEqual(host({ name: "kiro-ide", directory: ".kiro" }));
   expect(HOST_BUILD_MEMBERS[5]?.host).toEqual(host({ name: "opencode", directory: ".aidlc" }));
   expect(HOST_BUILD_MEMBERS[6]?.host).toEqual(host({ name: "copilot", directory: ".aidlc" }));
   expect(HOST_BUILD_MEMBERS[0]?.fills).toBe(CLAUDE_ONBOARDING_FILLS);
@@ -238,15 +247,15 @@ test("Claude, Kiro, Codex, Cursor, Kiro IDE, OpenCode and Copilot enter the full
   expect(HOST_BUILD_MEMBERS[1]?.fills).toBe(KIRO_ONBOARDING_FILLS);
   expect(HOST_BUILD_MEMBERS[1]?.distribution).toBe(kiroDistribution);
   expect(HOST_BUILD_MEMBERS[1]?.bindingHeading).toBe("Kiro CLI");
-  expect(HOST_BUILD_MEMBERS[2]?.fills).toBe(CODEX_ONBOARDING_FILLS);
-  expect(HOST_BUILD_MEMBERS[2]?.distribution).toBe(codexDistribution);
-  expect(HOST_BUILD_MEMBERS[2]?.bindingHeading).toBe("Codex CLI");
-  expect(HOST_BUILD_MEMBERS[3]?.fills).toBe(CURSOR_ONBOARDING_FILLS);
-  expect(HOST_BUILD_MEMBERS[3]?.distribution).toBe(cursorDistribution);
-  expect(HOST_BUILD_MEMBERS[3]?.bindingHeading).toBe("Cursor");
-  expect(HOST_BUILD_MEMBERS[4]?.fills).toBe(KIRO_IDE_ONBOARDING_FILLS);
-  expect(HOST_BUILD_MEMBERS[4]?.distribution).toBe(kiroIdeDistribution);
-  expect(HOST_BUILD_MEMBERS[4]?.bindingHeading).toBe("Kiro IDE");
+  expect(HOST_BUILD_MEMBERS[3]?.fills).toBe(CODEX_ONBOARDING_FILLS);
+  expect(HOST_BUILD_MEMBERS[3]?.distribution).toBe(codexDistribution);
+  expect(HOST_BUILD_MEMBERS[3]?.bindingHeading).toBe("Codex CLI");
+  expect(HOST_BUILD_MEMBERS[4]?.fills).toBe(CURSOR_ONBOARDING_FILLS);
+  expect(HOST_BUILD_MEMBERS[4]?.distribution).toBe(cursorDistribution);
+  expect(HOST_BUILD_MEMBERS[4]?.bindingHeading).toBe("Cursor");
+  expect(HOST_BUILD_MEMBERS[2]?.fills).toBe(KIRO_IDE_ONBOARDING_FILLS);
+  expect(HOST_BUILD_MEMBERS[2]?.distribution).toBe(kiroIdeDistribution);
+  expect(HOST_BUILD_MEMBERS[2]?.bindingHeading).toBe("Kiro IDE");
   expect(HOST_BUILD_MEMBERS[5]?.fills).toBe(OPENCODE_ONBOARDING_FILLS);
   expect(HOST_BUILD_MEMBERS[5]?.distribution).toBe(openCodeDistribution);
   expect(HOST_BUILD_MEMBERS[5]?.bindingHeading).toBe("opencode");
@@ -287,6 +296,11 @@ test("OpenCode documents directly register the native renderer without authored 
 const claudeEntry: HostEntry = {
   identity: claudeHostIdentity, tokens: CLAUDE_TOKENS, commands: claudeCommandPath,
   fills: CLAUDE_ONBOARDING_FILLS, bindingHeading: "Claude Code", distribution: claudeDistribution,
+  renderData: () => CLAUDE_HOST_DATA, placements: CLAUDE_AUTHORED_PLACEMENTS,
+  agents: { inputs: [], render: claudeAgents },
+  skills: { inputs: CLAUDE_SKILL_INPUTS, render: createClaudeSkillRenderer },
+  settings: { inputs: CLAUDE_SETTINGS_INPUTS, render: createClaudeSettingsRenderer },
+  documents: { inputs: [], render: createClaudeDocumentRenderer },
 };
 
 test("every routed host builds, so the table reports no refusals", () => {
@@ -299,11 +313,9 @@ test("a host entry whose identity refuses names the identity member and keeps th
     kind: "host-build-refused", member: "identity", host: null, reason: identityRefusal }));
 });
 
-test("a host with no registered members names the first missing member and the host", () => {
-  const scratch = host({ name: "scratch", directory: ".scratch" });
-  expect(hostBuildMembers({ ...claudeEntry, identity: () => accepted(scratch) })).toEqual(refused({
-    kind: "host-build-refused", member: "agents", host: "scratch",
-    reason: "No members are registered for this host in the host table." }));
+test("a registration whose agent input is not a portable path names the agents member", () => {
+  const built = hostBuildMembers({ ...claudeEntry, agents: { ...claudeEntry.agents, inputs: ["../outside"] } });
+  expect(built).toMatchObject({ ok: false, refusal: { kind: "host-build-refused", member: "agents", host: "claude" } });
 });
 
 test("a complete host entry is accepted with its identity", () => {
