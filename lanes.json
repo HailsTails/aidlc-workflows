@@ -104,6 +104,7 @@
         "src/hosts/claude/build.ts",
         "src/hosts/claude/host-data{,.test}.ts",
         "src/hosts/claude/{distribution,onboarding-fills}{,.test}.ts",
+        "src/hosts/claude/host{,.test}.ts",
         "src/cli/adapters/routes/projection/**",
         "harness/*/**",
         "src/packaging/**",
@@ -215,6 +216,7 @@
         "src/cli/package-build-root{,.test}.ts",
         "src/cli/host-table{,.test}.ts",
         "scripts/package-release.ts",
+        "src/cli/roots{,.test}.ts",
         "src/cli/eighth-host.test.ts",
         "src/projection/core-root{,.test}.ts",
         "harness/codex/manifest.ts",
@@ -319,6 +321,7 @@
         "src/hosts/{codex,opencode}/build.ts",
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "src/hosts/{codex,opencode}/{distribution,onboarding-fills}{,.test}.ts",
+        "src/hosts/{codex,opencode}/host{,.test}.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/cli/host-table{,.test}.ts"
       ],
@@ -333,6 +336,7 @@
         "src/hosts/{codex,opencode}/build.ts",
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "src/hosts/{codex,opencode}/{distribution,onboarding-fills}{,.test}.ts",
+        "src/hosts/{codex,opencode}/host{,.test}.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/cli/host-table{,.test}.ts"
       ],
