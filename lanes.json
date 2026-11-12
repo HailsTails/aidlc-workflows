@@ -42,7 +42,8 @@
         "src/installation/application/boundary-ports{,.test}.ts",
         "src/execution/domain/{identities,unit,gate,guard,host-event,refusals}{,.test}.ts",
         "src/execution/application/boundary-ports{,.test}.ts",
-        "src/cli/roots{,.test}.ts"
+        "src/cli/roots{,.test}.ts",
+        "src/hosts/{claude,codex,opencode,kiro,kiro-ide,cursor,copilot}/host{,.test}.ts"
       ],
       "contractFiles": [
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}.ts",
