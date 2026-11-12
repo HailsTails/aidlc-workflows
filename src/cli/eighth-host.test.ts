@@ -13,18 +13,19 @@ import {
 import { tokenBindingsFixture } from "../projection/fixtures/token-bindings.fixture.ts";
 import type { Method } from "../workflow-definition/domain/method.ts";
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
-import { hostBuildMembers, type HostEntry } from "./host-table.ts";
+import type { HostModule } from "./roots.ts";
 import { createPackageBuildRoot } from "./package-build-root.ts";
 
-const SCRATCH_ENTRY: HostEntry = {
-  identity: () => accepted(SCRATCH_HOST), tokens: SCRATCH_TOKENS, commands: scratchCommandPlacement,
-  fills: ONBOARDING_FILLS_FIXTURE, bindingHeading: "Scratch",
-  distribution: () => accepted(scratchHostDistributionFixture),
-  renderData: () => SCRATCH_HOST_DATA, placements: [],
-  agents: { inputs: [], render: scratchAgentRenderer },
-  skills: { inputs: [], render: scratchSkillRenderer },
-  settings: { inputs: [], render: scratchSettingsRenderer },
-  documents: { inputs: [], render: scratchDocumentRenderer },
+const SCRATCH_MODULE: HostModule = {
+  host: SCRATCH_HOST, distribution: () => accepted(scratchHostDistributionFixture),
+  projection: {
+    tokens: SCRATCH_TOKENS, commands: scratchCommandPlacement, fills: ONBOARDING_FILLS_FIXTURE,
+    bindingHeading: "Scratch", renderData: () => SCRATCH_HOST_DATA, placements: [],
+    agents: { inputs: [], render: scratchAgentRenderer },
+    skills: { inputs: [], render: scratchSkillRenderer },
+    settings: { inputs: [], render: scratchSettingsRenderer },
+    documents: { inputs: [], render: scratchDocumentRenderer },
+  },
 };
 
 const CORE_FILES = {
@@ -53,8 +54,7 @@ const RUNNER_OUTCOME = accepted({
 });
 
 const projectEighthHost = async () => {
-  const built = accept(hostBuildMembers(SCRATCH_ENTRY));
-  const root = createPackageBuildRoot({ hosts: [built],
+  const root = createPackageBuildRoot({ hosts: [SCRATCH_MODULE],
     platform: { fileSystem: createInMemoryFileSystem({ files: CORE_FILES }),
       processRunner: createScriptedProcessRunner({ outcome: RUNNER_OUTCOME }),
       yaml: createInMemoryYamlParser({ documents: {} }) },
@@ -70,13 +70,19 @@ const projectEighthHost = async () => {
 
 const OWN_OR_HOST_NEUTRAL = /^(?:[.]scratch|aidlc)[/]/;
 
-test("an eighth host registered as one entry builds with the layout and files it declares", async () => {
+test("an eighth host registered as one module builds with the layout and files it declares", async () => {
   const projected = await projectEighthHost();
   expect(projected.host.layout).toEqual(scratchHostDistributionFixture.layout);
   expect(projected.projection.files).toContainEqual(
     expect.objectContaining({ path: ".scratch/agents/aidlc-product-agent.md" }));
   expect(projected.projection.files).toContainEqual(
     expect.objectContaining({ path: ".scratch/tools/data/harness.json" }));
+  expect(projected.projection.files).toContainEqual(
+    expect.objectContaining({ path: ".scratch/skills/aidlc/SKILL.md" }));
+  expect(projected.projection.files).toContainEqual(
+    expect.objectContaining({ path: ".scratch/settings.json" }));
+  expect(projected.projection.files).toContainEqual(
+    expect.objectContaining({ path: ".scratch/onboarding.md" }));
 });
 
 test("every file of an eighth host sits under its own folder or a host-neutral path", async () => {

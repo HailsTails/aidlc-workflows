@@ -63,11 +63,6 @@ export type HostSettingsMembers = HostConceptMembers<HostSettingsRenderer>;
 
 export type HostDocumentMembers = HostConceptMembers<HostDocumentRenderer>;
 
-export type HostBuildMembers = HostProjectionParts & {
-  readonly host: HostIdentity;
-  readonly distribution: HostDistributionReader;
-};
-
 export type HostDistributionInputs = {
   readonly delegateShellFacts: DelegateShellFacts;
 };
@@ -82,7 +77,7 @@ export type HostModule = {
 
 export type { ConceptMembers };
 
-export type HostBuildTable = readonly HostBuildMembers[];
+export type HostBuildTable = readonly HostModule[];
 
 export type HostBuildRequest = {
   readonly host: HostIdentity;

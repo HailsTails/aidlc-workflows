@@ -10,6 +10,7 @@ import type { HostSettingsRenderer } from "../application/ports/settings.ts";
 import type { HostSkillRenderer } from "../application/ports/skills.ts";
 import type { Rendering } from "../application/ports/harness.ts";
 import type { HostData } from "../domain/host-surface.ts";
+import type { ProjectionOrigin } from "../domain/projected-file.ts";
 import type { HostTokenChoices } from "../domain/template-token.ts";
 
 export const SCRATCH_HOST = host({ name: "scratch", directory: ".scratch" });
@@ -63,17 +64,36 @@ export const scratchAgentRenderer: HostAgentRenderer = ({ channel }) => ({
 export const scratchCommandPlacement: CommandPlacement = (file) =>
   projectPath(`.scratch/commands/${file.within}`);
 
+type RenderedConceptName = Extract<ProjectionOrigin, { kind: "rendered" }>["concept"];
+
+const scratchFile = (request: {
+  readonly path: string; readonly concept: RenderedConceptName; readonly name: string;
+}): Rendering => {
+  const destination = projectPath(request.path);
+  return destination.ok
+    ? accepted([{ path: destination.value, content: { kind: "text", text: request.name },
+      mode: "regular", availability: "always",
+      origin: { kind: "rendered", concept: request.concept, name: request.name } }])
+    : refused({ kind: "render-failed", concept: "host-data", name: request.name,
+      reason: "The scratch destination must be a project-relative path." });
+};
+
 export const scratchSkillRenderer: HostSkillRenderer = () => ({
-  renderOrchestratorSkill: nothing,
-  renderSessionSkill: nothing,
+  renderOrchestratorSkill: () => scratchFile({
+    path: ".scratch/skills/aidlc/SKILL.md", concept: "orchestrator-skill", name: "aidlc" }),
+  renderSessionSkill: ({ skill }) => scratchFile({
+    path: `.scratch/skills/${skill.name}/SKILL.md`, concept: "session-skill", name: skill.name }),
 });
 
 export const scratchSettingsRenderer: HostSettingsRenderer = () => ({
-  renderSettings: nothing,
-  renderHookRegistrations: nothing,
+  renderSettings: () => scratchFile({
+    path: ".scratch/settings.json", concept: "settings", name: "settings" }),
+  renderHookRegistrations: () => scratchFile({
+    path: ".scratch/hooks.json", concept: "hook-registration", name: "hooks" }),
 });
 
 export const scratchDocumentRenderer: HostDocumentRenderer = () => ({
-  renderOnboarding: nothing,
+  renderOnboarding: () => scratchFile({
+    path: ".scratch/onboarding.md", concept: "onboarding", name: "onboarding" }),
   placeNeutralDocument: nothing,
 });

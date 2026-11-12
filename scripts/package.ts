@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { bindCopiedSource } from "../src/projection/domain/source-binding.ts";
 import { z } from "zod";
-import type { HostBuildMembers } from "../src/cli/roots.ts";
+import type { HostModule } from "../src/cli/roots.ts";
 import type { HostDistribution } from "../src/packaging/domain/payload.ts";
 import { trustEntries } from "../src/hosts/codex/projection/settings-renderer.ts";
 import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
@@ -24,7 +24,7 @@ import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts"
 //      on .md; render neutral onboarding and native setup from their skeletons.
 //   3. COMPILE the stage graph into the assembled tree (emits harness-correct
 //      stage-graph.json + scope-grid.json — compiled data lives only in dist).
-//   4. Every host builds through the composition root (HOST_BUILD_MEMBERS): its
+//   4. Every host builds through the composition root (HOSTS): its
 //      agents, settings, documents and runners are projected, not emitted by
 //      a per-host script.
 //   5. Native skill projection owns the final table regions and earlier-release tail.
@@ -67,7 +67,7 @@ import {
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  HOST_BUILD_MEMBERS, HOST_BUILD_REFUSALS,
+  HOSTS, HOST_BUILD_REFUSALS,
 } from "../src/cli/host-table.ts";
 import { sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
@@ -161,7 +161,7 @@ const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
 // one-core-many-harnesses promise. Sorted so the default build/--check order is
 // stable (claude first by name).
 function discoverHarnessNames(): string[] {
-  return HOST_BUILD_MEMBERS
+  return HOSTS
     .map((member) => member.host.distribution).sort();
 }
 
@@ -838,10 +838,10 @@ function writeProjectedFiles(request: {
   }
 }
 
-type RoutedHost = { members: HostBuildMembers; distribution: HostDistribution };
+type RoutedHost = { members: HostModule; distribution: HostDistribution };
 
 function routedHost(name: string): RoutedHost | null {
-  const members = HOST_BUILD_MEMBERS.find((candidate) =>
+  const members = HOSTS.find((candidate) =>
     candidate.host.distribution === name);
   if (!members) return null;
   const distribution = packageBuildRoot.readHostDistribution({ host: members.host });
@@ -882,7 +882,7 @@ function routedListing(distribution: HostDistribution) {
 }
 
 function routedView(request: {
-  members: HostBuildMembers; distribution: HostDistribution; files: readonly ProjectedFile[];
+  members: HostModule; distribution: HostDistribution; files: readonly ProjectedFile[];
 }): ReleaseView {
   const { members, distribution, files } = request;
   const descriptorPath = `${members.host.directory}/tools/data/harness.json`;
@@ -919,7 +919,7 @@ async function buildHost({ name, outRoot, channel }: {
   const captured = hostBuildInputs.get(name);
   if (!captured) throw new Error(`Authored host sources were not captured for ${name}`);
   const { members } = routed;
-  const tokens = { ...members.tokens, HARNESS_DIR: members.host.directory,
+  const tokens = { ...members.projection.tokens, HARNESS_DIR: members.host.directory,
     ...channelTokens({ channel, directory: members.host.directory,
       prefix: TRUSTED_COMMAND_PREFIX, namespace: TRUSTED_ROUTE_NAMESPACE }) };
   const rendered = await packageBuildRoot.projectHost({ host: captured.host, core: coreBuild,
@@ -1312,9 +1312,9 @@ const hostBuildInputs = new Map<string, {
 for (const name of targets) {
   const routed = routedHost(name);
   if (!routed) throw new Error(`The host is not routed through the composition root: ${name}`);
-  const required = [...routed.members.agents.inputs, ...routed.members.skills.inputs,
-    ...routed.members.settings.inputs, ...routed.members.documents.inputs,
-    ...routed.members.placements.map((placement) => placement.source)];
+  const required = [...routed.members.projection.agents.inputs, ...routed.members.projection.skills.inputs,
+    ...routed.members.projection.settings.inputs, ...routed.members.projection.documents.inputs,
+    ...routed.members.projection.placements.map((placement) => placement.source)];
   const captured = await packageBuildRoot.readHostSources({ name, directory: routed.members.host.directory,
     root: pathToFileURL(join(HARNESS_ROOT, name)), copied: [], required });
   if (!captured.ok) {
