@@ -40,7 +40,7 @@ const allowFile: AuthoredHostFile = {
 
 test("persona uses captured input and a typed policy decision", () => {
   const decision = mock(() => accepted({ kind: "project", model: "chosen" } as const));
-  expect(kiroJsonAgentRenderer({ host, allows, files: [file], formatDocuments,
+  expect(kiroJsonAgentRenderer({ channel: "copy", namespace: "engine", host, allows, files: [file], formatDocuments,
     modelDecision: decision, hookCommandSuffix: undefined })({ agent, knowledge: [] }))
     .toMatchObject({ ok: true, value: [{
       path: ".kiro/agents/aidlc-architect-agent.json",
@@ -51,7 +51,7 @@ test("persona uses captured input and a typed policy decision", () => {
 
 test("missing captured persona refuses before policy resolution", () => {
   const decision = mock(() => accepted({ kind: "preserve" } as const));
-  expect(kiroJsonAgentRenderer({ host, allows, files: [], formatDocuments,
+  expect(kiroJsonAgentRenderer({ channel: "copy", namespace: "engine", host, allows, files: [], formatDocuments,
     modelDecision: decision, hookCommandSuffix: undefined })({ agent, knowledge: [] }))
     .toMatchObject({ ok: false, refusal: { kind: "render-failed" } });
   expect(decision).not.toHaveBeenCalled();
@@ -60,14 +60,14 @@ test("missing captured persona refuses before policy resolution", () => {
 test("policy refusal precedes malformed JSON preparation", () => {
   const failure = { kind: "render-failed", concept: "agent", name: agent.slug,
     reason: "Missing model tier." } as const;
-  expect(kiroJsonAgentRenderer({ host, allows,
+  expect(kiroJsonAgentRenderer({ channel: "copy", namespace: "engine", host, allows,
     files: [{ ...file, content: { kind: "text", text: "malformed" } }], formatDocuments,
     modelDecision: () => refused(failure), hookCommandSuffix: undefined,
   })({ agent, knowledge: [] })).toEqual(refused(failure));
 });
 
 test("preparation refusal preserves its host, source and stage reason", () => {
-  expect(kiroJsonAgentRenderer({ host, allows,
+  expect(kiroJsonAgentRenderer({ channel: "copy", namespace: "engine", host, allows,
     files: [{ ...file, content: { kind: "text", text: "null" } }], formatDocuments,
     modelDecision: () => accepted({ kind: "preserve" }), hookCommandSuffix: undefined,
   })({ agent, knowledge: [] })).toEqual(refused({
@@ -221,4 +221,73 @@ test("Kiro's combined factory keeps its conductor JSON-only", () => {
       origin: { kind: "harness-authored", source: conductor.source } },
   ]));
   expect(documents).not.toHaveBeenCalled();
+});
+
+const nativeChannelFiles: readonly AuthoredHostFile[] = [
+  { source: brand<SourcePath>("agents/aidlc-architect-agent.json"), content: { kind: "text", text: "{\n  \"name\": \"native-persona\",\n  \"toolsSettings\": {\n    \"execute_bash\": {\n      \"allowedCommands\": [\n        \"bun (run )?[\\\"']?\\\\.kiro/tools/[A-Za-z0-9._-]+\\\\.ts[\\\"']?( .*)?\"\n      ]\n    }\n  }\n}\n" } },
+  { source: brand<SourcePath>("agents/aidlc.json"), content: { kind: "text", text: "{\n  \"name\": \"native-conductor\",\n  \"toolsSettings\": {\n    \"execute_bash\": {\n      \"allowedCommands\": [\n        \"bun (run )?[\\\"']?\\\\.kiro/tools/[A-Za-z0-9._-]+\\\\.ts[\\\"']?( .*)?\"\n      ]\n    }\n  }\n}\n" } },
+];
+const nativeChannelInputs: AgentRenderingInputs = { ...nativeInputs(() => accepted("unused")), channel: "native",
+  tokens: { ...tokenBindingsFixture({ harnessDir: ".kiro" }), ["TRUSTED_NAMESPACE"]: "engine" },
+  files: nativeChannelFiles, allows: { dispatcherCommands: [
+  "doctor",
+  "doctor --verbose",
+  "version",
+  "--doctor",
+  "--doctor --verbose",
+  "--version",
+  "status",
+  "--status",
+  "config --help",
+  "config --show",
+  "config --show --json",
+  "config models --show",
+  "config models --show --json",
+  "config models --help",
+  "config runtime --show",
+  "config runtime --show --json",
+  "config runtime --help",
+  "config providers --show",
+  "config providers --show --json",
+  "config providers --help",
+  "config trust --show",
+  "config trust --show --json",
+  "config trust --help",
+  "config flags --show",
+  "config flags --show --json",
+  "config flags --help",
+  "config project --show",
+  "config project --show --json",
+  "config project --help",
+  "config flags --clear-bypass AIDLC_SKIP_ARTIFACT_GUARD --yes",
+  "config flags --clear-bypass AIDLC_SKIP_REVISION_BACKSTOP --yes",
+  "config flags --clear-bypass AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD --yes",
+  "config flags --clear-bypass AIDLC_SKIP_HUMAN_PRESENCE_GUARD --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_ENSEMBLE_EVIDENCE --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_REVIEWER_SCOPE_HOOK --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_REVIEW_FREEZE_HOOK --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_USAGE_TRACKING --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_SENSORS --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_LEARNINGS --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --yes"
+], toolScripts: [] },
+};
+
+test("the native JSON factory preserves the legacy persona allow bytes", () => {
+  const renderer = createKiroJsonAgentRenderer({ host, formatDocuments })(nativeChannelInputs);
+  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([{
+    path: path(".kiro/agents/aidlc-architect-agent.json"), mode: "regular",
+    origin: { kind: "harness-authored", source: brand<SourcePath>("agents/aidlc-architect-agent.json") },
+    content: { kind: "text", text: "{\n  \"name\": \"native-persona\",\n  \"toolsSettings\": {\n    \"execute_bash\": {\n      \"allowedCommands\": [\n        \"aidlc engine .*\",\n        \"aidlc doctor\",\n        \"aidlc doctor --verbose\",\n        \"aidlc version\",\n        \"aidlc --doctor\",\n        \"aidlc --doctor --verbose\",\n        \"aidlc --version\",\n        \"aidlc status\",\n        \"aidlc --status\",\n        \"aidlc config --help\",\n        \"aidlc config --show\",\n        \"aidlc config --show --json\",\n        \"aidlc config models --show\",\n        \"aidlc config models --show --json\",\n        \"aidlc config models --help\",\n        \"aidlc config runtime --show\",\n        \"aidlc config runtime --show --json\",\n        \"aidlc config runtime --help\",\n        \"aidlc config providers --show\",\n        \"aidlc config providers --show --json\",\n        \"aidlc config providers --help\",\n        \"aidlc config trust --show\",\n        \"aidlc config trust --show --json\",\n        \"aidlc config trust --help\",\n        \"aidlc config flags --show\",\n        \"aidlc config flags --show --json\",\n        \"aidlc config flags --help\",\n        \"aidlc config project --show\",\n        \"aidlc config project --show --json\",\n        \"aidlc config project --help\",\n        \"aidlc config flags --clear-bypass AIDLC_SKIP_ARTIFACT_GUARD --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_SKIP_REVISION_BACKSTOP --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_SKIP_HUMAN_PRESENCE_GUARD --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_ENSEMBLE_EVIDENCE --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_REVIEWER_SCOPE_HOOK --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_REVIEW_FREEZE_HOOK --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_USAGE_TRACKING --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_SENSORS --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_LEARNINGS --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --yes\"\n      ]\n    }\n  }\n}\n" },
+  }]));
+});
+
+test("the native JSON factory preserves the legacy conductor allow bytes", () => {
+  const renderer = createKiroJsonAgentRenderer({ host, formatDocuments })(nativeChannelInputs);
+  expect(renderer.renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
+    path: path(".kiro/agents/aidlc.json"), mode: "regular",
+    origin: { kind: "harness-authored", source: brand<SourcePath>("agents/aidlc.json") },
+    content: { kind: "text", text: "{\n  \"name\": \"native-conductor\",\n  \"toolsSettings\": {\n    \"execute_bash\": {\n      \"allowedCommands\": [\n        \"aidlc engine .*\",\n        \"aidlc doctor\",\n        \"aidlc doctor --verbose\",\n        \"aidlc version\",\n        \"aidlc --doctor\",\n        \"aidlc --doctor --verbose\",\n        \"aidlc --version\",\n        \"aidlc status\",\n        \"aidlc --status\",\n        \"aidlc config --help\",\n        \"aidlc config --show\",\n        \"aidlc config --show --json\",\n        \"aidlc config models --show\",\n        \"aidlc config models --show --json\",\n        \"aidlc config models --help\",\n        \"aidlc config runtime --show\",\n        \"aidlc config runtime --show --json\",\n        \"aidlc config runtime --help\",\n        \"aidlc config providers --show\",\n        \"aidlc config providers --show --json\",\n        \"aidlc config providers --help\",\n        \"aidlc config trust --show\",\n        \"aidlc config trust --show --json\",\n        \"aidlc config trust --help\",\n        \"aidlc config flags --show\",\n        \"aidlc config flags --show --json\",\n        \"aidlc config flags --help\",\n        \"aidlc config project --show\",\n        \"aidlc config project --show --json\",\n        \"aidlc config project --help\",\n        \"aidlc config flags --clear-bypass AIDLC_SKIP_ARTIFACT_GUARD --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_SKIP_REVISION_BACKSTOP --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_SKIP_HUMAN_PRESENCE_GUARD --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_ENSEMBLE_EVIDENCE --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_REVIEWER_SCOPE_HOOK --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_REVIEW_FREEZE_HOOK --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_USAGE_TRACKING --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_SENSORS --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_LEARNINGS --yes\",\n        \"aidlc config flags --clear-bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --yes\"\n      ]\n    }\n  }\n}\n" },
+  }]));
 });

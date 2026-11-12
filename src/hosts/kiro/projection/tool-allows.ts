@@ -4,6 +4,8 @@ import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { AuthoredHostFile } from "../../../projection/domain/host-surface.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
+import type { DistributionChannel } from "../../../projection/domain/projected-file.ts";
+import type { ProjectPath, SourcePath } from "../../../kernel/values.ts";
 
 const fieldsSchema = z.array(z.object({ name: z.string(), content: z.unknown() }));
 const objectSchema = z.preprocess((document: unknown) => {
@@ -55,17 +57,39 @@ const expand = (entry: unknown, allows: CopyChannelAllows): readonly unknown[] =
   ];
 };
 
-export const expandKiroAgentAllows = ({ file, allows }: {
+const nativeEntries = (request: {
+  readonly entries: readonly unknown[];
+  readonly commands: readonly string[];
+  readonly directory: ProjectPath;
+  readonly namespace: string | null | undefined;
+  readonly source: SourcePath;
+}): Result<readonly unknown[], ProjectionRefusal> => {
+  if (!request.namespace) return refused({ kind: "render-failed", concept: "agent", name: request.source,
+    reason: "The native agent permissions require a trusted route namespace." });
+  const trusted = `aidlc ${request.namespace} .*`;
+  const rewritten = request.entries.map((command) => typeof command === "string" && command.startsWith("bun ")
+    && command.includes(`${request.directory.replace(".", "\\.")}/tools/`) ? trusted : command);
+  return accepted([...new Set(rewritten)].flatMap((command) => command === trusted
+    ? [command, ...request.commands.map((command) => escaped(`aidlc ${command}`))] : [command]));
+};
+export const expandKiroAgentAllows = ({ file, allows, channel, directory, namespace }: {
   readonly file: AuthoredHostFile;
   readonly allows: CopyChannelAllows;
+  readonly channel: DistributionChannel;
+  readonly directory: ProjectPath;
+  readonly namespace: string | null | undefined;
 }): Result<{ readonly file: AuthoredHostFile; readonly expansion: "expanded" | "unchanged" }, ProjectionRefusal> => {
   const decoded = decode(file);
   if (!decoded.ok) return decoded;
   if (!decoded.value) return accepted({ file, expansion: "unchanged" });
   const { fields, settings, bash, entries } = decoded.value;
   const matched = entries.some((entry) => typeof entry === "string" && toolPattern.test(entry));
+  const expanded = entries.flatMap((entry) => expand(entry, allows));
+  const projected = channel === "native" ? nativeEntries({ entries: expanded, commands: allows.dispatcherCommands,
+    directory, namespace, source: file.source }) : accepted(expanded);
+  if (!projected.ok) return projected;
   const document = { ...fields, toolsSettings: { ...settings, ["execute_bash"]: {
-    ...bash, allowedCommands: entries.flatMap((entry) => expand(entry, allows)),
+    ...bash, allowedCommands: projected.value,
   } } };
   return accepted({ expansion: matched ? "expanded" : "unchanged", file: { ...file, content: {
     kind: "text", text: `${JSON.stringify(document, null, 2)  }\n`,
