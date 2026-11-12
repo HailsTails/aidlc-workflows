@@ -55,10 +55,20 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
     ...inputs.allows.dispatcherCommands.map((command) => `Bash(bun ${tools}/aidlc.ts ${command})`),
     ...inputs.allows.toolScripts.flatMap((script) => [`Bash(bun ${tools}/${script})`, `Bash(bun ${tools}/${script} *)`]),
   ] : [entry]);
+  const namespace = inputs.tokens.TRUSTED_NAMESPACE;
+  if (inputs.channel === "native" && !namespace) {
+    return refused(settingsRefusal("The native settings require a trusted route namespace."));
+  }
+  const channelAllow = inputs.channel === "native" ? [
+    ...allow.filter((entry) => entry !== "Bash" && !(typeof entry === "string"
+      && (entry.startsWith("Bash(bun ") || entry.startsWith("Bash(aidlc ")))),
+    `Bash(aidlc ${namespace} *)`,
+    ...inputs.allows.dispatcherCommands.map((command) => `Bash(aidlc ${command})`),
+  ] : expanded;
   const path = projectPath(".claude/settings.json");
   if (!path.ok) return refused(settingsRefusal("The settings destination must be project-relative."));
   return accepted([{ path: path.value, content: { kind: "text",
-    text: `${JSON.stringify({ ...fields, permissions: { ...permissions, allow: expanded } }, null, 2)}\n` },
+    text: `${JSON.stringify({ ...fields, permissions: { ...permissions, allow: channelAllow } }, null, 2)}\n` },
     mode: "regular",
     origin: { kind: "rendered", concept: "settings", name: "settings.json" } }]);
 };
