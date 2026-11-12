@@ -20,25 +20,21 @@ const runtime = {
     { source: source("sensors/check.ts"), content: { kind: "bytes", bytes: new Uint8Array([83]) } },
     { source: source("scopes/feature.yaml"), content: { kind: "bytes", bytes: new Uint8Array([67]) } },
   ],
-  version: { kind: "text", text: "stamped" },
+  version: { kind: "bytes", bytes: new Uint8Array([86]) },
   agentTiers: { kind: "text", text: "tiers" }, settingsSchema: { kind: "text", text: "schema" },
 } as const;
-const capture = { core: new URL("file:///core/"), method: methodSliceFixture,
-  stamp: () => accepted({ kind: "text" as const, text: "stamped" }) };
+const capture = { core: new URL("file:///core/"), method: methodSliceFixture };
 const runtimeData = { agentTiers: () => ({ kind: "text" as const, text: "tiers" }),
   settingsSchema: () => ({ kind: "text" as const, text: "schema" }) };
 
-test("four runtime folders capture recursive bytes and separate the once-stamped version", async () => {
+test("four runtime folders capture recursive bytes and separate the unstamped version", async () => {
   const fileSystem = createInMemoryFileSystem({ files });
   const readTree = mock(fileSystem.readTree);
-  const stamp = mock(capture.stamp);
   const agentTiers = mock(runtimeData.agentTiers);
   const settingsSchema = mock(runtimeData.settingsSchema);
-  expect(await createRuntimeReading({ tree: { readTree }, agentTiers, settingsSchema })({ ...capture, stamp }))
+  expect(await createRuntimeReading({ tree: { readTree }, agentTiers, settingsSchema })(capture))
     .toEqual(accepted(runtime));
   expect(readTree).toHaveBeenCalledTimes(4);
-  expect(stamp).toHaveBeenCalledTimes(1);
-  expect(stamp).toHaveBeenCalledWith({ kind: "bytes", bytes: new Uint8Array([86]) });
   expect(agentTiers).toHaveBeenCalledWith(methodSliceFixture);
   expect(settingsSchema).toHaveBeenCalledTimes(1);
 });
@@ -55,12 +51,10 @@ test("per-file and folder failures retain runtime source and deterministic folde
   const fileSystem = createInMemoryFileSystem({ files, faults: {
     "file:///core/tools/run.ts": "permission-denied", "file:///core/hooks/": "permission-denied",
   } });
-  const stamp = mock(capture.stamp);
-  expect(await createRuntimeReading({ tree: fileSystem, ...runtimeData })({ ...capture, stamp })).toEqual(refused([
+  expect(await createRuntimeReading({ tree: fileSystem, ...runtimeData })(capture)).toEqual(refused([
     { kind: "neutral-source-unreadable", source: source("tools/run.ts"), reason: "permission-denied" },
     { kind: "neutral-source-unreadable", source: source("hooks"), reason: "permission-denied" },
   ]));
-  expect(stamp).not.toHaveBeenCalled();
 });
 
 test("an absent required version module is an explicit source refusal", async () => {
@@ -71,16 +65,4 @@ test("an absent required version module is an explicit source refusal", async ()
   expect(await createRuntimeReading({ tree: fileSystem, ...runtimeData })(capture)).toEqual(refused([
     { kind: "neutral-source-unreadable", source: source("tools/aidlc-version.ts"), reason: "not-found" },
   ]));
-});
-
-test("a stamp refusal remains failure data and does not generate shared data", async () => {
-  const agentTiers = mock(runtimeData.agentTiers);
-  const settingsSchema = mock(runtimeData.settingsSchema);
-  expect(await createRuntimeReading({ tree: createInMemoryFileSystem({ files }), agentTiers, settingsSchema })({
-    ...capture, stamp: () => refused({ kind: "render-failed", concept: "host-data",
-      name: "aidlc-version.ts", reason: "Two assignments" }),
-  })).toEqual(refused([{ kind: "render-failed", concept: "host-data", name: "aidlc-version.ts",
-    reason: "Two assignments" }]));
-  expect(agentTiers).not.toHaveBeenCalled();
-  expect(settingsSchema).not.toHaveBeenCalled();
 });

@@ -3,7 +3,7 @@ import { accepted, refused } from "../../kernel/result.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
 import type { RuntimeFile } from "../domain/neutral-surface.ts";
-import type { RuntimeDataName } from "../domain/projected-file.ts";
+import type { ProjectionOrigin, RuntimeDataName } from "../domain/projected-file.ts";
 import type { TokenBindings } from "../domain/template-token.ts";
 import { bindCopiedSource } from "../domain/source-binding.ts";
 import type { Rendering } from "./ports/harness.ts";
@@ -12,11 +12,13 @@ import { collectCommandRenderings } from "./command-renderers.ts";
 
 const runtimeFile = (request: {
   readonly host: HostIdentity; readonly file: RuntimeFile; readonly tokens: TokenBindings;
+  readonly origin?: ProjectionOrigin;
 }): Rendering => {
   const path = projectPath(`${request.host.directory}/${request.file.source}`);
   return path.ok ? accepted([{ path: path.value,
     content: bindCopiedSource({ ...request.file, tokens: request.tokens }),
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: request.file.source } }])
+    mode: "regular", availability: "always",
+    origin: request.origin ?? { kind: "neutral", source: request.file.source } }])
     : refused({ kind: "render-failed", concept: "host-data", name: request.file.source,
       reason: "The runtime destination must be project-relative." });
 };
@@ -38,7 +40,7 @@ export const projectRuntime: RuntimeProjection = (request) => {
   return collectCommandRenderings([
     ...request.runtime.files.map((file) => runtimeFile({ host: request.host, file, tokens: request.tokens })),
     runtimeFile({ host: request.host, file: { source: version.value, content: request.runtime.version },
-      tokens: request.tokens }),
+      tokens: request.tokens, origin: { kind: "runtime-data", name: "version-module" } }),
     runtimeData({ host: request.host, name: "agent-tiers", content: request.runtime.agentTiers }),
     runtimeData({ host: request.host, name: "settings-schema", content: request.runtime.settingsSchema }),
     runtimeData({ host: request.host, name: "stage-graph",

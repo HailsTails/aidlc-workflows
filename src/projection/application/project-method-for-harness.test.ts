@@ -49,7 +49,7 @@ const request: ProjectMethodRequest = {
 };
 const claudeRuntime = [
   { path: path(".claude/tools/aidlc-version.ts"), content: { kind: "text", text: "version" },
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/aidlc-version.ts") } },
+    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "version-module" } },
   { path: path(".claude/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers" },
     mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
   { path: path(".claude/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema" },
@@ -63,7 +63,7 @@ const claudeRuntime = [
 ] as const;
 const codexRuntime = [
   { path: path(".codex/tools/aidlc-version.ts"), content: { kind: "text", text: "version" },
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/aidlc-version.ts") } },
+    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "version-module" } },
   { path: path(".codex/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers" },
     mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
   { path: path(".codex/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema" },
@@ -148,7 +148,7 @@ test("all concepts use the existing final-path collision owner", () => {
   } })).project(request)).toEqual(refused([{ kind: "path-collision",
     path: path(".claude/tools/aidlc-version.ts"), origins: [
       { kind: "rendered", concept: "settings", name: "settings" },
-      { kind: "neutral", source: source("tools/aidlc-version.ts") },
+      { kind: "runtime-data", name: "version-module" },
     ],
   }]));
 });
@@ -262,7 +262,7 @@ const ownershipFiles = (): readonly ProjectedFile[] => [
   { path: path(".claude/hooks/start.ts"), content: rawStage.content,
     mode: "regular", availability: "always", origin: { kind: "neutral", source: source("hooks/start.ts") } },
   { path: path(".claude/tools/aidlc-version.ts"), content: { kind: "text", text: "version" },
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/aidlc-version.ts") } },
+    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "version-module" } },
   { path: path(".claude/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers" },
     mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
   { path: path(".claude/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema" },

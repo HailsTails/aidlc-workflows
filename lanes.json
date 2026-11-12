@@ -45,6 +45,7 @@
         "src/cli/roots{,.test}.ts",
         "src/hosts/{claude,codex,opencode,kiro,kiro-ide,cursor,copilot}/host{,.test}.ts",
         "src/projection/application/project-runtime{,.test}.ts",
+        "src/projection/application/project-method-for-harness.test.ts",
         "src/projection/adapters/runtime-files{,.test}.ts",
         "src/projection/application/host-surface-members{,.test}.ts",
         "src/packaging/**",

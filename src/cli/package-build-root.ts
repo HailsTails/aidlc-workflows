@@ -1,7 +1,7 @@
 import { createBuildPackaging } from "../packaging/core-root.ts";
 import { DEFAULT_WORKSPACE } from "../projection/domain/workspace.ts";
 import type { MemoryCompanion, SharedRuntime } from "../projection/domain/neutral-surface.ts";
-import type { VersionStamp } from "../projection/application/ports/runtime.ts";
+import type { VersionStamp } from "../packaging/application/boundary-ports.ts";
 import type { ProjectDocuments } from "./roots.ts";
 import type { NeutralSurface } from "../projection/domain/neutral-surface.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
@@ -12,7 +12,8 @@ import type { Result } from "../kernel/result.ts";
 import { createAuthoredMethodLoading } from "../workflow-definition/core-root.ts";
 import type { AuthoredCoreMethod, MethodReading } from "../workflow-definition/application/ports.ts";
 import { createBuildProjection, createHostedMethodProjection } from "../projection/core-root.ts";
-import type { CompiledMethodFiles } from "../projection/domain/projection.ts";
+import type { CompiledMethodFiles, Projection } from "../projection/domain/projection.ts";
+import type { ProjectedFile } from "../projection/domain/projected-file.ts";
 import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot,
   CapturedHostSources, HostSourcesRequest, HostBuildMembers, HostBuildTable, ReadHostDistribution,
   ProjectHost } from "./roots.ts";
@@ -99,7 +100,7 @@ type FullHostCapture = {
 type CaptureFullHost = (core: CoreBuild) => Promise<Result<FullHostCapture, readonly ProjectionRefusal[]>>;
 
 const fullHostCapture = (ports: {
-  readonly projection: BuildProjection; readonly core: URL; readonly stamp: VersionStamp;
+  readonly projection: BuildProjection; readonly core: URL;
   readonly readSessions: SessionReading; readonly readNeutral: CoreNeutralCapture;
 }): CaptureFullHost => {
   let runtime: Promise<Result<SharedRuntime, readonly ProjectionRefusal[]>> | undefined;
@@ -110,12 +111,34 @@ const fullHostCapture = (ports: {
     const sessions = await ports.readSessions();
     if (!sessions.ok) return sessions;
     const captured = await (runtime ??= ports.projection.readRuntime({ core: ports.core,
-      method: core.method, stamp: ports.stamp }));
+      method: core.method }));
     if (!captured.ok) return captured;
     const memory = await (companions ??= ports.projection.readMemoryCompanions({ core: ports.core }));
     return memory.ok ? accepted({ surface: { ...neutral.value, skills: sessions.value },
       runtime: captured.value, companions: memory.value }) : memory;
   };
+};
+
+const stampedFile = (file: ProjectedFile, stamp: VersionStamp): Result<ProjectedFile, ProjectionRefusal> => {
+  if (file.origin.kind !== "runtime-data" || file.origin.name !== "version-module") return accepted(file);
+  const stamped = stamp(file.content);
+  return stamped.ok ? accepted({ ...file, content: stamped.value })
+    : refused({ kind: "render-failed", concept: "host-data", name: "aidlc-version.ts",
+      reason: stamped.refusal.kind === "version-unstampable" ? stamped.refusal.reason : stamped.refusal.kind });
+};
+
+const stampedProjection = (projection: Projection, stamp: VersionStamp): Result<Projection, ProjectionRefusal> => {
+  const files = projection.files.map((file) => stampedFile(file, stamp));
+  const failed = files.find((file) => !file.ok);
+  return failed && !failed.ok ? failed
+    : accepted({ ...projection, files: files.flatMap((file) => file.ok ? [file.value] : []) });
+};
+
+const stampingVersion = (projectHost: ProjectHost, stamp: VersionStamp): ProjectHost => async (request) => {
+  const built = await projectHost(request);
+  if (!built.ok) return built;
+  const stamped = stampedProjection(built.value.projection, stamp);
+  return stamped.ok ? accepted({ ...built.value, projection: stamped.value }) : refused([stamped.refusal]);
 };
 
 const hostProjector = (ports: {
@@ -182,9 +205,9 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   };
   return {
     settingsCapabilities: projection.settingsCapabilities, readHostDistribution: readDistribution,
-    projectHost: hostProjector({ projection, hosts: request.hosts, readDistribution,
-      capture: fullHostCapture({ projection, core: request.sources.core, stamp: createBuildPackaging().stamp,
-        readSessions, readNeutral }) }),
+    projectHost: stampingVersion(hostProjector({ projection, hosts: request.hosts, readDistribution,
+      capture: fullHostCapture({ projection, core: request.sources.core, readSessions, readNeutral }) }),
+      createBuildPackaging().stamp),
     projectDocuments: documentsProjector({ projection, readNeutral, hosts: request.hosts }),
     loadCore: () => core ??= loadCore(),
     loadPlugins: ({ core: loaded }) => loading.loadPlugins({ core: loaded,

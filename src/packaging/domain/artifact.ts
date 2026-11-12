@@ -32,6 +32,8 @@ export type PackagingRefusal =
       readonly origin: ProjectionOrigin;
     }
   | { readonly kind: "entry-not-bundled"; readonly entry: string; readonly reason: string }
+  | { readonly kind: "version-module-count"; readonly found: number }
+  | { readonly kind: "version-unstampable"; readonly reason: string }
   | {
       readonly kind: "mixed-versions";
       readonly versions: readonly [FrameworkVersion, FrameworkVersion];

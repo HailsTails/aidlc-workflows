@@ -57,8 +57,6 @@ export const createRuntimeReading = (ports: RuntimeCapturePorts): RuntimeReading
     return refused([source.ok ? unreadable(source.value, "not-found")
       : { kind: "render-failed", concept: "host-data", name: "aidlc-version.ts", reason: "not-found" }]);
   }
-  const stamped = capture.stamp(version.content);
-  return stamped.ok ? accepted({ files: files.filter((file) => file !== version), version: stamped.value,
-    agentTiers: ports.agentTiers(capture.method), settingsSchema: ports.settingsSchema() })
-    : refused([stamped.refusal]);
+  return accepted({ files: files.filter((file) => file !== version), version: version.content,
+    agentTiers: ports.agentTiers(capture.method), settingsSchema: ports.settingsSchema() });
 };

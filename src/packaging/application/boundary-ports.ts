@@ -1,3 +1,4 @@
+import type { FileContent } from "../../kernel/file-content.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { DistributionId } from "../../kernel/values.ts";
 import type { PackagingRefusal } from "../domain/artifact.ts";
@@ -18,3 +19,5 @@ export interface NativeCommandRoutes {
   trusted(suffix: string): string;
   unresolvable(request: { readonly file: string; readonly text: string }): readonly string[];
 }
+
+export type VersionStamp = (module: FileContent) => Result<FileContent, PackagingRefusal>;

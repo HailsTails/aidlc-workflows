@@ -9,19 +9,19 @@ const request = { host: host({ name: "native", directory: ".native" }),
   tokens: tokenBindingsFixture({ harnessDir: ".native" }), runtime: {
     files: [{ source: source("tools/run.ts"), content: { kind: "text", text: "{{INVOKE}}" } },
       { source: source("hooks/icon.bin"), content: { kind: "bytes", bytes: new Uint8Array([0, 255]) } }],
-    version: { kind: "text", text: "stamped version" },
+    version: { kind: "text", text: "captured version" },
     agentTiers: { kind: "text", text: "tiers {{INVOKE}}" },
     settingsSchema: { kind: "text", text: "schema {{HARNESS_DIR}}" },
   } } as const;
 
-test("one projection places captured runtime, stamped version and untouched generated data", () => {
+test("one projection places captured runtime, captured version and untouched generated data", () => {
   expect(projectRuntime(request)).toEqual(accepted([
     { path: path(".native/tools/run.ts"), content: { kind: "text", text: "bun .native/tools/aidlc.ts" },
       mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/run.ts") } },
     { path: path(".native/hooks/icon.bin"), content: { kind: "bytes", bytes: new Uint8Array([0, 255]) },
       mode: "regular", availability: "always", origin: { kind: "neutral", source: source("hooks/icon.bin") } },
-    { path: path(".native/tools/aidlc-version.ts"), content: { kind: "text", text: "stamped version" },
-      mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/aidlc-version.ts") } },
+    { path: path(".native/tools/aidlc-version.ts"), content: { kind: "text", text: "captured version" },
+      mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "version-module" } },
     { path: path(".native/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers {{INVOKE}}" },
       mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
     { path: path(".native/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema {{HARNESS_DIR}}" },

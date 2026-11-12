@@ -1,5 +1,5 @@
-import { accepted, refused } from "../../kernel/result.ts";
-import type { DistributionLayouts } from "./boundary-ports.ts";
+import { accepted, refused, type Result } from "../../kernel/result.ts";
+import type { DistributionLayouts, VersionStamp } from "./boundary-ports.ts";
 import type { ContentHasher, ReleaseHistorySource, ToolBundler } from "./ports.ts";
 import type { PackagePayload, PackagePayloadRequest } from "./use-cases.ts";
 import type { PackagingRefusal } from "../domain/artifact.ts";
@@ -16,6 +16,7 @@ type Dependencies = {
   readonly layouts: DistributionLayouts;
   readonly history: ReleaseHistorySource;
   readonly metadata: PayloadMetadata;
+  readonly stamp: VersionStamp;
 };
 
 const projectionFiles = (request: {
@@ -28,6 +29,21 @@ const projectionFiles = (request: {
     hash: request.hasher.hash(file.content),
     origin: { kind: "projected", origin: file.origin },
   }));
+
+const stampedVersionModule = (request: {
+  readonly files: readonly PayloadFile[];
+  readonly stamp: VersionStamp;
+  readonly hasher: ContentHasher;
+}): Result<readonly PayloadFile[], PackagingRefusal> => {
+  const modules = request.files.filter((file) => file.origin.kind === "projected"
+    && file.origin.origin.kind === "runtime-data" && file.origin.origin.name === "version-module");
+  const [versionModule] = modules;
+  if (!versionModule || modules.length !== 1) return refused({ kind: "version-module-count", found: modules.length });
+  const stamped = request.stamp(versionModule.content);
+  if (!stamped.ok) return stamped;
+  return accepted(request.files.map((file) => file === versionModule
+    ? { ...file, content: stamped.value, hash: request.hasher.hash(stamped.value) } : file));
+};
 
 const missingEntries = (request: {
   readonly package: PackagePayloadRequest;
@@ -73,8 +89,11 @@ export const createPackagePayload = (dependencies: Dependencies): PackagePayload
     if (!bundled.ok) return refused([bundled.refusal]);
     const missing = missingEntries({ package: request, files: bundled.value });
     if (missing.length > 0) return refused(missing);
+    const projected = stampedVersionModule({ stamp: dependencies.stamp, hasher: dependencies.hasher,
+      files: projectionFiles({ package: request, hasher: dependencies.hasher }) });
+    if (!projected.ok) return refused([projected.refusal]);
     const files = [
-      ...projectionFiles({ package: request, hasher: dependencies.hasher }),
+      ...projected.value,
       ...bundled.value.map((file) => ({ ...file, hash: dependencies.hasher.hash(file.content) })),
     ];
     return assemble({ dependencies, payload: { version: request.version,

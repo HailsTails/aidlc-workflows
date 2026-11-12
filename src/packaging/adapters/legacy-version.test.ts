@@ -16,13 +16,11 @@ test("a preview stamps exactly the version assignment and preserves adjacent tex
 
 test("a preview refuses an absent version assignment without throwing", () => {
   expect(createVersionStamp(accepted("2.11.4-preview.20261109.1"))({ kind: "text", text: "missing" }))
-    .toEqual(refused({ kind: "render-failed", concept: "host-data", name: "aidlc-version.ts",
+    .toEqual(refused({ kind: "version-unstampable",
       reason: "aidlc-version.ts must declare exactly one AIDLC_VERSION assignment, found 0" }));
 });
 
 test("channel refusal remains the stamp refusal", () => {
-  expect(createVersionStamp(refused({ kind: "render-failed", concept: "host-data", name: "version",
-    reason: "Invalid preview" }))({ kind: "text", text: "unused" })).toEqual(refused({
-      kind: "render-failed", concept: "host-data", name: "version", reason: "Invalid preview",
-    }));
+  expect(createVersionStamp(refused({ kind: "version-unstampable", reason: "Invalid preview" }))(
+    { kind: "text", text: "unused" })).toEqual(refused({ kind: "version-unstampable", reason: "Invalid preview" }));
 });
