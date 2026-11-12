@@ -71,6 +71,11 @@ const EXPECTED_BRIDGES = [
       "(R1), deleting agentTiersFromAuthoredDirectory, the unreachable authored-agents walk " +
       "the phase 1 freeze keeps in shipped bytes.",
   },
+  {
+    module: "core/tools/aidlc-model-policy.ts",
+    readBy: "src/hosts/codex/projection/toml-models.ts",
+    retiresWhen: "Phase 2 model-policy cutover: Codex's agent TOML model rewrite moves into src with the policy owner.",
+  },
   { module: "core/tools/aidlc-tiers.ts", readBy: "src/projection/adapters/legacy-tiers.ts", retiresWhen: OWNER_MOVES },
   {
     module: "core/tools/aidlc-runner-gen.ts",
@@ -100,6 +105,11 @@ const EXPECTED_BRIDGES = [
   {
     module: "core/tools/aidlc-launcher-voucher.ts",
     readBy: "src/projection/adapters/legacy-launcher.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-launcher-voucher.ts",
+    readBy: "src/hosts/copilot/projection/launcher.ts",
     retiresWhen: OWNER_MOVES,
   },
   {

@@ -130,6 +130,11 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
       "(R1), deleting agentTiersFromAuthoredDirectory, the unreachable authored-agents walk " +
       "the phase 1 freeze keeps in shipped bytes.",
   },
+  {
+    module: "core/tools/aidlc-model-policy.ts",
+    readBy: "src/hosts/codex/projection/toml-models.ts",
+    retiresWhen: "Phase 2 model-policy cutover: Codex's agent TOML model rewrite moves into src with the policy owner.",
+  },
   shippedOwner("aidlc-tiers", "src/projection/adapters/legacy-tiers.ts"),
   shippedOwner("aidlc-runner-gen", "src/cli/legacy-runner-child.ts"),
   shippedOwner("aidlc-utility", "src/projection/adapters/legacy-skill-tables.ts"),
@@ -137,6 +142,7 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   shippedOwner("aidlc-command", "src/projection/adapters/legacy-trusted-commands.ts"),
   shippedOwner("aidlc-runtime-budget", "src/projection/adapters/legacy-runtime-budget.ts"),
   shippedOwner("aidlc-launcher-voucher", "src/projection/adapters/legacy-launcher.ts"),
+  shippedOwner("aidlc-launcher-voucher", "src/hosts/copilot/projection/launcher.ts"),
   shippedOwner("aidlc-includes", "src/projection/adapters/legacy-includes.ts"),
   shippedOwner("aidlc-inline-context", "src/projection/adapters/legacy-format-docs.ts"),
   {
