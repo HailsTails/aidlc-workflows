@@ -119,3 +119,23 @@ describe("Kiro IDE persona permissions", () => {
     expect(shellDeny).toHaveBeenCalledWith("plugin-agent");
   });
 });
+
+test("the native persona factory uses legacy allow and ask bytes while retaining the DS deny owner", () => {
+  const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
+  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, channel: "native",
+    host: host({ name: "kiro-ide", directory: ".kiro" }), delegateShellFacts: DELEGATE_SHELL_FACTS });
+  expect(personas.mock.calls[0]?.[0].promptLines(architect)).toEqual(["tools: [\"read\", \"write\", \"shell\"]","includeMcpJson: true","permissions:","  rules:","    - capability: shell","      effect: allow","      match:","        - \"aidlc engine *\"","        - \"bun --version\"","    - capability: shell","      effect: ask","      match:","        - \"aidlc engine config set *\"","        - \"aidlc engine adapter *\"","        - \"aidlc*$*\"","        - \"aidlc*`*\"","        - \"aidlc*>*\"","        - \"aidlc*<*\"","        - \"aidlc*&*\"","        - \"aidlc*@(*\"","        - \"aidlc*@{*\"","        - \"aidlc*\\n*\"",   "    - capability: shell", "      effect: deny", "      match:",
+  '        - "bun .kiro/tools/aidlc-*"', '        - "bun .kiro/tools/aidlc.ts engine *"', "      exclude:",
+  "    - capability: shell", "      effect: deny", "      match:",
+  '        - "bun .kiro/tools/aidlc*$*"', '        - "bun .kiro/tools/aidlc*`*"',
+  '        - "bun .kiro/tools/aidlc*>*"', '        - "bun .kiro/tools/aidlc*<*"',
+  '        - "bun .kiro/tools/aidlc*&*"', '        - "bun .kiro/tools/aidlc*@(*"',
+  '        - "bun .kiro/tools/aidlc*@{*"', '        - "bun .kiro/tools/aidlc*\\n*"',
+  "    - capability: fs_read", "      effect: allow", "      match:", '        - "**"',
+  "    - capability: filesystem", "      effect: allow", "      match:",
+  '        - "aidlc/spaces/**"', '        - ".aidlc/worktrees/*/aidlc/spaces/**"',
+  "    - capability: fs_write", "      effect: deny", "      match:",
+  '        - ".kiro/**"', '        - "aidlc/.aidlc-sessions/**"',
+  '        - "aidlc/spaces/*/intents/*/.aidlc-engine/gate-words/**"',
+]);
+});

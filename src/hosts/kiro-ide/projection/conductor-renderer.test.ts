@@ -71,3 +71,18 @@ test("a token preparation refusal is preserved exactly", () => {
     source: file.source, reason: "Cannot prepare captured conductor." });
   expect(kiroIdeAgents({ ...inputs, prepare: () => failure }).renderConductorAgent({ knowledge: [] })).toEqual(failure);
 });
+
+test("native conductor collapses the trusted pair after preparation and preserves dispatcher ordering", () => {
+  const captured = { ...file, content: { kind: "text" as const, text:
+    'permissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "bun .kiro/tools/aidlc-*"\n        - "{{INVOKE}} engine *"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "{{INVOKE}} engine config set *"\n        - "bun .kiro/tools/aidlc*$*"\n' } };
+  const prepare = mock(() => accepted({ ...file, content: { kind: "text" as const, text:
+    'permissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "bun .kiro/tools/aidlc-*"\n        - "aidlc engine *"\n        - "aidlc doctor"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "aidlc engine config set *"\n        - "bun .kiro/tools/aidlc*$*"\n' } }));
+  expect(kiroIdeAgents({ ...inputs, files: [captured], prepare }).renderConductorAgent({ knowledge: [] }))
+    .toEqual(accepted([{ path: path(".kiro/agents/aidlc-aidlc.md"), mode: "regular",
+      origin: { kind: "harness-authored", source: file.source }, content: { kind: "text", text:
+        'permissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "aidlc engine *"\n        - "aidlc doctor"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "aidlc engine config set *"\n        - "aidlc*$*"\n' },
+    }]));
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(prepare).toHaveBeenCalledWith({ ...captured, content: { kind: "text", text:
+    'permissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "bun .kiro/tools/aidlc-*"\n        - "{{INVOKE}} engine *"\n        - "{{INVOKE}} doctor"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "{{INVOKE}} engine config set *"\n        - "bun .kiro/tools/aidlc*$*"\n' } });
+});

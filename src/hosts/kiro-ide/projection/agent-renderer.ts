@@ -1,3 +1,4 @@
+import { kiroIdeNativePermissionText, kiroIdeAgentPermissionContent } from "./native-permissions.ts";
 import type { AgentDocumentRequest, HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
 import type { Harness, Rendering } from "../../../projection/application/ports/harness.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -80,9 +81,13 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
         frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
           insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
       }),
-      promptLines: (agent) => kiroIdePermissionLines(kiroIdeDelegateShellPolicy({
-        facts: inputs.delegateShellFacts, directory: inputs.host.directory,
-      }))(agent.slug),
+      promptLines: (agent) => {
+        const lines = kiroIdePermissionLines(kiroIdeDelegateShellPolicy({
+          facts: inputs.delegateShellFacts, directory: inputs.host.directory,
+        }))(agent.slug);
+        return inputs.channel === "native" ? kiroIdeNativePermissionText({ text: lines.join("\n"),
+          namespace: inputs.delegateShellFacts.engineNamespace }).split("\n") : lines;
+      },
       inlineReading: (agent) => inlineAgents.has(agent.slug) ? "reads-inline" : "dispatched-only",
     }),
     renderConductorAgent: (): Rendering => {
@@ -95,8 +100,10 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
       if (!expanded.ok) return expanded;
       const prepared = inputs.prepare({ ...file, content: { kind: "text", text: expanded.value } });
       if (!prepared.ok) return prepared;
+      const projectedContent = kiroIdeAgentPermissionContent({ content: prepared.value.content, channel: inputs.channel,
+        namespace: inputs.delegateShellFacts.engineNamespace });
       const path = projectPath(".kiro/agents/aidlc-aidlc.md");
-      return path.ok ? accepted([{ path: path.value, content: prepared.value.content,
+      return path.ok ? accepted([{ path: path.value, content: projectedContent,
         mode: "regular", origin: { kind: "harness-authored", source: file.source } }])
         : refused({ kind: "render-failed", concept: "agent", name: file.source,
           reason: "The Kiro IDE conductor destination must be project-relative." });
