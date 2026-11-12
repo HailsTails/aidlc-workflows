@@ -3,8 +3,9 @@ import { distribution, path, source } from "../../kernel/fixtures/values.fixture
 import { accepted } from "../../kernel/result.ts";
 import { kiroDistribution } from "./distribution.ts";
 import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TOKENS } from "./host-data.ts";
-import { kiroHost } from "./host.ts";
+import { kiroHost, kiroPersonas } from "./host.ts";
 import { KIRO_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { kiroAgentRenderer } from "./projection/agent-renderer.ts";
 import { kiroAgents } from "./projection/json-agent-renderer.ts";
 import { kiroCommandPath } from "./projection/command-renderer.ts";
 import { createKiroDocumentRenderer } from "./projection/document-renderer.ts";
@@ -28,4 +29,8 @@ test("kiro module gathers the identity, distribution and every projection part t
     },
     distribution: kiroDistribution,
   }));
+});
+
+test("Kiro offers its persona renderer beside its module for the host that builds on it", () => {
+  expect(kiroPersonas).toBe(kiroAgentRenderer);
 });

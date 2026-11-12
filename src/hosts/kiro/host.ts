@@ -35,3 +35,5 @@ export const kiroHost = () => {
     distribution: kiroDistribution,
   });
 };
+
+export { kiroAgentRenderer as kiroPersonas } from "./projection/agent-renderer.ts";
