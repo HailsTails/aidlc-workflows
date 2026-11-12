@@ -101,7 +101,6 @@ import {
 } from "../core/tools/aidlc-plugin-emit.ts";
 import { readEnvCap, readMemoryCap } from "../core/tools/aidlc-tiers.ts";
 import {
-  cursorTrustedShell,
   scanNamespaceInvocations,
   TRUSTED_COMMAND_PREFIX,
   TRUSTED_ROUTE_NAMESPACE,
@@ -513,27 +512,6 @@ function rewriteKiroNativeAllowlists(outRoot: string, m: ReleaseView): void {
   }
 }
 
-function rewriteCursorNativePermissions(outRoot: string, m: ReleaseView): void {
-  if (m.name !== "cursor") return;
-  const cliPath = join(outRoot, m.harnessDir, "cli.json");
-  const value = JSON.parse(readFileSync(cliPath, "utf-8")) as {
-    permissions?: { allow?: unknown; deny?: unknown };
-  };
-  const allow = value.permissions?.allow;
-  if (!Array.isArray(allow)) throw new Error("[cursor] cli.json has no permissions.allow list");
-  // The copy channel's bun entries name its tool paths; native runs the
-  // aidlc command, so they give way to its one trusted-prefix entry and the
-  // same exact read-only and turn-back-on commands.
-  value.permissions!.allow = [
-    ...allow.filter((entry) => typeof entry !== "string" || !entry.startsWith("Shell(bun")),
-    cursorTrustedShell(),
-    // Cursor reads the first token as the command and the rest as an
-    // argument glob, so each exact form is `Shell(aidlc:<arguments>)`.
-    ...copyChannelDispatcherCommands().map((command) => `Shell(aidlc:${command})`),
-  ];
-  writeFileSync(cliPath, `${JSON.stringify(value, null, 2)}\n`);
-}
-
 // The native Permissions line. A harness whose native allow list carries the
 // exact read-only and turn-back-on commands names them; the others keep the
 // engine prefix alone.
@@ -705,7 +683,6 @@ function rewriteNativeInvocations(
     writeFileSync(file, value);
   }
   rewriteKiroNativeAllowlists(outRoot, m);
-  rewriteCursorNativePermissions(outRoot, m);
   // Before the copy's hashes are recorded below, so a part that changed here
   // still has its copy bytes recognized, and --check builds it the same way.
   syncRootBlockParts(outRoot, m);
