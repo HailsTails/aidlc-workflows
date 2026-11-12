@@ -17,7 +17,7 @@ export const RENDERED_CONCEPTS = [
 
 export type RenderedConcept = (typeof RENDERED_CONCEPTS)[number];
 
-export type RuntimeDataName = "agent-tiers" | "settings-schema" | "stage-graph" | "scope-grid";
+export type RuntimeDataName = "agent-tiers" | "settings-schema" | "stage-graph" | "scope-grid" | "version-module";
 
 export type MemoryCopy = "space" | "seed";
 
@@ -40,5 +40,5 @@ export type ProjectedFile = {
   readonly content: FileContent;
   readonly mode: FileMode;
   readonly origin: ProjectionOrigin;
-  readonly availability: Availability;
+  readonly availability?: Availability;
 };
