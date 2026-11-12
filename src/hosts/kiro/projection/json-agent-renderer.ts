@@ -42,7 +42,6 @@ export const placeKiroAgentDocument = (file: AuthoredHostFile, request: {
     content: expanded.value.file.content,
     mode: "regular",
     origin: { kind: "harness-authored", source: file.source },
-    availability: "always",
   }]) : refused(renderFailed(file.source, "Kiro agent JSON needs a project-relative path."));
 };
 

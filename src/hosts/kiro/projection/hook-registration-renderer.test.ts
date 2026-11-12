@@ -17,12 +17,12 @@ const expected = accepted([
   { path: path(".kiro/hooks/aidlc-record-human-turn.kiro.hook"),
     content: { kind: "text" as const,
       text: '{"command":"bun .kiro/tools/aidlc.ts engine hook record-human-turn"}\n' },
-    mode: "regular" as const, availability: "always" as const,
+    mode: "regular" as const,
     origin: { kind: "harness-authored" as const, source: source("hooks/aidlc-record-human-turn.kiro.hook") } },
   { path: path(".kiro/hooks/aidlc-plan-approval-guard.kiro.hook"),
     content: { kind: "text" as const,
       text: '{"command":"bun .kiro/tools/aidlc.ts engine adapter kiro plan-approval-guard"}\n' },
-    mode: "regular" as const, availability: "always" as const,
+    mode: "regular" as const,
     origin: { kind: "harness-authored" as const, source: source("hooks/aidlc-plan-approval-guard.kiro.hook") } },
 ]);
 
@@ -80,11 +80,11 @@ test("prepared bytes retain their encoding and are not parsed or normalized", ()
   expect(createKiroHookRegistrations({ ...inputs, prepare })({ hooks: [] })).toEqual(accepted([
     { path: path(".kiro/hooks/aidlc-record-human-turn.kiro.hook"),
       content: { kind: "bytes", bytes: new Uint8Array([239, 187, 191, 123, 125, 13, 10]) },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "harness-authored", source: source("hooks/aidlc-record-human-turn.kiro.hook") } },
     { path: path(".kiro/hooks/aidlc-plan-approval-guard.kiro.hook"),
       content: { kind: "text", text: '{"command":"bun .kiro/tools/aidlc.ts engine adapter kiro plan-approval-guard"}\n' },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "harness-authored", source: source("hooks/aidlc-plan-approval-guard.kiro.hook") } },
   ]));
 });

@@ -144,7 +144,7 @@ test("the real root renders a captured Kiro conductor without replacing its mode
     ],
     prepare: accepted, channel: "native", modelCap: null })).toEqual(accepted([{
       path: path(".kiro/agents/aidlc.json"), content: { kind: "text", text: '{ "model": "personal" }\r\n' },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "harness-authored", source: source("agents/aidlc.json") },
     }]));
 });
@@ -189,19 +189,19 @@ test("the real skill route composes B and C once and captures neutral skills onc
     projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: skillFiles,
     prepare, commands: { read }, place: scratchCommandPlacement, tokens: skillTokens };
   const expected: readonly ProjectedFile[] = [
-    { path: path(".claude/skills/aidlc/SKILL.md"), mode: "regular", availability: "always",
+    { path: path(".claude/skills/aidlc/SKILL.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Door\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/SKILL.md") } },
-    { path: path(".claude/skills/aidlc/question-rendering.md"), mode: "regular", availability: "always",
+    { path: path(".claude/skills/aidlc/question-rendering.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Question\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/question-rendering.md") } },
-    { path: path(".claude/skills/aidlc/composer.md"), mode: "regular", availability: "always",
+    { path: path(".claude/skills/aidlc/composer.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Composer\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/composer.md") } },
-    { path: path(".claude/skills/aidlc/tables.md"), mode: "regular", availability: "always",
+    { path: path(".claude/skills/aidlc/tables.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Tables\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/tables.md") } },
-    { path: path(".claude/skills/aidlc-replay/SKILL.md"), mode: "regular", availability: "always",
+    { path: path(".claude/skills/aidlc-replay/SKILL.md"), mode: "regular",
       content: { kind: "bytes", bytes: new Uint8Array([82]) },
       origin: { kind: "neutral", source: source("skills/aidlc-replay/SKILL.md") } },
   ];
@@ -373,13 +373,13 @@ test("registered document projection captures neutral sources once while an unre
   expect(readFile).not.toHaveBeenCalled();
   expect(accept(await root.projectDocuments({ ...documents, host: host({ name: "claude", directory: ".claude" }) })))
     .toEqual([
-      { path: path(".claude/CLAUDE.md"), mode: "regular", availability: "always",
+      { path: path(".claude/CLAUDE.md"), mode: "regular",
         origin: { kind: "rendered", concept: "onboarding", name: ".claude/CLAUDE.md" },
         content: { kind: "text", text: "Native /aidlc\n\n## Shared AI-DLC onboarding\n\nNeutral\n" } },
-      { path: path(".claude/aidlc-common/conductor.md"), mode: "regular", availability: "always",
+      { path: path(".claude/aidlc-common/conductor.md"), mode: "regular",
         origin: { kind: "neutral", source: source("aidlc-common/conductor.md") },
         content: { kind: "text", text: "Conductor" } },
-      { path: path(".claude/aidlc-common/protocols/one.md"), mode: "regular", availability: "always",
+      { path: path(".claude/aidlc-common/protocols/one.md"), mode: "regular",
         origin: { kind: "neutral", source: source("aidlc-common/protocols/one.md") },
         content: { kind: "text", text: "Protocol .claude" } },
     ]);

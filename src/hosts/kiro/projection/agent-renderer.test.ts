@@ -44,7 +44,6 @@ describe("kiroAgentRenderer", () => {
           },
           mode: "regular",
           origin: { kind: "method-source", path: architect.source },
-          availability: "always",
         },
       ],
     });
