@@ -1,3 +1,4 @@
+import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import { DELEGATE_SHELL_FACTS } from "./delegate-shell-facts.fixture.ts";
 import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
 import { host } from "../../kernel/fixtures/values.fixture.ts";
@@ -35,6 +36,8 @@ export const SCRATCH_AGENT_INPUTS: AgentRenderingInputs = {
   documents: () => accepted(""),
   tomlModels: () => accepted(""),
   inlineAgents: new Set(),
+  modelCap: null,
+  method: methodSliceFixture,
   host: SCRATCH_HOST,
   channel: "copy",
   files: [],

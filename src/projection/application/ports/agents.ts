@@ -56,6 +56,8 @@ export type AgentRenderingInputs = {
   readonly persona: AgentPersonaPreparer;
   readonly documents: AgentDocumentSurface;
   readonly tomlModels: TomlAgentModelPolicy;
+  readonly modelCap: Tier | null;
+  readonly method: Method;
   readonly inlineAgents: ReadonlySet<AgentSlug>;
   readonly host: HostIdentity;
   readonly channel: DistributionChannel;

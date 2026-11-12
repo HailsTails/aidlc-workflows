@@ -1,3 +1,4 @@
+import { methodSliceFixture } from "../../../workflow-definition/fixtures/method.fixture.ts";
 import { DELEGATE_SHELL_FACTS } from "../../../projection/fixtures/delegate-shell-facts.fixture.ts";
 import { tokenBindingsFixture } from "../../../projection/fixtures/token-bindings.fixture.ts";
 import { expect, mock, test } from "bun:test";
@@ -26,7 +27,7 @@ const prepared = { ...file, content: { kind: "text" as const,
 const inputs: AgentRenderingInputs = {
   delegateShellFacts: DELEGATE_SHELL_FACTS,
   tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
-  documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(),
+  documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
   host: host({ name: "kiro-ide", directory: ".kiro" }), channel: "native", files: [file],
   prepare: () => accepted(prepared), models: () => accepted(undefined), formatDocuments: new Set(),
   allows: { dispatcherCommands: ["doctor"], toolScripts: ["unused.ts"] },

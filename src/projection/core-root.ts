@@ -53,7 +53,7 @@ const agentInputs = ({ agents, allows, facts }: {
       const prepared = persona(request);
       return prepared.ok ? markdown({ ...request, content: prepared.value }) : prepared;
     }, tomlModels: legacyTomlAgentModels({ host: agents.host, cap: agents.modelCap }),
-    inlineAgents: inlineAgentSet(agents.method), channel: agents.channel,
+    inlineAgents: inlineAgentSet(agents.method), modelCap: agents.modelCap, method: agents.method, channel: agents.channel,
     models: legacyAgentModelPolicy(agents.modelCap), formatDocuments: shippedFormatDocuments(), allows, delegateShellFacts: facts };
 };
 
