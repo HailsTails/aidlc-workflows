@@ -126,7 +126,6 @@
       "notOwned": [
         "harness/{codex,opencode}/manifest.ts",
         "src/projection/core-root{,.test}.ts",
-        "src/projection/adapters/legacy-launcher{,.test}.ts",
         "src/projection/adapters/legacy-includes{,.test}.ts",
         "harness/{kiro,kiro-ide,cursor,copilot}/manifest.ts",
         "harness/{codex,opencode,copilot}/emit.ts",
@@ -251,11 +250,7 @@
         "tests/unit/t-codex-earlier-refresh.test.ts",
         "tests/unit/t-codex-rules-match-aidlc-commands.test.ts",
         "tests/unit/t-codex-toml-strict.test.ts",
-        "src/packaging/application/package-payload{,.test}.ts",
-        "src/packaging/core-root.test.ts",
-        "src/projection/application/**",
-        "src/hosts/{claude,codex,kiro,kiro-ide,cursor,copilot}/projection/**",
-        "src/projection/adapters/legacy-launcher{,.test}.ts"
+        "src/hosts/{claude,codex,kiro,kiro-ide,cursor,copilot}/projection/**"
       ],
       "consumes": ["src/kernel/**"],
       "monolithDeletions": {
