@@ -1,6 +1,6 @@
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { Result } from "../../kernel/result.ts";
-import type { ContentHash, DistributionId } from "../../kernel/values.ts";
+import type { ContentHash, DistributionId, KernelRefusal } from "../../kernel/values.ts";
 import type { ArchiveFormat, PackagingRefusal, ReleaseArtifact } from "../domain/artifact.ts";
 import type {
   Channel,
@@ -30,5 +30,5 @@ export interface ArtifactWriter {
 }
 
 export interface ContentHasher {
-  hash(content: FileContent): ContentHash;
+  hash(content: FileContent): Result<ContentHash, KernelRefusal>;
 }

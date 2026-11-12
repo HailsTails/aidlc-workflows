@@ -23,6 +23,9 @@ export type ReleaseArtifact = {
 };
 
 export type PackagingRefusal =
+  | { readonly kind: "listing-text-not-plain"; readonly distribution: DistributionId }
+  | { readonly kind: "root-integration-duplicate"; readonly path: ProjectPath }
+  | { readonly kind: "root-integration-missing"; readonly path: ProjectPath }
   | { readonly kind: "projection-refused"; readonly distribution: DistributionId }
   | { readonly kind: "unknown-distribution"; readonly distribution: DistributionId }
   | { readonly kind: "duplicate-path"; readonly path: ProjectPath }
