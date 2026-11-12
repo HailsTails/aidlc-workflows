@@ -1,5 +1,5 @@
 import type { Result } from "../../kernel/result.ts";
-import type { FrameworkVersion } from "../../kernel/values.ts";
+import type { FrameworkVersion, KernelRefusal } from "../../kernel/values.ts";
 import type { Projection } from "../../projection/domain/projection.ts";
 import type { ArchiveFormat, PackagingRefusal, ReleaseArtifact } from "../domain/artifact.ts";
 import type { Channel, Payload, RuntimeEntryPoint } from "../domain/payload.ts";
@@ -12,7 +12,7 @@ export type PackagePayloadRequest = {
 };
 
 export interface PackagePayload {
-  package(request: PackagePayloadRequest): Promise<Result<Payload, readonly PackagingRefusal[]>>;
+  package(request: PackagePayloadRequest): Promise<Result<Payload, readonly (PackagingRefusal | KernelRefusal)[]>>;
 }
 
 export type BuildReleaseArtifactRequest = {
