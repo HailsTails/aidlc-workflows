@@ -29,6 +29,7 @@ export type HostData = {
   readonly hookActivation?: HookActivation;
   readonly newChatStep?: NewChatStep;
   readonly kiroLayout?: KiroLayout;
+  readonly runtimeKeys?: Readonly<Record<string, string>>;
   readonly directiveMaxBytes?: number;
   readonly statusLine?: StatusLine;
   readonly agentFinishRecorded?: { readonly env: readonly string[] };
