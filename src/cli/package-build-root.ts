@@ -15,7 +15,7 @@ import { createBuildProjection, createHostedMethodProjection } from "../projecti
 import type { CompiledMethodFiles, Projection } from "../projection/domain/projection.ts";
 import type { ProjectedFile } from "../projection/domain/projected-file.ts";
 import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot,
-  CapturedHostSources, HostSourcesRequest, HostBuildMembers, HostBuildTable, ReadHostDistribution,
+  CapturedHostSources, HostSourcesRequest, HostBuildTable, HostModule, ReadHostDistribution,
   ProjectHost } from "./roots.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { ProjectionRefusal } from "../projection/domain/projection.ts";
@@ -35,11 +35,11 @@ const projectFor = (request: { readonly authored: AuthoredCoreMethod; readonly t
   };
 
 
-const memberFor = (hosts: HostBuildTable, host: HostIdentity): HostBuildMembers | undefined =>
+const memberFor = (hosts: HostBuildTable, host: HostIdentity): HostModule | undefined =>
   hosts.find((candidate) => candidate.host.distribution === host.distribution);
 
 const bindingHeadingsOf = (hosts: HostBuildTable): readonly string[] =>
-  hosts.map((members) => members.bindingHeading);
+  hosts.map((module) => module.projection.bindingHeading);
 
 const captureHost = async (capture: HostSourcesRequest,
   request: { readonly hosts: HostBuildTable; readonly projection: Pick<BuildProjection, "readHostSources"> }):
@@ -50,8 +50,8 @@ const captureHost = async (capture: HostSourcesRequest,
     if (!directory.ok) return refused([directory.refusal]);
     const host = { distribution: distribution.value, directory: directory.value };
     const members = memberFor(request.hosts, host);
-    const required = [...capture.required, ...(members?.skills.inputs ?? []), ...(members?.settings.inputs ?? []),
-      ...(members?.placements.map((placement) => placement.source) ?? [])];
+    const required = [...capture.required, ...(members?.projection.skills.inputs ?? []), ...(members?.projection.settings.inputs ?? []),
+      ...(members?.projection.placements.map((placement) => placement.source) ?? [])];
     const paths = [...new Set([...capture.copied, ...required])].map(sourcePath);
     const failures = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
     if (failures.length > 0) return refused(failures);
@@ -84,7 +84,7 @@ const neutralReading = (request: { readonly projection: BuildProjection; readonl
 const documentsProjector = (request: {
   readonly projection: BuildProjection; readonly readNeutral: CoreNeutralCapture; readonly hosts: HostBuildTable;
 }): ProjectDocuments => async (documents) => {
-  const members = memberFor(request.hosts, documents.host)?.documents;
+  const members = memberFor(request.hosts, documents.host)?.projection.documents;
   if (members === undefined) return accepted([]);
   const surface = await request.readNeutral(documents.core);
   if (!surface.ok) return surface;
@@ -150,7 +150,7 @@ const hostProjector = (ports: {
     const distribution = ports.readDistribution({ host: request.host });
     if (!distribution.ok) return distribution;
     if (!members) return refused([{ kind: "unknown-harness", harness: request.host.distribution }]);
-    const missing = members.placements.find((placement) => !request.files.some((file) => file.source === placement.source));
+    const missing = members.projection.placements.find((placement) => !request.files.some((file) => file.source === placement.source));
     if (missing) return refused([{ kind: "render-failed", concept: "host-data", name: missing.source,
       reason: "The declared authored host file was not captured." }]);
     const compiled = request.core.project({ name: request.host.distribution, directory: request.host.directory,
@@ -160,11 +160,11 @@ const hostProjector = (ports: {
     if (!captured.ok) return captured;
     const assembled = await ports.projection.assembleHarness({ method: request.core.method,
       sources: request.core.sources, host: request.host,
-      renderers: { agents: members.agents.render, skills: members.skills.render,
-        settings: members.settings.render, documents: members.documents.render, data: members.renderData,
-        placements: members.placements, commandPlacement: members.commands },
+      renderers: { agents: members.projection.agents.render, skills: members.projection.skills.render,
+        settings: members.projection.settings.render, documents: members.projection.documents.render, data: members.projection.renderData,
+        placements: members.projection.placements, commandPlacement: members.projection.commands },
       files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,
-      modelCap: request.modelCap, entrypoints: request.entrypoints, fills: members.fills,
+      modelCap: request.modelCap, entrypoints: request.entrypoints, fills: members.projection.fills,
       bindingHeadings: bindingHeadingsOf(ports.hosts), projectRoot: request.projectRoot,
       reviewerAgents: request.reviewerAgents, runtime: captured.value.runtime, compiled: compiled.value });
     if (!assembled.ok) return assembled;
@@ -172,7 +172,7 @@ const hostProjector = (ports: {
       harness: request.host.distribution, method: request.core.method, sources: request.core.sources,
       surface: captured.value.surface, runtime: captured.value.runtime, compiled: compiled.value,
       companions: captured.value.companions,
-      hostFiles: request.files.filter((file) => members.placements.some((placement) => placement.source === file.source)),
+      hostFiles: request.files.filter((file) => members.projection.placements.some((placement) => placement.source === file.source)),
     });
     return projected.ok ? accepted({ host: { host: request.host, harness: assembled.value,
       layout: distribution.value.layout }, projection: projected.value }) : projected;
@@ -218,12 +218,12 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
     projectSettings: (settings) => {
       const members = memberFor(request.hosts, settings.host);
       return members === undefined ? accepted([])
-        : projection.projectSettings({ ...settings, render: members.settings.render });
+        : projection.projectSettings({ ...settings, render: members.projection.settings.render });
     },
     projectHostSurface: (surface) => {
       const members = memberFor(request.hosts, surface.host);
       return members === undefined ? accepted([]) : projection.projectHostSurface({ ...surface,
-        renderData: members.renderData, placements: members.placements });
+        renderData: members.projection.renderData, placements: members.projection.placements });
     },
     projectSkills: async (skills) => {
       const members = memberFor(request.hosts, skills.host);
@@ -234,12 +234,12 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
         name: "skills", reason: "The session source path is invalid." });
       if (!captured.ok) return refused(captured.refusal[0] ?? {
         kind: "neutral-source-unreadable", source: source.value, reason: "The session source was refused." });
-      return projection.projectSkills({ ...skills, render: members.skills.render, sessions: captured.value });
+      return projection.projectSkills({ ...skills, render: members.projection.skills.render, sessions: captured.value });
     },
     projectAgents: (agents) => {
       const members = memberFor(request.hosts, agents.host);
       return members === undefined ? accepted([])
-        : projection.projectAgents({ ...agents, render: members.agents.render });
+        : projection.projectAgents({ ...agents, render: members.projection.agents.render });
     },
   };
 };
