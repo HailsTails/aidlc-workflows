@@ -1,6 +1,5 @@
 import { createAgentPersonaPreparer } from "./application/agent-persona.ts";
-import { inlineAgentSet } from "../workflow-definition/domain/method-participation.ts";
-import { legacyMarkdownAgentSurface, legacyTomlAgentModels, legacyCliModelPolicy,
+import { legacyMarkdownAgentSurface, legacyCliModelPolicy,
   legacyAgentTiersData, legacyAgentModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
 import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
@@ -51,8 +50,7 @@ const agentInputs = ({ agents, allows, facts }: {
     documents: (request) => {
       const prepared = persona(request);
       return prepared.ok ? markdown({ ...request, content: prepared.value }) : prepared;
-    }, tomlModels: legacyTomlAgentModels({ host: agents.host, cap: agents.modelCap }),
-    inlineAgents: inlineAgentSet(agents.method), modelCap: agents.modelCap, method: agents.method, channel: agents.channel,
+    }, modelCap: agents.modelCap, method: agents.method, channel: agents.channel,
     models: legacyAgentModelPolicy(agents.modelCap), formatDocuments: shippedFormatDocuments(), allows, delegateShellFacts: facts };
 };
 

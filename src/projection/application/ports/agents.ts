@@ -46,19 +46,12 @@ export type AgentDocumentRequest = AgentPersonaRequest & {
 
 export type AgentDocumentSurface = (request: AgentDocumentRequest) => Result<string, ProjectionRefusal>;
 
-export type TomlAgentModelPolicy = (request: {
-  readonly agent: Agent;
-  readonly content: string;
-}) => Result<string, ProjectionRefusal>;
-
 export type AgentRenderingInputs = {
   readonly tokens: TokenBindings;
   readonly persona: AgentPersonaPreparer;
   readonly documents: AgentDocumentSurface;
-  readonly tomlModels: TomlAgentModelPolicy;
   readonly modelCap: Tier | null;
   readonly method: Method;
-  readonly inlineAgents: ReadonlySet<AgentSlug>;
   readonly host: HostIdentity;
   readonly channel: DistributionChannel;
   readonly files: readonly AuthoredHostFile[];

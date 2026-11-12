@@ -34,8 +34,6 @@ export const SCRATCH_AGENT_INPUTS: AgentRenderingInputs = {
   tokens: tokenBindingsFixture({ harnessDir: ".scratch" }),
   persona: () => accepted(""),
   documents: () => accepted(""),
-  tomlModels: () => accepted(""),
-  inlineAgents: new Set(),
   modelCap: null,
   method: methodSliceFixture,
   host: SCRATCH_HOST,

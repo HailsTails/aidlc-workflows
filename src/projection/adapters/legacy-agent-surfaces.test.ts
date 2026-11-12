@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { host, source } from "../../kernel/fixtures/values.fixture.ts";
 import { agent } from "../../workflow-definition/fixtures/identities.fixture.ts";
-import { legacyAgentModelPolicy, legacyAgentTiersData, legacyCliModelPolicy, legacyMarkdownAgentSurface, legacyTomlAgentModels } from "./legacy-agent-surfaces.ts";
+import { legacyAgentModelPolicy, legacyAgentTiersData, legacyCliModelPolicy, legacyMarkdownAgentSurface } from "./legacy-agent-surfaces.ts";
 
 test("Kiro inherits its session model under the frozen policy", () => {
   expect(legacyAgentModelPolicy(null)({ host: host({ name: "kiro", directory: ".kiro" }),
@@ -89,11 +89,4 @@ test("a frozen Markdown formatting failure remains a refusal naming the actual a
       removeKeys: [], afterProjectionLines: [] },
   })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
     reason: "agent markdown has no closed frontmatter block" } });
-});
-
-test("the TOML bridge refuses an unsupported host before native model serialization", () => {
-  expect(legacyTomlAgentModels({ host: host({ name: "unknown", directory: ".unknown" }), cap: null })({
-    agent: surfaceAgent(), content: 'name = "example"\n',
-  })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
-    reason: "The frozen model policy has no host unknown." } });
 });

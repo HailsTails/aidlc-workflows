@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isModelHarness, modelAgentName, resolveModelPolicy, serializeAgentTiers, writeKiroCliSurface, writeMarkdownAgentSurface, writeCodexAgentSurface, type EffectiveModelPolicy } from "../../../core/tools/aidlc-model-policy.ts";
+import { isModelHarness, modelAgentName, resolveModelPolicy, serializeAgentTiers, writeKiroCliSurface, writeMarkdownAgentSurface, type EffectiveModelPolicy } from "../../../core/tools/aidlc-model-policy.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
@@ -8,7 +8,7 @@ import type { Agent } from "../../workflow-definition/domain/agent.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 import type { Result } from "../../kernel/result.ts";
-import type { AgentDocumentRequest, TomlAgentModelPolicy } from "../application/ports/agents.ts";
+import type { AgentDocumentRequest } from "../application/ports/agents.ts";
 import type { AgentModelPolicy } from "../application/ports/agents.ts";
 import type { CliModelPolicy } from "../application/ports/settings.ts";
 
@@ -78,18 +78,6 @@ export const legacyMarkdownAgentSurface = (binding: { readonly host: HostIdentit
         insertBeforeKeys: request.frontmatter.insertBeforeKeys, removeKeys: request.frontmatter.removeKeys,
         afterProjectionLines: request.frontmatter.afterProjectionLines,
       }));
-    } catch (error) {
-      return refused({ kind: "render-failed", concept: "agent", name: request.agent.slug,
-        reason: error instanceof Error ? error.message : String(error) });
-    }
-  };
-
-export const legacyTomlAgentModels = (binding: { readonly host: HostIdentity; readonly cap: Tier | null }): TomlAgentModelPolicy =>
-  (request) => {
-    const policy = agentSurfacePolicy({ ...binding, agent: request.agent });
-    if (!policy.ok) return policy;
-    try {
-      return accepted(writeCodexAgentSurface(request.content, policy.value));
     } catch (error) {
       return refused({ kind: "render-failed", concept: "agent", name: request.agent.slug,
         reason: error instanceof Error ? error.message : String(error) });

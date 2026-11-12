@@ -81,7 +81,7 @@ test("the published agent member prepares a persona once and delegates its model
   const models = mock(() => accepted(undefined));
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
     delegateShellFacts: DELEGATE_SHELL_FACTS, tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
-    documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
+    documents: () => accepted(""), modelCap: null, method: methodSliceFixture,
     host, formatDocuments, channel: "copy",
     files: [file, allowFile, { source: brand<SourcePath>("skills/aidlc/SKILL.md"),
       content: { kind: "text", text: "# Authored skill" } }],
@@ -102,7 +102,7 @@ test("the conductor preserves its model and appends the native hook suffix once"
   const models = mock(() => accepted("unused"));
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
     delegateShellFacts: DELEGATE_SHELL_FACTS, tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
-    documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
+    documents: () => accepted(""), modelCap: null, method: methodSliceFixture,
     host, formatDocuments, channel: "native",
     files: [conductor, allowFile], prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
@@ -119,7 +119,7 @@ test("the published member preserves a preparation refusal before model lookup",
   const models = mock(() => accepted("unused"));
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
     delegateShellFacts: DELEGATE_SHELL_FACTS, tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
-    documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
+    documents: () => accepted(""), modelCap: null, method: methodSliceFixture,
     host, formatDocuments, channel: "copy",
     files: [file], prepare: () => refused(failure), models,
     allows: { dispatcherCommands: [], toolScripts: [] } });
@@ -129,7 +129,7 @@ test("the published member preserves a preparation refusal before model lookup",
 test("the native factory refuses the whole set when no document has a tools-folder pattern", () => {
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
     delegateShellFacts: DELEGATE_SHELL_FACTS, tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
-    documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
+    documents: () => accepted(""), modelCap: null, method: methodSliceFixture,
     host, formatDocuments, channel: "copy", files: [file], prepare: accepted,
     models: () => accepted(undefined), allows: { dispatcherCommands: [], toolScripts: [] },
   });
@@ -145,7 +145,7 @@ test("a refusal in another captured agent prevents partial rendering", () => {
   const prepare = mock().mockReturnValueOnce(accepted(file)).mockReturnValueOnce(failure);
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
     delegateShellFacts: DELEGATE_SHELL_FACTS, tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
-    documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
+    documents: () => accepted(""), modelCap: null, method: methodSliceFixture,
     host, formatDocuments, channel: "copy", files: [file, allowFile], prepare,
     models: () => accepted(undefined), allows: { dispatcherCommands: [], toolScripts: [] },
   });
@@ -159,7 +159,7 @@ test("conductor hook overflow is serialized before the final allow-list rewrite"
     text: '{"hooks":{"pre":[1e400]},"toolsSettings":{"execute_bash":{"allowedCommands":["keep"]}}}' } };
   const render = createKiroJsonAgentRenderer({ host, formatDocuments })({
     delegateShellFacts: DELEGATE_SHELL_FACTS, tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
-    documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
+    documents: () => accepted(""), modelCap: null, method: methodSliceFixture,
     host, formatDocuments, channel: "copy", files: [conductor, allowFile], prepare: accepted,
     models: () => accepted(undefined), allows: { dispatcherCommands: [], toolScripts: [] },
   });
@@ -171,7 +171,7 @@ test("conductor hook overflow is serialized before the final allow-list rewrite"
 });
 const nativeInputs = (documents: AgentDocumentSurface): AgentRenderingInputs => ({
   delegateShellFacts: DELEGATE_SHELL_FACTS, tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted("unused"),
-  documents, tomlModels: () => accepted("unused"), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture, host, formatDocuments,
+  documents, modelCap: null, method: methodSliceFixture, host, formatDocuments,
   channel: "copy", files: [file, allowFile], prepare: accepted, models: () => accepted(undefined), allows,
 });
 

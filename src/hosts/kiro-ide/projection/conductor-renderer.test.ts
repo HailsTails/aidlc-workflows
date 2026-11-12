@@ -27,7 +27,7 @@ const prepared = { ...file, content: { kind: "text" as const,
 const inputs: AgentRenderingInputs = {
   delegateShellFacts: DELEGATE_SHELL_FACTS,
   tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), persona: () => accepted(""),
-  documents: () => accepted(""), tomlModels: () => accepted(""), inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
+  documents: () => accepted(""), modelCap: null, method: methodSliceFixture,
   host: host({ name: "kiro-ide", directory: ".kiro" }), channel: "native", files: [file],
   prepare: () => accepted(prepared), models: () => accepted(undefined), formatDocuments: new Set(),
   allows: { dispatcherCommands: ["doctor"], toolScripts: ["unused.ts"] },

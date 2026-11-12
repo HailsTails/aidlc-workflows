@@ -43,8 +43,7 @@ test("Kiro IDE gives its persona port the exact in-parts model and native policy
 
 test("Kiro IDE derives inline leads and supports from the admitted Method", () => {
   const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
-  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, method: methodSliceFixture,
-    inlineAgents: new Set([agent("aidlc-developer-agent")]) });
+  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, method: methodSliceFixture });
   const profile = personas.mock.calls[0]?.[0];
   expect(profile?.inlineReading(architect)).toBe("reads-inline");
   expect(profile?.inlineReading({ ...architect, slug: agent("aidlc-delivery-agent") })).toBe("reads-inline");
@@ -54,8 +53,7 @@ test("Kiro IDE derives inline leads and supports from the admitted Method", () =
 test("Kiro IDE leaves an agent dispatched when the admitted Method has no inline stage", () => {
   const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
   const method = brand<Method>({ ...methodSliceFixture, stages: [] });
-  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, method,
-    inlineAgents: new Set([architect.slug]) });
+  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, method });
   expect(personas.mock.calls[0]?.[0].inlineReading(architect)).toBe("dispatched-only");
 });
 
