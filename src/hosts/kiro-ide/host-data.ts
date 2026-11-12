@@ -86,10 +86,6 @@ export const KIRO_IDE_TOKENS = {
 
 export const KIRO_IDE_AUTHORED_PLACEMENTS = [
   {
-    "source": "steering/aidlc-active-memory.md",
-    "destination": ".kiro/steering/aidlc-active-memory.md"
-  },
-  {
     "source": "hooks/aidlc-kiro-adapter.ts",
     "destination": ".kiro/hooks/aidlc-kiro-adapter.ts"
   },

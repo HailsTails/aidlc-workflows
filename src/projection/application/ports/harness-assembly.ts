@@ -13,7 +13,7 @@ import type { TokenBindings } from "../../domain/template-token.ts";
 import type { HostAgentRenderer } from "./agents.ts";
 import type { CommandPlacement } from "./commands.ts";
 import type { HostDocumentRenderer } from "./documents.ts";
-import type { Harness } from "./harness.ts";
+import type { Harness, HostFileDeriver } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
 import type { HostDataRenderer } from "./host-surface.ts";
 import type { HostSettingsRenderer } from "./settings.ts";
@@ -27,6 +27,7 @@ export type HarnessRenderers = {
   readonly data: HostDataRenderer;
   readonly placements: readonly AuthoredPlacement[];
   readonly commandPlacement: CommandPlacement;
+  readonly derive?: HostFileDeriver;
 };
 
 export type HarnessAssemblyRequest = {

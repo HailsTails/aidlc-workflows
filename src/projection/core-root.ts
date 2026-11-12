@@ -83,6 +83,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
     ...assembly.renderers.documents({ fills: assembly.fills, tokens: assembly.tokens,
       bindingHeadings: assembly.bindingHeadings }),
     ...surface,
+    deriveFiles: assembly.renderers.derive ?? (() => accepted([])),
     renderStageCommand: commands.renderStageCommand, renderScopeCommand: commands.renderScopeCommand,
     renderSessionSkill: skills.renderSessionSkill,
     renderOrchestratorSkill: (entry) => collectCommandRenderings([

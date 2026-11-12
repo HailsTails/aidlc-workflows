@@ -6,6 +6,7 @@ import type { ProjectDocuments } from "./roots.ts";
 import type { NeutralSurface } from "../projection/domain/neutral-surface.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
+import type { HarnessRenderers } from "../projection/application/ports/harness-assembly.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
@@ -141,6 +142,11 @@ const stampingVersion = (projectHost: ProjectHost, stamp: VersionStamp): Project
   return stamped.ok ? accepted({ ...built.value, projection: stamped.value }) : refused([stamped.refusal]);
 };
 
+const renderersOf = (members: HostBuildMembers): HarnessRenderers => ({
+  agents: members.agents.render, skills: members.skills.render, settings: members.settings.render,
+  documents: members.documents.render, data: members.renderData, placements: members.placements,
+  commandPlacement: members.commands, ...(members.derive ? { derive: members.derive } : {}) });
+
 const hostProjector = (ports: {
   readonly projection: BuildProjection; readonly capture: CaptureFullHost;
   readonly hosts: HostBuildTable; readonly readDistribution: ReadHostDistribution;
@@ -160,9 +166,7 @@ const hostProjector = (ports: {
     if (!captured.ok) return captured;
     const assembled = await ports.projection.assembleHarness({ method: request.core.method,
       sources: request.core.sources, host: request.host,
-      renderers: { agents: members.agents.render, skills: members.skills.render,
-        settings: members.settings.render, documents: members.documents.render, data: members.renderData,
-        placements: members.placements, commandPlacement: members.commands },
+      renderers: renderersOf(members),
       files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,
       modelCap: request.modelCap, entrypoints: request.entrypoints, fills: members.fills,
       bindingHeadings: bindingHeadingsOf(ports.hosts), projectRoot: request.projectRoot,

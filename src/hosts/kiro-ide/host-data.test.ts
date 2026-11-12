@@ -61,12 +61,8 @@ test("Kiro IDE keeps its invocation and option choices", () => {
   expect(KIRO_IDE_TOKENS).toEqual({ ["SKILL_INVOKE"]: null, ["OPTION_LETTERS"]: "A-E" });
 });
 
-test("Kiro IDE places its authored conductor, helpers, memory reference and gitignore", () => {
+test("Kiro IDE places its authored helpers and gitignore", () => {
   expect(KIRO_IDE_AUTHORED_PLACEMENTS).toEqual([
-  {
-    "source": "steering/aidlc-active-memory.md",
-    "destination": ".kiro/steering/aidlc-active-memory.md"
-  },
   {
     "source": "hooks/aidlc-kiro-adapter.ts",
     "destination": ".kiro/hooks/aidlc-kiro-adapter.ts"

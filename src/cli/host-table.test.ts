@@ -98,11 +98,10 @@ test("the Kiro table captures the conductor and every native persona", () => {
     "agents/aidlc-operations-agent.json",
   ]);
 });
-test("the Kiro IDE host table uses policy-rendered data and the four remaining native placements", () => {
+test("the Kiro IDE host table uses policy-rendered data and the three remaining native placements", () => {
   const members = hostSurfaceMembers(host({ name: "kiro-ide", directory: ".kiro" }));
   expect(members).not.toBeNull();
   expect(members?.placements).toEqual([
-    { source: "steering/aidlc-active-memory.md", destination: ".kiro/steering/aidlc-active-memory.md" },
     { source: "hooks/aidlc-kiro-adapter.ts", destination: ".kiro/hooks/aidlc-kiro-adapter.ts" },
     { source: "hooks/aidlc-kiro-tool-names.ts", destination: ".kiro/hooks/aidlc-kiro-tool-names.ts" },
     { source: "dot-gitignore", destination: ".gitignore" },

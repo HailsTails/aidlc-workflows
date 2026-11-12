@@ -107,7 +107,6 @@ import { copyChannelDispatcherCommands, ROUTES, TOOLS } from "../core/tools/aidl
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../src/packaging/adapters/legacy-distribution.ts";
-import { kiroIdeSteeringText } from "../src/projection/adapters/legacy-includes.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CORE_ROOT = join(REPO_ROOT, "core");
@@ -931,8 +930,6 @@ async function buildHost({ name, outRoot, channel }: {
   if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
   writeProjectedFiles({ files: rendered.value.projection.files, projectRoot: outRoot });
   const treeRoot = join(outRoot, members.host.directory);
-  const steering = join(treeRoot, "steering", "aidlc-active-memory.md");
-  if (existsSync(steering)) writeFileSync(steering, kiroIdeSteeringText(outRoot, "default"));
   emitPluginAuthoringData(treeRoot);
   const view = routedView({ ...routed, files: rendered.value.projection.files });
   writeProjectionData(outRoot, treeRoot, view);

@@ -5,6 +5,7 @@ import type { HostTokenChoices } from "../../domain/template-token.ts";
 import type { HostAgentRenderer } from "./agents.ts";
 import type { CommandPlacement } from "./commands.ts";
 import type { HostDocumentRenderer } from "./documents.ts";
+import type { HostFileDeriver } from "./harness.ts";
 import type { HostDataRenderer } from "./host-surface.ts";
 import type { HostSettingsRenderer } from "./settings.ts";
 import type { HostSkillRenderer } from "./skills.ts";
@@ -25,4 +26,5 @@ export type HostProjectionParts = {
   readonly documents: ConceptMembers<HostDocumentRenderer>;
   readonly fills: OnboardingFills;
   readonly bindingHeading: string;
+  readonly derive?: HostFileDeriver;
 };

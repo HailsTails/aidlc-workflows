@@ -44,6 +44,7 @@ import {
   KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TOKENS, kiroIdeHostIdentity,
 } from "../hosts/kiro-ide/host-data.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
+import { deriveKiroIdeSteering } from "../hosts/kiro-ide/projection/steering-deriver.ts";
 import {
   COPILOT_HOST_DATA, COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING, COPILOT_TOKENS, copilotHostIdentity,
 } from "../hosts/copilot/host-data.ts";
@@ -81,6 +82,7 @@ export type HostEntry = {
   readonly commands: HostBuildMembers["commands"];
   readonly fills: HostBuildMembers["fills"];
   readonly bindingHeading: string;
+  readonly derive?: HostBuildMembers["derive"];
   readonly distribution: HostBuildMembers["distribution"];
   readonly renderData: HostSurfaceMembers["renderData"];
   readonly placements: HostSurfaceMembers["placements"];
@@ -106,7 +108,7 @@ const HOST_ENTRIES: readonly HostEntry[] = [
     settings: { inputs: KIRO_SETTINGS_INPUTS, render: createKiroSettingsRenderer },
     documents: { inputs: [], render: createKiroDocumentRenderer } },
   { identity: kiroIdeHostIdentity, tokens: KIRO_IDE_TOKENS, commands: kiroIdeCommandPath,
-    fills: KIRO_IDE_ONBOARDING_FILLS, bindingHeading: KIRO_IDE_BINDING_HEADING,
+    fills: KIRO_IDE_ONBOARDING_FILLS, bindingHeading: KIRO_IDE_BINDING_HEADING, derive: deriveKiroIdeSteering,
     distribution: kiroIdeDistribution, renderData: kiroIdeHostData, placements: KIRO_IDE_AUTHORED_PLACEMENTS,
     agents: { inputs: ["agents/aidlc-aidlc.md"],
       render: createKiroIdeAgents({ personas: kiroAgentRenderer }) },
@@ -238,6 +240,7 @@ export const hostBuildMembers = (entry: HostEntry): Result<HostBuildMembers, Hos
     settings: { host, render: entry.settings.render, inputs: settingInputs.value },
     documents: { host, inputs: entry.documents.inputs, render: entry.documents.render },
     commands: entry.commands, fills: entry.fills, bindingHeading: entry.bindingHeading,
+    ...(entry.derive ? { derive: entry.derive } : {}),
     distribution: entry.distribution });
 };
 

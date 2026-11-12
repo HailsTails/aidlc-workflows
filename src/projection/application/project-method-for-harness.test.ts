@@ -28,6 +28,7 @@ const claudeHarness = (): Harness => ({
   renderSettings: mock(() => accepted([])), renderHookRegistrations: mock(() => accepted([claudeHooks])),
   renderOnboarding: mock(() => accepted([claudeOnboarding])), renderHostData: mock(() => accepted([])),
   placeNeutralDocument: mock(() => accepted([])), placeAuthoredFile: mock(() => accepted([claudeAuthored])),
+  deriveFiles: mock(() => accepted([])),
 });
 const codexHarness = (): Harness => ({
   tokens: tokenBindingsFixture({ harnessDir: ".codex" }),
@@ -39,6 +40,7 @@ const codexHarness = (): Harness => ({
   renderHookRegistrations: mock(() => accepted([codexHooks])),
   renderOnboarding: mock(() => accepted([codexGuide, codexSetup])), renderHostData: mock(() => accepted([])),
   placeNeutralDocument: mock(() => accepted([])), placeAuthoredFile: mock(() => accepted([codexAuthored])),
+  deriveFiles: mock(() => accepted([])),
 });
 const request: ProjectMethodRequest = {
   harness: claudeProjectionFixture.host.distribution, method: methodSliceFixture,

@@ -50,6 +50,11 @@
         "src/projection/application/host-surface-members{,.test}.ts",
         "src/packaging/**",
         "src/hosts/kiro-ide/projection/document-renderer{,.test}.ts",
+        "src/hosts/kiro-ide/projection/steering-deriver{,.test}.ts",
+        "src/hosts/kiro-ide/host-data{,.test}.ts",
+        "src/cli/host-table{,.test}.ts",
+        "src/projection/application/project-method-for-harness.ts",
+        "src/projection/core-root.ts",
         "src/cli/package-build-root{,.test}.ts",
         "scripts/package.ts"
       ],

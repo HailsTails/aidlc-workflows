@@ -6,6 +6,7 @@ import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TOKENS
 import { kiroIdeHost } from "./host.ts";
 import { KIRO_IDE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import type { KiroIdePersonaRendering } from "./projection/agent-renderer.ts";
+import { deriveKiroIdeSteering } from "./projection/steering-deriver.ts";
 import { kiroIdeHostData } from "./projection/host-data-renderer.ts";
 import { kiroIdeCommandPath } from "./projection/command-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "./projection/document-renderer.ts";
@@ -28,6 +29,7 @@ test("kiroIde module gathers the identity, distribution and every projection par
       documents: { inputs: [], render: createKiroIdeDocumentRenderer },
       fills: KIRO_IDE_ONBOARDING_FILLS,
       bindingHeading: KIRO_IDE_BINDING_HEADING,
+      derive: deriveKiroIdeSteering,
     },
     distribution: kiroIdeDistribution,
   }));

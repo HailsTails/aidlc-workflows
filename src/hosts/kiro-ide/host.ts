@@ -9,6 +9,7 @@ import { kiroIdeCommandPath } from "./projection/command-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "./projection/document-renderer.ts";
 import { KIRO_IDE_SETTINGS_INPUTS, createKiroIdeSettingsRenderer } from "./projection/settings-renderer.ts";
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "./projection/skill-renderer.ts";
+import { deriveKiroIdeSteering } from "./projection/steering-deriver.ts";
 
 export const kiroIdeHost = (personas: KiroIdePersonaRendering) => {
   const identity = kiroIdeHostIdentity();
@@ -32,6 +33,7 @@ export const kiroIdeHost = (personas: KiroIdePersonaRendering) => {
       documents: { inputs: [], render: createKiroIdeDocumentRenderer },
       fills: KIRO_IDE_ONBOARDING_FILLS,
       bindingHeading: KIRO_IDE_BINDING_HEADING,
+      derive: deriveKiroIdeSteering,
     },
     distribution: kiroIdeDistribution,
   });

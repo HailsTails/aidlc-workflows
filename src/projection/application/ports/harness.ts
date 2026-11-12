@@ -36,7 +36,10 @@ export interface Harness {
   renderHostData(): Rendering;
   placeNeutralDocument(request: { readonly document: NeutralDocument }): Rendering;
   placeAuthoredFile(request: { readonly file: AuthoredHostFile }): Rendering;
+  deriveFiles(request: { readonly files: readonly ProjectedFile[] }): Rendering;
 }
+
+export type HostFileDeriver = Harness["deriveFiles"];
 
 export type HostedHarness = {
   readonly host: HostIdentity;

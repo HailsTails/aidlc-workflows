@@ -32,6 +32,8 @@ export const createProjectMethodForHarness = (registry: HarnessRegistry): Projec
     const failures = rendered.flatMap((rendering) => rendering.ok ? [] : [rendering.refusal]);
     if (failures.length > 0) return refused(failures);
     const collected = collectCommandRenderings(rendered);
-    return collected.ok ? accepted({ host, files: collected.value, findings: [] }) : refused([collected.refusal]);
+    if (!collected.ok) return refused([collected.refusal]);
+    const derived = collectCommandRenderings([accepted(collected.value), harness.deriveFiles({ files: collected.value })]);
+    return derived.ok ? accepted({ host, files: derived.value, findings: [] }) : refused([derived.refusal]);
   },
 });
