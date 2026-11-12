@@ -149,7 +149,6 @@ test("the real root renders a captured Kiro conductor without replacing its mode
     }]));
 });
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
-import { claudeCommandPath } from "../hosts/claude/projection/command-renderer.ts";
 import type { CommandSource } from "../projection/application/ports/commands.ts";
 
 const skillFiles = [
@@ -169,7 +168,7 @@ test("the skill route omits unregistered hosts without reading neutral sources",
     outliner, sources, runnerFrames });
   expect(await root.projectSkills({ host: host({ name: "fixture-host", directory: ".fixture" }),
     projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
-    commands: { read: () => accepted({ kind: "declined" }) }, place: claudeCommandPath, tokens: skillTokens }))
+    commands: { read: () => accepted({ kind: "declined" }) }, place: scratchCommandPlacement, tokens: skillTokens }))
     .toEqual(accepted([]));
   expect(readTree).not.toHaveBeenCalled();
 });
@@ -188,7 +187,7 @@ test("the real skill route composes B and C once and captures neutral skills onc
   const prepare = mock(accepted);
   const skillRequest = { host: host({ name: "claude", directory: ".claude" }),
     projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: skillFiles,
-    prepare, commands: { read }, place: claudeCommandPath, tokens: skillTokens };
+    prepare, commands: { read }, place: scratchCommandPlacement, tokens: skillTokens };
   const expected: readonly ProjectedFile[] = [
     { path: path(".claude/skills/aidlc/SKILL.md"), mode: "regular", availability: "always",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Door\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n") },
@@ -221,7 +220,7 @@ test("registered Kiro skills refuse the actual missing captured orchestrator inp
     processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(await root.projectSkills({ host: host({ name: "kiro", directory: ".kiro" }),
     projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
-    commands: { read: () => accepted({ kind: "declined" }) }, place: claudeCommandPath, tokens: skillTokens }))
+    commands: { read: () => accepted({ kind: "declined" }) }, place: scratchCommandPlacement, tokens: skillTokens }))
     .toEqual(refused({ kind: "render-failed", concept: "orchestrator-skill", name: "skills/aidlc/SKILL.md",
       reason: "The authored orchestrator document was not captured." }));
 });
