@@ -94,7 +94,7 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
     if (!prepared.ok) return prepared;
     const path = projectPath(".kiro/agents/aidlc-aidlc.md");
     return path.ok ? accepted([{ path: path.value, content: prepared.value.content,
-      mode: "regular", availability: "always", origin: { kind: "harness-authored", source: file.source } }])
+      mode: "regular", origin: { kind: "harness-authored", source: file.source } }])
       : refused({ kind: "render-failed", concept: "agent", name: file.source,
         reason: "The Kiro IDE conductor destination must be project-relative." });
   },

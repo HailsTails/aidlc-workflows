@@ -35,7 +35,7 @@ const inputs: AgentRenderingInputs = {
 test("conductor expands authored invocation first then prepares once at its native destination", () => {
   const prepare = mock(() => accepted(prepared));
   expect(kiroIdeAgents({ ...inputs, prepare }).renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
-    path: path(".kiro/agents/aidlc-aidlc.md"), content: prepared.content, mode: "regular", availability: "always",
+    path: path(".kiro/agents/aidlc-aidlc.md"), content: prepared.content, mode: "regular",
     origin: { kind: "harness-authored", source: file.source },
   }]));
   expect(prepare).toHaveBeenCalledTimes(1);

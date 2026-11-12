@@ -22,7 +22,7 @@ test("CLI tokens are prepared once before the injected model policy", () => {
   const cliModels = mock(() => accepted(modeled));
   const render = createKiroIdeSettingsRenderer({ ...inputs, prepare, cliModels });
   expect(render.renderSettings({ method: methodSliceFixture })).toEqual(accepted([{
-    path: path(".kiro/settings/cli.json"), content: modeled.content, mode: "regular", availability: "always",
+    path: path(".kiro/settings/cli.json"), content: modeled.content, mode: "regular",
     origin: { kind: "harness-authored", source: file.source },
   }]));
   expect(prepare).toHaveBeenCalledTimes(1);
