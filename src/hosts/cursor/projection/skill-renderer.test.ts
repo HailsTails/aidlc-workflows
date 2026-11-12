@@ -27,25 +27,25 @@ test("Cursor places captured documents with authored provenance and the existing
   const tables = mock<(verb: string) => Result<string, string>>(() => accepted("Unused"));
   const renderer = createCursorSkillRenderer({ files: allFiles, prepare, tokens, tables });
   expect(accept(renderer.renderOrchestratorSkill({ method: methodSliceFixture }))).toEqual([
-    { path: path(".cursor/skills/aidlc/SKILL.md"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/aidlc/SKILL.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Door\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/SKILL.md") } },
-    { path: path(".cursor/skills/aidlc/question-rendering.md"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/aidlc/question-rendering.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Question\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/question-rendering.md") } },
-    { path: path(".cursor/skills/aidlc/composer.md"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/aidlc/composer.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Composer\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/composer.md") } },
-    { path: path(".cursor/skills/aidlc/tables.md"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/aidlc/tables.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Tables\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/tables.md") } },
-    { path: path(".cursor/skills/aidlc-status/SKILL.md"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/aidlc-status/SKILL.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Status\r\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc-status/SKILL.md") } },
-    { path: path(".cursor/skills/aidlc-jump/SKILL.md"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/aidlc-jump/SKILL.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Jump\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc-jump/SKILL.md") } },
-    { path: path(".cursor/skills/aidlc-scope/SKILL.md"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/aidlc-scope/SKILL.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Scope\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc-scope/SKILL.md") } },
   ]);
@@ -68,13 +68,13 @@ test("recursive session files preserve binary payloads and neutral provenance", 
       text: "{{INVOKE}}|{{HARNESS_DIR}}|{{OPTION_LETTERS}}|{{TOOL_PREFIX}}|{{TRUSTED_NAMESPACE}}" } },
     { source: source("skills/example/SKILL.md"), content: { kind: "text", text: "{{HARNESS_DIR}} {{OPTION_LETTERS}}" } },
   ] } })).toEqual(accepted([
-    { path: path(".cursor/skills/example/nested/icon.bin"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/example/nested/icon.bin"), mode: "regular",
       content: { kind: "bytes", bytes: new Uint8Array([0, 255, 10]) },
       origin: { kind: "neutral", source: source("skills/example/nested/icon.bin") } },
-    { path: path(".cursor/skills/example/run.ts"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/example/run.ts"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("aidlc|{{HARNESS_DIR}}|{{OPTION_LETTERS}}|aidlc |trusted") },
       origin: { kind: "neutral", source: source("skills/example/run.ts") } },
-    { path: path(".cursor/skills/example/SKILL.md"), mode: "regular", availability: "always",
+    { path: path(".cursor/skills/example/SKILL.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode(".cursor A-D") },
       origin: { kind: "neutral", source: source("skills/example/SKILL.md") } },
   ]));
@@ -104,7 +104,7 @@ test("non-template text sidecars stay literal through the shared writer's byte p
       source: source("skills/example/reference.txt"),
       content: { kind: "text", text: "{{INVOKE}}" },
     }] } })).toEqual(accepted([{
-      path: path(".cursor/skills/example/reference.txt"), mode: "regular", availability: "always",
+      path: path(".cursor/skills/example/reference.txt"), mode: "regular",
       content: { kind: "bytes", bytes: new Uint8Array([123, 123, 73, 78, 86, 79, 75, 69, 125, 125]) },
       origin: { kind: "neutral", source: source("skills/example/reference.txt") },
     }]));
@@ -113,18 +113,18 @@ test("non-template text sidecars stay literal through the shared writer's byte p
 test("the shared session fixture keeps exact Cursor payload bytes", () => {
   expect(createCursorSkillRenderer(skillRenderingInputsFixture({ harnessDir: ".cursor" }))
     .renderSessionSkill({ skill: sessionSkillFixture })).toEqual(accepted([
-      { path: path(".cursor/skills/aidlc-issue-report/SKILL.md"), mode: "regular", availability: "always",
+      { path: path(".cursor/skills/aidlc-issue-report/SKILL.md"), mode: "regular",
         content: { kind: "bytes", bytes: new TextEncoder().encode(
           "---\nname: aidlc-issue-report\n---\n\nRun /aidlc-issue-report, then read `.cursor/rules/aidlc.md` and `<record>/aidlc-state.md`.\n") },
         origin: { kind: "neutral", source: source("skills/aidlc-issue-report/SKILL.md") } },
-      { path: path(".cursor/skills/aidlc-issue-report/scripts/collect.ts"), mode: "regular", availability: "always",
+      { path: path(".cursor/skills/aidlc-issue-report/scripts/collect.ts"), mode: "regular",
         content: { kind: "bytes", bytes: new TextEncoder().encode(
           'const invoke = "bun .cursor/tools/aidlc.ts";\nconst harnessDir = "{{HARNESS_DIR}}";\n') },
         origin: { kind: "neutral", source: source("skills/aidlc-issue-report/scripts/collect.ts") } },
-      { path: path(".cursor/skills/aidlc-issue-report/references/data.yaml"), mode: "regular", availability: "always",
+      { path: path(".cursor/skills/aidlc-issue-report/references/data.yaml"), mode: "regular",
         content: { kind: "bytes", bytes: new TextEncoder().encode("invoke: {{INVOKE}}\n") },
         origin: { kind: "neutral", source: source("skills/aidlc-issue-report/references/data.yaml") } },
-      { path: path(".cursor/skills/aidlc-issue-report/assets/mark.png"), mode: "regular", availability: "always",
+      { path: path(".cursor/skills/aidlc-issue-report/assets/mark.png"), mode: "regular",
         content: { kind: "bytes", bytes: new Uint8Array([137, 80, 78, 71]) },
         origin: { kind: "neutral", source: source("skills/aidlc-issue-report/assets/mark.png") } },
     ]));
@@ -149,7 +149,7 @@ test("Cursor shortcuts keep generated-looking regions and carriage returns witho
   const tables = mock<(verb: string) => Result<string, string>>(() => accepted("Fresh"));
   const renderer = createCursorSkillRenderer({ files: [shortcut, ...allFiles], prepare, tokens, tables });
   expect(accept(renderer.renderOrchestratorSkill({ method: methodSliceFixture }))[4]).toEqual({
-    path: path(".cursor/skills/aidlc-status/SKILL.md"), mode: "regular", availability: "always",
+    path: path(".cursor/skills/aidlc-status/SKILL.md"), mode: "regular",
     content: { kind: "bytes", bytes: new TextEncoder().encode(
       "<!-- BEGIN: compiled stage graph via x -->\r\nstale\r\n<!-- END: compiled stage graph -->\r\n") },
     origin: { kind: "harness-authored", source: source("skills/aidlc-status/SKILL.md") },

@@ -50,7 +50,6 @@ describe("cursorAgents", () => {
           },
           mode: "regular",
           origin: { kind: "method-source", path: quality.source },
-          availability: "always",
         },
       ],
     });
@@ -77,7 +76,7 @@ test("Cursor's agent factory requests the exact authored effort surface before i
     accepted([{
       path: path(".cursor/agents/aidlc-quality-agent.md"),
       content: { kind: "text", text: "---\nname: aidlc-quality-agent\ndisallowedTools: Task\n---\nRead aidlc/active-memory/team.md first.\n" },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "method-source", path: quality.source },
     }]),
   );

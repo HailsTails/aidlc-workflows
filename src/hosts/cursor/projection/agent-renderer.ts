@@ -16,7 +16,7 @@ const renderAgent = (inputs: AgentRenderingInputs): Harness["renderAgent"] => ({
   const path = projectPath(`.cursor/agents/${agent.slug}.md`);
   return path.ok ? accepted([{
     path: path.value, content: { kind: "text", text: projectActiveMemoryReferences(surfaced.value) },
-    mode: "regular", origin: { kind: "method-source", path: agent.source }, availability: "always",
+    mode: "regular", origin: { kind: "method-source", path: agent.source },
   }]) : refused({ kind: "render-failed", concept: "agent", name: agent.slug,
     reason: "The Cursor agent destination must be a project-relative path." });
 };

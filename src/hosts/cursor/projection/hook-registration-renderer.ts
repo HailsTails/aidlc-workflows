@@ -13,7 +13,7 @@ export const createCursorHookRegistrations = (
   if (!prepared.ok) return prepared;
   const path = projectPath(".cursor/hooks.json");
   return path.ok ? accepted([{
-    path: path.value, content: prepared.value.content, mode: "regular", availability: "always",
+    path: path.value, content: prepared.value.content, mode: "regular",
     origin: { kind: "harness-authored", source: file.source },
   }]) : refused({ kind: "render-failed", concept: "hook-registration", name: "hooks.json",
     reason: "The Cursor hook destination must be project-relative." });

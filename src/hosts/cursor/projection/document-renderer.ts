@@ -23,7 +23,7 @@ const placeOnboarding = ({ name, text, tokens }: {
   readonly name: string; readonly text: string; readonly tokens: TokenBindings;
 }): Rendering => {
   const path = projectPath(name);
-  return path.ok ? accepted([{ path: path.value, mode: "regular", availability: "always",
+  return path.ok ? accepted([{ path: path.value, mode: "regular",
     content: { kind: "text", text: bind(text, tokens) },
     origin: { kind: "rendered", concept: "onboarding", name } }])
     : onboardingFailure(name, "The onboarding destination must be project-relative.");
@@ -50,7 +50,7 @@ const placeDocument = (document: NeutralDocument, inputs: {
   const content = document.role === "protocol" ? keepOwnHarnessBindings({ content: bound,
     ownHeading: CURSOR_BINDING_HEADING, expectedHeadings: inputs.bindingHeadings, file: document.source }) : accepted(bound);
   return content.ok ? accepted([{ path: path.value, content: { kind: "text", text: content.value },
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: document.source } }])
+    mode: "regular", origin: { kind: "neutral", source: document.source } }])
     : refused({ kind: "render-failed", concept: "neutral-document", name: document.source, reason: content.refusal });
 };
 

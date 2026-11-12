@@ -22,7 +22,7 @@ test("Cursor hook registration places exact prepared JSON bytes once without res
         kind: "text",
         text: '{"version":1,"hooks":{"sessionStart":[{"command":"bun .cursor/tools/aidlc.ts session-start"}]}}\n',
       },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "harness-authored", source: source("hooks.json") },
     }]));
   expect(prepare).toHaveBeenCalledTimes(1);
