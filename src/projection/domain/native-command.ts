@@ -42,3 +42,12 @@ export const commandFilePath = (raw: string): Result<CommandFilePath, KernelRefu
   const portable = projectPath(raw);
   return portable.ok ? accepted(brand<CommandFilePath>(raw)) : portable;
 };
+
+export interface NativeCommandRoutes {
+  readonly prefix: string;
+  readonly namespace: string;
+  readonly delegates: readonly string[];
+  readonly adapterHooks: ReadonlySet<string>;
+  trusted(suffix: string): string;
+  unresolvable(request: { readonly file: string; readonly text: string }): readonly string[];
+}
