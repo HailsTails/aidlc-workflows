@@ -17,7 +17,7 @@ const runtimeFile = (request: {
   const path = projectPath(`${request.host.directory}/${request.file.source}`);
   return path.ok ? accepted([{ path: path.value,
     content: bindCopiedSource({ ...request.file, tokens: request.tokens }),
-    mode: "regular", availability: "always",
+    mode: "regular",
     origin: request.origin ?? { kind: "neutral", source: request.file.source } }])
     : refused({ kind: "render-failed", concept: "host-data", name: request.file.source,
       reason: "The runtime destination must be project-relative." });
@@ -28,7 +28,7 @@ const runtimeData = (request: {
   const name = request.name === "settings-schema" ? "aidlc-settings.schema" : request.name;
   const path = projectPath(`${request.host.directory}/tools/data/${name}.json`);
   return path.ok ? accepted([{ path: path.value, content: request.content,
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: request.name } }])
+    mode: "regular", origin: { kind: "runtime-data", name: request.name } }])
     : refused({ kind: "render-failed", concept: "host-data", name: request.name,
       reason: "The runtime data destination must be project-relative." });
 };

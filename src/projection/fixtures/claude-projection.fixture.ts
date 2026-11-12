@@ -20,7 +20,6 @@ export const claudeProjectionFixture = {
       ]),
       mode: "regular",
       origin: { kind: "rendered", concept: "agent", name: "aidlc-developer-agent" },
-      availability: "always",
     },
     {
       path: path(".claude/aidlc-common/agents/aidlc-developer-agent.md"),
@@ -38,7 +37,6 @@ export const claudeProjectionFixture = {
         kind: "method-source",
         path: methodPath({ kind: "agent", within: "aidlc-developer-agent.md" }),
       },
-      availability: "always",
     },
     {
       path: path(".claude/skills/aidlc-code-generation/SKILL.md"),
@@ -51,7 +49,6 @@ export const claudeProjectionFixture = {
       ]),
       mode: "regular",
       origin: { kind: "rendered", concept: "stage-command", name: "code-generation" },
-      availability: "always",
     },
     {
       path: path(".claude/skills/aidlc-feature/SKILL.md"),
@@ -64,7 +61,6 @@ export const claudeProjectionFixture = {
       ]),
       mode: "regular",
       origin: { kind: "rendered", concept: "scope-command", name: "feature" },
-      availability: "always",
     },
     {
       path: path(".claude/aidlc-common/stages/construction/code-generation.md"),
@@ -74,7 +70,6 @@ export const claudeProjectionFixture = {
         kind: "method-source",
         path: methodPath({ kind: "stage", within: "construction/code-generation.md" }),
       },
-      availability: "always",
     },
     {
       path: path(".claude/knowledge/aidlc-developer-agent/code-generation-guide.md"),
@@ -87,7 +82,6 @@ export const claudeProjectionFixture = {
           within: "aidlc-developer-agent/code-generation-guide.md",
         }),
       },
-      availability: "always",
     },
     {
       path: path(".claude/settings.json"),
@@ -101,21 +95,18 @@ export const claudeProjectionFixture = {
       ]),
       mode: "regular",
       origin: { kind: "rendered", concept: "hook-registration", name: "settings" },
-      availability: "always",
     },
     {
       path: path(".claude/CLAUDE.md"),
       content: text(["# AI-DLC", "", "Type `/aidlc` to start."]),
       mode: "regular",
       origin: { kind: "rendered", concept: "onboarding", name: "CLAUDE.md" },
-      availability: "always",
     },
     {
       path: path(".gitignore"),
       content: text(["# >>> aidlc gitignore", "aidlc/**/.aidlc-*", "# <<< aidlc gitignore"]),
       mode: "regular",
       origin: { kind: "harness-authored", source: source("harness/claude/dot-gitignore") },
-      availability: "always",
     },
   ],
   findings: [],

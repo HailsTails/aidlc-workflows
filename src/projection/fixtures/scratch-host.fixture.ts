@@ -56,7 +56,6 @@ export const scratchAgentRenderer: HostAgentRenderer = ({ channel }) => ({
         content: { kind: "text", text: `${agent.slug} for the ${channel} channel\n` },
         mode: "regular",
         origin: { kind: "method-source", path: agent.source },
-        availability: "always",
       }])
       : refused({ kind: "render-failed", concept: "agent", name: agent.slug,
         reason: "The scratch agent destination must be a project-relative path." });
@@ -75,7 +74,7 @@ const scratchFile = (request: {
   const destination = projectPath(request.path);
   return destination.ok
     ? accepted([{ path: destination.value, content: { kind: "text", text: request.name },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "rendered", concept: request.concept, name: request.name } }])
     : refused({ kind: "render-failed", concept: "host-data", name: request.name,
       reason: "The scratch destination must be a project-relative path." });

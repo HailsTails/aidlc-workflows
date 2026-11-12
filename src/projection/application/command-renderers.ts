@@ -24,7 +24,7 @@ const renderCommand = (request: {
   return collectCommandRenderings(rendered.value.files.map((file): Rendering => {
     const path = request.place(file);
     return path.ok ? accepted([{ path: path.value, mode: file.mode, content: file.content,
-      availability: "always", origin: { kind: "rendered", ...request.subject } }])
+      origin: { kind: "rendered", ...request.subject } }])
       : refused({ kind: "render-failed", ...request.subject,
         reason: "The native command destination must be a project-relative path." });
   }));

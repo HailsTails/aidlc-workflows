@@ -37,10 +37,10 @@ test("one surface projection emits host data and only declared authored placemen
   const prepare = mock(accepted);
   expect(projectHostSurface({ ...request, prepare })).toEqual(accepted([
     { path: path(".surface/tools/data/harness.json"), content: { kind: "text", text: descriptor },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "rendered", concept: "host-data", name: "surface-host" } },
     { path: path(".surface/notice.md"), content: { kind: "text", text: "Captured" },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "harness-authored", source: source("notice.md") } },
   ]));
   expect(prepare).toHaveBeenCalledTimes(1);
@@ -76,11 +76,11 @@ test("the native data renderer receives the supplied facts once before the exist
   }));
   expect(createHostSurfaceProjection(facts)({ ...request, placements: [], files: [], renderData })).toEqual(accepted([
     { path: path(".surface/tools/data/harness.json"), content: { kind: "text", text: descriptor },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "rendered", concept: "host-data", name: "surface-host" } },
     { path: path(".surface/tools/data/plugin-agent.md"),
       content: { kind: "text", text: "---\nname: delegate\nfixture delegate facts\n---\n" },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "rendered", concept: "host-data", name: "surface-host" } },
   ]));
   expect(renderData).toHaveBeenCalledTimes(1);

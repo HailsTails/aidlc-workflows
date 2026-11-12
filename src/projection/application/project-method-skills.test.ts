@@ -6,10 +6,10 @@ import type { Rendering } from "./ports/harness.ts";
 import { projectMethodSkills } from "./project-method-skills.ts";
 
 const shortcutFile = { path: path(".claude/skills/aidlc-init/SKILL.md"),
-  mode: "regular", availability: "always", content: { kind: "text", text: "Init\n" },
+  mode: "regular", content: { kind: "text", text: "Init\n" },
   origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc-init" } } as const;
 const doorFile = { path: path(".claude/skills/aidlc/SKILL.md"),
-  mode: "regular", availability: "always", content: { kind: "text", text: "Door\n" },
+  mode: "regular", content: { kind: "text", text: "Door\n" },
   origin: { kind: "harness-authored", source: source("skills/aidlc/SKILL.md") } } as const;
 
 test("one orchestrator composition retains shortcuts and the C door before session skills", () => {

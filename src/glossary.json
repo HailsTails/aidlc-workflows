@@ -139,7 +139,6 @@
 {"name":"MemoryCopy","context":"projection","kind":"concept","definition":"Which of a rule source's two deliberate copies a projected file is: the default space's memory at the workspace root, or the memory seed inside the host's tools/data folder that an engine-only install restores from."},
 {"name":"ProjectionOrigin","context":"projection","kind":"concept","definition":"Where a projected file came from: a method source, a neutral core file (protocols, templates, session skills, the SharedRuntime copies), the harness, a render, a RuntimeDataName, one MemoryCopy of a rule source, one MemoryCopy of a MemoryCompanion, or the active-space pointer."},
 {"name":"DistributionChannel","context":"projection","kind":"concept","definition":"Which channel a projection is rendered for: the copy that runs from the project folder, or the native release that runs the installed aidlc command."},
-{"name":"Availability","context":"projection","kind":"concept","definition":"Whether a projected file ships always or on one DistributionChannel only."},
 {"name":"ProjectedFile","context":"projection","kind":"concept","definition":"One harness-correct file with its origin.","legacy":["DirMap","FileMap"]},
 {"name":"HookPoint","context":"workflow-definition","kind":"concept","definition":"A host lifecycle point a hook attaches to: a lifecycle point or a tool point."},
 {"name":"NeutralDocumentRole","context":"projection","kind":"concept","definition":"What a core document a host places is: a protocol, a template, the conductor, a stage or a knowledge document."},

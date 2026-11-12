@@ -50,11 +50,11 @@ test("Projection composition serves the shared delegate facts to a native data r
   "harnessDir": ".claude",
   "rulesSubdir": "rules"
 }
-` }, mode: "regular", availability: "always",
+` }, mode: "regular",
       origin: { kind: "rendered", concept: "host-data", name: "claude" } },
     { path: path(".claude/tools/data/plugin-agent.md"),
       content: { kind: "text", text: "---\nengine\n---\n" },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "rendered", concept: "host-data", name: "claude" } },
   ]));
 });

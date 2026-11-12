@@ -52,7 +52,7 @@ const claudeDescriptor = `{
 test("host data retains exact key order and formatting while binding only hook strings", () => {
   expect(createHostSurfaceMembers(request).renderHostData()).toEqual(accepted([{
     path: path(".claude/tools/data/harness.json"), content: { kind: "text", text: claudeDescriptor },
-    mode: "regular", availability: "always",
+    mode: "regular",
     origin: { kind: "rendered", concept: "host-data", name: "claude" },
   }]));
 });
@@ -71,10 +71,10 @@ test("plugin frontmatter selects the requested channel and stays outside harness
   "harnessDir": ".claude",
   "rulesSubdir": "steering"
 }
-` }, mode: "regular", availability: "always",
+` }, mode: "regular",
       origin: { kind: "rendered", concept: "host-data", name: "claude" } },
     { path: path(".claude/tools/data/plugin-agent.md"), content: { kind: "text", text: "---\nnative\n---\n" },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "rendered", concept: "host-data", name: "claude" } },
   ]));
 });
@@ -85,7 +85,7 @@ test("authored placement keeps prepared binary bytes and authored provenance", (
   }).placeAuthoredFile({ file: { source: source("dot-gitignore"),
     content: { kind: "text", text: "Captured {{INVOKE}}" } } })).toEqual(accepted([{
       path: path(".gitignore"), content: { kind: "bytes", bytes: new Uint8Array([0, 255]) },
-      mode: "regular", availability: "always",
+      mode: "regular",
       origin: { kind: "harness-authored", source: source("dot-gitignore") },
     }]));
 });
@@ -127,7 +127,7 @@ test("nested hook strings escape safely while new-chat text stays in its declare
         env: ["{{TOOL_PREFIX}}"], text: "{{TRUSTED_NAMESPACE}}" } },
       newChatStep: { text: "{{INVOKE}}", inHost: { env: ["native"], text: "{{INVOKE}}" } } },
   }).renderHostData()).toEqual(accepted([{
-    path: path(".claude/tools/data/harness.json"), mode: "regular", availability: "always",
+    path: path(".claude/tools/data/harness.json"), mode: "regular",
     origin: { kind: "rendered", concept: "host-data", name: "claude" },
     content: { kind: "text", text: `{
   "schemaVersion": 1,

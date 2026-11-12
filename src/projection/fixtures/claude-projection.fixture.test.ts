@@ -54,7 +54,6 @@ const DEVELOPER_AGENT_FILE = {
   },
   mode: "regular",
   origin: { kind: "rendered", concept: "agent", name: "aidlc-developer-agent" },
-  availability: "always",
 };
 
 describe("claudeProjectionFixture", () => {

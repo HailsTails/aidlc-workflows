@@ -24,8 +24,6 @@ const projectionFiles = (request: {
   readonly package: PackagePayloadRequest;
   readonly hasher: ContentHasher;
 }): readonly Result<PayloadFile, KernelRefusal>[] => request.package.projection.files
-  .filter((file) => file.availability === undefined || file.availability === "always"
-    || file.availability === `${request.package.channel}-only`)
   .map((file) => {
     const hash = request.hasher.hash(file.content);
     return hash.ok ? accepted({ path: file.path, content: file.content, mode: file.mode,

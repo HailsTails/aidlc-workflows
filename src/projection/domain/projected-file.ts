@@ -33,12 +33,9 @@ export type ProjectionOrigin =
 
 export type DistributionChannel = "copy" | "native";
 
-export type Availability = "always" | `${DistributionChannel}-only`;
-
 export type ProjectedFile = {
   readonly path: ProjectPath;
   readonly content: FileContent;
   readonly mode: FileMode;
   readonly origin: ProjectionOrigin;
-  readonly availability?: Availability;
 };

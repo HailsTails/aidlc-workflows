@@ -34,9 +34,9 @@ test("a captured value passes the kernel version decoder before becoming a paylo
 const ZERO_HASH = hash("sha256:0000000000000000000000000000000000000000000000000000000000000000");
 const versionModule: ProjectedFile = { path: path(".scratch/tools/aidlc-version.ts"),
   content: { kind: "text", text: 'export const AIDLC_VERSION = "2.11.3";' }, mode: "regular",
-  availability: "always", origin: { kind: "runtime-data", name: "version-module" } };
+  origin: { kind: "runtime-data", name: "version-module" } };
 const authoringFile: ProjectedFile = { path: path(".scratch/tools/data/plugin-authoring.json"),
-  content: { kind: "text", text: "{}" }, mode: "regular", availability: "always",
+  content: { kind: "text", text: "{}" }, mode: "regular",
   origin: { kind: "runtime-data", name: "stage-graph" } };
 
 const packaged = async (files: readonly ProjectedFile[]) => {

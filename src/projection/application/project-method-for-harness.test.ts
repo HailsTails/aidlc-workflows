@@ -51,31 +51,31 @@ const request: ProjectMethodRequest = {
 };
 const claudeRuntime = [
   { path: path(".claude/tools/aidlc-version.ts"), content: { kind: "text", text: "version" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "version-module" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "version-module" } },
   { path: path(".claude/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "agent-tiers" } },
   { path: path(".claude/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "settings-schema" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "settings-schema" } },
   { path: path(".claude/tools/data/stage-graph.json"), content: { kind: "text", text: "graph" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "stage-graph" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "stage-graph" } },
   { path: path(".claude/tools/data/scope-grid.json"), content: { kind: "text", text: "grid" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "scope-grid" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "scope-grid" } },
   { path: path("aidlc/active-space"), content: { kind: "text", text: "default\n" },
-    mode: "regular", availability: "always", origin: { kind: "active-space" } },
+    mode: "regular", origin: { kind: "active-space" } },
 ] as const;
 const codexRuntime = [
   { path: path(".codex/tools/aidlc-version.ts"), content: { kind: "text", text: "version" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "version-module" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "version-module" } },
   { path: path(".codex/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "agent-tiers" } },
   { path: path(".codex/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "settings-schema" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "settings-schema" } },
   { path: path(".codex/tools/data/stage-graph.json"), content: { kind: "text", text: "graph" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "stage-graph" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "stage-graph" } },
   { path: path(".codex/tools/data/scope-grid.json"), content: { kind: "text", text: "grid" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "scope-grid" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "scope-grid" } },
   { path: path("aidlc/active-space"), content: { kind: "text", text: "default\n" },
-    mode: "regular", availability: "always", origin: { kind: "active-space" } },
+    mode: "regular", origin: { kind: "active-space" } },
 ] as const;
 
 const registry = (hosted: HostedHarness): HarnessRegistry => ({
@@ -145,7 +145,7 @@ test("all concepts use the existing final-path collision owner", () => {
   expect(createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
     ...claudeHarness(), renderSettings: () => accepted([{
       path: path(".claude/tools/aidlc-version.ts"), content: { kind: "text", text: "other" },
-      mode: "regular", availability: "always", origin: { kind: "rendered", concept: "settings", name: "settings" },
+      mode: "regular", origin: { kind: "rendered", concept: "settings", name: "settings" },
     }]),
   } })).project(request)).toEqual(refused([{ kind: "path-collision",
     path: path(".claude/tools/aidlc-version.ts"), origins: [
@@ -185,14 +185,14 @@ test("runtime owns a copied path that is also represented in the semantic source
       files: [{ source: source("scopes/feature.md"), content: { kind: "text", text: "copy snapshot" } }],
     } })).toHaveProperty("value.files", expect.arrayContaining([{
       path: path(".claude/scopes/feature.md"), content: { kind: "text", text: "copy snapshot" },
-      mode: "regular", availability: "always", origin: { kind: "neutral", source: source("scopes/feature.md") },
+      mode: "regular", origin: { kind: "neutral", source: source("scopes/feature.md") },
     }]));
 });
 
 test("neutral documents reach the native owner raw and final bytes receive no second pass", () => {
   const placeNeutralDocument = mock((): Rendering => accepted([{
     path: path(".claude/protocol.md"), content: { kind: "text", text: "literal {{INVOKE}}" },
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: source("protocol.md") },
+    mode: "regular", origin: { kind: "neutral", source: source("protocol.md") },
   }]));
   const projection = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
     harness: { ...claudeHarness(), placeNeutralDocument } })).project({ ...request, surface: {
@@ -206,7 +206,7 @@ test("neutral documents reach the native owner raw and final bytes receive no se
   } });
   expect(projection).toHaveProperty("value.files", expect.arrayContaining([{
     path: path(".claude/protocol.md"), content: { kind: "text", text: "literal {{INVOKE}}" },
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: source("protocol.md") },
+    mode: "regular", origin: { kind: "neutral", source: source("protocol.md") },
   }]));
 });
 
@@ -214,13 +214,13 @@ test("session skills precede the orchestrator and settings in rendered-concept o
   const projection = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
     harness: { ...claudeHarness(), renderSessionSkill: () => accepted([{
       path: path(".claude/session.md"), content: { kind: "text", text: "session" },
-      mode: "regular", availability: "always", origin: { kind: "rendered", concept: "session-skill", name: "session" },
+      mode: "regular", origin: { kind: "rendered", concept: "session-skill", name: "session" },
     }]), renderOrchestratorSkill: () => accepted([{
       path: path(".claude/door.md"), content: { kind: "text", text: "door" },
-      mode: "regular", availability: "always", origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc" },
+      mode: "regular", origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc" },
     }]), renderSettings: () => accepted([{
       path: path(".claude/settings-native.json"), content: { kind: "text", text: "settings" },
-      mode: "regular", availability: "always", origin: { kind: "rendered", concept: "settings", name: "settings" },
+      mode: "regular", origin: { kind: "rendered", concept: "settings", name: "settings" },
     }]) } })).project({ ...request, surface: { ...request.surface, skills: [{ name: "session", files: [] }] } });
   expect(projection).toHaveProperty("value.files.3.path", path(".claude/session.md"));
   expect(projection).toHaveProperty("value.files.4.path", path(".claude/door.md"));
@@ -272,27 +272,27 @@ const ownershipFiles = (): readonly ProjectedFile[] => [
     path: methodSource({ kind: "agent", within: "aidlc-developer-agent.md" }) } },
   rawStage, rawKnowledge,
   { path: path("aidlc/spaces/default/memory/org.md"), content: rawStage.content,
-    mode: "regular", availability: "always", origin: { kind: "workspace-memory", copy: "space",
+    mode: "regular", origin: { kind: "workspace-memory", copy: "space",
       path: methodSource({ kind: "rule", within: "org.md" }) } },
   { path: path(".claude/tools/data/memory-seed/org.md"), content: rawStage.content,
-    mode: "regular", availability: "always", origin: { kind: "workspace-memory", copy: "seed",
+    mode: "regular", origin: { kind: "workspace-memory", copy: "seed",
       path: methodSource({ kind: "rule", within: "org.md" }) } },
   { path: path("aidlc/active-space"), content: { kind: "text", text: "default\n" },
-    mode: "regular", availability: "always", origin: { kind: "active-space" } },
+    mode: "regular", origin: { kind: "active-space" } },
   { path: path(".claude/scopes/feature.md"), content: rawStage.content,
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: source("scopes/feature.md") } },
+    mode: "regular", origin: { kind: "neutral", source: source("scopes/feature.md") } },
   { path: path(".claude/sensors/check.md"), content: rawStage.content,
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: source("sensors/check.md") } },
+    mode: "regular", origin: { kind: "neutral", source: source("sensors/check.md") } },
   { path: path(".claude/hooks/start.ts"), content: rawStage.content,
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: source("hooks/start.ts") } },
+    mode: "regular", origin: { kind: "neutral", source: source("hooks/start.ts") } },
   { path: path(".claude/tools/aidlc-version.ts"), content: { kind: "text", text: "version" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "version-module" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "version-module" } },
   { path: path(".claude/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "agent-tiers" } },
   { path: path(".claude/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "settings-schema" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "settings-schema" } },
   { path: path(".claude/tools/data/stage-graph.json"), content: { kind: "text", text: "graph" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "stage-graph" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "stage-graph" } },
   { path: path(".claude/tools/data/scope-grid.json"), content: { kind: "text", text: "grid" },
-    mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "scope-grid" } },
+    mode: "regular", origin: { kind: "runtime-data", name: "scope-grid" } },
 ];

@@ -4,10 +4,10 @@ import { path } from "../../kernel/fixtures/values.fixture.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import { projectMethodSettings } from "./project-method-settings.ts";
 
-const settings = { path: path(".native/settings.json"), mode: "regular", availability: "always",
+const settings = { path: path(".native/settings.json"), mode: "regular",
   content: { kind: "text", text: "settings bytes" },
   origin: { kind: "rendered", concept: "settings", name: "settings.json" } } as const;
-const hooks = { path: path(".native/hooks.json"), mode: "regular", availability: "always",
+const hooks = { path: path(".native/hooks.json"), mode: "regular",
   content: { kind: "text", text: "hook bytes" },
   origin: { kind: "rendered", concept: "hook-registration", name: "hooks.json" } } as const;
 
