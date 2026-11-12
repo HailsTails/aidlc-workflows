@@ -648,3 +648,31 @@ export const path = LAUNCHER_PATH;
     expect(hostBridgeFindingsFor(code)).toContainEqual(IMPORT_REFUSAL);
   });
 });
+
+describe("boundaryConfig for a composition root's reach into a host", () => {
+  const importOf = (path: string): string => `import { host } from "${path}";\nexport const one = host;\n`;
+
+  test("lets src/cli import a host through its one module", () => {
+    expect(findingsFor(importOf("../hosts/claude/host.ts"), "src/cli/host-table.ts")).not.toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+
+  test("refuses src/cli a host's renderer", () => {
+    expect(
+      findingsFor(importOf("../hosts/kiro/projection/agent-renderer.ts"), "src/cli/host-table.ts"),
+    ).toContainEqual(IMPORT_REFUSAL);
+  });
+
+  test("refuses src/cli a host's data and distribution files", () => {
+    expect(findingsFor(importOf("../hosts/codex/distribution.ts"), "src/cli/package-build-root.ts")).toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+
+  test("refuses a nested file that happens to be named host.ts", () => {
+    expect(findingsFor(importOf("../hosts/codex/projection/host.ts"), "src/cli/host-table.ts")).toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+});

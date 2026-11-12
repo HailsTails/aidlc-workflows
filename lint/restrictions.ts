@@ -138,6 +138,16 @@ const hostBundleReach: ImportRestriction = {
 const hostReachFor = (placement: Placement): readonly ImportRestriction[] =>
   placement.context === "cli" && placement.layer === "root" ? [] : [hostBundleReach];
 
+const hostModuleOnly: ImportRestriction = {
+  regex: "(^|/)hosts/(?![\\w-]+/host\\.ts$)",
+  message:
+    "Host module: a composition root in src/cli imports a host only through its one module, " +
+    "src/hosts/<host>/host.ts. What the host supplies is that module's to export.",
+};
+
+const productionHostReachFor = (placement: Placement): readonly ImportRestriction[] =>
+  placement.context === "cli" && placement.layer === "root" ? [hostModuleOnly] : [hostBundleReach];
+
 const testDiscipline: readonly ImportRestriction[] = [
   {
     regex: "(^|/)adapters/",
@@ -186,7 +196,7 @@ export const srcImportRestrictions = (placement: Placement): ImportRestriction[]
   ...rootEffectRestrictions(placement),
   ...purityRestriction(placement.layer),
   ...testSupportRestriction(placement.layer),
-  ...hostReachFor(placement),
+  ...productionHostReachFor(placement),
   monolithReachBack,
 ];
 
