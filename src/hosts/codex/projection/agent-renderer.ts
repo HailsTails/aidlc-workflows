@@ -2,6 +2,7 @@ import type { HostAgentRenderer } from "../../../projection/application/ports/ag
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
+import { renderCodexToml } from "./toml-models.ts";
 
 const nativeInstructions = (persona: string): string => persona.replace(
   /the `maxTurns: (\d+)` frontmatter above - keep the two numbers in sync/g,
@@ -29,7 +30,8 @@ export const codexAgents: HostAgentRenderer = (inputs) => ({
     if (!markdown.ok) return markdown;
     const persona = inputs.persona({ agent, text: "persona-body", knowledge: "absorbed", reading: "whole-files" });
     if (!persona.ok) return persona;
-    const codex = inputs.tomlModels({ agent, content: nativeRole(agent, persona.value) });
+    const codex = renderCodexToml({ agent, content: nativeRole(agent, persona.value),
+      host: inputs.host, modelCap: inputs.modelCap });
     if (!codex.ok) return codex;
     return accepted([
       { path: markdownPath.value, content: { kind: "text", text: markdown.value }, mode: "regular",
