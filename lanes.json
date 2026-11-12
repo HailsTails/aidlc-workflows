@@ -223,6 +223,7 @@
         "src/cli/host-table{,.test}.ts",
         "scripts/package-release.ts",
         "src/cli/roots{,.test}.ts",
+        "src/glossary.json",
         "src/cli/eighth-host.test.ts",
         "src/projection/core-root{,.test}.ts",
         "harness/codex/manifest.ts",
