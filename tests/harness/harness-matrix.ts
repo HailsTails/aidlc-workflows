@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { frontmatterBlock } from "../../core/tools/aidlc-lib.ts";
 import {
-  hostAgentMembers, HOST_BUILD_MEMBERS,
+  hostModule, HOSTS,
 } from "../../src/cli/host-table.ts";
 import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
 import { validateProjectionDescriptor, type ProjectionDescriptor, type ProjectionStamp }
@@ -232,7 +232,7 @@ export type ShippedHarness = {
 };
 
 function discoverManifestNames(): string[] {
-  return HOST_BUILD_MEMBERS
+  return HOSTS
     .map((member) => member.host.distribution).sort();
 }
 
@@ -276,14 +276,13 @@ function producesConductorAgent(name: ShippedHarnessName,
   const directory = projectPath(manifest.harnessDir);
   if (!distribution.ok || !directory.ok) fail(name, "agent producer needs a valid host identity");
   const host = { distribution: distribution.value, directory: directory.value };
-  const member = hostAgentMembers(host);
-  if (!member.ok) fail(name, `agent producer was refused: ${JSON.stringify(member.refusal)}`);
-  if (member.value === null) return false;
-  const conductor = member.value.inputs.find((source) => source === "agents/aidlc.json");
+  const agents = hostModule(host)?.projection.agents;
+  if (agents === undefined) return false;
+  const conductor = agents.inputs.find((source) => source === "agents/aidlc.json");
   if (conductor === undefined) return false;
   const authored = join(HARNESS_ROOT, name, conductor);
   if (!existsSync(authored)) fail(name, "agent producer's captured conductor source is missing");
-  const rendered = member.value.render({ host, channel: "copy",
+  const rendered = agents.render({ host, channel: "copy",
     delegateShellFacts: DELEGATE_SHELL_FACTS,
     tokens: tokenBindingsFixture({ harnessDir: manifest.harnessDir }),
     persona: () => accepted(""), documents: () => accepted(""), tomlModels: () => accepted(""),
@@ -370,7 +369,7 @@ export function onboardingFillsSource(name: ShippedHarnessName): string {
 export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapabilities): {
   manifest: ShippedManifest; fills: OnboardingFills;
 } | null {
-  const member = HOST_BUILD_MEMBERS.find((candidate) =>
+  const member = HOSTS.find((candidate) =>
     candidate.host.distribution === name);
   if (!member) return null;
   if (capabilities.onboarding.mode !== "projection") {
@@ -378,17 +377,17 @@ export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapa
   }
   const descriptor = fullHostDescriptor(name, member.host.directory);
   validateFullHostLayout({ name, descriptor, capabilities });
-  const includes = new Set(member.placements.map((placement) => placement.destination));
+  const includes = new Set(member.projection.placements.map((placement) => placement.destination));
   const importsMemory = includes.has(`${member.host.directory}/rules/aidlc.md`);
   if ((capabilities.memoryInclude === "claude-import") !== importsMemory) {
     fail(name, "memoryInclude does not agree with the registered include surfaces");
   }
   validateFullHostAgentsAndPlugin(name, capabilities);
-  return { fills: member.fills, manifest: { name, harnessDir: descriptor.harnessDir,
+  return { fills: member.projection.fills, manifest: { name, harnessDir: descriptor.harnessDir,
     rootIntegrations: descriptor.rootIntegrations,
     orchestratorSkillPath: `${capabilities.skillsRoot}/aidlc/SKILL.md`,
     onboarding: onboardingSpec({ directory: descriptor.harnessDir,
-      onboarding: capabilities.onboarding, fills: member.fills }),
+      onboarding: capabilities.onboarding, fills: member.projection.fills }),
   } };
 }
 

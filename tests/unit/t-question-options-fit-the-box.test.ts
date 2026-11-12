@@ -12,10 +12,10 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { HOST_BUILD_MEMBERS } from "../../src/cli/host-table.ts";
+import { HOSTS } from "../../src/cli/host-table.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 
-const FULL_HOSTS = HOST_BUILD_MEMBERS.filter((member) => member.distribution);
+const FULL_HOSTS = HOSTS;
 const HARNESS_NAMES = FULL_HOSTS.map((member) => member.host.distribution).sort();
 
 // Where the agent reads that a question's options are lettered, in each tree.
@@ -36,7 +36,7 @@ function engineRoot(name: string): string {
 }
 
 function questionOptions(name: string): number {
-  const letters = memberOf(name).tokens.OPTION_LETTERS;
+  const letters = memberOf(name).projection.tokens.OPTION_LETTERS;
   if (!letters || !/^A-[B-E]$/.test(letters)) throw new Error(`Invalid host option letters: ${letters}`);
   return letters.charCodeAt(2) - 64;
 }

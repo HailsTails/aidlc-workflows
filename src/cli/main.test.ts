@@ -1,4 +1,4 @@
-import { HOST_BUILD_MEMBERS } from "./host-table.ts";
+import { HOSTS } from "./host-table.ts";
 const outliner = { outline: (text: string) => ({ text, headings: [] }) };
 import { expect, mock, test } from "bun:test";
 import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
@@ -37,7 +37,7 @@ test("the entry constructs each implementer once and binds its instance to the c
   expect(createNodeProcessRunner).toHaveBeenCalledTimes(1);
   expect(createBunYamlParser).toHaveBeenCalledTimes(1);
   expect(createPackageBuildRoot).toHaveBeenCalledTimes(1);
-  expect(createPackageBuildRoot).toHaveBeenCalledWith({ hosts: HOST_BUILD_MEMBERS, outliner,
+  expect(createPackageBuildRoot).toHaveBeenCalledWith({ hosts: HOSTS, outliner,
     platform: { fileSystem, processRunner, yaml },
     sources: { core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url) },
     runnerFrames: new URL("../../.cache/runner-frames/", import.meta.url),
