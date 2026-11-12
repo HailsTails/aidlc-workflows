@@ -26,7 +26,7 @@ const onboardingFailure = (name: string, reason: string): Rendering =>
 const onboardingFile = (name: string, text: string): Rendering => {
   const path = projectPath(name);
   return path.ok ? accepted([{ path: path.value, content: { kind: "text", text },
-    mode: "regular", availability: "always", origin: { kind: "rendered", concept: "onboarding", name } }])
+    mode: "regular", origin: { kind: "rendered", concept: "onboarding", name } }])
     : onboardingFailure(name, "The onboarding destination must be project-relative.");
 };
 
@@ -41,7 +41,7 @@ const placeDocument = (document: NeutralDocument, inputs: {
     ownHeading: CODEX_BINDING_HEADING, expectedHeadings: inputs.bindingHeadings, file: document.source })
     : accepted(bound);
   return content.ok ? accepted([{ path: path.value, content: { kind: "text", text: content.value },
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: document.source } }])
+    mode: "regular", origin: { kind: "neutral", source: document.source } }])
     : refused({ kind: "render-failed", concept: "neutral-document", name: document.source, reason: content.refusal });
 };
 

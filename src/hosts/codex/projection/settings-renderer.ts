@@ -162,7 +162,7 @@ const file = ({ name, text, concept }: { name: string; text: string; concept: Re
   if (!path.ok) return refused({ kind: "render-failed", concept, name,
     reason: "The settings destination must be project-relative." });
   return accepted([{ path: path.value, content: { kind: "text", text },
-    mode: "regular", availability: "always", origin: { kind: "rendered", concept, name } }]);
+    mode: "regular", origin: { kind: "rendered", concept, name } }]);
 };
 
 const hookFiles = ({ harnessDir, invoke, trustedNamespace, harnessName }: HookCommand & { readonly harnessDir: string }, capabilities: SettingsCapabilities): Rendering => {

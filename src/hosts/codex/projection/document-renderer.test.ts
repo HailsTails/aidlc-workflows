@@ -19,14 +19,14 @@ test("Codex owns the literal protocol binding heading", () => {
 test("split onboarding and config retain exact neutral, native and embedded bytes", () => {
   expect(renderer.renderOnboarding({ templates: ONBOARDING_TEMPLATES_FIXTURE, method: methodSliceFixture }))
     .toEqual({ ok: true, value: [
-      { path: path("AGENTS.md"), mode: "regular", availability: "always",
+      { path: path("AGENTS.md"), mode: "regular",
         origin: { kind: "rendered", concept: "onboarding", name: "AGENTS.md" },
         content: { kind: "text", text: "# AI-DLC in this project\n\nYour work is recorded under aidlc/.\n" } },
-      { path: path(".codex/onboarding.md"), mode: "regular", availability: "always",
+      { path: path(".codex/onboarding.md"), mode: "regular",
         origin: { kind: "rendered", concept: "onboarding", name: ".codex/onboarding.md" },
         content: { kind: "text", text: "# AI-DLC for this host\n\nStart a piece of work with /aidlc.\n" +
           "The install lives in .codex; run bun .codex/tools/aidlc.ts doctor to check it.\n" } },
-      { path: path(".codex/config.toml"), mode: "regular", availability: "always",
+      { path: path(".codex/config.toml"), mode: "regular",
         origin: { kind: "rendered", concept: "onboarding", name: ".codex/config.toml" },
         content: { kind: "text", text: expectedConfig } },
     ] });
@@ -35,7 +35,7 @@ test("split onboarding and config retain exact neutral, native and embedded byte
 test("protocol placement binds tokens, renames rules, and keeps only the Codex subsection", () => {
   const document = protocolDocumentFixture();
   expect(renderer.placeNeutralDocument({ document })).toEqual({ ok: true, value: [{
-    path: path(".codex/aidlc-common/protocols/stage-protocol.md"), mode: "regular", availability: "always",
+    path: path(".codex/aidlc-common/protocols/stage-protocol.md"), mode: "regular",
     origin: { kind: "neutral", source: document.source }, content: { kind: "text", text:
       "# Stage protocol\n\nRead the standing rules in .codex/aidlc-rules/ before a stage starts.\n\n" +
       "## Harness bindings\n\n#### Codex CLI\n\nCodex CLI runs the stage in the session.\n\n" },
@@ -45,7 +45,7 @@ test("protocol placement binds tokens, renames rules, and keeps only the Codex s
 test("copied document tokens keep the native default.rules exception", () => {
   expect(renderer.placeNeutralDocument({ document: { source: source("knowledge/example.md"), role: "knowledge",
     content: { kind: "text", text: "{{HARNESS_DIR}}/rules/default.rules {{HARNESS_DIR}}/rules/team.md {{OPTION_LETTERS}}" },
-  } })).toEqual({ ok: true, value: [{ path: path(".codex/knowledge/example.md"), mode: "regular", availability: "always",
+  } })).toEqual({ ok: true, value: [{ path: path(".codex/knowledge/example.md"), mode: "regular",
     origin: { kind: "neutral", source: source("knowledge/example.md") }, content: { kind: "text",
       text: ".codex/rules/default.rules .codex/aidlc-rules/team.md A-E" },
   }] });
@@ -55,7 +55,7 @@ test("onboarding rewrites native skill paths and preserves its no-option-letters
   const rendered = accept(renderer.renderOnboarding({ method: methodSliceFixture, templates: {
     neutral: "Neutral\n", harnessSkeleton: "{{HARNESS_DIR}}/skills/aidlc {{OPTION_LETTERS}}\n",
   } }));
-  expect(rendered[1]).toEqual({ path: path(".codex/onboarding.md"), mode: "regular", availability: "always",
+  expect(rendered[1]).toEqual({ path: path(".codex/onboarding.md"), mode: "regular",
     origin: { kind: "rendered", concept: "onboarding", name: ".codex/onboarding.md" },
     content: { kind: "text", text: ".agents/skills/aidlc {{OPTION_LETTERS}}\n" } });
   expect(rendered[2]?.content).toMatchObject({ text: expect.stringContaining(".agents/skills/aidlc {{OPTION_LETTERS}}\n'''") });

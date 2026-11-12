@@ -33,9 +33,9 @@ export const codexAgents: HostAgentRenderer = (inputs) => ({
     if (!codex.ok) return codex;
     return accepted([
       { path: markdownPath.value, content: { kind: "text", text: markdown.value }, mode: "regular",
-        origin: { kind: "method-source", path: agent.source }, availability: "always" },
+        origin: { kind: "method-source", path: agent.source } },
       { path: codexPath.value, content: { kind: "text", text: codex.value }, mode: "regular",
-        origin: { kind: "method-source", path: agent.source }, availability: "always" },
+        origin: { kind: "method-source", path: agent.source } },
     ]);
   },
   renderConductorAgent: () => accepted([]),

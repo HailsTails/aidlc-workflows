@@ -42,9 +42,9 @@ test("the registered Codex factory supplies separate exact Markdown and persona 
     },
   });
   expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([
-    { path: accept(projectPath(".codex/agents/aidlc-example-agent.md")), mode: "regular", availability: "always",
+    { path: accept(projectPath(".codex/agents/aidlc-example-agent.md")), mode: "regular",
       content: { kind: "text", text: "Markdown persona\n" }, origin: { kind: "method-source", path: agent.source } },
-    { path: accept(projectPath(".codex/agents/aidlc-example-agent.toml")), mode: "regular", availability: "always",
+    { path: accept(projectPath(".codex/agents/aidlc-example-agent.toml")), mode: "regular",
       content: { kind: "text", text: "Native TOML persona\n" }, origin: { kind: "method-source", path: agent.source } },
   ]));
 });
