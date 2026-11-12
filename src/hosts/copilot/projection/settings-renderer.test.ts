@@ -147,13 +147,13 @@ const expectedFractionalText = `{
 }
 `;
 const launcherFile = (text: string) => ({
-  path: path(".fixture/bin/engine"), mode: "executable" as const, availability: "always" as const,
+  path: path(".fixture/bin/engine"), mode: "executable" as const,
   origin: { kind: "rendered" as const, concept: "hook-registration" as const, name: "aidlc-engine" },
   content: { kind: "text" as const, text },
 });
 const expectedLauncher = launcherFile("run bun .renamed/tools/aidlc.ts engine\n");
 const expectedFile = {
-  path: path(".github/hooks/aidlc.json"), mode: "regular" as const, availability: "always" as const,
+  path: path(".github/hooks/aidlc.json"), mode: "regular" as const,
   origin: { kind: "rendered" as const, concept: "hook-registration" as const, name: "aidlc.json" },
   content: { kind: "text" as const, text: expectedText },
 };
