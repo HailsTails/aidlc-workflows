@@ -18,7 +18,7 @@
 {"name":"FileWriteError","context":"kernel","kind":"concept","definition":"A write the file system refused, with its fault."},
 {"name":"MakeScratchFolderArgs","context":"kernel","kind":"technical","definition":"The parent folder a private scratch folder is made below, by URL."},
 {"name":"MakeFolderArgs","context":"kernel","kind":"technical","definition":"The folder to make, with any missing parents, by URL."},
-{"name":"WriteFileArgs","context":"kernel","kind":"technical","definition":"The file to write, by URL, and its content; missing parent folders are made."},
+{"name":"WriteFileArgs","context":"kernel","kind":"technical","definition":"The file to write, by URL, its content and, when it must run, its FileMode (absent means regular); missing parent folders are made."},
 {"name":"RemoveFolderArgs","context":"kernel","kind":"technical","definition":"The folder to remove with everything below it, by URL."},
 {"name":"ProcessRunner","context":"kernel","kind":"port","definition":"Port: runs the current runtime as a child process and returns how it ended and what it wrote."},
 {"name":"ProcessArgument","context":"kernel","kind":"concept","definition":"One argument or environment value for a child process: text, a path given by URL, or the runtime's own folder."},

@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   asFolder,
@@ -10,20 +10,24 @@ import {
   type FileWriteError,
   type FolderEntry,
 } from "./file-system-port.ts";
+import type { FileMode } from "./file-content.ts";
 import { accepted, refused, type Result } from "./result.ts";
+
+type NodeWriteFileArgs = { readonly file: URL; readonly bytes: Uint8Array; readonly mode: FileMode };
 
 export type NodeFileLib = {
   readonly readFile: (file: URL) => Promise<Uint8Array>;
   readonly readdir: (folder: URL) => Promise<readonly FolderEntry[]>;
   readonly makeTemporaryFolder: (parent: URL) => Promise<URL>;
   readonly makeFolder: (folder: URL) => Promise<void>;
-  readonly writeFile: (file: URL, bytes: Uint8Array) => Promise<void>;
+  readonly writeFile: (nodeWriteFileArgs: NodeWriteFileArgs) => Promise<void>;
   readonly removeFolder: (folder: URL) => Promise<void>;
 };
 
 export type CreateNodeFileSystemArgs = { readonly fileLib?: NodeFileLib };
 
 const SCRATCH_PREFIX = "scratch-";
+const EXECUTABLE_PERMISSIONS = 0o755;
 
 const FAULTS_BY_ERRNO: ReadonlyMap<string, FileSystemFault> = new Map([
   ["ENOENT", "not-found"],
@@ -67,9 +71,10 @@ const nodeFileLib: NodeFileLib = {
   makeFolder: async (folder) => {
     await mkdir(folder, { recursive: true });
   },
-  writeFile: async (file, bytes) => {
+  writeFile: async ({ file, bytes, mode }) => {
     await mkdir(new URL(".", file), { recursive: true });
     await writeFile(file, bytes);
+    if (mode === "executable") await chmod(file, EXECUTABLE_PERMISSIONS);
   },
   removeFolder: (folder) => rm(folder, { recursive: true, force: true }),
 };
@@ -93,8 +98,8 @@ export const createNodeFileSystem = (
       await fileLib.makeFolder(folder);
       return asFolder(folder);
     }),
-    writeFile: ({ file, content }) => attemptWrite(async () => {
-      await fileLib.writeFile(file, bytesOf(content));
+    writeFile: ({ file, content, mode = "regular" }) => attemptWrite(async () => {
+      await fileLib.writeFile({ file, bytes: bytesOf(content), mode });
       return file;
     }),
     removeFolder: ({ folder }) => attemptWrite(async () => {

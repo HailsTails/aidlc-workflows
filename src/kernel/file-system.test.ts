@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { FileSystemFault } from "./file-system-port.ts";
 import { createNodeFileSystem, type NodeFileLib } from "./file-system.ts";
 
@@ -81,6 +81,19 @@ describe("createNodeFileSystem writes over its file library seam", () => {
 
     expect(await fileSystem.writeFile({ file: new URL("file:///tmp/a.md"), content: { kind: "text", text: "a" } }))
       .toEqual({ ok: true, value: new URL("file:///tmp/a.md") });
+  });
+
+  test("passes an executable mode to the file library and defaults to regular", async () => {
+    const writeFile = mock(async () => undefined);
+    const fileSystem = createNodeFileSystem({ fileLib: { ...writingLib, writeFile } });
+    const file = new URL("file:///tmp/a.sh");
+    const content = { kind: "text", text: "a" } as const;
+
+    await fileSystem.writeFile({ file, content, mode: "executable" });
+    await fileSystem.writeFile({ file, content });
+
+    expect(writeFile).toHaveBeenNthCalledWith(1, { file, bytes: new Uint8Array([97]), mode: "executable" });
+    expect(writeFile).toHaveBeenNthCalledWith(2, { file, bytes: new Uint8Array([97]), mode: "regular" });
   });
 
   test("returns a write failure as an unwritable fault", async () => {

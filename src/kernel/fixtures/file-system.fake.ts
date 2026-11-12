@@ -6,7 +6,7 @@ import {
   type FolderEntry,
   type TreeSelection,
 } from "../file-system-port.ts";
-import type { FileContent } from "../file-content.ts";
+import type { FileContent, FileMode } from "../file-content.ts";
 import { accepted, refused } from "../result.ts";
 
 export type InMemoryFileSystemArgs = {
@@ -17,10 +17,12 @@ export type InMemoryFileSystemArgs = {
 
 export type InMemoryFileSystem = FileSystem & {
   readonly snapshot: () => Readonly<Record<string, FileContent>>;
+  readonly modes: () => Readonly<Record<string, FileMode>>;
 };
 
 type Store = {
   readonly files: Map<string, FileContent>;
+  readonly modes: Map<string, FileMode>;
   readonly folders: Set<string>;
   readonly faults: Readonly<Record<string, FileSystemFault>>;
   readonly others: readonly string[];
@@ -69,10 +71,11 @@ const writesOf = (store: Store): Pick<FileSystem,
     store.folders.add(asFolder(folder).href);
     return accepted(asFolder(folder));
   },
-  writeFile: async ({ file, content }) => {
+  writeFile: async ({ file, content, mode = "regular" }) => {
     const fault = store.faults[file.href];
     if (fault !== undefined) return refused({ kind: "unwritable", code: fault });
     store.files.set(file.href, content);
+    store.modes.set(file.href, mode);
     return accepted(file);
   },
   removeFolder: async ({ folder }) => {
@@ -92,7 +95,7 @@ export const createInMemoryFileSystem = (
 ): InMemoryFileSystem => {
   const store: Store = {
     files: new Map(Object.entries(files).map(([href, content]) => [href, contentOf(content)])),
-    folders: new Set(), faults, others,
+    modes: new Map(), folders: new Set(), faults, others,
   };
   const reads = readsOf(store);
   return {
@@ -100,6 +103,7 @@ export const createInMemoryFileSystem = (
     ...writesOf(store),
     readTree: ({ folder, select }) => walkTree({ fileSystem: reads, folder, select }),
     snapshot: () => Object.fromEntries(store.files),
+    modes: () => Object.fromEntries(store.modes),
   };
 };
 

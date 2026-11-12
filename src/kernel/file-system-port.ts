@@ -1,4 +1,4 @@
-import type { FileContent } from "./file-content.ts";
+import type { FileContent, FileMode } from "./file-content.ts";
 import { accepted, refused, type Result } from "./result.ts";
 import { sourcePath, type SourcePath } from "./values.ts";
 
@@ -38,7 +38,7 @@ export type MakeScratchFolderArgs = { readonly parent: URL };
 
 export type MakeFolderArgs = { readonly folder: URL };
 
-export type WriteFileArgs = { readonly file: URL; readonly content: FileContent };
+export type WriteFileArgs = { readonly file: URL; readonly content: FileContent; readonly mode?: FileMode };
 
 export type RemoveFolderArgs = { readonly folder: URL };
 
