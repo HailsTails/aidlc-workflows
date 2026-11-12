@@ -5,6 +5,7 @@ import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts
 import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
 import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
 import { accepted } from "../kernel/result.ts";
+import { hash } from "../kernel/fixtures/values.fixture.ts";
 import { ONBOARDING_FILLS_FIXTURE } from "../projection/fixtures/document-rendering.fixture.ts";
 import {
   SCRATCH_HOST, SCRATCH_HOST_DATA, SCRATCH_TOKENS, scratchAgentRenderer, scratchCommandPlacement,
@@ -57,7 +58,8 @@ const projectEighthHost = async () => {
   const root = createPackageBuildRoot({ hosts: [SCRATCH_MODULE],
     platform: { fileSystem: createInMemoryFileSystem({ files: CORE_FILES }),
       processRunner: createScriptedProcessRunner({ outcome: RUNNER_OUTCOME }),
-      yaml: createInMemoryYamlParser({ documents: {} }) },
+      yaml: createInMemoryYamlParser({ documents: {} }),
+      digester: { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) } },
     outliner: { outline: (text: string) => ({ text, headings: [] }) },
     sources: { core: new URL("file:///core/"), plugins: new URL("file:///plugins/") },
     runnerFrames: new URL("file:///frames/") });

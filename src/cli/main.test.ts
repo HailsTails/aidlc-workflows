@@ -4,19 +4,23 @@ import { expect, mock, test } from "bun:test";
 import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
 import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
 import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
-import { refused } from "../kernel/result.ts";
+import { accepted, refused } from "../kernel/result.ts";
+import { hash } from "../kernel/fixtures/values.fixture.ts";
+import type { ContentDigester } from "../kernel/content-digester-port.ts";
 import type { CreatePackageBuildRoot, PackageBuildRoot } from "./roots.ts";
 import { openPackageBuildRoot } from "./main.ts";
 
 const fileSystem = createInMemoryFileSystem({ files: {} });
 const processRunner = createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) });
 const yaml = createInMemoryYamlParser({ documents: {} });
+const digester: ContentDigester = { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) };
 const root: PackageBuildRoot = {
   settingsCapabilities: { extendedSubprocessTimeoutMs: 1, hookTrust: () => "unused" },
   projectHost: mock<PackageBuildRoot["projectHost"]>(),
   readHostDistribution: mock<PackageBuildRoot["readHostDistribution"]>(),
   projectDocuments: mock<PackageBuildRoot["projectDocuments"]>(),
   projectSettings: mock<PackageBuildRoot["projectSettings"]>(),
+  buildPayload: mock<PackageBuildRoot["buildPayload"]>(),
   projectHostSurface: mock<PackageBuildRoot["projectHostSurface"]>(),
   projectSkills: mock<PackageBuildRoot["projectSkills"]>(),
   projectAgents: mock<PackageBuildRoot["projectAgents"]>(),
@@ -30,15 +34,17 @@ test("the entry constructs each implementer once and binds its instance to the c
   const createNodeFileSystem = mock(() => fileSystem);
   const createNodeProcessRunner = mock(() => processRunner);
   const createBunYamlParser = mock(() => yaml);
+  const createBunContentDigester = mock(() => digester);
   const createPackageBuildRoot = mock<CreatePackageBuildRoot>(() => root);
   expect(openPackageBuildRoot({ createNodeFileSystem, createNodeProcessRunner,
-    createBunYamlParser, createPackageBuildRoot, outliner })).toBe(root);
+    createBunYamlParser, createBunContentDigester, createPackageBuildRoot, outliner })).toBe(root);
   expect(createNodeFileSystem).toHaveBeenCalledTimes(1);
   expect(createNodeProcessRunner).toHaveBeenCalledTimes(1);
   expect(createBunYamlParser).toHaveBeenCalledTimes(1);
+  expect(createBunContentDigester).toHaveBeenCalledTimes(1);
   expect(createPackageBuildRoot).toHaveBeenCalledTimes(1);
   expect(createPackageBuildRoot).toHaveBeenCalledWith({ hosts: HOSTS, outliner,
-    platform: { fileSystem, processRunner, yaml },
+    platform: { fileSystem, processRunner, yaml, digester },
     sources: { core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url) },
     runnerFrames: new URL("../../.cache/runner-frames/", import.meta.url),
   });
