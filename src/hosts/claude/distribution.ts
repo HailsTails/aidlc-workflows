@@ -1,3 +1,4 @@
+import { claudeHostIdentity } from "./host-data.ts";
 import type { HostDistribution } from "../../packaging/domain/payload.ts";
 import { accepted, type Result } from "../../kernel/result.ts";
 import { contentHash, projectPath, type ContentHash, type KernelRefusal } from "../../kernel/values.ts";
@@ -27,8 +28,8 @@ export const claudeDistribution = (): Result<HostDistribution, KernelRefusal> =>
   if (!gitignore.ok) return gitignore;
   const mcp = projectPath(".mcp.json");
   if (!mcp.ok) return mcp;
-  const directory = projectPath(".claude");
-  if (!directory.ok) return directory;
+  const identity = claudeHostIdentity();
+  if (!identity.ok) return identity;
   const workspace = projectPath("aidlc");
   if (!workspace.ok) return workspace;
   const gitignoreHashes = priorHashes(GITIGNORE_PRIOR_HASHES);
@@ -50,7 +51,7 @@ export const claudeDistribution = (): Result<HostDistribution, KernelRefusal> =>
         { path: mcp.value, policy: "json-map", key: "mcpServers", presence: "optional" },
       ],
       managedDirectories: [
-        { path: directory.value, ownership: "shipped-files-only" },
+        { path: identity.value.directory, ownership: "shipped-files-only" },
         { path: workspace.value, ownership: "shipped-files-only" },
       ],
     },
