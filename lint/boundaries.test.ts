@@ -1,5 +1,10 @@
 import { describe, expect, test, type AsymmetricMatcher } from "bun:test";
-import { boundaryConfig, portFilesConfig, typeBridgeConfigs } from "./boundaries.ts";
+import {
+  boundaryConfig,
+  legacyBridgeConfigs,
+  portFilesConfig,
+  typeBridgeConfigs,
+} from "./boundaries.ts";
 import { Linter } from "./eslint-port.ts";
 import { legacyOwnership } from "./restrictions.ts";
 import { standardsConfig } from "./standards.ts";
@@ -594,5 +599,52 @@ describe("boundaryConfig for the cli composing other contexts", () => {
     expect(messages).not.toContainEqual(
       expect.objectContaining({ ruleId: "no-restricted-imports" }),
     );
+  });
+});
+
+const HOST_BRIDGE = {
+  module: "core/tools/aidlc-launcher-voucher.ts",
+  readBy: "src/hosts/copilot/projection/legacy-launcher.ts",
+  retiresWhen: "Phase 2: its owner moves into src.",
+};
+
+const hostBridgeFindingsFor = (code: string, filename = HOST_BRIDGE.readBy): Linter.LintMessage[] =>
+  new Linter({ configType: "flat" }).verify(
+    code,
+    [...standardsConfig, ...boundaryConfig, ...legacyBridgeConfigs(HOST_BRIDGE)],
+    { filename },
+  );
+
+describe("boundaryConfig for a bridge read from a host's own folder", () => {
+  const VOUCHER = '"../../../../core/tools/aidlc-launcher-voucher.ts"';
+
+  test("admits the bridged module to the file that reads it", () => {
+    const code = `import { LAUNCHER_PATH } from ${VOUCHER};
+export const path = LAUNCHER_PATH;
+`;
+
+    expect(hostBridgeFindingsFor(code)).not.toContainEqual(IMPORT_REFUSAL);
+  });
+
+  test("refuses the same module to every other file in the host", () => {
+    const code = `import { LAUNCHER_PATH } from ${VOUCHER};
+export const path = LAUNCHER_PATH;
+`;
+
+    expect(hostBridgeFindingsFor(code, "src/hosts/copilot/projection/settings-renderer.ts")).toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+
+  test("refuses another legacy module to the file that reads the bridged one", () => {
+    const code = 'import { frontmatterBlock } from "../../../../core/tools/aidlc-lib.ts";\nexport const one = frontmatterBlock;\n';
+
+    expect(hostBridgeFindingsFor(code)).toContainEqual(IMPORT_REFUSAL);
+  });
+
+  test("refuses a Projection adapter to the file that reads the bridged module", () => {
+    const code = 'import { legacyEngineLauncher } from "../../../projection/adapters/legacy-launcher.ts";\nexport const one = legacyEngineLauncher;\n';
+
+    expect(hostBridgeFindingsFor(code)).toContainEqual(IMPORT_REFUSAL);
   });
 });

@@ -236,6 +236,13 @@ export const hostBundleImportRestrictions = (): ImportRestriction[] => [
   monolithReachBack,
 ];
 
+export const hostBridgeImportRestrictions = (request: {
+  readonly bridgedModule: string;
+}): ImportRestriction[] => [
+  ...hostBundleImportRestrictions().filter((entry) => entry !== monolithReachBack),
+  bridgedReachBack([request.bridgedModule]),
+];
+
 export const hostBundleRefusalsFor = (specifier: string): readonly ImportRestriction[] =>
   hostBundleImportRestrictions().filter((restriction) =>
     new RegExp(restriction.regex).test(specifier),

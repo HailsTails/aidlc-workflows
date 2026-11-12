@@ -19,6 +19,7 @@ import {
   harnessBranching,
   harnessNames,
   bridgeImportRestrictions,
+  hostBridgeImportRestrictions,
   hostBundleImportRestrictions,
   hostTestImportRestrictions,
   implementerConstruction,
@@ -256,7 +257,19 @@ export const typeBridgeConfigs = (bridges: readonly LegacyBridge[]): Linter.Conf
         ];
   });
 
-const legacyBridgeConfigs = (bridge: LegacyBridge): Linter.Config[] => {
+const hostBridgeConfig = (bridge: LegacyBridge): Linter.Config => ({
+  name: `aidlc/src/legacy-bridge/${bridge.readBy}`,
+  files: [bridge.readBy],
+  rules: restrict({
+    imports: hostBridgeImportRestrictions({ bridgedModule: bridge.module }),
+    syntax: HOST_BUNDLE_SYNTAX,
+  }),
+});
+
+export const legacyBridgeConfigs = (bridge: LegacyBridge): Linter.Config[] => {
+  if (bridge.readBy.startsWith(`${HOST_BUNDLE_ROOT}/`)) {
+    return [hostBridgeConfig(bridge)];
+  }
   const context = contextOf(bridge.readBy);
   return context === undefined ? [] : [bridgeConfig(bridge, context)];
 };
