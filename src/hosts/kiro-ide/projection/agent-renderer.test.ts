@@ -1,6 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createKiroIdeAgents, kiroIdePermissionLines, type KiroIdePersonaRendering } from "./agent-renderer.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
+import { brand } from "../../../kernel/brand.ts";
+import type { Method } from "../../../workflow-definition/domain/method.ts";
+import { methodSliceFixture } from "../../../workflow-definition/fixtures/method.fixture.ts";
 import { host } from "../../../kernel/fixtures/values.fixture.ts";
 import { agent } from "../../../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../../../workflow-definition/fixtures/method-source.fixture.ts";
@@ -35,13 +38,25 @@ test("Kiro IDE gives its persona port the exact in-parts model and native policy
   });
   expect(profile?.promptLines(architect)).toContain('        - "bun .kiro/tools/aidlc.ts --fixture"');
   expect(admittedVerbs).toHaveBeenCalledWith("aidlc-architect-agent");
-  expect(profile?.inlineReading(architect)).toBe("dispatched-only");
+  expect(profile?.inlineReading(architect)).toBe("reads-inline");
 });
 
-test("Kiro IDE selects inline reading from the captured inline-agent set", () => {
+test("Kiro IDE derives inline leads and supports from the admitted Method", () => {
   const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
-  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, inlineAgents: new Set([architect.slug]) });
-  expect(personas.mock.calls[0]?.[0].inlineReading(architect)).toBe("reads-inline");
+  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, method: methodSliceFixture,
+    inlineAgents: new Set([agent("aidlc-developer-agent")]) });
+  const profile = personas.mock.calls[0]?.[0];
+  expect(profile?.inlineReading(architect)).toBe("reads-inline");
+  expect(profile?.inlineReading({ ...architect, slug: agent("aidlc-delivery-agent") })).toBe("reads-inline");
+  expect(profile?.inlineReading({ ...architect, slug: agent("aidlc-developer-agent") })).toBe("dispatched-only");
+});
+
+test("Kiro IDE leaves an agent dispatched when the admitted Method has no inline stage", () => {
+  const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
+  const method = brand<Method>({ ...methodSliceFixture, stages: [] });
+  createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, method,
+    inlineAgents: new Set([architect.slug]) });
+  expect(personas.mock.calls[0]?.[0].inlineReading(architect)).toBe("dispatched-only");
 });
 
 test("Kiro IDE preserves its document refusal and uses the persona port's exact renderer", () => {

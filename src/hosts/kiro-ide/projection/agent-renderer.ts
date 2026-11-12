@@ -2,6 +2,7 @@ import type { AgentDocumentRequest, HostAgentRenderer } from "../../../projectio
 import type { Harness, Rendering } from "../../../projection/application/ports/harness.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
+import { inlineAgentSet } from "../../../workflow-definition/domain/method-participation.ts";
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import { kiroIdeDelegateShellPolicy, type DelegateShellPolicy } from "./delegate-shell-deny.ts";
@@ -70,32 +71,35 @@ export const expandKiroIdeConductorAllows = (request: {
   return accepted(request.content.replace(engine, `${engine}${exact.join("")}`));
 };
 
-export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePersonaRendering }): HostAgentRenderer => (inputs) => ({
-  renderAgent: personas({
-    modelSurface: ({ agent, removeKeys }) => inputs.documents({
-      agent, text: "authored-file", knowledge: "absorbed", reading: "in-parts",
-      frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
-        insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
+export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePersonaRendering }): HostAgentRenderer => (inputs) => {
+  const inlineAgents = inlineAgentSet(inputs.method);
+  return {
+    renderAgent: personas({
+      modelSurface: ({ agent, removeKeys }) => inputs.documents({
+        agent, text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+        frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
+          insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
+      }),
+      promptLines: (agent) => kiroIdePermissionLines(kiroIdeDelegateShellPolicy({
+        facts: inputs.delegateShellFacts, directory: inputs.host.directory,
+      }))(agent.slug),
+      inlineReading: (agent) => inlineAgents.has(agent.slug) ? "reads-inline" : "dispatched-only",
     }),
-    promptLines: (agent) => kiroIdePermissionLines(kiroIdeDelegateShellPolicy({
-      facts: inputs.delegateShellFacts, directory: inputs.host.directory,
-    }))(agent.slug),
-    inlineReading: (agent) => inputs.inlineAgents.has(agent.slug) ? "reads-inline" : "dispatched-only",
-  }),
-  renderConductorAgent: (): Rendering => {
-    const file = inputs.files.find((candidate) => candidate.source === "agents/aidlc-aidlc.md");
-    if (!file) return refused({ kind: "render-failed", concept: "agent", name: "agents/aidlc-aidlc.md",
-      reason: "The authored Kiro IDE conductor was not captured." });
-    const content = file.content.kind === "text" ? file.content.text
-      : new TextDecoder("utf-8", { ignoreBOM: true }).decode(file.content.bytes);
-    const expanded = expandKiroIdeConductorAllows({ content, invoke: "{{INVOKE}}", allows: inputs.allows });
-    if (!expanded.ok) return expanded;
-    const prepared = inputs.prepare({ ...file, content: { kind: "text", text: expanded.value } });
-    if (!prepared.ok) return prepared;
-    const path = projectPath(".kiro/agents/aidlc-aidlc.md");
-    return path.ok ? accepted([{ path: path.value, content: prepared.value.content,
-      mode: "regular", origin: { kind: "harness-authored", source: file.source } }])
-      : refused({ kind: "render-failed", concept: "agent", name: file.source,
-        reason: "The Kiro IDE conductor destination must be project-relative." });
-  },
-});
+    renderConductorAgent: (): Rendering => {
+      const file = inputs.files.find((candidate) => candidate.source === "agents/aidlc-aidlc.md");
+      if (!file) return refused({ kind: "render-failed", concept: "agent", name: "agents/aidlc-aidlc.md",
+        reason: "The authored Kiro IDE conductor was not captured." });
+      const content = file.content.kind === "text" ? file.content.text
+        : new TextDecoder("utf-8", { ignoreBOM: true }).decode(file.content.bytes);
+      const expanded = expandKiroIdeConductorAllows({ content, invoke: "{{INVOKE}}", allows: inputs.allows });
+      if (!expanded.ok) return expanded;
+      const prepared = inputs.prepare({ ...file, content: { kind: "text", text: expanded.value } });
+      if (!prepared.ok) return prepared;
+      const path = projectPath(".kiro/agents/aidlc-aidlc.md");
+      return path.ok ? accepted([{ path: path.value, content: prepared.value.content,
+        mode: "regular", origin: { kind: "harness-authored", source: file.source } }])
+        : refused({ kind: "render-failed", concept: "agent", name: file.source,
+          reason: "The Kiro IDE conductor destination must be project-relative." });
+    },
+  };
+};
