@@ -59,9 +59,9 @@ X
 
 const memory = (name: string, text: string): ProjectedFile => ({
   path: path(`aidlc/spaces/default/memory/${name}`), content: { kind: "text", text }, mode: "regular",
-  availability: "always", origin: { kind: "active-space" } });
+  origin: { kind: "active-space" } });
 const steeringFile = (text: string): ProjectedFile => ({
-  path: path(".kiro/steering/aidlc-active-memory.md"), mode: "regular", availability: "always",
+  path: path(".kiro/steering/aidlc-active-memory.md"), mode: "regular",
   content: { kind: "text", text },
   origin: { kind: "rendered", concept: "onboarding", name: ".kiro/steering/aidlc-active-memory.md" } });
 

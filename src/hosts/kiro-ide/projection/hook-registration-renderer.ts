@@ -19,7 +19,7 @@ const renderHook = (inputs: SettingsRenderingInputs, source: string): Rendering 
   if (!prepared.ok) return prepared;
   const path = projectPath(`.kiro/${source}`);
   return path.ok ? accepted([{
-    path: path.value, content: prepared.value.content, mode: "regular", availability: "always",
+    path: path.value, content: prepared.value.content, mode: "regular",
     origin: { kind: "harness-authored", source: file.source },
   }]) : refused({ kind: "render-failed", concept: "hook-registration", name: source,
     reason: "The Kiro IDE hook destination must be project-relative." });

@@ -72,7 +72,7 @@ export const deriveKiroIdeSteering: HostFileDeriver = ({ files }) => {
   if (!path.ok) return refused({ kind: "render-failed", concept: "onboarding", name: STEERING_PATH,
     reason: "The steering destination must be project-relative." });
   const blocks = inlineBlocks(memoryFiles(files));
-  return accepted([{ path: path.value, mode: "regular", availability: "always",
+  return accepted([{ path: path.value, mode: "regular",
     content: { kind: "text", text: blocks === null ? referenceSteering() : inlineSteering(blocks) },
     origin: { kind: "rendered", concept: "onboarding", name: STEERING_PATH } }]);
 };

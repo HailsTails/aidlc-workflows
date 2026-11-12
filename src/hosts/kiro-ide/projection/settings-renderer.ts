@@ -17,7 +17,7 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
   const path = projectPath(".kiro/settings/cli.json");
   if (!path.ok) return refused({ kind: "render-failed", concept: "settings", name: file.source,
     reason: "The Kiro IDE CLI settings destination must be project-relative." });
-  return accepted([{ path: path.value, content: modeled.value.content, mode: "regular", availability: "always",
+  return accepted([{ path: path.value, content: modeled.value.content, mode: "regular",
     origin: { kind: "harness-authored", source: file.source } }]);
 };
 
