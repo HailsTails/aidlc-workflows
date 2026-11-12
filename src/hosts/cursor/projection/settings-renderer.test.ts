@@ -103,3 +103,98 @@ test("a foreign directory glob is not accepted in place of the host's own glob",
       reason: "cli.json has no Shell(bun:<dir>/tools/aidlc-*) entry to expand",
     }));
 });
+
+const nativeReleaseInputs = { ...inputs, channel: "native" as const,
+  tokens: { ...inputs.tokens, ["HARNESS_DIR"]: ".cursor", ["INVOKE"]: "aidlc", ["TRUSTED_NAMESPACE"]: "engine" },
+  files: [{ source: source("cli.json"), content: { kind: "text" as const, text: "{\n  \"permissions\": {\n    \"allow\": [\n      \"Shell(bun:.cursor/tools/aidlc.ts engine *)\",\n      \"Shell(bun:.cursor/tools/aidlc-*)\"\n    ],\n    \"deny\": []\n  }\n}\n" } }],
+  allows: { toolScripts: [], dispatcherCommands: [
+  "doctor",
+  "doctor --verbose",
+  "version",
+  "--doctor",
+  "--doctor --verbose",
+  "--version",
+  "status",
+  "--status",
+  "config --help",
+  "config --show",
+  "config --show --json",
+  "config models --show",
+  "config models --show --json",
+  "config models --help",
+  "config runtime --show",
+  "config runtime --show --json",
+  "config runtime --help",
+  "config providers --show",
+  "config providers --show --json",
+  "config providers --help",
+  "config trust --show",
+  "config trust --show --json",
+  "config trust --help",
+  "config flags --show",
+  "config flags --show --json",
+  "config flags --help",
+  "config project --show",
+  "config project --show --json",
+  "config project --help",
+  "config flags --clear-bypass AIDLC_SKIP_ARTIFACT_GUARD --yes",
+  "config flags --clear-bypass AIDLC_SKIP_REVISION_BACKSTOP --yes",
+  "config flags --clear-bypass AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD --yes",
+  "config flags --clear-bypass AIDLC_SKIP_HUMAN_PRESENCE_GUARD --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_ENSEMBLE_EVIDENCE --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_REVIEWER_SCOPE_HOOK --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_REVIEW_FREEZE_HOOK --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_USAGE_TRACKING --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_SENSORS --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_LEARNINGS --yes",
+  "config flags --clear-bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --yes"
+] },
+};
+
+test("native Cursor settings match the independently generated legacy release bytes", () => {
+  expect(createCursorSettingsRenderer(nativeReleaseInputs).renderSettings({ method: methodSliceFixture }))
+    .toEqual(accepted([{ path: path(".cursor/cli.json"), mode: "regular",
+      origin: { kind: "rendered", concept: "settings", name: "cli.json" },
+      content: { kind: "text", text: "{\n  \"permissions\": {\n    \"allow\": [\n      \"Shell(aidlc:engine *)\",\n      \"Shell(aidlc:doctor)\",\n      \"Shell(aidlc:doctor --verbose)\",\n      \"Shell(aidlc:version)\",\n      \"Shell(aidlc:--doctor)\",\n      \"Shell(aidlc:--doctor --verbose)\",\n      \"Shell(aidlc:--version)\",\n      \"Shell(aidlc:status)\",\n      \"Shell(aidlc:--status)\",\n      \"Shell(aidlc:config --help)\",\n      \"Shell(aidlc:config --show)\",\n      \"Shell(aidlc:config --show --json)\",\n      \"Shell(aidlc:config models --show)\",\n      \"Shell(aidlc:config models --show --json)\",\n      \"Shell(aidlc:config models --help)\",\n      \"Shell(aidlc:config runtime --show)\",\n      \"Shell(aidlc:config runtime --show --json)\",\n      \"Shell(aidlc:config runtime --help)\",\n      \"Shell(aidlc:config providers --show)\",\n      \"Shell(aidlc:config providers --show --json)\",\n      \"Shell(aidlc:config providers --help)\",\n      \"Shell(aidlc:config trust --show)\",\n      \"Shell(aidlc:config trust --show --json)\",\n      \"Shell(aidlc:config trust --help)\",\n      \"Shell(aidlc:config flags --show)\",\n      \"Shell(aidlc:config flags --show --json)\",\n      \"Shell(aidlc:config flags --help)\",\n      \"Shell(aidlc:config project --show)\",\n      \"Shell(aidlc:config project --show --json)\",\n      \"Shell(aidlc:config project --help)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_SKIP_ARTIFACT_GUARD --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_SKIP_REVISION_BACKSTOP --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_SKIP_HUMAN_PRESENCE_GUARD --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_DISABLE_ENSEMBLE_EVIDENCE --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_DISABLE_REVIEWER_SCOPE_HOOK --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_DISABLE_REVIEW_FREEZE_HOOK --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_DISABLE_USAGE_TRACKING --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_DISABLE_SENSORS --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_DISABLE_LEARNINGS --yes)\",\n      \"Shell(aidlc:config flags --clear-bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --yes)\"\n    ],\n    \"deny\": []\n  }\n}\n" } }]));
+});
+
+test("native Cursor permissions preserve unrelated values and the exact legacy prefix rule", () => {
+  expect(createCursorSettingsRenderer({ ...inputs, channel: "native",
+    tokens: { ...inputs.tokens, ["TRUSTED_NAMESPACE"]: "renamed" }, files: [{ ...file,
+      content: { kind: "text", text: '{"before":1,"permissions":{"deny":["Write(secret)"],"allow":[' +
+        '"Shell(bun:.renamed/tools/aidlc-*)","Shell(bun:other)","Shell(bunx safe)",' +
+        '"Shell(git status)","Shell(aidlc:custom)",{"extension":true},"Task"]},"after":true}' } }] })
+    .renderSettings({ method: methodSliceFixture })).toEqual(accepted([{
+      path: path(".cursor/cli.json"), mode: "regular",
+      origin: { kind: "rendered", concept: "settings", name: "cli.json" },
+      content: { kind: "text", text: `{
+  "before": 1,
+  "permissions": {
+    "deny": [
+      "Write(secret)"
+    ],
+    "allow": [
+      "Shell(git status)",
+      "Shell(aidlc:custom)",
+      {
+        "extension": true
+      },
+      "Task",
+      "Shell(aidlc:renamed *)",
+      "Shell(aidlc:doctor)",
+      "Shell(aidlc:config --show)"
+    ]
+  },
+  "after": true
+}
+` },
+    }]));
+});
+
+test("native Cursor settings refuse a missing trusted namespace", () => {
+  expect(createCursorSettingsRenderer({ ...inputs, channel: "native",
+    tokens: { ...inputs.tokens, ["TRUSTED_NAMESPACE"]: null } }).renderSettings({ method: methodSliceFixture }))
+    .toEqual(refused({ kind: "render-failed", concept: "settings", name: "cli.json",
+      reason: "The native settings require a trusted route namespace." }));
+});

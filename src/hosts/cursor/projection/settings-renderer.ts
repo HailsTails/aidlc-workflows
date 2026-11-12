@@ -56,10 +56,19 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
     ...inputs.allows.dispatcherCommands.map((command) => `Shell(bun:${tools}/aidlc.ts ${command})`),
     ...inputs.allows.toolScripts.flatMap((script) => [`Shell(bun:${tools}/${script})`, `Shell(bun:${tools}/${script} *)`]),
   ] : [entry]);
+  const namespace = inputs.tokens.TRUSTED_NAMESPACE;
+  if (inputs.channel === "native" && !namespace) {
+    return refused(settingsRefusal("The native settings require a trusted route namespace."));
+  }
+  const channelAllow = inputs.channel === "native" ? [
+    ...allow.filter((entry) => typeof entry !== "string" || !entry.startsWith("Shell(bun")),
+    `Shell(aidlc:${namespace} *)`,
+    ...inputs.allows.dispatcherCommands.map((command) => `Shell(aidlc:${command})`),
+  ] : expanded;
   const path = projectPath(".cursor/cli.json");
   if (!path.ok) return refused(settingsRefusal("The settings destination must be project-relative."));
   return accepted([{ path: path.value, content: { kind: "text",
-    text: `${JSON.stringify({ ...fields, permissions: { ...permissions, allow: expanded } }, null, 2)}\n` },
+    text: `${JSON.stringify({ ...fields, permissions: { ...permissions, allow: channelAllow } }, null, 2)}\n` },
     mode: "regular",
     origin: { kind: "rendered", concept: "settings", name: "cli.json" } }]);
 };
