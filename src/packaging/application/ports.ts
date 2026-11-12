@@ -1,3 +1,4 @@
+import type { HostIdentity } from "../../kernel/host.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { ContentHash, DistributionId, KernelRefusal } from "../../kernel/values.ts";
@@ -17,6 +18,7 @@ export interface ReleaseHistorySource {
 export interface ToolBundler {
   bundle(request: {
     readonly entries: readonly RuntimeEntryPoint[];
+    readonly host: HostIdentity;
     readonly channel: Channel;
   }): Promise<Result<readonly PayloadFile[], PackagingRefusal>>;
 }

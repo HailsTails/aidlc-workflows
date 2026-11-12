@@ -1,3 +1,4 @@
+import { createScriptedToolBundler } from "../fixtures/tool-bundler.fake.ts";
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { hash, path, source } from "../../kernel/fixtures/values.fixture.ts";
@@ -143,4 +144,16 @@ test("a projected version file is included and stamped", async () => {
   })).toEqual(accepted({ ...fixture, files: [{ path: path(".claude/tools/aidlc-version.ts"),
     mode: "regular", content: { kind: "text", text: "stamped" }, hash: ZERO_HASH,
     origin: { kind: "projected", origin: { kind: "runtime-data", name: "version-module" } } }] }));
+});
+
+test("the bundler receives the projection host instead of inferring its directory from an entry", async () => {
+  const bundler = createScriptedToolBundler(accepted([]));
+  const packaged = await createPackagePayload({ bundler, hasher: { hash: () => accepted(ZERO_HASH) },
+    layouts: { layout: () => accepted(fixture.descriptor.layout) },
+    history: { history: async () => accepted(fixture.descriptor.history) },
+    metadata: { files: () => accepted([]) }, stamp: stampedText,
+  }).package({ version: fixture.version, channel: "copy", runtime: [],
+    projection: { host: fixture.descriptor.host, files: [versionModule("v")], findings: [] } });
+  expect(packaged.ok).toBe(true);
+  expect(bundler.received()).toEqual([{ entries: [], channel: "copy", host: fixture.descriptor.host }]);
 });
