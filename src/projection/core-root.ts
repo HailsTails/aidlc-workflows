@@ -3,7 +3,6 @@ import { inlineAgentSet } from "../workflow-definition/domain/method-participati
 import { legacyMarkdownAgentSurface, legacyTomlAgentModels, legacyCliModelPolicy,
   legacyAgentTiersData, legacyAgentModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
-import { legacyEngineLauncher } from "./adapters/legacy-launcher.ts";
 import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
 import { createNeutralReading } from "./adapters/neutral-surface-files.ts";
 import { projectMethodDocuments } from "./application/project-method-documents.ts";
@@ -63,7 +62,7 @@ const settingsInputs = ({ settings, allows, capabilities }: {
 }): SettingsRenderingInputs => ({ files: settings.files, prepare: settings.prepare,
   tokens: settings.tokens, channel: settings.channel, entrypoints: settings.entrypoints, allows,
   ...capabilities, cliModels: legacyCliModelPolicy(settings.modelCap),
-  launcher: legacyEngineLauncher });
+  });
 
 const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, allows, facts, capabilities, tables }: {
   readonly assembly: HarnessAssemblyRequest;

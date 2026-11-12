@@ -104,11 +104,6 @@ const EXPECTED_BRIDGES = [
   },
   {
     module: "core/tools/aidlc-launcher-voucher.ts",
-    readBy: "src/projection/adapters/legacy-launcher.ts",
-    retiresWhen: OWNER_MOVES,
-  },
-  {
-    module: "core/tools/aidlc-launcher-voucher.ts",
     readBy: "src/hosts/copilot/projection/launcher.ts",
     retiresWhen: OWNER_MOVES,
   },

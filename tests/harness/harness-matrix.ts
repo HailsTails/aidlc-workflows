@@ -2,6 +2,7 @@ import {
   DELEGATE_SHELL_FACTS,
 } from "../../src/projection/fixtures/delegate-shell-facts.fixture.ts";
 import { tokenBindingsFixture } from "../../src/projection/fixtures/token-bindings.fixture.ts";
+import { methodSliceFixture } from "../../src/workflow-definition/fixtures/method.fixture.ts";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -286,7 +287,7 @@ function producesConductorAgent(name: ShippedHarnessName,
     delegateShellFacts: DELEGATE_SHELL_FACTS,
     tokens: tokenBindingsFixture({ harnessDir: manifest.harnessDir }),
     persona: () => accepted(""), documents: () => accepted(""), tomlModels: () => accepted(""),
-    inlineAgents: new Set(),
+    inlineAgents: new Set(), modelCap: null, method: methodSliceFixture,
     files: [{ source: conductor,
       content: { kind: "text", text: readFileSync(authored, "utf8") } }],
     prepare: accepted, formatDocuments: new Set(),

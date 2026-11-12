@@ -147,11 +147,11 @@ const expectedFractionalText = `{
 }
 `;
 const launcherFile = (text: string) => ({
-  path: path(".fixture/bin/engine"), mode: "executable" as const,
+  path: path(".aidlc/bin/aidlc-engine"), mode: "executable" as const,
   origin: { kind: "rendered" as const, concept: "hook-registration" as const, name: "aidlc-engine" },
   content: { kind: "text" as const, text },
 });
-const expectedLauncher = launcherFile("run bun .renamed/tools/aidlc.ts engine\n");
+const expectedLauncher = launcherFile('#!/bin/sh\nexport AIDLC_ENGINE_LAUNCHER="$0"\nexec bun .renamed/tools/aidlc.ts engine "$@"\n');
 const expectedFile = {
   path: path(".github/hooks/aidlc.json"), mode: "regular" as const,
   origin: { kind: "rendered" as const, concept: "hook-registration" as const, name: "aidlc.json" },
@@ -176,7 +176,7 @@ test("Copilot emits every literal event in order with matching shell commands an
 test("both channels retain the adapter command rather than substituting the native invoke", () => {
   expect(createCopilotSettingsRenderer({ ...inputs, channel: "native",
     tokens: { ...inputs.tokens, ["INVOKE"]: "aidlc" } }).renderHookRegistrations({ hooks: [] }))
-    .toEqual(accepted([expectedFile, launcherFile("run aidlc engine\n")]));
+    .toEqual(accepted([expectedFile, launcherFile('#!/bin/sh\nexport AIDLC_ENGINE_LAUNCHER="$0"\nexec aidlc engine "$@"\n')]));
 });
 
 test("the supplied millisecond budget becomes seconds and doubles only compound events", () => {

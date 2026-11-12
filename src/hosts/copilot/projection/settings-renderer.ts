@@ -4,6 +4,7 @@ import type { HostSettingsRenderer, SettingsRenderingInputs } from "../../../pro
 import type { Rendering } from "../../../projection/application/ports/harness.ts";
 import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts";
 import { HOOK_WIRING } from "./hook-wiring.ts";
+import { copilotEngineLauncher } from "./launcher.ts";
 
 export const COPILOT_SETTINGS_INPUTS = [] as const;
 
@@ -24,8 +25,8 @@ const renderHooks = (inputs: SettingsRenderingInputs): Rendering => {
 };
 
 const renderLauncher = (inputs: SettingsRenderingInputs): Rendering => {
-  const path = projectPath(inputs.launcher.path);
-  const text = bindTemplateTokens({ text: inputs.launcher.body({ invocation: "{{INVOKE}}" }),
+  const path = projectPath(copilotEngineLauncher.path);
+  const text = bindTemplateTokens({ text: copilotEngineLauncher.body({ invocation: "{{INVOKE}}" }),
     tokens: inputs.tokens, selected: ["INVOKE"] });
   return path.ok ? accepted([{
     path: path.value, mode: "executable", content: { kind: "text", text },

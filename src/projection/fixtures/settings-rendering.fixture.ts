@@ -2,7 +2,7 @@ import { source } from "../../kernel/fixtures/values.fixture.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 import { accepted } from "../../kernel/result.ts";
 import type { CopyChannelAllows } from "../application/ports/copy-channel.ts";
-import type { EngineLauncher, SettingsRenderingInputs } from "../application/ports/settings.ts";
+import type { SettingsRenderingInputs } from "../application/ports/settings.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
 import { text } from "./values.fixture.ts";
@@ -48,12 +48,6 @@ export const RUNTIME_ENTRYPOINTS_FIXTURE: readonly SourcePath[] = [
   source("tools/aidlc.ts"),
 ];
 
-export const ENGINE_LAUNCHER_FIXTURE: EngineLauncher = {
-  path: ".fixture/bin/engine",
-  body: ({ invocation }) => `run ${invocation} engine
-`,
-};
-
 export const settingsRenderingInputsFixture = ({ harnessDir, files }: {
   readonly harnessDir: string;
   readonly files: readonly AuthoredHostFile[];
@@ -64,7 +58,6 @@ export const settingsRenderingInputsFixture = ({ harnessDir, files }: {
   allows: COPY_CHANNEL_ALLOWS_FIXTURE,
   extendedSubprocessTimeoutMs: 12_000,
   hookTrust: () => "fixture-hook-trust",
-  launcher: ENGINE_LAUNCHER_FIXTURE,
   cliModels: accepted,
   entrypoints: RUNTIME_ENTRYPOINTS_FIXTURE,
   channel: "copy",

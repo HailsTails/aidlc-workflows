@@ -141,7 +141,6 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   shippedOwner("aidlc-settings", "src/projection/adapters/legacy-settings-schema.ts"),
   shippedOwner("aidlc-command", "src/projection/adapters/legacy-trusted-commands.ts"),
   shippedOwner("aidlc-runtime-budget", "src/projection/adapters/legacy-runtime-budget.ts"),
-  shippedOwner("aidlc-launcher-voucher", "src/projection/adapters/legacy-launcher.ts"),
   shippedOwner("aidlc-launcher-voucher", "src/hosts/copilot/projection/launcher.ts"),
   shippedOwner("aidlc-includes", "src/projection/adapters/legacy-includes.ts"),
   shippedOwner("aidlc-inline-context", "src/projection/adapters/legacy-format-docs.ts"),
