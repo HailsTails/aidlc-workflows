@@ -106,7 +106,7 @@ import {
   TRUSTED_ROUTE_NAMESPACE,
   trustedCommand,
 } from "../core/tools/aidlc-command.ts";
-import { copyChannelDispatcherCommands, ROUTES, TOOLS } from "../core/tools/aidlc.ts";
+import { ROUTES, TOOLS } from "../core/tools/aidlc.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../src/packaging/adapters/legacy-distribution.ts";
@@ -434,13 +434,6 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// The dispatcher commands every install pre-approves exactly as written
-// (copyChannelDispatcherCommands), as the native release runs them: through
-// the installed aidlc command, never a project path.
-function nativeDispatcherCommands(): string[] {
-  return copyChannelDispatcherCommands().map((command) => `aidlc ${command}`);
-}
-
 // A manifest's nativeReplacements, applied before the generic rewrite, which
 // would otherwise turn their copy-channel text into retired or unresolvable
 // engine spellings.
@@ -461,7 +454,7 @@ function applyNativeReplacements(outRoot: string, m: ReleaseView): void {
 }
 
 function rewriteKiroNativeAllowlists(outRoot: string, m: ReleaseView): void {
-  if (m.name !== "kiro" && m.name !== "kiro-ide") return;
+  if (m.name !== "kiro-ide") return;
   const agentsDir = join(outRoot, m.harnessDir, "agents");
   const pluginAgentData = join(outRoot, m.harnessDir, PLUGIN_AGENT_DATA);
   for (const file of [...walk(agentsDir), ...(existsSync(pluginAgentData) ? [pluginAgentData] : [])]) {
@@ -485,30 +478,6 @@ function rewriteKiroNativeAllowlists(outRoot: string, m: ReleaseView): void {
       if (rewritten !== value) writeFileSync(file, rewritten);
       continue;
     }
-    if (!file.endsWith(".json")) continue;
-    const value = JSON.parse(readFileSync(file, "utf-8")) as {
-      toolsSettings?: {
-        execute_bash?: {
-          allowedCommands?: unknown;
-        };
-      };
-    };
-    const allowed = value.toolsSettings?.execute_bash?.allowedCommands;
-    if (!Array.isArray(allowed)) continue;
-    const rewritten = allowed.map((command) =>
-      typeof command === "string" &&
-        command.startsWith("bun ") &&
-        command.includes(`${m.harnessDir.replace(".", "\\.")}/tools/`)
-        ? trustedCommand(".*")
-        : command
-    );
-    // An agent the copy channel let run AI-DLC's tool commands also runs the
-    // exact read-only and turn-back-on commands natively, as anchored patterns.
-    const trusted = trustedCommand(".*");
-    value.toolsSettings!.execute_bash!.allowedCommands = [...new Set(rewritten)].flatMap((command) =>
-      command === trusted ? [command, ...nativeDispatcherCommands().map(escapeRegExp)] : [command]
-    );
-    writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
   }
 }
 
