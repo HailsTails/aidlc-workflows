@@ -11,7 +11,8 @@ import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts
 import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
 import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
 import { accepted, refused } from "../kernel/result.ts";
-import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
+import type { ContentDigester } from "../kernel/content-digester-port.ts";
+import { hash, host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import type { CoreBuild, HostBuildRequest, HostModule, HostDistributionReader, Platform } from "./roots.ts";
 import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
 import { createPackageBuildRoot } from "./package-build-root.ts";
@@ -23,6 +24,7 @@ const files = {
 };
 const sources = { core: new URL("file:///core/"), plugins: new URL("file:///plugins/") };
 const yaml = createInMemoryYamlParser({ documents: {} });
+const digester: ContentDigester = { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) };
 const runnerFrames = new URL("file:///frames/");
 const processRunner = createScriptedProcessRunner({ outcome: refused({
   kind: "not-started", reason: "No process expected",
@@ -32,7 +34,7 @@ test("one admitted core snapshot projects to multiple hosts without another sour
   const fileSystem = createInMemoryFileSystem({ files });
   const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
   const root = createPackageBuildRoot({ hosts: [],
-    platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml },
+    platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   accept(await fileSystem.writeFile({ file: new URL("file:///core/scopes/bad.md"),
@@ -52,7 +54,7 @@ test("plugin builds use the admitted core without re-reading changed authored co
   const fileSystem = createInMemoryFileSystem({ files });
   const listFolder = mock<Platform["fileSystem"]["listFolder"]>(fileSystem.listFolder);
   const root = createPackageBuildRoot({ hosts: [],
-    platform: { fileSystem: { ...fileSystem, listFolder }, processRunner, yaml },
+    platform: { fileSystem: { ...fileSystem, listFolder }, processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   accept(await fileSystem.writeFile({ file: new URL("file:///core/scopes/bad.md"),
@@ -65,7 +67,7 @@ test("plugin builds use the admitted core without re-reading changed authored co
 
 test("a source refusal remains a refusal rather than a partial loaded Method", async () => {
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem: createInMemoryFileSystem({ files,
-    faults: { "file:///core/scopes/": "permission-denied" } }), processRunner, yaml },
+    faults: { "file:///core/scopes/": "permission-denied" } }), processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   expect(await root.loadCore()).toEqual({ ok: false, refusal: [{ kind: "source-unreadable",
     location: { kind: "authored-tree", tree: "core", within: "scopes/" }, code: "permission-denied" }] });
@@ -74,7 +76,7 @@ test("a source refusal remains a refusal rather than a partial loaded Method", a
 test("host path refusal precedes IO and a valid capture retains its host", async () => {
   const readFile = mock<Platform["fileSystem"]["readFile"]>();
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem: {
-    ...createInMemoryFileSystem({ files: {} }), readFile }, processRunner, yaml }, outliner, sources, runnerFrames });
+    ...createInMemoryFileSystem({ files: {} }), readFile }, processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(await root.readHostSources({ name: "claude", directory: ".claude", root: new URL("file:///host/"),
     copied: ["../outside"], required: [] })).toEqual({ ok: false, refusal: [
     { kind: "invalid-path", base: "source", raw: "../outside" },
@@ -93,7 +95,7 @@ test("the root wires runner process failures as source failures and removes priv
     kind: "not-started", reason: "Runtime unavailable",
   }) });
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem: { ...fileSystem, removeFolder },
-    processRunner: runner, yaml }, outliner, sources, runnerFrames });
+    processRunner: runner, yaml, digester }, outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   const source = await root.prepareCommandSource({ core, projectRoot: new URL("file:///assembled/"),
     harnessDir: ".claude", harnessName: "claude" });
@@ -112,7 +114,7 @@ test("a successful captured command is consumed synchronously after the root cle
   const runner = createScriptedProcessRunner({ outcome: accepted({ exit: { kind: "exited", code: 0 }, stderr: "",
     stdout: '{"failure":null,"entries":[{"subject":{"concept":"orchestrator-skill","name":"aidlc-init"},"reason":null,"files":null}]}' }) });
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem: { ...fileSystem, removeFolder },
-    processRunner: runner, yaml }, outliner, sources, runnerFrames });
+    processRunner: runner, yaml, digester }, outliner, sources, runnerFrames });
   const source = await root.prepareCommandSource({ core: accept(await root.loadCore()),
     projectRoot: new URL("file:///assembled/"), harnessDir: ".claude", harnessName: "claude" });
   expect(source.read({ concept: "orchestrator-skill", name: "aidlc-init" })).toEqual({ ok: true, value: { kind: "declined" } });
@@ -122,7 +124,7 @@ test("a successful captured command is consumed synchronously after the root cle
 
 test("the real root omits unregistered agent hosts", async () => {
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem: createInMemoryFileSystem({ files }),
-    processRunner, yaml }, outliner, sources, runnerFrames });
+    processRunner, yaml, digester }, outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   expect(root.projectAgents({ rulesFolder: null, host: host({ name: "fixture-host", directory: ".fixture" }), method: core.method,
     sources: core.sources, reviewerAgents: new Set(), tokens: tokenBindingsFixture({ harnessDir: ".claude" }),
@@ -131,7 +133,7 @@ test("the real root omits unregistered agent hosts", async () => {
 
 test("the real root renders a captured Kiro conductor without replacing its model", async () => {
   const root = createPackageBuildRoot({ hosts: HOSTS, platform: { fileSystem: createInMemoryFileSystem({ files }),
-    processRunner, yaml }, outliner, sources, runnerFrames });
+    processRunner, yaml, digester }, outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   expect(root.projectAgents({ rulesFolder: null, host: host({ name: "kiro", directory: ".kiro" }), method: core.method,
     sources: core.sources, reviewerAgents: new Set(), tokens: tokenBindingsFixture({ harnessDir: ".kiro" }),
@@ -163,7 +165,7 @@ test("the skill route omits unregistered hosts without reading neutral sources",
   const fileSystem = createInMemoryFileSystem({ files: {} });
   const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
   const root = createPackageBuildRoot({ hosts: [],
-    platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml },
+    platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   expect(await root.projectSkills({ host: host({ name: "fixture-host", directory: ".fixture" }),
     projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
@@ -180,7 +182,7 @@ test("the real skill route composes B and C once and captures neutral skills onc
   const runner = createScriptedProcessRunner({ outcome: accepted({ exit: { kind: "exited", code: 0 },
     stdout: "Unused table without markers", stderr: "" }) });
   const root = createPackageBuildRoot({ hosts: HOSTS,
-    platform: { fileSystem: { ...fileSystem, readTree }, processRunner: runner, yaml },
+    platform: { fileSystem: { ...fileSystem, readTree }, processRunner: runner, yaml, digester },
     outliner, sources, runnerFrames });
   const read = mock<CommandSource["read"]>(() => accepted({ kind: "declined" }));
   const prepare = mock(accepted);
@@ -216,7 +218,7 @@ test("the real skill route composes B and C once and captures neutral skills onc
 });
 test("registered Kiro skills refuse the actual missing captured orchestrator input", async () => {
   const root = createPackageBuildRoot({ hosts: HOSTS, platform: { fileSystem: createInMemoryFileSystem({ files: {} }),
-    processRunner, yaml }, outliner, sources, runnerFrames });
+    processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(await root.projectSkills({ host: host({ name: "kiro", directory: ".kiro" }),
     projectRoot: new URL("file:///built/"), method: methodSliceFixture, files: [], prepare: accepted,
     commands: { read: () => accepted({ kind: "declined" }) }, place: claudeCommandPath, tokens: skillTokens }))
@@ -229,7 +231,7 @@ test("the standalone surface route omits an unregistered host without IO or prep
   const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
   const prepare = mock(accepted);
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem: { ...fileSystem, readFile, readTree },
-    processRunner, yaml }, outliner, sources, runnerFrames });
+    processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(root.projectHostSurface({ host: host({ name: "fixture-host", directory: ".fixture" }),
     files: [], prepare, tokens: skillTokens, channel: "copy" })).toEqual(accepted([]));
   expect(readFile).not.toHaveBeenCalled();
@@ -254,7 +256,7 @@ test("the real surface route uses one captured snapshot and preserves exact nati
   const readFile = mock<Platform["fileSystem"]["readFile"]>(fileSystem.readFile);
   const prepare = mock(accepted);
   const root = createPackageBuildRoot({ hosts: HOSTS, platform: { fileSystem: { ...fileSystem, readFile },
-    processRunner, yaml }, outliner, sources, runnerFrames });
+    processRunner, yaml, digester }, outliner, sources, runnerFrames });
   const captured = accept(await root.readHostSources({ name: "claude", directory: ".claude",
     root: new URL("file:///host/"), copied: [], required: [] }));
   const surfaceRequest = { host: captured.host, files: captured.files,
@@ -278,7 +280,7 @@ test("the real surface route uses one captured snapshot and preserves exact nati
 test("native placement inputs are required by capture even after their old copy rows retire", async () => {
   const root = createPackageBuildRoot({ hosts: HOSTS, platform: { fileSystem: createInMemoryFileSystem({
     files: surfaceFiles, faults: { "file:///host/.mcp.json": "not-found" },
-  }), processRunner, yaml }, outliner, sources, runnerFrames });
+  }), processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(await root.readHostSources({ name: "claude", directory: ".claude",
     root: new URL("file:///host/"), copied: [], required: [] })).toEqual(refused([{
       kind: "host-source-unreadable", host: host({ name: "claude", directory: ".claude" }),
@@ -293,7 +295,7 @@ test("an unregistered settings host performs no source read or preparation", () 
   const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
   const prepare = mock(accepted);
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem: { ...fileSystem, readFile, readTree },
-    processRunner, yaml }, outliner, sources, runnerFrames });
+    processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(root.projectSettings({ host: host({ name: "fixture-host", directory: ".fixture" }),
     method: methodSliceFixture, files: [], prepare, tokens: skillTokens, channel: "copy", entrypoints: [], modelCap: null }))
     .toEqual(accepted([]));
@@ -306,7 +308,7 @@ test("the real settings route uses the captured file once, with shipped allows a
   const fileSystem = createInMemoryFileSystem({ files: surfaceFiles });
   const readFile = mock<Platform["fileSystem"]["readFile"]>(fileSystem.readFile);
   const root = createPackageBuildRoot({ hosts: HOSTS,
-    platform: { fileSystem: { ...fileSystem, readFile }, processRunner, yaml },
+    platform: { fileSystem: { ...fileSystem, readFile }, processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   const captured = accept(await root.readHostSources({ name: "claude", directory: ".claude",
     root: new URL("file:///host/"), copied: [], required: [] }));
@@ -333,7 +335,7 @@ test("the real settings route uses the captured file once, with shipped allows a
 test("settings remain required by the shared snapshot after the legacy copy row retires", async () => {
   const root = createPackageBuildRoot({ hosts: HOSTS, platform: { fileSystem: createInMemoryFileSystem({
     files: surfaceFiles, faults: { "file:///host/settings.json": "permission-denied" },
-  }), processRunner, yaml }, outliner, sources, runnerFrames });
+  }), processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(await root.readHostSources({ name: "claude", directory: ".claude",
     root: new URL("file:///host/"), copied: [], required: [] })).toEqual(refused([{
       kind: "host-source-unreadable", host: host({ name: "claude", directory: ".claude" }),
@@ -343,7 +345,7 @@ test("settings remain required by the shared snapshot after the legacy copy row 
 
 test("the actual settings route preserves the missing-glob failure instead of shipping partial settings", () => {
   const root = createPackageBuildRoot({ hosts: HOSTS, platform: { fileSystem: createInMemoryFileSystem({ files: {} }),
-    processRunner, yaml }, outliner, sources, runnerFrames });
+    processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(root.projectSettings({ host: host({ name: "claude", directory: ".claude" }),
     method: methodSliceFixture, files: [{ source: source("settings.json"),
       content: { kind: "text", text: '{"permissions":{"allow":["Edit(/**)"]}}' } }],
@@ -362,7 +364,7 @@ test("registered document projection captures neutral sources once while an unre
   } });
   const readFile = mock(fileSystem.readFile);
   const root = createPackageBuildRoot({ hosts: HOSTS,
-    platform: { fileSystem: { ...fileSystem, readFile }, processRunner, yaml },
+    platform: { fileSystem: { ...fileSystem, readFile }, processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   const documents = { core, fills: { invoke: "/aidlc", slots: {} },
@@ -393,7 +395,7 @@ test("registered document projection captures neutral sources once while an unre
 test("the document root preserves all neutral capture failures", async () => {
   const fileSystem = createInMemoryFileSystem({ files });
   const root = createPackageBuildRoot({ hosts: HOSTS,
-    platform: { fileSystem, processRunner, yaml }, outliner, sources, runnerFrames });
+    platform: { fileSystem, processRunner, yaml, digester }, outliner, sources, runnerFrames });
   const core = accept(await root.loadCore());
   expect(await root.projectDocuments({ core,
     host: host({ name: "claude", directory: ".claude" }), fills: { invoke: "/aidlc", slots: {} },
@@ -427,7 +429,7 @@ test("the public distribution reader supplies one captured facts instance withou
   const readTree = mock<Platform["fileSystem"]["readTree"]>(fileSystem.readTree);
   const distribution = mock<HostDistributionReader>(() => accepted(scratchHostDistributionFixture));
   const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(), distribution }],
-    platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml }, outliner, sources, runnerFrames });
+    platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester }, outliner, sources, runnerFrames });
   expect(root.readHostDistribution({ host: SCRATCH_HOST })).toEqual(accepted(scratchHostDistributionFixture));
   expect(root.readHostDistribution({ host: SCRATCH_HOST })).toEqual(accepted(scratchHostDistributionFixture));
   expect(distribution).toHaveBeenCalledTimes(2);
@@ -438,7 +440,7 @@ test("the public distribution reader supplies one captured facts instance withou
 
 test("unknown hosts are refused by the public reader", () => {
   const root = createPackageBuildRoot({ hosts: [distributionMembers()],
-    platform: { fileSystem: createInMemoryFileSystem({ files: {} }), processRunner, yaml },
+    platform: { fileSystem: createInMemoryFileSystem({ files: {} }), processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   expect(root.readHostDistribution({ host: host({ name: "missing", directory: ".missing" }) }))
     .toEqual(refused([{ kind: "unknown-harness", harness: "missing" }]));
@@ -448,7 +450,7 @@ test("the public reader preserves the native distribution's kernel refusal", () 
   const distribution: HostDistributionReader = () => refused({
     kind: "invalid-path", base: "project", raw: "../outside" });
   const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(), distribution }],
-    platform: { fileSystem: createInMemoryFileSystem({ files: {} }), processRunner, yaml },
+    platform: { fileSystem: createInMemoryFileSystem({ files: {} }), processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   expect(root.readHostDistribution({ host: SCRATCH_HOST }))
     .toEqual(refused([{ kind: "invalid-path", base: "project", raw: "../outside" }]));
@@ -486,7 +488,7 @@ test("the full host compiles once per projection and reuses raw neutral and runt
       origin: { kind: "neutral", source: document.source } }]),
   });
   const root = createPackageBuildRoot({ hosts: [withProjection({ documents: { inputs: [], render } })],
-    platform: { fileSystem: { ...fileSystem, readTree }, processRunner: fullHostProcess(), yaml },
+    platform: { fileSystem: { ...fileSystem, readTree }, processRunner: fullHostProcess(), yaml, digester },
     outliner, sources, runnerFrames });
   const loaded = accept(await root.loadCore());
   const project = mock(loaded.project);
@@ -518,7 +520,7 @@ test("the full host compiles once per projection and reuses raw neutral and runt
 
 test("the full host refuses an unknown distribution before compiling or reading neutral inputs", async () => {
   const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
-  const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem, processRunner, yaml },
+  const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem, processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   const loaded = accept(await root.loadCore());
   const project = mock(loaded.project);
@@ -531,7 +533,7 @@ test("the full host refuses a declared missing authored placement before compili
   const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
   const root = createPackageBuildRoot({ hosts: [withProjection({
     placements: [{ source: "settings.json", destination: ".scratch/settings.json" }] })],
-    platform: { fileSystem, processRunner, yaml }, outliner, sources, runnerFrames });
+    platform: { fileSystem, processRunner, yaml, digester }, outliner, sources, runnerFrames });
   const loaded = accept(await root.loadCore());
   const project = mock(loaded.project);
   expect(await root.projectHost(fullHostRequest({ ...loaded, project }))).toEqual(refused([{
@@ -546,7 +548,7 @@ test("the full host preserves neutral source failures instead of returning parti
     ["file:///core/templates/onboarding.md"]: "permission-denied",
   } });
   const root = createPackageBuildRoot({ hosts: [distributionMembers()],
-    platform: { fileSystem, processRunner, yaml }, outliner, sources, runnerFrames });
+    platform: { fileSystem, processRunner, yaml, digester }, outliner, sources, runnerFrames });
   const loaded = accept(await root.loadCore());
   expect(await root.projectHost(fullHostRequest(loaded))).toEqual(refused([{
     kind: "neutral-source-unreadable", source: source("templates/onboarding.md"), reason: "permission-denied",
@@ -555,7 +557,29 @@ test("the full host preserves neutral source failures instead of returning parti
 
 test("the root hands the Projection-bound settings capabilities to its callers", () => {
   const fileSystem = createInMemoryFileSystem({ files });
-  const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem, processRunner, yaml },
+  const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem, processRunner, yaml, digester },
     outliner, sources, runnerFrames });
   expect(root.settingsCapabilities.extendedSubprocessTimeoutMs).toBeGreaterThan(0);
+});
+
+test("buildPayload refuses an unknown distribution before compiling", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem, processRunner, yaml, digester },
+    outliner, sources, runnerFrames });
+  const loaded = accept(await root.loadCore());
+  expect(await root.buildPayload(fullHostRequest(loaded)))
+    .toEqual(refused([{ kind: "unknown-harness", harness: "scratch" }]));
+});
+
+test("buildPayload lays a routed host's projection out as a hashed payload", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const layout = { ...scratchHostDistributionFixture.layout, managedDirectories: [
+    ...scratchHostDistributionFixture.layout.managedDirectories,
+    { path: path("aidlc"), ownership: "whole-directory" as const }] };
+  const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(),
+    distribution: () => accepted({ ...scratchHostDistributionFixture, layout }) }],
+    platform: { fileSystem, processRunner: fullHostProcess(), yaml, digester }, outliner, sources, runnerFrames });
+  const loaded = accept(await root.loadCore());
+  const built = await root.buildPayload(fullHostRequest(loaded));
+  expect(accept(built).files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/aidlc-stamp.json") }));
 });
