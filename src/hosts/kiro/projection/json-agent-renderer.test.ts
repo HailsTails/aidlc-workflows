@@ -86,7 +86,7 @@ test("the published agent member prepares a persona once and delegates its model
       content: { kind: "text", text: "# Authored skill" } }],
     prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderAgent({ agent, knowledge: [] })).toEqual(accepted([{
-    path: path(".kiro/agents/aidlc-architect-agent.json"), mode: "regular", availability: "always",
+    path: path(".kiro/agents/aidlc-architect-agent.json"), mode: "regular",
     content: { kind: "text", text: '{\n  "name": "original",\n  "custom": true\n}\n' },
     origin: { kind: "harness-authored", source: file.source },
   }]));
@@ -105,7 +105,7 @@ test("the conductor preserves its model and appends the native hook suffix once"
     host, formatDocuments, channel: "native",
     files: [conductor, allowFile], prepare, models, allows: { dispatcherCommands: [], toolScripts: [] } });
   expect(render.renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
-    path: path(".kiro/agents/aidlc.json"), mode: "regular", availability: "always",
+    path: path(".kiro/agents/aidlc.json"), mode: "regular",
     content: { kind: "text", text: '{\n  "model": "personal",\n  "hooks": {\n    "pre": [\n      {\n        "command": "run; exit $LASTEXITCODE"\n      }\n    ]\n  }\n}\n' },
     origin: { kind: "harness-authored", source: conductor.source },
   }]));
@@ -163,7 +163,7 @@ test("conductor hook overflow is serialized before the final allow-list rewrite"
     models: () => accepted(undefined), allows: { dispatcherCommands: [], toolScripts: [] },
   });
   expect(render.renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
-    path: path(".kiro/agents/aidlc.json"), mode: "regular", availability: "always",
+    path: path(".kiro/agents/aidlc.json"), mode: "regular",
     origin: { kind: "harness-authored", source: conductor.source }, content: { kind: "text",
       text: '{\n  "hooks": {\n    "pre": [\n      null\n    ]\n  },\n  "toolsSettings": {\n    "execute_bash": {\n      "allowedCommands": [\n        "keep"\n      ]\n    }\n  }\n}\n' },
   }]));
@@ -179,10 +179,10 @@ test("Kiro's native factory returns JSON then Markdown with the exact in-parts r
   const prepare = mock(accepted<AuthoredHostFile>);
   const renderer = kiroAgents({ ...nativeInputs(documents), prepare });
   expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([
-    { path: path(".kiro/agents/aidlc-architect-agent.json"), mode: "regular", availability: "always",
+    { path: path(".kiro/agents/aidlc-architect-agent.json"), mode: "regular",
       content: { kind: "text", text: '{\n  "name": "original",\n  "custom": true\n}\n' },
       origin: { kind: "harness-authored", source: file.source } },
-    { path: path(".kiro/agents/aidlc-architect-agent.md"), mode: "regular", availability: "always",
+    { path: path(".kiro/agents/aidlc-architect-agent.md"), mode: "regular",
       content: { kind: "text", text: '---\nname: architect\ntools: ["read", "write", "shell"]\n' +
         'includeMcpJson: true\n---\nRead .kiro/steering/project.md.\n' },
       origin: { kind: "method-source", path: agent.source } },
@@ -215,7 +215,7 @@ test("Kiro's combined factory keeps its conductor JSON-only", () => {
     content: { kind: "text", text: '{"model":"personal"}' } };
   const renderer = kiroAgents({ ...nativeInputs(documents), files: [conductor, allowFile] });
   expect(renderer.renderConductorAgent({ knowledge: [] })).toEqual(accepted([
-    { path: path(".kiro/agents/aidlc.json"), mode: "regular", availability: "always",
+    { path: path(".kiro/agents/aidlc.json"), mode: "regular",
       content: { kind: "text", text: '{"model":"personal"}' },
       origin: { kind: "harness-authored", source: conductor.source } },
   ]));
