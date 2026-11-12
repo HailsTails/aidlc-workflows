@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { bindCopiedSource } from "../src/projection/domain/source-binding.ts";
 import { z } from "zod";
-import type { HostModule } from "../src/cli/roots.ts";
+import type { HostBuildRequest, HostModule } from "../src/cli/roots.ts";
 import type { HostDistribution } from "../src/packaging/domain/payload.ts";
 import { trustEntries } from "../src/hosts/codex/projection/settings-renderer.ts";
 import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
@@ -75,13 +75,16 @@ import type {
 } from "../src/projection/domain/projected-file.ts";
 import { openPackageBuildRoot } from "../src/cli/main.ts";
 import { createNodeFileSystem } from "../src/kernel/file-system.ts";
+import { writePayloadTree } from "../src/packaging/adapters/payload-tree-writer.ts";
 import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
 import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
+import { createBunContentDigester } from "../src/kernel/content-digester.ts";
 import { createPackageBuildRoot } from "../src/cli/package-build-root.ts";
 import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
-const packageBuildRoot = openPackageBuildRoot({ createNodeFileSystem, createNodeProcessRunner,
-  createBunYamlParser, createPackageBuildRoot, outliner: createMarkdownOutliner(markdownBlocks) });
+const nodeFileSystem = createNodeFileSystem();
+const packageBuildRoot = openPackageBuildRoot({ createNodeFileSystem: () => nodeFileSystem, createNodeProcessRunner,
+  createBunYamlParser, createBunContentDigester, createPackageBuildRoot, outliner: createMarkdownOutliner(markdownBlocks) });
 import { pluginId as pluginBuildName } from "../src/workflow-definition/domain/identities.ts";
 import { reviewerAgentSet }
   from "../src/workflow-definition/domain/method-participation.ts";
@@ -882,7 +885,7 @@ function routedListing(distribution: HostDistribution) {
 }
 
 function routedView(request: {
-  members: HostModule; distribution: HostDistribution; files: readonly ProjectedFile[];
+  members: HostModule; distribution: HostDistribution; files: readonly Pick<ProjectedFile, "path" | "content" | "origin">[];
 }): ReleaseView {
   const { members, distribution, files } = request;
   const descriptorPath = `${members.host.directory}/tools/data/harness.json`;
@@ -898,7 +901,7 @@ function routedView(request: {
   }
   const rendered = files.filter((file) =>
     file.origin.kind === "rendered" && file.origin.concept === "onboarding");
-  const insideHost = (file: ProjectedFile): boolean => file.path.startsWith(`${members.host.directory}/`);
+  const insideHost = (file: Pick<ProjectedFile, "path">): boolean => file.path.startsWith(`${members.host.directory}/`);
   const onboarding = rendered.find(insideHost) ?? rendered[0];
   const within = onboarding && insideHost(onboarding)
     ? onboarding.path.slice(members.host.directory.length + 1) : undefined;
@@ -922,11 +925,13 @@ async function buildHost({ name, outRoot, channel }: {
   const tokens = { ...members.projection.tokens, HARNESS_DIR: members.host.directory,
     ...channelTokens({ channel, directory: members.host.directory,
       prefix: TRUSTED_COMMAND_PREFIX, namespace: TRUSTED_ROUTE_NAMESPACE }) };
-  const rendered = await packageBuildRoot.projectHost({ host: captured.host, core: coreBuild,
-    files: captured.files, prepare: (file) => prepareHostSource({ host: captured.host, file,
+  const request = { host: captured.host, core: coreBuild,
+    files: captured.files, prepare: (file: AuthoredHostFile) => prepareHostSource({ host: captured.host, file,
       steps: [(content) => bindCopiedSource({ source: file.source, content, tokens })] }),
     tokens, channel, modelCap: TIER_CAP, entrypoints: shippedSettingsEntrypoints(CORE_ROOT),
-    projectRoot: pathToFileURL(outRoot), reviewerAgents });
+    projectRoot: pathToFileURL(outRoot), reviewerAgents };
+  if (channel === "copy") return buildCopyHost({ routed, request, outRoot });
+  const rendered = await packageBuildRoot.projectHost(request);
   if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
   writeProjectedFiles({ files: rendered.value.projection.files, projectRoot: outRoot });
   const treeRoot = join(outRoot, members.host.directory);
@@ -934,6 +939,19 @@ async function buildHost({ name, outRoot, channel }: {
   const view = routedView({ ...routed, files: rendered.value.projection.files });
   writeProjectionData(outRoot, treeRoot, view);
   return view;
+}
+
+async function buildCopyHost({ routed, request, outRoot }: {
+  readonly routed: RoutedHost; readonly request: HostBuildRequest; readonly outRoot: string;
+}): Promise<ReleaseView> {
+  const built = await packageBuildRoot.buildPayload(request);
+  if (!built.ok) throw new Error(JSON.stringify(built.refusal));
+  const written = await writePayloadTree({ root: pathToFileURL(`${outRoot}/`), payload: built.value,
+    fileSystem: nodeFileSystem });
+  if (!written.ok) throw new Error(JSON.stringify(written.refusal));
+  emitPluginAuthoringData(join(outRoot, routed.members.host.directory));
+  return routedView({ ...routed, files: built.value.files.flatMap((file) =>
+    file.origin.kind === "projected" ? [{ path: file.path, content: file.content, origin: file.origin.origin }] : []) });
 }
 
 // ---------------------------------------------------------------------------
