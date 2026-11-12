@@ -32,7 +32,6 @@ const descriptorText = (request: {
     ...(hostData.documentExtractors ? { documentExtractors: hostData.documentExtractors } : {}),
     ...(hostData.hookActivation ? { hookActivation: hookStrings(hostData.hookActivation, tokens) } : {}),
     ...(hostData.newChatStep ? { newChatStep: hostData.newChatStep } : {}),
-    ...(hostData.kiroLayout ? { kiroLayout: hostData.kiroLayout } : {}),
     ...(hostData.directiveMaxBytes ? { directiveMaxBytes: hostData.directiveMaxBytes } : {}),
     ...(hostData.statusLine ? { statusLine: hostData.statusLine } : {}),
     ...(hostData.agentFinishRecorded ? { agentFinishRecorded: hostData.agentFinishRecorded } : {}),

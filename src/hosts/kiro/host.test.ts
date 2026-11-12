@@ -6,6 +6,7 @@ import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TOKENS } from "./h
 import { kiroHost, kiroPersonas } from "./host.ts";
 import { KIRO_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { kiroAgentRenderer } from "./projection/agent-renderer.ts";
+import { deriveKiroHarnessRecord } from "./projection/harness-record.ts";
 import { kiroAgents } from "./projection/json-agent-renderer.ts";
 import { kiroCommandPath } from "./projection/command-renderer.ts";
 import { createKiroDocumentRenderer } from "./projection/document-renderer.ts";
@@ -26,6 +27,7 @@ test("kiro module gathers the identity, distribution and every projection part t
       documents: { inputs: [], render: createKiroDocumentRenderer },
       fills: KIRO_ONBOARDING_FILLS,
       bindingHeading: KIRO_BINDING_HEADING,
+      derive: deriveKiroHarnessRecord,
     },
     distribution: kiroDistribution,
   }));

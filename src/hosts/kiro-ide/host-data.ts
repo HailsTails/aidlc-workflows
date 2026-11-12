@@ -75,7 +75,6 @@ export const KIRO_IDE_HOST_DATA = {
     text: "type /chat new, then <entry>",
     inHost: { env: KIRO_IDE_AGENT_SHELL, text: "open a new chat, pick the aidlc agent, then type <entry>" },
   },
-  kiroLayout: "kas",
   rulesFolder: "steering",
 } as const satisfies HostData;
 

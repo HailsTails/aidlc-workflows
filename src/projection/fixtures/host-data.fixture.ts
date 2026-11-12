@@ -28,7 +28,6 @@ export const kiroHostDataFixture: HostData = {
     recovery: "Start the agent again with {{TOOL_PREFIX}}aidlc-doctor.ts.",
     agentStepInHost: { env: ["KIRO_IDE"], text: "Reload the window." },
   },
-  kiroLayout: "agent-v1",
   hostShell: { env: ["KIRO_SESSION_ID"] },
   pluginAgentFrontmatter: {
     copy: ["tools: [\"*\"]", "  - \"bun .kiro/tools/aidlc-*\""],

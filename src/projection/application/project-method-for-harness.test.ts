@@ -155,6 +155,28 @@ test("all concepts use the existing final-path collision owner", () => {
   }]));
 });
 
+const derivedOnboarding: ProjectedFile = { ...claudeOnboarding, content: { kind: "text", text: "derived" } };
+const derivedExtra: ProjectedFile = { ...claudeOnboarding, path: path(".claude/derived.md") };
+
+test("a derived file at a projected path replaces that file, and one at a new path is added", () => {
+  const project = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
+    ...claudeHarness(), deriveFiles: () => accepted([derivedOnboarding, derivedExtra]) } }));
+  const files = accept(project.project(request)).files;
+  expect(files).toContainEqual(derivedOnboarding);
+  expect(files).toContainEqual(derivedExtra);
+  expect(files).not.toContainEqual(claudeOnboarding);
+  const withoutDerive = accept(createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
+    harness: claudeHarness() })).project(request)).files;
+  expect(files).toHaveLength(withoutDerive.length + 1);
+});
+
+test("two derived files at one path are a collision", () => {
+  const project = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
+    ...claudeHarness(), deriveFiles: () => accepted([derivedOnboarding, derivedOnboarding]) } }));
+  expect(project.project(request)).toEqual(refused([{ kind: "path-collision", path: derivedOnboarding.path,
+    origins: [derivedOnboarding.origin, derivedOnboarding.origin] }]));
+});
+
 test("runtime owns a copied path that is also represented in the semantic source snapshot", () => {
   expect(createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
     harness: claudeHarness() })).project({ ...request, sources: [{ owner: { kind: "core" },

@@ -52,7 +52,6 @@ test("Kiro IDE declares its native runtime facts", () => {
       "text": "open a new chat, pick the aidlc agent, then type <entry>"
     }
   },
-  "kiroLayout": "kas",
   "rulesFolder": "steering"
 });
 });

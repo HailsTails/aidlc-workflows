@@ -40,7 +40,6 @@ export const KIRO_HOST_DATA = {
   },
   hostShell: { env: ["KIRO_SESSION_ID"] },
   newChatStep: { text: "type /chat new, then <entry>" },
-  kiroLayout: "agent-v1",
   pluginAgentFrontmatter: { copy: KIRO_PROMPT_LINES, native: KIRO_PROMPT_LINES },
 } as const satisfies HostData;
 

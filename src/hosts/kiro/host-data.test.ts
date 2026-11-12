@@ -6,7 +6,6 @@ test("Kiro declares its v2 layout and conversation surface", () => {
   expect(KIRO_HOST_DATA.productName).toBe("Kiro CLI");
   expect(KIRO_HOST_DATA.configNextStep).toBe("run `kiro-cli --v2` (Kiro CLI 2.21.4 or later; for an older one, see the AI-DLC Kiro CLI guide), then `/aidlc --doctor`");
   expect(KIRO_HOST_DATA.rulesFolder).toBe("steering");
-  expect(KIRO_HOST_DATA.kiroLayout).toBe("agent-v1");
   expect(KIRO_HOST_DATA.hostShell).toEqual({ env: ["KIRO_SESSION_ID"] });
   expect(KIRO_HOST_DATA.newChatStep).toEqual({ text: "type /chat new, then <entry>" });
   expect(KIRO_TOKENS).toEqual({ ["SKILL_INVOKE"]: null, ["OPTION_LETTERS"]: "A-E" });

@@ -1,12 +1,13 @@
 import { expect, mock, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
+import { accept } from "../../kernel/fixtures/accept.ts";
 import { accepted } from "../../kernel/result.ts";
+import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
 import { kiroIdeDistribution } from "./distribution.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TOKENS } from "./host-data.ts";
 import { kiroIdeHost } from "./host.ts";
 import { KIRO_IDE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import type { KiroIdePersonaRendering } from "./projection/agent-renderer.ts";
-import { deriveKiroIdeSteering } from "./projection/steering-deriver.ts";
 import { kiroIdeHostData } from "./projection/host-data-renderer.ts";
 import { kiroIdeCommandPath } from "./projection/command-renderer.ts";
 import { createKiroIdeDocumentRenderer } from "./projection/document-renderer.ts";
@@ -29,8 +30,21 @@ test("kiroIde module gathers the identity, distribution and every projection par
       documents: { inputs: [], render: createKiroIdeDocumentRenderer },
       fills: KIRO_IDE_ONBOARDING_FILLS,
       bindingHeading: KIRO_IDE_BINDING_HEADING,
-      derive: deriveKiroIdeSteering,
+      derive: expect.any(Function),
     },
     distribution: kiroIdeDistribution,
   }));
+});
+
+const record = (text: string): ProjectedFile => ({ path: path(".kiro/tools/data/harness.json"),
+  content: { kind: "text", text }, mode: "regular", availability: "always",
+  origin: { kind: "rendered", concept: "host-data", name: "kiro-ide" } });
+
+test("kiroIde derives its steering file and completes its harness record in one step", () => {
+  const derived = accept(accept(kiroIdeHost(personas)).projection.derive?.({
+    files: [record('{\n  "newChatStep": 1\n}\n')] }) ?? accepted([]));
+  expect(derived).toEqual([
+    expect.objectContaining({ path: path(".kiro/steering/aidlc-active-memory.md") }),
+    record('{\n  "newChatStep": 1,\n  "kiroLayout": "kas"\n}\n'),
+  ]);
 });

@@ -125,8 +125,7 @@ test("nested hook strings escape safely while new-chat text stays in its declare
     data: { productName: "Scratch", configNextStep: "Keep {{INVOKE}}", rulesFolder: null,
       hookActivation: { recovery: "{{INVOKE}}", agentStepInHost: {
         env: ["{{TOOL_PREFIX}}"], text: "{{TRUSTED_NAMESPACE}}" } },
-      newChatStep: { text: "{{INVOKE}}", inHost: { env: ["native"], text: "{{INVOKE}}" } },
-      kiroLayout: "agent-v1" },
+      newChatStep: { text: "{{INVOKE}}", inHost: { env: ["native"], text: "{{INVOKE}}" } } },
   }).renderHostData()).toEqual(accepted([{
     path: path(".claude/tools/data/harness.json"), mode: "regular", availability: "always",
     origin: { kind: "rendered", concept: "host-data", name: "claude" },
@@ -155,8 +154,7 @@ test("nested hook strings escape safely while new-chat text stays in its declare
       ],
       "text": "{{INVOKE}}"
     }
-  },
-  "kiroLayout": "agent-v1"
+  }
 }
 ` },
   }]));

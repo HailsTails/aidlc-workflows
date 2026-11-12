@@ -8,6 +8,15 @@ import { renderMethodAgents } from "./project-method-agents.ts";
 import { renderStageAndScopeCommands } from "./project-method-commands.ts";
 import { projectRuntime } from "./project-runtime.ts";
 import { projectWorkspace } from "./project-workspace.ts";
+import type { ProjectedFile } from "../domain/projected-file.ts";
+
+const placeDerived = (request: {
+  readonly files: readonly ProjectedFile[];
+  readonly derived: readonly ProjectedFile[];
+}): readonly ProjectedFile[] => [
+  ...request.files.map((file) => request.derived.find((candidate) => candidate.path === file.path) ?? file),
+  ...request.derived.filter((candidate) => !request.files.some((file) => file.path === candidate.path)),
+];
 
 export const createProjectMethodForHarness = (registry: HarnessRegistry): ProjectMethodForHarness => ({
   project: (request) => {
@@ -33,7 +42,9 @@ export const createProjectMethodForHarness = (registry: HarnessRegistry): Projec
     if (failures.length > 0) return refused(failures);
     const collected = collectCommandRenderings(rendered);
     if (!collected.ok) return refused([collected.refusal]);
-    const derived = collectCommandRenderings([accepted(collected.value), harness.deriveFiles({ files: collected.value })]);
-    return derived.ok ? accepted({ host, files: derived.value, findings: [] }) : refused([derived.refusal]);
+    const derived = collectCommandRenderings([harness.deriveFiles({ files: collected.value })]);
+    return derived.ok
+      ? accepted({ host, files: placeDerived({ files: collected.value, derived: derived.value }), findings: [] })
+      : refused([derived.refusal]);
   },
 });
