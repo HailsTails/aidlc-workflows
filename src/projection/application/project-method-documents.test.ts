@@ -7,10 +7,10 @@ import { ONBOARDING_TEMPLATES_FIXTURE, documentRenderingInputsFixture,
 import type { ProjectedFile } from "../domain/projected-file.ts";
 import { projectMethodDocuments } from "./project-method-documents.ts";
 
-const onboarding: ProjectedFile = { path: path(".fixture/ONBOARDING.md"), mode: "regular", availability: "always",
+const onboarding: ProjectedFile = { path: path(".fixture/ONBOARDING.md"), mode: "regular",
   content: { kind: "text", text: "Onboarding" },
   origin: { kind: "rendered", concept: "onboarding", name: "ONBOARDING.md" } };
-const document: ProjectedFile = { path: path(".fixture/conductor.md"), mode: "regular", availability: "always",
+const document: ProjectedFile = { path: path(".fixture/conductor.md"), mode: "regular",
   content: { kind: "text", text: "Conductor" }, origin: { kind: "neutral", source: source("aidlc-common/conductor.md") } };
 
 test("one document factory receives the inputs and renders onboarding before the captured documents", () => {

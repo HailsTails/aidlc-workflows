@@ -20,7 +20,7 @@ test("personas and conductor use the existing collision owner", () => {
   const personaOrigin = { kind: "method-source", path: methodSource({ kind: "agent", within: "persona.md" }) } as const;
   const conductorOrigin = { kind: "harness-authored", source: source("agents/conductor.json") } as const;
   const destination = path(".native/agents/shared.json");
-  const file = { path: destination, mode: "regular", availability: "always",
+  const file = { path: destination, mode: "regular",
     content: { kind: "text", text: "final bytes" } } as const;
   const persona = mock((): Rendering => accepted([]))
     .mockReturnValueOnce(accepted([{ ...file, origin: personaOrigin }]));

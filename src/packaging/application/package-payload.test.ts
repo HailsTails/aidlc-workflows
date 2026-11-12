@@ -20,7 +20,7 @@ const application = (stamp: VersionStamp = stampedText,
   stamp,
 });
 const versionModule = (text: string): ProjectedFile => ({ path: path(".claude/tools/aidlc-version.ts"),
-  content: { kind: "text", text }, mode: "regular", availability: "always",
+  content: { kind: "text", text }, mode: "regular",
   origin: { kind: "runtime-data", name: "version-module" } });
 
 test("packaging obtains host layout independently of Projection", async () => {
@@ -90,7 +90,7 @@ test("a projected content hash refusal stops before metadata assembly", async ()
   });
   expect(await packagePayload.package({ version: fixture.version, channel: "copy", runtime: [],
     projection: { host: fixture.descriptor.host, findings: [], files: [{ path: path(".claude/test.md"),
-      mode: "regular", content: { kind: "text", text: "projected" }, availability: "always",
+      mode: "regular", content: { kind: "text", text: "projected" },
       origin: { kind: "rendered", concept: "host-data", name: "fixture" } }] },
   })).toEqual(refused([{ kind: "invalid-content-hash", raw: "bad digest" }]));
   expect(files).not.toHaveBeenCalled();
@@ -134,7 +134,7 @@ test("a stamped version hash refusal stays typed", async () => {
   })).toEqual(refused([{ kind: "invalid-content-hash", raw: "bad stamped digest" }]));
 });
 
-test("the additive contract's absent availability still includes the version file", async () => {
+test("a projected version file is included and stamped", async () => {
   expect(await application().package({ version: fixture.version, channel: "copy", runtime: [],
     projection: { host: fixture.descriptor.host, findings: [], files: [{
       path: path(".claude/tools/aidlc-version.ts"), content: { kind: "text", text: "raw" }, mode: "regular",

@@ -21,7 +21,7 @@ describe("authoredSourcePaths", () => {
 
 const RECORD_PATH = ".h/tools/data/harness.json";
 const recordFile = (text: string): ProjectedFile => ({ path: path(RECORD_PATH), content: { kind: "text", text },
-  mode: "regular", availability: "always", origin: { kind: "rendered", concept: "host-data", name: "h" } });
+  mode: "regular", origin: { kind: "rendered", concept: "host-data", name: "h" } });
 const line = { key: "layout", value: "v1" };
 
 describe("harnessRecordWithLine", () => {

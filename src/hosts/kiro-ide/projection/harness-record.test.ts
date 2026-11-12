@@ -5,7 +5,7 @@ import type { ProjectedFile } from "../../../projection/domain/projected-file.ts
 import { deriveKiroIdeHarnessRecord, KIRO_IDE_LAYOUT } from "./harness-record.ts";
 
 const record = (text: string): ProjectedFile => ({ path: path(".kiro/tools/data/harness.json"),
-  content: { kind: "text", text }, mode: "regular", availability: "always",
+  content: { kind: "text", text }, mode: "regular",
   origin: { kind: "rendered", concept: "host-data", name: "kiro" } });
 
 test("Kiro IDE supplies its layout", () => {

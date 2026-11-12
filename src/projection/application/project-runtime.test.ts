@@ -17,19 +17,19 @@ const request = { host: host({ name: "native", directory: ".native" }),
 test("one projection places captured runtime, captured version and untouched generated data", () => {
   expect(projectRuntime(request)).toEqual(accepted([
     { path: path(".native/tools/run.ts"), content: { kind: "text", text: "bun .native/tools/aidlc.ts" },
-      mode: "regular", availability: "always", origin: { kind: "neutral", source: source("tools/run.ts") } },
+      mode: "regular", origin: { kind: "neutral", source: source("tools/run.ts") } },
     { path: path(".native/hooks/icon.bin"), content: { kind: "bytes", bytes: new Uint8Array([0, 255]) },
-      mode: "regular", availability: "always", origin: { kind: "neutral", source: source("hooks/icon.bin") } },
+      mode: "regular", origin: { kind: "neutral", source: source("hooks/icon.bin") } },
     { path: path(".native/tools/aidlc-version.ts"), content: { kind: "text", text: "captured version" },
-      mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "version-module" } },
+      mode: "regular", origin: { kind: "runtime-data", name: "version-module" } },
     { path: path(".native/tools/data/agent-tiers.json"), content: { kind: "text", text: "tiers {{INVOKE}}" },
-      mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "agent-tiers" } },
+      mode: "regular", origin: { kind: "runtime-data", name: "agent-tiers" } },
     { path: path(".native/tools/data/aidlc-settings.schema.json"), content: { kind: "text", text: "schema {{HARNESS_DIR}}" },
-      mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "settings-schema" } },
+      mode: "regular", origin: { kind: "runtime-data", name: "settings-schema" } },
     { path: path(".native/tools/data/stage-graph.json"), content: { kind: "text", text: "graph {{INVOKE}}" },
-      mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "stage-graph" } },
+      mode: "regular", origin: { kind: "runtime-data", name: "stage-graph" } },
     { path: path(".native/tools/data/scope-grid.json"), content: { kind: "text", text: "grid {{HARNESS_DIR}}" },
-      mode: "regular", availability: "always", origin: { kind: "runtime-data", name: "scope-grid" } },
+      mode: "regular", origin: { kind: "runtime-data", name: "scope-grid" } },
   ]));
 });
 

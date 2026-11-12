@@ -44,7 +44,7 @@ const hostDataFile = (request: { readonly host: HostIdentity; readonly within: s
   const { host, within, text } = request;
   const path = projectPath(`${host.directory}/${within}`);
   return path.ok ? accepted([{ path: path.value, content: { kind: "text", text },
-    mode: "regular", availability: "always",
+    mode: "regular",
     origin: { kind: "rendered", concept: "host-data", name: host.distribution } }])
     : refused({ kind: "render-failed", concept: "host-data", name: host.distribution,
       reason: "The host data destination must be project-relative." });
@@ -63,7 +63,7 @@ const placeFile = (request: {
     name: request.file.source, reason: "The authored destination must be project-relative." });
   const prepared = request.prepare(request.file);
   return prepared.ok ? accepted([{ path: path.value, content: prepared.value.content,
-    mode: "regular", availability: "always",
+    mode: "regular",
     origin: { kind: "harness-authored", source: request.file.source } }]) : prepared;
 };
 

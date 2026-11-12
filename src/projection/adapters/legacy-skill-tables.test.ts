@@ -78,9 +78,9 @@ test("scope snapshot write failure launches no process and remains refusal data"
 });
 const capturedFiles = () => [{ path: path(".claude/tools/aidlc-utility.ts"),
   content: { kind: "text" as const, text: "captured formatter" }, mode: "regular" as const,
-  availability: "always" as const, origin: { kind: "neutral" as const, source: source("tools/aidlc-utility.ts") } },
+  origin: { kind: "neutral" as const, source: source("tools/aidlc-utility.ts") } },
   { path: path(".claude/tools/data/stage-graph.json"), content: { kind: "text" as const, text: "captured graph" },
-    mode: "regular" as const, availability: "always" as const,
+    mode: "regular" as const,
     origin: { kind: "runtime-data" as const, name: "stage-graph" as const } }];
 
 test("a clean full build runs only the captured formatter and graph inside its private frame", async () => {

@@ -17,7 +17,7 @@ const memoryFile = ({ workspace, rule, copy }: {
   const path = projectPath(`${root}/${rule.path.slice(METHOD_SOURCE_FOLDERS.rule.length + 1)}`);
   return path.ok ? accepted([{ path: path.value,
     content: bindCopiedSource({ source: rule.path, content: rule.content, tokens: workspace.tokens }),
-    mode: "regular", availability: "always", origin: { kind: "workspace-memory", copy, path: rule.path } }])
+    mode: "regular", origin: { kind: "workspace-memory", copy, path: rule.path } }])
     : refused({ kind: "render-failed", concept: "host-data", name: rule.path,
       reason: "The workspace memory destination must be project-relative." });
 };
@@ -30,7 +30,7 @@ const companionFile = ({ workspace, companion, copy }: {
   const root = copy === "space" ? DEFAULT_WORKSPACE.memory : `${workspace.host.directory}/${DEFAULT_WORKSPACE.seed}`;
   const path = projectPath(`${root}/${companion.source.slice(METHOD_SOURCE_FOLDERS.rule.length + 1)}`);
   return path.ok ? accepted([{ path: path.value, content: companion.content,
-    mode: "regular", availability: "always", origin: { kind: "memory-companion", copy, source: companion.source } }])
+    mode: "regular", origin: { kind: "memory-companion", copy, source: companion.source } }])
     : refused({ kind: "render-failed", concept: "host-data", name: companion.source,
       reason: "The workspace memory destination must be project-relative." });
 };
@@ -45,6 +45,6 @@ export const projectWorkspace: WorkspaceProjection = (request) => {
     ...request.companions.flatMap((companion) => [companionFile({ workspace: request, companion, copy: "space" }),
       companionFile({ workspace: request, companion, copy: "seed" })]),
     accepted([{ path: pointer.value, content: { kind: "text", text: `${DEFAULT_WORKSPACE.name}\n` },
-      mode: "regular", availability: "always", origin: { kind: "active-space" } }]),
+      mode: "regular", origin: { kind: "active-space" } }]),
   ]);
 };

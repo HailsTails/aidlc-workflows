@@ -55,9 +55,9 @@ test("shared command placement preserves companions and origin without a host ru
   const renderer = createCommandRenderers({ place, source: { read: () => accepted(exampleReading) } });
   expect(renderer.renderStageCommand({ stage, node })).toEqual(accepted([
     { path: path(".host/skills/aidlc-example/SKILL.md"), mode: "regular", content: { kind: "text", text: "Command\n" },
-      availability: "always", origin: { kind: "rendered", concept: "stage-command", name: "requirements-analysis" } },
+      origin: { kind: "rendered", concept: "stage-command", name: "requirements-analysis" } },
     { path: path(".host/skills/aidlc-example/agents/guard.yaml"), mode: "regular", content: { kind: "text", text: "Guard\n" },
-      availability: "always", origin: { kind: "rendered", concept: "stage-command", name: "requirements-analysis" } },
+      origin: { kind: "rendered", concept: "stage-command", name: "requirements-analysis" } },
   ]));
 });
 
@@ -91,9 +91,9 @@ test("init and compose stay within the one orchestrator member with distinct sub
   const renderer = createCommandRenderers({ place, source: { read } });
   expect(renderer.renderOrchestratorSkill({ method: methodSliceFixture })).toEqual(accepted([
     { path: path(".host/skills/aidlc-init/SKILL.md"), mode: "regular", content: { kind: "text", text: "Shortcut\n" },
-      availability: "always", origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc-init" } },
+      origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc-init" } },
     { path: path(".host/skills/aidlc-compose/SKILL.md"), mode: "regular", content: { kind: "text", text: "Shortcut\n" },
-      availability: "always", origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc-compose" } },
+      origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc-compose" } },
   ]));
 });
 

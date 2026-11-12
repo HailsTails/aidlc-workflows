@@ -37,7 +37,7 @@ test("kiroIde module gathers the identity, distribution and every projection par
 });
 
 const record = (text: string): ProjectedFile => ({ path: path(".kiro/tools/data/harness.json"),
-  content: { kind: "text", text }, mode: "regular", availability: "always",
+  content: { kind: "text", text }, mode: "regular",
   origin: { kind: "rendered", concept: "host-data", name: "kiro-ide" } });
 
 test("kiroIde derives its steering file and completes its harness record in one step", () => {

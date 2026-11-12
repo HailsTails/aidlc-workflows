@@ -13,36 +13,36 @@ const request = () => ({ host: host({ name: "claude", directory: ".claude" }), c
 
 test("each rule has exactly a bound space copy and seed copy, followed by the pointer", () => {
   expect(projectWorkspace(request())).toEqual(accepted([
-    { path: path("aidlc/spaces/default/memory/phases/construction.md"), mode: "regular", availability: "always",
+    { path: path("aidlc/spaces/default/memory/phases/construction.md"), mode: "regular",
       content: { kind: "text", text: "Use bun .claude/tools/aidlc.ts in .claude.\n" },
       origin: { kind: "workspace-memory", copy: "space",
         path: methodSource({ kind: "rule", within: "phases/construction.md" }) } },
-    { path: path(".claude/tools/data/memory-seed/phases/construction.md"), mode: "regular", availability: "always",
+    { path: path(".claude/tools/data/memory-seed/phases/construction.md"), mode: "regular",
       content: { kind: "text", text: "Use bun .claude/tools/aidlc.ts in .claude.\n" },
       origin: { kind: "workspace-memory", copy: "seed",
         path: methodSource({ kind: "rule", within: "phases/construction.md" }) } },
     { path: path("aidlc/active-space"), content: { kind: "text", text: "default\n" },
-      mode: "regular", availability: "always", origin: { kind: "active-space" } },
+      mode: "regular", origin: { kind: "active-space" } },
   ]));
 });
 
 test("an empty rule set still writes only the default pointer", () => {
   expect(projectWorkspace({ ...request(), rules: [] })).toEqual(accepted([
     { path: path("aidlc/active-space"), content: { kind: "text", text: "default\n" },
-      mode: "regular", availability: "always", origin: { kind: "active-space" } },
+      mode: "regular", origin: { kind: "active-space" } },
   ]));
 });
 
 test("a companion has exactly two byte-identical copies with distinct provenance and no token pass", () => {
   expect(projectWorkspace({ ...request(), rules: [], companions: [{ source: source("memory/templates/.gitkeep"),
     content: { kind: "text", text: "{{INVOKE}}" } }] })).toEqual(accepted([
-    { path: path("aidlc/spaces/default/memory/templates/.gitkeep"), mode: "regular", availability: "always",
+    { path: path("aidlc/spaces/default/memory/templates/.gitkeep"), mode: "regular",
       content: { kind: "text", text: "{{INVOKE}}" },
       origin: { kind: "memory-companion", copy: "space", source: source("memory/templates/.gitkeep") } },
-    { path: path(".claude/tools/data/memory-seed/templates/.gitkeep"), mode: "regular", availability: "always",
+    { path: path(".claude/tools/data/memory-seed/templates/.gitkeep"), mode: "regular",
       content: { kind: "text", text: "{{INVOKE}}" },
       origin: { kind: "memory-companion", copy: "seed", source: source("memory/templates/.gitkeep") } },
     { path: path("aidlc/active-space"), content: { kind: "text", text: "default\n" },
-      mode: "regular", availability: "always", origin: { kind: "active-space" } },
+      mode: "regular", origin: { kind: "active-space" } },
   ]));
 });

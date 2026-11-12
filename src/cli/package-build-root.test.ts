@@ -233,7 +233,7 @@ test("the full host compiles once per projection and reuses raw neutral and runt
   const readTree = mock(fileSystem.readTree);
   const render: HostDocumentRenderer = (inputs) => ({ ...scratchDocumentRenderer(inputs),
     placeNeutralDocument: ({ document }) => accepted([{ path: path(".scratch/conductor.md"),
-      content: document.content, mode: "regular", availability: "always",
+      content: document.content, mode: "regular",
       origin: { kind: "neutral", source: document.source } }]),
   });
   const root = createPackageBuildRoot({ hosts: [withProjection({ documents: { inputs: [], render } })],
@@ -250,12 +250,12 @@ test("the full host compiles once per projection and reuses raw neutral and runt
     content: { kind: "text", text: "Changed after capture" } }));
   const second = accept(await root.projectHost(request));
   expect(first.projection.files).toContainEqual({ path: path(".scratch/conductor.md"),
-    content: { kind: "text", text: "Raw {{INVOKE}}" }, mode: "regular", availability: "always",
+    content: { kind: "text", text: "Raw {{INVOKE}}" }, mode: "regular",
     origin: { kind: "neutral", source: source("aidlc-common/conductor.md") } });
   expect(second.projection.files).toEqual(first.projection.files);
   expect(first.projection.files).toContainEqual({ path: path("aidlc/spaces/default/memory/templates/.gitkeep"),
     content: { kind: "bytes", bytes: new TextEncoder().encode("Raw {{INVOKE}} companion") },
-    mode: "regular", availability: "always",
+    mode: "regular",
     origin: { kind: "memory-companion", copy: "space", source: source("memory/templates/.gitkeep") } });
   expect(project).toHaveBeenCalledTimes(2);
   expect(project).toHaveBeenNthCalledWith(1, {
@@ -263,7 +263,7 @@ test("the full host compiles once per projection and reuses raw neutral and runt
   });
   expect(readTree).toHaveBeenCalledTimes(reads);
   expect(first.projection.files).toContainEqual({ path: path("aidlc/active-space"),
-    content: { kind: "text", text: "default\n" }, mode: "regular", availability: "always",
+    content: { kind: "text", text: "default\n" }, mode: "regular",
     origin: { kind: "active-space" } });
 });
 
