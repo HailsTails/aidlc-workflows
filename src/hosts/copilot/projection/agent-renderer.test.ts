@@ -40,10 +40,10 @@ const render = (agent: Agent, documents: AgentDocumentSurface = surfaces()) =>
 describe("copilotAgents", () => {
   test("places the runtime and native personas with the engine's copy of the active memory", () => {
     expect(render(delivery)).toEqual(accepted([
-      { path: path(".aidlc/agents/aidlc-delivery-agent.md"), mode: "regular", availability: "always",
+      { path: path(".aidlc/agents/aidlc-delivery-agent.md"), mode: "regular",
         origin: { kind: "method-source", path: delivery.source },
         content: { kind: "text", text: RUNTIME_PLACED } },
-      { path: path(".github/agents/aidlc-delivery-agent.md"), mode: "regular", availability: "always",
+      { path: path(".github/agents/aidlc-delivery-agent.md"), mode: "regular",
         origin: { kind: "method-source", path: delivery.source },
         content: { kind: "text", text: NATIVE_PLACED } },
     ]));

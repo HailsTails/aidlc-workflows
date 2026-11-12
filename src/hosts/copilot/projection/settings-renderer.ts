@@ -16,7 +16,7 @@ const renderHooks = (inputs: SettingsRenderingInputs): Rendering => {
   }));
   const path = projectPath(".github/hooks/aidlc.json");
   return path.ok ? accepted([{
-    path: path.value, mode: "regular", availability: "always",
+    path: path.value, mode: "regular",
     content: { kind: "text", text: `${JSON.stringify({ version: 1, hooks }, null, 2)}\n` },
     origin: { kind: "rendered", concept: "hook-registration", name: "aidlc.json" },
   }]) : refused({ kind: "render-failed", concept: "hook-registration", name: "aidlc.json",
@@ -28,7 +28,7 @@ const renderLauncher = (inputs: SettingsRenderingInputs): Rendering => {
   const text = bindTemplateTokens({ text: inputs.launcher.body({ invocation: "{{INVOKE}}" }),
     tokens: inputs.tokens, selected: ["INVOKE"] });
   return path.ok ? accepted([{
-    path: path.value, mode: "executable", availability: "always", content: { kind: "text", text },
+    path: path.value, mode: "executable", content: { kind: "text", text },
     origin: { kind: "rendered", concept: "hook-registration", name: "aidlc-engine" },
   }]) : refused({ kind: "render-failed", concept: "hook-registration", name: "aidlc-engine",
     reason: "The Copilot engine launcher destination must be project-relative." });

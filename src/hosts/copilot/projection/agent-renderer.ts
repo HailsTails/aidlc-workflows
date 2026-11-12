@@ -49,9 +49,9 @@ const renderAgent = (inputs: AgentRenderingInputs): Harness["renderAgent"] => ({
     "The Copilot agent destinations must be project-relative paths."));
   return accepted([
     { path: runtimePath.value, content: { kind: "text", text: projectActiveMemoryReferences(runtime.value) },
-      mode: "regular", origin: { kind: "method-source", path: agent.source }, availability: "always" },
+      mode: "regular", origin: { kind: "method-source", path: agent.source } },
     { path: nativePath.value, content: { kind: "text", text: projectActiveMemoryReferences(native.value) },
-      mode: "regular", origin: { kind: "method-source", path: agent.source }, availability: "always" },
+      mode: "regular", origin: { kind: "method-source", path: agent.source } },
   ]);
 };
 
