@@ -35,9 +35,9 @@ export const openCodeAgents: HostAgentRenderer = (inputs) => ({
     return accepted([
       { path: nativePath.value, content: { kind: "text", text: projectActiveMemoryReferences(native.value)
         .replace(/`maxTurns: (\d+)`/g, "`steps: $1`") }, mode: "regular",
-        origin: { kind: "method-source", path: agent.source }, availability: "always" },
+        origin: { kind: "method-source", path: agent.source } },
       { path: inlinePath.value, content: { kind: "text", text: projectActiveMemoryReferences(inline.value) },
-        mode: "regular", origin: { kind: "method-source", path: agent.source }, availability: "always" },
+        mode: "regular", origin: { kind: "method-source", path: agent.source } },
     ]);
   },
   renderConductorAgent: () => accepted([]),

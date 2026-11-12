@@ -37,7 +37,7 @@ test("settings preserve prepared JSON bytes at the project root with authored or
   const prepare = mock(() => accepted(prepared));
   expect(createOpenCodeSettingsRenderer({ ...inputs, prepare }).renderSettings({ method: methodSliceFixture }))
     .toEqual(accepted([{ path: path("opencode.json"), content: prepared.content,
-      mode: "regular", availability: "always", origin: { kind: "harness-authored", source: settings.source } }]));
+      mode: "regular", origin: { kind: "harness-authored", source: settings.source } }]));
   expect(prepare).toHaveBeenCalledTimes(1);
   expect(prepare).toHaveBeenCalledWith(settings);
 });
@@ -46,7 +46,7 @@ test("copy plugin embeds captured entrypoints before imports and the complete to
   const prepare = mock(inputs.prepare);
   expect(createOpenCodeSettingsRenderer({ ...inputs, prepare }).renderHookRegistrations({ hooks: [] }))
     .toEqual(accepted([{ path: path(".opencode/plugin/aidlc-opencode-adapter.ts"),
-      content: { kind: "text", text: copyAdapter }, mode: "regular", availability: "always",
+      content: { kind: "text", text: copyAdapter }, mode: "regular",
       origin: { kind: "harness-authored", source: adapter.source } }]));
   expect(prepare).not.toHaveBeenCalled();
 });
@@ -57,7 +57,7 @@ test("native plugin uses captured tokens for every token, including non-invocati
     ["TRUSTED_NAMESPACE"]: "trusted", ["OPTION_LETTERS"]: "A-D", ["SKILL_INVOKE"]: "/aidlc",
   } }).renderHookRegistrations({ hooks: [] })).toEqual(accepted([{
     path: path(".opencode/plugin/aidlc-opencode-adapter.ts"), content: { kind: "text", text: nativeAdapter },
-    mode: "regular", availability: "always", origin: { kind: "harness-authored", source: adapter.source },
+    mode: "regular", origin: { kind: "harness-authored", source: adapter.source },
   }]));
 });
 
@@ -66,7 +66,7 @@ test("captured byte content follows the same plugin path", () => {
     content: { kind: "bytes", bytes: new TextEncoder().encode(adapter.content.text) },
   }] }).renderHookRegistrations({ hooks: [] })).toEqual(accepted([{
     path: path(".opencode/plugin/aidlc-opencode-adapter.ts"), content: { kind: "text", text: copyAdapter },
-    mode: "regular", availability: "always", origin: { kind: "harness-authored", source: adapter.source },
+    mode: "regular", origin: { kind: "harness-authored", source: adapter.source },
   }]));
 });
 

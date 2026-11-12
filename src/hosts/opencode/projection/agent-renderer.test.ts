@@ -28,12 +28,12 @@ test("native and inline personas request distinct frontmatters and retain exact 
       ".aidlc/rules/aidlc-team.md .aidlc/rules/aidlc-project.md .aidlc/rules/other.md\n"));
   const renderer = openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents });
   expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([
-    { path: path(".opencode/agents/aidlc-example-agent.md"), mode: "regular", availability: "always",
+    { path: path(".opencode/agents/aidlc-example-agent.md"), mode: "regular",
       origin: { kind: "method-source", path: agent.source }, content: { kind: "text", text:
         "---\nmode: subagent\nsteps: 12\npermission:\n  task: deny\n---\nBudget `steps: 12`; " +
         "aidlc/active-memory/project.md aidlc/active-memory/org.md aidlc/active-memory/team.md " +
         "aidlc/active-memory/project.md aidlc/active-memory/other.md\n" } },
-    { path: path(".aidlc/agents/aidlc-example-agent.md"), mode: "regular", availability: "always",
+    { path: path(".aidlc/agents/aidlc-example-agent.md"), mode: "regular",
       origin: { kind: "method-source", path: agent.source }, content: { kind: "text", text:
         "---\ndisallowedTools: Task\nmaxTurns: 12\n---\nBudget `maxTurns: 12`; " +
         "aidlc/active-memory/project.md aidlc/active-memory/org.md aidlc/active-memory/team.md " +
