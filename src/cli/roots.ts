@@ -17,21 +17,17 @@ import type { DistributionLayout, HostDistribution, Payload } from "../packaging
 import type { DelegateShellFacts } from "../projection/application/ports/delegate-shell.ts";
 import type { ConceptMembers, HostProjectionParts } from "../projection/application/ports/host-parts.ts";
 import type { AuthoredFilePreparer } from "../projection/application/ports/host-sources.ts";
-import type { CommandPlacement, CommandSource } from "../projection/application/ports/commands.ts";
-import type { Harness, Rendering } from "../projection/application/ports/harness.ts";
+import type { CommandSource } from "../projection/application/ports/commands.ts";
+import type { Harness } from "../projection/application/ports/harness.ts";
 import type { HostAgentRenderer } from "../projection/application/ports/agents.ts";
-import type { HostDataRenderer } from "../projection/application/ports/host-surface.ts";
 import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
 import type { HostSettingsRenderer, SettingsCapabilities } from "../projection/application/ports/settings.ts";
 import type { HostSkillRenderer } from "../projection/application/ports/skills.ts";
-import type { AuthoredHostFile, AuthoredPlacement } from "../projection/domain/host-surface.ts";
-import type { DistributionChannel, ProjectedFile } from "../projection/domain/projected-file.ts";
-import type { OnboardingFills } from "../projection/domain/neutral-surface.ts";
+import type { AuthoredHostFile } from "../projection/domain/host-surface.ts";
+import type { DistributionChannel } from "../projection/domain/projected-file.ts";
 import type { CompiledMethodFiles, Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { TokenBindings } from "../projection/domain/template-token.ts";
 import type { AgentSlug } from "../workflow-definition/domain/identities.ts";
-import type { MethodSource } from "../workflow-definition/domain/method-source.ts";
-import type { Method } from "../workflow-definition/domain/method.ts";
 import type { Tier } from "../workflow-definition/domain/vocabulary.ts";
 import type {
   AuthoredCoreMethod,
@@ -153,74 +149,6 @@ export type HostSourcesRequest = {
   readonly required: readonly string[];
 };
 
-export type HostAgentsRequest = {
-  readonly rulesFolder: string | null;
-  readonly reviewerAgents: ReadonlySet<AgentSlug>;
-  readonly tokens: TokenBindings;
-  readonly sources: readonly MethodSource[];
-  readonly host: HostIdentity;
-  readonly method: Method;
-  readonly files: readonly AuthoredHostFile[];
-  readonly prepare: AuthoredFilePreparer;
-  readonly channel: DistributionChannel;
-  readonly modelCap: Tier | null;
-};
-
-export type ProjectAgents = (request: HostAgentsRequest) => Rendering;
-
-export type HostSkillsRequest = {
-  readonly host: HostIdentity;
-  readonly projectRoot: URL;
-  readonly method: Method;
-  readonly files: readonly AuthoredHostFile[];
-  readonly prepare: AuthoredFilePreparer;
-  readonly tokens: TokenBindings;
-  readonly commands: CommandSource;
-  readonly place: CommandPlacement;
-};
-
-export type ProjectSkills = (request: HostSkillsRequest) => Promise<Rendering>;
-
-export type HostSurfaceMembers = {
-  readonly host: HostIdentity;
-  readonly renderData: HostDataRenderer;
-  readonly placements: readonly AuthoredPlacement[];
-};
-
-export type HostSurfaceRequest = {
-  readonly host: HostIdentity;
-  readonly files: readonly AuthoredHostFile[];
-  readonly prepare: AuthoredFilePreparer;
-  readonly tokens: TokenBindings;
-  readonly channel: DistributionChannel;
-};
-
-export type ProjectHostSurface = (request: HostSurfaceRequest) => Rendering;
-
-export type HostSettingsRequest = {
-  readonly modelCap: Tier | null;
-  readonly host: HostIdentity;
-  readonly method: Method;
-  readonly files: readonly AuthoredHostFile[];
-  readonly prepare: AuthoredFilePreparer;
-  readonly tokens: TokenBindings;
-  readonly channel: DistributionChannel;
-  readonly entrypoints: readonly SourcePath[];
-};
-
-export type ProjectSettings = (request: HostSettingsRequest) => Rendering;
-
-export type HostDocumentsRequest = {
-  readonly host: HostIdentity;
-  readonly core: CoreBuild;
-  readonly fills: OnboardingFills;
-  readonly tokens: TokenBindings;
-};
-
-export type ProjectDocuments = (
-  request: HostDocumentsRequest,
-) => Promise<Result<readonly ProjectedFile[], readonly ProjectionRefusal[]>>;
-
 export type CapturedHostSources = {
   readonly host: HostIdentity;
   readonly files: readonly AuthoredHostFile[];
@@ -234,11 +162,6 @@ export interface PackageBuildRoot {
   readonly projectHost: ProjectHost;
   readonly buildPayload: BuildPayload;
   readonly readHostDistribution: ReadHostDistribution;
-  readonly projectDocuments: ProjectDocuments;
-  readonly projectSettings: ProjectSettings;
-  readonly projectHostSurface: ProjectHostSurface;
-  readonly projectSkills: ProjectSkills;
-  readonly projectAgents: ProjectAgents;
   loadCore(): MethodReading<CoreBuild>;
   loadPlugins(request: { readonly core: CoreBuild }): MethodReading<AuthoredPluginBuild>;
   prepareCommandSource(request: CoreCommandRequest): Promise<CommandSource>;
