@@ -11,10 +11,10 @@ const renderer = createOpenCodeDocumentRenderer(inputs);
 test("OpenCode splits neutral onboarding at the root from native onboarding in .aidlc", () => {
   expect(renderer.renderOnboarding({ templates: ONBOARDING_TEMPLATES_FIXTURE, method: methodSliceFixture }))
     .toEqual({ ok: true, value: [
-      { path: path("AGENTS.md"), mode: "regular", availability: "always",
+      { path: path("AGENTS.md"), mode: "regular",
         origin: { kind: "rendered", concept: "onboarding", name: "AGENTS.md" },
         content: { kind: "text", text: "# AI-DLC in this project\n\nYour work is recorded under aidlc/.\n" } },
-      { path: path(".aidlc/onboarding.md"), mode: "regular", availability: "always",
+      { path: path(".aidlc/onboarding.md"), mode: "regular",
         origin: { kind: "rendered", concept: "onboarding", name: ".aidlc/onboarding.md" },
         content: { kind: "text", text: "# AI-DLC for this host\n\nStart a piece of work with /aidlc.\n" +
           "The install lives in .aidlc; run bun .aidlc/tools/aidlc.ts doctor to check it.\n" } },
@@ -29,7 +29,7 @@ test("onboarding keeps its option letters unbound while copied documents bind th
     text: "# AI-DLC for this host\nOptions {{OPTION_LETTERS}}\n" });
   expect(letters.placeNeutralDocument({ document: { source: source("knowledge/letters.md"), role: "knowledge",
     content: { kind: "text", text: "Pick {{OPTION_LETTERS}}" } } })).toEqual({ ok: true, value: [{
-    path: path(".aidlc/knowledge/letters.md"), mode: "regular", availability: "always",
+    path: path(".aidlc/knowledge/letters.md"), mode: "regular",
     origin: { kind: "neutral", source: source("knowledge/letters.md") },
     content: { kind: "text", text: "Pick A-E" } }] });
 });
@@ -37,7 +37,7 @@ test("onboarding keeps its option letters unbound while copied documents bind th
 test("protocol placement keeps only the opencode binding and never renames a rules directory", () => {
   const document = protocolDocumentFixture();
   expect(renderer.placeNeutralDocument({ document })).toEqual({ ok: true, value: [{
-    path: path(".aidlc/aidlc-common/protocols/stage-protocol.md"), mode: "regular", availability: "always",
+    path: path(".aidlc/aidlc-common/protocols/stage-protocol.md"), mode: "regular",
     origin: { kind: "neutral", source: document.source }, content: { kind: "text", text:
       "# Stage protocol\n\nRead the standing rules in .aidlc/rules/ before a stage starts.\n\n" +
       "## Harness bindings\n\n#### opencode\n\nopencode runs the stage in the session.\n\n" },
