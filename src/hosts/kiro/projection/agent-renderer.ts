@@ -56,7 +56,6 @@ const fileAt = (
         content: { kind: "text", text: placing.text },
         mode: "regular",
         origin: { kind: "method-source", path: agent.source },
-        availability: "always",
       })
     : refused(renderFailed(agent, `${placing.path} must be a project-relative path.`));
 };
