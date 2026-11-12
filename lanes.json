@@ -46,6 +46,7 @@
         "src/hosts/{claude,codex,opencode,kiro,kiro-ide,cursor,copilot}/host{,.test}.ts",
         "src/projection/application/project-runtime{,.test}.ts",
         "src/projection/adapters/runtime-files{,.test}.ts",
+        "src/projection/application/host-surface-members{,.test}.ts",
         "src/packaging/**",
         "src/hosts/kiro-ide/projection/document-renderer{,.test}.ts",
         "src/cli/package-build-root{,.test}.ts",
