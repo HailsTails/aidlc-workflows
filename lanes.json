@@ -249,8 +249,7 @@
         "tests/integration/t145-packaging-parity.test.ts",
         "tests/unit/t-codex-earlier-refresh.test.ts",
         "tests/unit/t-codex-rules-match-aidlc-commands.test.ts",
-        "tests/unit/t-codex-toml-strict.test.ts",
-        "src/hosts/{claude,codex,kiro,kiro-ide,cursor,copilot}/projection/**"
+        "tests/unit/t-codex-toml-strict.test.ts"
       ],
       "consumes": ["src/kernel/**"],
       "monolithDeletions": {
