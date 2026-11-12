@@ -106,6 +106,7 @@
         "src/cli/adapters/routes/workflow-definition/**",
         "src/projection/**",
         "src/hosts/claude/projection/**",
+        "src/hosts/{codex,opencode,kiro,kiro-ide,cursor,copilot}/projection/**",
         "src/hosts/claude/build.ts",
         "src/hosts/claude/host-data{,.test}.ts",
         "src/hosts/claude/{distribution,onboarding-fills}{,.test}.ts",
