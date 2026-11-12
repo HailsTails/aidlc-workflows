@@ -513,29 +513,6 @@ function rewriteKiroNativeAllowlists(outRoot: string, m: ReleaseView): void {
   }
 }
 
-function rewriteClaudeNativePermissions(outRoot: string, m: ReleaseView): void {
-  if (m.name !== "claude") return;
-  const settingsPath = join(outRoot, m.harnessDir, "settings.json");
-  const value = JSON.parse(readFileSync(settingsPath, "utf-8")) as {
-    permissions?: { allow?: unknown };
-  };
-  const allow = value.permissions?.allow;
-  if (!Array.isArray(allow)) throw new Error("[claude] settings.json has no permissions.allow list");
-  // The copy channel's AI-DLC command entries (the tool rewrite above has
-  // already turned their `bun <dir>/tools/aidlc...` into `aidlc engine ...`)
-  // give way to the one trusted prefix and the exact read-only and
-  // turn-back-on commands, run as the installed aidlc command.
-  value.permissions!.allow = [
-    ...allow.filter((entry) =>
-      entry !== "Bash" &&
-      !(typeof entry === "string" && (entry.startsWith("Bash(bun ") || entry.startsWith("Bash(aidlc ")))
-    ),
-    `Bash(${trustedCommand("*")})`,
-    ...nativeDispatcherCommands().map((command) => `Bash(${command})`),
-  ];
-  writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
-}
-
 function rewriteCursorNativePermissions(outRoot: string, m: ReleaseView): void {
   if (m.name !== "cursor") return;
   const cliPath = join(outRoot, m.harnessDir, "cli.json");
@@ -728,7 +705,6 @@ function rewriteNativeInvocations(
     writeFileSync(file, value);
   }
   rewriteKiroNativeAllowlists(outRoot, m);
-  rewriteClaudeNativePermissions(outRoot, m);
   rewriteCursorNativePermissions(outRoot, m);
   // Before the copy's hashes are recorded below, so a part that changed here
   // still has its copy bytes recognized, and --check builds it the same way.
