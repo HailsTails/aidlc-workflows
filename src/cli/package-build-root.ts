@@ -183,11 +183,6 @@ const hostProjector = (ports: {
       layout: distribution.value.layout }, projection: projected.value }) : projected;
   };
 };
-const onboardingOf = (projection: Projection, directory: string) => {
-  const rendered = projection.files.filter((file) => file.origin.kind === "rendered"
-    && file.origin.concept === "onboarding");
-  return (rendered.find((file) => file.path.startsWith(`${directory}/`)) ?? rendered[0])?.path;
-};
 
 const payloadBuilder = (ports: {
   readonly projectHost: ProjectHost; readonly hosts: HostBuildTable; readonly packaging: BuildPackaging;
@@ -200,13 +195,9 @@ const payloadBuilder = (ports: {
   const distribution = ports.readDistribution({ host: request.host });
   if (!members) return refused([{ kind: "unknown-harness", harness: request.host.distribution }]);
   if (!distribution.ok) return distribution;
-  if (!ports.packaging.version.ok) return refused([ports.packaging.version.refusal]);
   const hostData = members.projection.renderData({ delegateShellFacts: ports.projection.delegateShellFacts });
-  const packaged = await ports.packaging.packagerFor({ hasher: ports.hasher, distribution: distribution.value,
-    hostData, onboarding: onboardingOf(built.value.projection, request.host.directory),
-  }).package({ projection: built.value.projection, channel: request.channel,
-    version: ports.packaging.version.value, runtime: [] });
-  return packaged;
+  return ports.packaging.packageHost({ hasher: ports.hasher, distribution: distribution.value, hostData,
+    projection: built.value.projection, channel: request.channel });
 };
 
 const distributionReader = (request: {

@@ -41,10 +41,9 @@ const authoringFile: ProjectedFile = { path: path(".scratch/tools/data/plugin-au
 
 const packaged = async (files: readonly ProjectedFile[]) => {
   const packaging = createBuildPackaging(() => accepted("2.11.4"));
-  return accept(await packaging.packagerFor({ hasher: { hash: () => accepted(ZERO_HASH) },
-    distribution: scratchHostDistributionFixture, hostData: SCRATCH_HOST_DATA, onboarding: undefined,
-  }).package({ projection: { host: SCRATCH_HOST, files, findings: [] }, channel: "copy",
-    version: accept(packaging.version), runtime: [] }));
+  const projection = { host: SCRATCH_HOST, files, findings: [] };
+  return accept(await packaging.packageHost({ hasher: { hash: () => accepted(ZERO_HASH) },
+    distribution: scratchHostDistributionFixture, hostData: SCRATCH_HOST_DATA, projection, channel: "copy" }));
 };
 
 test("the projection descriptor's bytes do not change when plugin authoring files are present", async () => {

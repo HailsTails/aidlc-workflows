@@ -76,6 +76,7 @@ import type {
 import { openPackageBuildRoot } from "../src/cli/main.ts";
 import { createNodeFileSystem } from "../src/kernel/file-system.ts";
 import { writePayloadTree } from "../src/packaging/adapters/payload-tree-writer.ts";
+import { onboardingPathOf } from "../src/packaging/core-root.ts";
 import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
 import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
 import { createBunContentDigester } from "../src/kernel/content-digester.ts";
@@ -899,18 +900,13 @@ function routedView(request: {
   if (!metadata.success) {
     throw new Error(`The rendered host descriptor is invalid: ${members.host.distribution}`);
   }
-  const rendered = files.filter((file) =>
-    file.origin.kind === "rendered" && file.origin.concept === "onboarding");
-  const insideHost = (file: Pick<ProjectedFile, "path">): boolean => file.path.startsWith(`${members.host.directory}/`);
-  const onboarding = rendered.find(insideHost) ?? rendered[0];
-  const within = onboarding && insideHost(onboarding)
-    ? onboarding.path.slice(members.host.directory.length + 1) : undefined;
+  const onboarding = onboardingPathOf({ host: members.host, files });
   return { name: members.host.distribution, harnessDir: members.host.directory,
     ...metadata.data, ...routedListing(distribution),
     rootIntegrations: routedIntegrations(distribution),
     copyOnly: distribution.native.copyOnly,
     nativeReplacements: distribution.native.replacements,
-    onboarding: within === undefined ? undefined : `${members.host.directory}/${within}`,
+    onboarding: onboarding?.startsWith(`${members.host.directory}/`) ? onboarding : undefined,
   };
 }
 
@@ -957,15 +953,11 @@ async function buildCopyHost({ routed, request, outRoot }: {
 // ---------------------------------------------------------------------------
 // write mode: regenerate dist/<name> in place (clean-sweep).
 // ---------------------------------------------------------------------------
-async function writeHarness(name: string): Promise<void> {
+async function writeCopyHarness(name: string): Promise<void> {
   const distDir = join(REPO_ROOT, "dist", name);
-  // dist/<name>/ is one generated root. Sweep that root, not selected
-  // subdirectories, so removed/renamed project-root outputs cannot linger.
-  // Siblings at dist/ (plugins and unrelated local assets) remain outside this
-  // harness-owned boundary.
   if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
-  const m = await buildHost({ name, outRoot: distDir, channel: "copy" });
-  console.log(`[${name}] regenerated dist/${name}/${m.harnessDir}`);
+  const view = await buildHost({ name, outRoot: distDir, channel: "copy" });
+  console.log(`[${name}] regenerated dist/${name}/${view.harnessDir}`);
 }
 
 async function writeReleaseHarness(name: string): Promise<void> {
@@ -1238,7 +1230,7 @@ async function checkPackageDeterminism(
 // `package.ts plugin build <plugin> <harness> <outDir>` — render ONE plugin
 // projection into an arbitrary dir. The target-dir seam that lets t188 (and any
 // caller) exercise the real emitter WITHOUT touching the local dist/plugins/
-// trees — writeHarness/emitPlugins rmSync + rewrite dist, which a parallel test
+// trees — writeCopyHarness/emitPlugins rmSync + rewrite dist, which a parallel test
 // tier must never do (it races sibling tests). Pure builder call.
 if (argv[0] === "plugin" && argv[1] === "build") {
   const [pluginName, harnessName, outDir, ...extra] = argv.slice(2);
@@ -1360,7 +1352,7 @@ if (check) {
   cleanWriteOutputs({ harnesses: targets, kind: named === undefined ? "full" : "named",
     plugins: pluginBuilds });
   for (const n of targets) {
-    await writeHarness(n);
+    await writeCopyHarness(n);
     await writeReleaseHarness(n);
   }
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
