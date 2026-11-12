@@ -5,13 +5,15 @@ import type {
   HumanTurnHistory,
 } from "../execution/application/boundary-ports.ts";
 import type { HostShell } from "../installation/application/boundary-ports.ts";
+import type { ContentDigester } from "../kernel/content-digester-port.ts";
 import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { ProcessRunner } from "../kernel/process-runner-port.ts";
 import type { Result } from "../kernel/result.ts";
 import type { KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
-import type { DistributionLayout, HostDistribution } from "../packaging/domain/payload.ts";
+import type { PackagingRefusal } from "../packaging/domain/artifact.ts";
+import type { DistributionLayout, HostDistribution, Payload } from "../packaging/domain/payload.ts";
 import type { DelegateShellFacts } from "../projection/application/ports/delegate-shell.ts";
 import type { ConceptMembers, HostProjectionParts } from "../projection/application/ports/host-parts.ts";
 import type { AuthoredFilePreparer } from "../projection/application/ports/host-sources.ts";
@@ -101,6 +103,10 @@ export type ProjectHost = (
   request: HostBuildRequest,
 ) => Promise<Result<HostBuild, readonly (KernelRefusal | ProjectionRefusal)[]>>;
 
+export type BuildPayload = (
+  request: HostBuildRequest,
+) => Promise<Result<Payload, readonly (KernelRefusal | ProjectionRefusal | PackagingRefusal)[]>>;
+
 export type RuntimeHost = {
   readonly host: HostIdentity;
   readonly shell: HostShell;
@@ -114,6 +120,7 @@ export type Platform = {
   readonly fileSystem: FileSystem;
   readonly processRunner: ProcessRunner;
   readonly yaml: YamlParser;
+  readonly digester: ContentDigester;
 };
 
 export type BuildSources = {
@@ -225,6 +232,7 @@ export type ReadHostDistribution = (request: {
 export interface PackageBuildRoot {
   readonly settingsCapabilities: SettingsCapabilities;
   readonly projectHost: ProjectHost;
+  readonly buildPayload: BuildPayload;
   readonly readHostDistribution: ReadHostDistribution;
   readonly projectDocuments: ProjectDocuments;
   readonly projectSettings: ProjectSettings;

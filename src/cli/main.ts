@@ -7,6 +7,7 @@ type MainComposition = {
   readonly createNodeFileSystem: () => Platform["fileSystem"];
   readonly createNodeProcessRunner: () => Platform["processRunner"];
   readonly createBunYamlParser: () => Platform["yaml"];
+  readonly createBunContentDigester: () => Platform["digester"];
   readonly createPackageBuildRoot: CreatePackageBuildRoot;
 };
 
@@ -15,6 +16,7 @@ export const openPackageBuildRoot = (composition: MainComposition): PackageBuild
     fileSystem: composition.createNodeFileSystem(),
     processRunner: composition.createNodeProcessRunner(),
     yaml: composition.createBunYamlParser(),
+    digester: composition.createBunContentDigester(),
   };
   return composition.createPackageBuildRoot({ hosts: HOSTS,
     platform, outliner: composition.outliner,

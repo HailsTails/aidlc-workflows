@@ -1,4 +1,5 @@
-import { createBuildPackaging } from "../packaging/core-root.ts";
+import { createBuildPackaging, type BuildPackaging } from "../packaging/core-root.ts";
+import type { ContentHasher } from "../packaging/application/ports.ts";
 import { DEFAULT_WORKSPACE } from "../projection/domain/workspace.ts";
 import type { MemoryCompanion, SharedRuntime } from "../projection/domain/neutral-surface.ts";
 import type { VersionStamp } from "../packaging/application/boundary-ports.ts";
@@ -14,9 +15,9 @@ import type { AuthoredCoreMethod, MethodReading } from "../workflow-definition/a
 import { createBuildProjection, createHostedMethodProjection } from "../projection/core-root.ts";
 import type { CompiledMethodFiles, Projection } from "../projection/domain/projection.ts";
 import type { ProjectedFile } from "../projection/domain/projected-file.ts";
-import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot,
+import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot, PackageBuildRoot,
   CapturedHostSources, HostSourcesRequest, HostBuildTable, HostModule, ReadHostDistribution,
-  ProjectHost } from "./roots.ts";
+  ProjectHost, BuildPayload } from "./roots.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { HarnessRenderers } from "../projection/application/ports/harness-assembly.ts";
 import type { ProjectionRefusal } from "../projection/domain/projection.ts";
@@ -182,6 +183,32 @@ const hostProjector = (ports: {
       layout: distribution.value.layout }, projection: projected.value }) : projected;
   };
 };
+const onboardingOf = (projection: Projection, directory: string) => {
+  const rendered = projection.files.filter((file) => file.origin.kind === "rendered"
+    && file.origin.concept === "onboarding");
+  return (rendered.find((file) => file.path.startsWith(`${directory}/`)) ?? rendered[0])?.path;
+};
+
+const payloadBuilder = (ports: {
+  readonly projectHost: ProjectHost; readonly hosts: HostBuildTable; readonly packaging: BuildPackaging;
+  readonly readDistribution: ReadHostDistribution; readonly hasher: ContentHasher;
+  readonly projection: Pick<BuildProjection, "delegateShellFacts">;
+}): BuildPayload => async (request) => {
+  const built = await ports.projectHost(request);
+  if (!built.ok) return built;
+  const members = memberFor(ports.hosts, request.host);
+  const distribution = ports.readDistribution({ host: request.host });
+  if (!members) return refused([{ kind: "unknown-harness", harness: request.host.distribution }]);
+  if (!distribution.ok) return distribution;
+  if (!ports.packaging.version.ok) return refused([ports.packaging.version.refusal]);
+  const hostData = members.projection.renderData({ delegateShellFacts: ports.projection.delegateShellFacts });
+  const packaged = await ports.packaging.packagerFor({ hasher: ports.hasher, distribution: distribution.value,
+    hostData, onboarding: onboardingOf(built.value.projection, request.host.directory),
+  }).package({ projection: built.value.projection, channel: request.channel,
+    version: ports.packaging.version.value, runtime: [] });
+  return packaged;
+};
+
 const distributionReader = (request: {
   readonly hosts: HostBuildTable;
   readonly projection: Pick<BuildProjection, "delegateShellFacts">;
@@ -192,45 +219,25 @@ const distributionReader = (request: {
   const distribution = members.distribution({ delegateShellFacts: request.projection.delegateShellFacts });
   return distribution.ok ? distribution : refused([distribution.refusal]);
 };
-export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
-  const loading = createAuthoredMethodLoading({ reader: request.platform.fileSystem,
-    parser: request.platform.yaml, outliner: request.outliner });
-  const projection = createBuildProjection({ hostFiles: request.platform.fileSystem, sessionFiles: request.platform.fileSystem,
-    runnerProcess: request.platform.processRunner, runnerScratch: request.platform.fileSystem,
-    runnerFrames: request.runnerFrames, runnerChild: new URL("./legacy-runner-child.ts", import.meta.url) });
-  const readSessions = sessionReading({ projection, core: request.sources.core });
-  const readNeutral = neutralReading({ projection, core: request.sources.core });
-  const readDistribution = distributionReader({ hosts: request.hosts, projection });
-  let core: MethodReading<CoreBuild> | undefined;
-  const loadCore = async (): MethodReading<CoreBuild> => {
-    const loaded = await loading.loadCore(request.sources.core);
-    return loaded.ok ? accepted({ ...loaded.value,
-      project: (target) => projectFor({ authored: loaded.value, target }, projection.serializeMethod) }) : loaded;
-  };
+type ConceptProjectors = Pick<PackageBuildRoot, "projectSettings" | "projectHostSurface" | "projectSkills" | "projectAgents">;
+
+const conceptProjectors = (request: {
+  readonly hosts: HostBuildTable; readonly projection: BuildProjection; readonly readSessions: SessionReading;
+}): ConceptProjectors => {
+  const { hosts, projection, readSessions } = request;
   return {
-    settingsCapabilities: projection.settingsCapabilities, readHostDistribution: readDistribution,
-    projectHost: stampingVersion(hostProjector({ projection, hosts: request.hosts, readDistribution,
-      capture: fullHostCapture({ projection, core: request.sources.core, readSessions, readNeutral }) }),
-      createBuildPackaging().stamp),
-    projectDocuments: documentsProjector({ projection, readNeutral, hosts: request.hosts }),
-    loadCore: () => core ??= loadCore(),
-    loadPlugins: ({ core: loaded }) => loading.loadPlugins({ core: loaded,
-      pluginsRoot: request.sources.plugins }),
-    prepareCommandSource: ({ core: loaded, ...command }) => projection.prepareCommandSource({ ...command,
-      method: loaded.method, sources: loaded.sources }),
-    readHostSources: (host) => captureHost(host, { hosts: request.hosts, projection }),
     projectSettings: (settings) => {
-      const members = memberFor(request.hosts, settings.host);
+      const members = memberFor(hosts, settings.host);
       return members === undefined ? accepted([])
         : projection.projectSettings({ ...settings, render: members.projection.settings.render });
     },
     projectHostSurface: (surface) => {
-      const members = memberFor(request.hosts, surface.host);
+      const members = memberFor(hosts, surface.host);
       return members === undefined ? accepted([]) : projection.projectHostSurface({ ...surface,
         renderData: members.projection.renderData, placements: members.projection.placements });
     },
     projectSkills: async (skills) => {
-      const members = memberFor(request.hosts, skills.host);
+      const members = memberFor(hosts, skills.host);
       if (members === undefined) return accepted([]);
       const captured = await readSessions();
       const source = sourcePath("skills");
@@ -241,9 +248,44 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
       return projection.projectSkills({ ...skills, render: members.projection.skills.render, sessions: captured.value });
     },
     projectAgents: (agents) => {
-      const members = memberFor(request.hosts, agents.host);
+      const members = memberFor(hosts, agents.host);
       return members === undefined ? accepted([])
         : projection.projectAgents({ ...agents, render: members.projection.agents.render });
     },
+  };
+};
+
+export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
+  const loading = createAuthoredMethodLoading({ reader: request.platform.fileSystem,
+    parser: request.platform.yaml, outliner: request.outliner });
+  const projection = createBuildProjection({ hostFiles: request.platform.fileSystem, sessionFiles: request.platform.fileSystem,
+    runnerProcess: request.platform.processRunner, runnerScratch: request.platform.fileSystem,
+    runnerFrames: request.runnerFrames, runnerChild: new URL("./legacy-runner-child.ts", import.meta.url) });
+  const readSessions = sessionReading({ projection, core: request.sources.core });
+  const readNeutral = neutralReading({ projection, core: request.sources.core });
+  const readDistribution = distributionReader({ hosts: request.hosts, projection });
+  const packaging = createBuildPackaging();
+  let core: MethodReading<CoreBuild> | undefined;
+  const loadCore = async (): MethodReading<CoreBuild> => {
+    const loaded = await loading.loadCore(request.sources.core);
+    return loaded.ok ? accepted({ ...loaded.value,
+      project: (target) => projectFor({ authored: loaded.value, target }, projection.serializeMethod) }) : loaded;
+  };
+  const projectHost = stampingVersion(hostProjector({ projection, hosts: request.hosts, readDistribution,
+    capture: fullHostCapture({ projection, core: request.sources.core, readSessions, readNeutral }) }),
+    packaging.stamp);
+  return {
+    settingsCapabilities: projection.settingsCapabilities, readHostDistribution: readDistribution,
+    projectHost,
+    buildPayload: payloadBuilder({ projectHost, hosts: request.hosts, packaging, readDistribution, projection,
+      hasher: request.platform.digester }),
+    projectDocuments: documentsProjector({ projection, readNeutral, hosts: request.hosts }),
+    loadCore: () => core ??= loadCore(),
+    loadPlugins: ({ core: loaded }) => loading.loadPlugins({ core: loaded,
+      pluginsRoot: request.sources.plugins }),
+    prepareCommandSource: ({ core: loaded, ...command }) => projection.prepareCommandSource({ ...command,
+      method: loaded.method, sources: loaded.sources }),
+    readHostSources: (host) => captureHost(host, { hosts: request.hosts, projection }),
+    ...conceptProjectors({ hosts: request.hosts, projection, readSessions }),
   };
 };
