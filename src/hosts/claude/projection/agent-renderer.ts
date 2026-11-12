@@ -12,7 +12,7 @@ export const claudeAgents: HostAgentRenderer = (inputs) => ({
         removeKeys: [], afterProjectionLines: [] } });
     return rendered.ok ? accepted([{ path: path.value,
       content: { kind: "text", text: rendered.value }, mode: "regular",
-      origin: { kind: "method-source", path: agent.source }, availability: "always",
+      origin: { kind: "method-source", path: agent.source },
     }]) : rendered;
   },
   renderConductorAgent: () => accepted([]),

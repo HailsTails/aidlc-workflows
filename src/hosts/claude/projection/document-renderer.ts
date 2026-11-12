@@ -30,7 +30,7 @@ const placeDocument = (document: NeutralDocument, inputs: {
     expectedHeadings: bindingHeadings, file: document.source })
     : accepted(bound);
   return content.ok ? accepted([{ path: path.value, content: { kind: "text", text: content.value },
-    mode: "regular", availability: "always", origin: { kind: "neutral", source: document.source } }])
+    mode: "regular", origin: { kind: "neutral", source: document.source } }])
     : refused({ kind: "render-failed", concept: "neutral-document", name: document.source, reason: content.refusal });
 };
 
@@ -42,7 +42,7 @@ export const createClaudeDocumentRenderer: HostDocumentRenderer = (inputs) => ({
       `${templates.harnessSkeleton}\n## Shared AI-DLC onboarding\n\n${neutral.value}`, inputs.fills);
     if (!rendered.ok) return onboardingFailure(rendered.refusal);
     const path = projectPath(".claude/CLAUDE.md");
-    return path.ok ? accepted([{ path: path.value, mode: "regular", availability: "always",
+    return path.ok ? accepted([{ path: path.value, mode: "regular",
       content: { kind: "text", text: bind(rendered.value, inputs.tokens) },
       origin: { kind: "rendered", concept: "onboarding", name: ".claude/CLAUDE.md" } }])
       : onboardingFailure("The onboarding destination must be project-relative.");

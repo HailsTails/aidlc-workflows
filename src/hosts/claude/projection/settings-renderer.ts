@@ -59,7 +59,7 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
   if (!path.ok) return refused(settingsRefusal("The settings destination must be project-relative."));
   return accepted([{ path: path.value, content: { kind: "text",
     text: `${JSON.stringify({ ...fields, permissions: { ...permissions, allow: expanded } }, null, 2)}\n` },
-    mode: "regular", availability: "always",
+    mode: "regular",
     origin: { kind: "rendered", concept: "settings", name: "settings.json" } }]);
 };
 

@@ -27,7 +27,7 @@ test("Claude's native Markdown uses the frozen effort surface without rewriting 
   } });
   expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([{
     path: path(".claude/agents/aidlc-example-agent.md"),
-    content: { kind: "text", text: markdown }, mode: "regular", availability: "always",
+    content: { kind: "text", text: markdown }, mode: "regular",
     origin: { kind: "method-source", path: agent.source },
   }]));
 });

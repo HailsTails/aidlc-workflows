@@ -12,7 +12,7 @@ const file = { source: source("settings.json"), content: { kind: "text" as const
 const inputs = { ...settingsRenderingInputsFixture({ harnessDir: ".renamed", files: [file] }),
   allows: { dispatcherCommands: ["doctor", "config --show"], toolScripts: ["aidlc-graph.ts"] } };
 const expected = accepted([{
-  path: path(".claude/settings.json"), mode: "regular" as const, availability: "always" as const,
+  path: path(".claude/settings.json"), mode: "regular" as const,
   origin: { kind: "rendered" as const, concept: "settings" as const, name: "settings.json" },
   content: { kind: "text" as const, text: `{
   "before": 1,
