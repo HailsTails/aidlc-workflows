@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HOSTS } from "../src/cli/host-table.ts";
 import { createTarGz, type ArchiveEntry } from "../core/tools/aidlc-archive.ts";
 import { parseVersion, PREVIEW_CHANNEL, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyChannelOmits, projectionFiles, walkFiles } from "../core/tools/aidlc-distribution.ts";
@@ -80,8 +81,7 @@ function versionedInstaller(
 }
 
 function sourceHarnesses(): string[] {
-  return directoryNames(join(REPO_ROOT, "harness"))
-    .filter((name) => existsSync(join(REPO_ROOT, "harness", name, "manifest.ts")));
+  return HOSTS.map((module) => module.host.distribution).sort();
 }
 
 function sourcePlugins(): string[] {
