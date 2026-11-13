@@ -414,6 +414,7 @@
 {"name":"PriorIntegrationShapes","context":"packaging","kind":"concept","definition":"Hashes of earlier releases' content for one root integration."},
 {"name":"ReleaseHistory","context":"packaging","kind":"concept","definition":"The one owner of what earlier releases shipped: retired files and prior integration shapes."},
 {"name":"ReleaseHistorySource","context":"packaging","kind":"port","definition":"Port: reads a distribution's release history."},
+{"name":"PackagedSources","context":"packaging","kind":"port","definition":"Port: fingerprints the input sources a build packages and keeps, per distribution, the fingerprint it was built from: it records the hosts a build covers (refusing when the inputs changed since the fingerprint was taken), forgets those records, and reports whether one distribution's build is stale."},
 {"name":"ArchiveEntry","context":"packaging","kind":"concept","definition":"A path inside a release archive."},
 {"name":"BuildReleaseArtifactRequest","context":"packaging","kind":"concept","definition":"The payloads and archive name and format to build."},
 {"name":"PlannedContent","context":"installation","kind":"concept","definition":"Content a plan writes, with its hash."},
