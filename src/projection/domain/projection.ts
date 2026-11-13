@@ -1,6 +1,7 @@
 import type { HostIdentity } from "../../kernel/host.ts";
 import type { DistributionId, ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { ProjectedFile, ProjectionOrigin, RenderedConcept } from "./projected-file.ts";
+import type { PluginId } from "../../workflow-definition/domain/identities.ts";
 import type { TemplateToken } from "./template-token.ts";
 
 export type ProjectionFinding =
@@ -39,7 +40,7 @@ export type ProjectionRefusal =
   | { readonly kind: "neutral-source-unreadable"; readonly source: SourcePath; readonly reason: string }
   | {
       readonly kind: "plugin-emit-failed";
-      readonly plugin: string;
+      readonly plugin: PluginId;
       readonly host: DistributionId;
       readonly reason: string;
     };
