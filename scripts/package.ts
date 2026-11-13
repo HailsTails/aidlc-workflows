@@ -228,10 +228,6 @@ function diffTrees(
 // without a hardcoded map. Derived from the manifest, written into every tree.
 const STAMP_DATA = "tools/data/aidlc-stamp.json";
 const PROJECTION_DATA = "tools/data/aidlc-projection.json";
-// The lines the plugin compose hook adds to a plugin's agent
-// (the plugin agent frontmatter), in Markdown so the native
-// release's agent rewrites reach them.
-const PLUGIN_AGENT_DATA = "tools/data/plugin-agent.md";
 
 // The plugin authoring validator must run from a copied distribution with no
 // framework checkout. Ship the compose hook's source of truth beside the tool
@@ -453,34 +449,6 @@ function applyNativeReplacements(outRoot: string, m: ReleaseView): void {
   }
 }
 
-function rewriteKiroNativeAllowlists(outRoot: string, m: ReleaseView): void {
-  if (m.name !== "kiro-ide") return;
-  const agentsDir = join(outRoot, m.harnessDir, "agents");
-  const pluginAgentData = join(outRoot, m.harnessDir, PLUGIN_AGENT_DATA);
-  for (const file of [...walk(agentsDir), ...(existsSync(pluginAgentData) ? [pluginAgentData] : [])]) {
-    if (file.endsWith(".md")) {
-      // Kiro IDE persona surfaces carry a YAML shell allowlist; the native
-      // channel replaces the bun tool glob with the aidlc command prefix. The
-      // copy channel's dispatcher line (`{{INVOKE}} engine *` on the conductor,
-      // `bun <dir>/tools/aidlc.ts engine *` on a persona, which the tool
-      // rewrite above turned into `aidlc engine engine *`) is that same
-      // prefix, so the pair collapses to one entry. A persona's ask lines get
-      // the same doubled prefix and lose it the same way. The asks on a risky
-      // shell form after an AI-DLC command (`bun <dir>/tools/aidlc*<form>*`)
-      // take the native command name as their prefix, as the persona deny does.
-      const value = readFileSync(file, "utf-8");
-      const trusted = `- "${trustedCommand("*")}"`;
-      const rewritten = value
-        .replaceAll(`- "bun ${m.harnessDir}/tools/aidlc-*"`, trusted)
-        .replaceAll(`- "bun ${m.harnessDir}/tools/aidlc*`, `- "aidlc*`)
-        .replaceAll(`- "${trustedCommand("engine ")}`, `- "${trustedCommand("")} `)
-        .replaceAll(`${trusted}\n        ${trusted}`, trusted);
-      if (rewritten !== value) writeFileSync(file, rewritten);
-      continue;
-    }
-  }
-}
-
 // The native Permissions line. A harness whose native allow list carries the
 // exact read-only and turn-back-on commands names them; the others keep the
 // engine prefix alone.
@@ -651,7 +619,6 @@ function rewriteNativeInvocations(
     value = rewriteNativeOnboarding(value, ["claude", "cursor", "kiro", "kiro-ide"].includes(m.name));
     writeFileSync(file, value);
   }
-  rewriteKiroNativeAllowlists(outRoot, m);
   // Before the copy's hashes are recorded below, so a part that changed here
   // still has its copy bytes recognized, and --check builds it the same way.
   syncRootBlockParts(outRoot, m);
