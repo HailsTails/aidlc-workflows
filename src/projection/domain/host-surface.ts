@@ -83,3 +83,11 @@ export const harnessRecordWithLine = (request: {
   const completed = [...entries.slice(0, after), [request.line.key, request.line.value], ...entries.slice(after)];
   return accepted([{ ...record, content: { kind: "text", text: `${JSON.stringify(Object.fromEntries(completed), null, 2)}\n` } }]);
 };
+
+export type HostPluginTarget = {
+  readonly format: string;
+  readonly manifestDir: string;
+  readonly marketplaceDir: string;
+  readonly catalogue: "written" | "none";
+  readonly installRoots: readonly string[];
+};

@@ -7,6 +7,7 @@ import type {
   SourcePath,
 } from "../../kernel/values.ts";
 import type { DistributionChannel, ProjectionOrigin } from "../../projection/domain/projected-file.ts";
+import type { HostPluginTarget } from "../../projection/domain/host-surface.ts";
 import type { ManagedDirectory } from "./managed-directory.ts";
 import type { PriorIntegrationShapes, ReleaseHistory } from "./release-history.ts";
 import type { RootIntegration } from "./root-integration.ts";
@@ -62,14 +63,6 @@ export type NativeRelease = {
   readonly replacements: readonly NativeReplacement[];
   readonly copyOnly: readonly ProjectPath[];
   readonly permissionsLine: "exact-reads" | "prefix-only";
-};
-
-export type HostPluginTarget = {
-  readonly format: string;
-  readonly manifestDir: string;
-  readonly marketplaceDir: string;
-  readonly catalogue: "written" | "none";
-  readonly installRoots: readonly string[];
 };
 
 export type HostDistribution = {
