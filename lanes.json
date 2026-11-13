@@ -114,6 +114,8 @@
         "src/hosts/{claude,codex,opencode}/{packaging,installation}/**",
         "src/cli/adapters/routes/{packaging,installation}/**",
         "src/cli/core-build-root{,.test}.ts",
+        "src/cli/package-build-root{,.test}.ts",
+        "scripts/package.ts",
         "src/cli/legacy-runner-child{,.test}.ts",
         "src/projection/adapters/compiled-method-file{,.test}.ts",
         "docs/reference/15-stage-definition.md",
@@ -126,7 +128,6 @@
       ],
       "notOwned": [
         "harness/{codex,opencode}/manifest.ts",
-        "src/projection/core-root{,.test}.ts",
         "src/projection/adapters/legacy-includes{,.test}.ts",
         "harness/{kiro,kiro-ide,cursor,copilot}/manifest.ts",
         "harness/{codex,opencode,copilot}/emit.ts",
