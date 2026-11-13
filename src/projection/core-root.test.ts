@@ -160,3 +160,16 @@ test("Projection binds the settings capabilities once for every renderer and cal
     extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(), hookTrust: legacyHookTrustHash,
   });
 });
+
+
+test("Projection serves native route facts from the existing dispatcher and command owners", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
+    runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
+    runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
+  expect(projection.nativeCommands.trusted("stage status")).toBe("aidlc engine stage status");
+  expect(projection.nativeCommands.delegates).toContain("utility");
+  expect(projection.nativeCommands.adapterHooks.has("kiro-adapter")).toBe(true);
+  expect(projection.nativeCommands.unresolvable({ file: "guide.md", text: "aidlc engine imaginary route" }))
+    .toEqual(['guide.md:1: unresolvable projected namespace invocation "aidlc engine imaginary route"']);
+});

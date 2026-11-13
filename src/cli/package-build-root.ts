@@ -2,7 +2,6 @@ import { createBuildPackaging, type BuildPackaging } from "../packaging/core-roo
 import type { ContentHasher } from "../packaging/application/ports.ts";
 import { DEFAULT_WORKSPACE } from "../projection/domain/workspace.ts";
 import type { MemoryCompanion, SharedRuntime } from "../projection/domain/neutral-surface.ts";
-import type { VersionStamp } from "../packaging/application/boundary-ports.ts";
 import type { NeutralSurface } from "../projection/domain/neutral-surface.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
@@ -12,8 +11,7 @@ import type { Result } from "../kernel/result.ts";
 import { createAuthoredMethodLoading } from "../workflow-definition/core-root.ts";
 import type { AuthoredCoreMethod, MethodReading } from "../workflow-definition/application/ports.ts";
 import { createBuildProjection, createHostedMethodProjection } from "../projection/core-root.ts";
-import type { CompiledMethodFiles, Projection } from "../projection/domain/projection.ts";
-import type { ProjectedFile } from "../projection/domain/projected-file.ts";
+import type { CompiledMethodFiles } from "../projection/domain/projection.ts";
 import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot,
   CapturedHostSources, HostSourcesRequest, HostBuildTable, HostModule, ReadHostDistribution,
   ProjectHost, BuildPayload } from "./roots.ts";
@@ -112,28 +110,6 @@ const fullHostCapture = (ports: {
   };
 };
 
-const stampedFile = (file: ProjectedFile, stamp: VersionStamp): Result<ProjectedFile, ProjectionRefusal> => {
-  if (file.origin.kind !== "runtime-data" || file.origin.name !== "version-module") return accepted(file);
-  const stamped = stamp(file.content);
-  return stamped.ok ? accepted({ ...file, content: stamped.value })
-    : refused({ kind: "render-failed", concept: "host-data", name: "aidlc-version.ts",
-      reason: stamped.refusal.kind === "version-unstampable" ? stamped.refusal.reason : stamped.refusal.kind });
-};
-
-const stampedProjection = (projection: Projection, stamp: VersionStamp): Result<Projection, ProjectionRefusal> => {
-  const files = projection.files.map((file) => stampedFile(file, stamp));
-  const failed = files.find((file) => !file.ok);
-  return failed && !failed.ok ? failed
-    : accepted({ ...projection, files: files.flatMap((file) => file.ok ? [file.value] : []) });
-};
-
-const stampingVersion = (projectHost: ProjectHost, stamp: VersionStamp): ProjectHost => async (request) => {
-  const built = await projectHost(request);
-  if (!built.ok) return built;
-  const stamped = stampedProjection(built.value.projection, stamp);
-  return stamped.ok ? accepted({ ...built.value, projection: stamped.value }) : refused([stamped.refusal]);
-};
-
 const hostProjector = (ports: {
   readonly projection: BuildProjection; readonly capture: CaptureFullHost;
   readonly hosts: HostBuildTable; readonly readDistribution: ReadHostDistribution;
@@ -183,7 +159,7 @@ const payloadBuilder = (ports: {
   if (!distribution.ok) return distribution;
   const hostData = members.projection.renderData({ delegateShellFacts: ports.projection.delegateShellFacts });
   return ports.packaging.packageHost({ hasher: ports.hasher, distribution: distribution.value, hostData,
-    projection: built.value.projection, channel: request.channel });
+    projection: built.value.projection, channel: request.channel, copy: request.copy });
 };
 
 const distributionReader = (request: {
@@ -205,20 +181,20 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const readSessions = sessionReading({ projection, core: request.sources.core });
   const readNeutral = neutralReading({ projection, core: request.sources.core });
   const readDistribution = distributionReader({ hosts: request.hosts, projection });
-  const packaging = createBuildPackaging();
+  const packaging = createBuildPackaging({ routes: projection.nativeCommands, historyReader: request.platform.fileSystem,
+    copyEraSource: new URL("../scripts/copy-era-files.json", request.sources.core) });
   let core: MethodReading<CoreBuild> | undefined;
   const loadCore = async (): MethodReading<CoreBuild> => {
     const loaded = await loading.loadCore(request.sources.core);
     return loaded.ok ? accepted({ ...loaded.value,
       project: (target) => projectFor({ authored: loaded.value, target }, projection.serializeMethod) }) : loaded;
   };
-  const unstampedHost = hostProjector({ projection, hosts: request.hosts, readDistribution,
+  const projectHost = hostProjector({ projection, hosts: request.hosts, readDistribution,
     capture: fullHostCapture({ projection, core: request.sources.core, readSessions, readNeutral }) });
-  const projectHost = stampingVersion(unstampedHost, packaging.stamp);
   return {
     settingsCapabilities: projection.settingsCapabilities, readHostDistribution: readDistribution,
     projectHost,
-    buildPayload: payloadBuilder({ projectHost: unstampedHost, hosts: request.hosts, packaging, readDistribution, projection,
+    buildPayload: payloadBuilder({ projectHost, hosts: request.hosts, packaging, readDistribution, projection,
       hasher: request.platform.digester }),
     loadCore: () => core ??= loadCore(),
     loadPlugins: ({ core: loaded }) => loading.loadPlugins({ core: loaded,

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { hash, path } from "../../kernel/fixtures/values.fixture.ts";
 import type { PayloadFile } from "./payload.ts";
-import { orderedPayloadFiles } from "./payload-files.ts";
+import { orderedPayloadFiles, payloadTreeOrder } from "./payload-files.ts";
 
 const textFile: PayloadFile = { path: path(".claude/example.md"),
   hash: hash("sha256:0000000000000000000000000000000000000000000000000000000000000000"),
@@ -16,4 +16,10 @@ test("one destination cannot have two owners even with identical bytes", () => {
 
 test("an admitted payload retains the exact content and origin", () => {
   expect(orderedPayloadFiles([textFile])).toEqual({ ok: true, value: [textFile] });
+});
+
+test("legacy tree ordering visits a folder before a same-prefix filename", () => {
+  expect(payloadTreeOrder({ path: path("a.md") }, { path: path("a/z.md") })).toBe(1);
+  expect(payloadTreeOrder({ path: path("a/z.md") }, { path: path("a.md") })).toBe(-1);
+  expect(payloadTreeOrder({ path: path("a/z.md") }, { path: path("a/z.md") })).toBe(0);
 });
