@@ -122,6 +122,8 @@
         "scripts/package-sources.ts",
         "tests/unit/t-package-sources.test.ts",
         "tests/unit-shard-weights.json",
+        "src/hosts/codex/trust-route{,.test}.ts",
+        "src/hosts/codex/host{,.test}.ts",
         "tests/integration/t-e2e-isolated-runner.test.ts",
         "tests/integration/t-e2e-native-cancellation.test.ts",
         "tests/gen-coverage-registry.ts",
