@@ -5,6 +5,7 @@ import { expect, mock, test } from "bun:test";
 import { createCodexSettingsRenderer, emitDefaultRules, emitTrustSeed, trustEntries } from "./settings-renderer.ts";
 import { settingsRenderingInputsFixture } from "../../../projection/fixtures/settings-rendering.fixture.ts";
 import { methodSliceFixture } from "../../../workflow-definition/fixtures/method.fixture.ts";
+import type { HookTrustHash } from "../../../projection/application/ports/settings.ts";
 const inputs = settingsRenderingInputsFixture({ harnessDir: ".codex", files: [] });
 const legacy = { extendedSubprocessTimeoutMs: 12000, hookTrust: ({ event, command, timeoutSeconds, matcher }: { event: string; command: string; timeoutSeconds: number; matcher: string | undefined }) => JSON.stringify([event, command, timeoutSeconds, matcher ?? null]) };
 
@@ -119,4 +120,66 @@ test("settings refuse a missing captured harness directory", () => {
     ok: false, refusal: { kind: "render-failed", concept: "settings",
       name: "rules/default.rules", reason: "trusted route namespace and harness directory are required" },
   });
+});
+
+
+test("native hooks and trust seed preserve release literals and pass every exact identity to the hash port", () => {
+  const hookTrust = mock<HookTrustHash>(() => "native-hook-trust");
+  const native = createCodexSettingsRenderer({ ...inputs, channel: "native", extendedSubprocessTimeoutMs: 1_800_000,
+    tokens: { ...inputs.tokens, ["INVOKE"]: "aidlc", ["TOOL_PREFIX"]: "aidlc ", ["TRUSTED_NAMESPACE"]: "engine" }, hookTrust });
+  expect(native.renderHookRegistrations({ hooks: [] })).toEqual({
+  "ok": true,
+  "value": [
+    {
+      "path": path(".codex/hooks.json"),
+      "content": {
+        "kind": "text",
+        "text": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex session-start\",\n            \"timeout\": 1800\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex record-human-turn\",\n            \"timeout\": 1800\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex guard-tool-call\",\n            \"timeout\": 1800\n          }\n        ]\n      },\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex deliver-stage-rules\",\n            \"timeout\": 1800\n          }\n        ],\n        \"matcher\": \"spawn_agent\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex record-human-turn\",\n            \"timeout\": 1800\n          }\n        ],\n        \"matcher\": \"request_user_input\"\n      },\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex audit-and-sensors\",\n            \"timeout\": 3600\n          }\n        ],\n        \"matcher\": \"apply_patch\"\n      },\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex sync-workflow-state\",\n            \"timeout\": 1800\n          }\n        ],\n        \"matcher\": \"update_plan\"\n      },\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex rebuild-stage-graph\",\n            \"timeout\": 1800\n          }\n        ],\n        \"matcher\": \"Bash\"\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex validate-state\",\n            \"timeout\": 1800\n          }\n        ]\n      }\n    ],\n    \"SubagentStop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex log-subagent\",\n            \"timeout\": 1800\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"aidlc engine adapter codex continue-workflow\",\n            \"timeout\": 3600\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+      },
+      "mode": "regular",
+      "origin": {
+        "kind": "rendered",
+        "concept": "hook-registration",
+        "name": "hooks.json"
+      }
+    },
+    {
+      "path": path(".codex/trust-seed.toml"),
+      "content": {
+        "kind": "text",
+        "text": "# dist/codex hook-trust pre-seed (S9a) \u2014 TEMPLATE.\n# This template hashes the projected `aidlc engine adapter codex ...`\n# commands in hooks.json. Start one interactive Codex session and choose\n# \"Trust all and continue\" to register the project-specific hook identities.\n# Paste the complete stdout into the USER config.toml ($CODEX_HOME/config.toml).\n# If entries for that hooks.json path already exist, replace the full set;\n# appending a second set creates invalid TOML. The hash covers the\n# normalized hook identity (event + matcher + command + defaults), NOT the path;\n# only the key changes per install. Codex then runs the hooks without a\n# TUI trust pass (the --dangerously-bypass-hook-trust flag does NOT fire\n# untrusted hooks at 0.137-0.139; never rely on it).\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:session_start:0:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:pre_tool_use:1:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:post_tool_use:1:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:post_tool_use:2:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:post_tool_use:3:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:pre_compact:0:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:subagent_stop:0:0\"]\ntrusted_hash = \"native-hook-trust\"\n\n[hooks.state.\"<PROJECT_DIR>/.codex/hooks.json:stop:0:0\"]\ntrusted_hash = \"native-hook-trust\"\n"
+      },
+      "mode": "regular",
+      "origin": {
+        "kind": "rendered",
+        "concept": "hook-registration",
+        "name": "trust-seed.toml"
+      }
+    }
+  ]
+});
+  expect(hookTrust.mock.calls).toEqual([
+    [{ event: "session_start", command: "aidlc engine adapter codex session-start",
+      timeoutSeconds: 1800, matcher: undefined }],
+    [{ event: "user_prompt_submit", command: "aidlc engine adapter codex record-human-turn",
+      timeoutSeconds: 1800, matcher: undefined }],
+    [{ event: "pre_tool_use", command: "aidlc engine adapter codex guard-tool-call",
+      timeoutSeconds: 1800, matcher: undefined }],
+    [{ event: "pre_tool_use", command: "aidlc engine adapter codex deliver-stage-rules",
+      timeoutSeconds: 1800, matcher: "spawn_agent" }],
+    [{ event: "post_tool_use", command: "aidlc engine adapter codex record-human-turn",
+      timeoutSeconds: 1800, matcher: "request_user_input" }],
+    [{ event: "post_tool_use", command: "aidlc engine adapter codex audit-and-sensors",
+      timeoutSeconds: 3600, matcher: "apply_patch" }],
+    [{ event: "post_tool_use", command: "aidlc engine adapter codex sync-workflow-state",
+      timeoutSeconds: 1800, matcher: "update_plan" }],
+    [{ event: "post_tool_use", command: "aidlc engine adapter codex rebuild-stage-graph",
+      timeoutSeconds: 1800, matcher: "Bash" }],
+    [{ event: "pre_compact", command: "aidlc engine adapter codex validate-state",
+      timeoutSeconds: 1800, matcher: undefined }],
+    [{ event: "subagent_stop", command: "aidlc engine adapter codex log-subagent",
+      timeoutSeconds: 1800, matcher: undefined }],
+    [{ event: "stop", command: "aidlc engine adapter codex continue-workflow",
+      timeoutSeconds: 3600, matcher: undefined }]
+  ]);
 });
