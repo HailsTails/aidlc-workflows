@@ -71,6 +71,7 @@ export type HostDistributionReader = (inputs: HostDistributionInputs) => Result<
 export type HostRouteBindings = {
   readonly copyTokens: ChannelTokens;
   readonly terminal: Terminal;
+  readonly settings: SettingsCapabilities;
 };
 
 export type HostRoutes = (bindings: HostRouteBindings) => readonly CommandRoute[];
