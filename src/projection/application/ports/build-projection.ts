@@ -5,6 +5,7 @@ import type { SettingsCapabilities } from "./settings.ts";
 import type { NeutralReading, DocumentProjection } from "./documents.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { AuthoredHostFile } from "../../domain/host-surface.ts";
+import type { NativeCommandRoutes } from "../../domain/native-command.ts";
 import type { CompiledMethodFiles, ProjectionRefusal } from "../../domain/projection.ts";
 import type { AgentProjection } from "./agents.ts";
 import type { CommandSource, CommandSourceRequest } from "./commands.ts";
@@ -21,6 +22,7 @@ export interface BuildProjection {
   readonly readMemoryCompanions: MemoryCompanionReading;
   readonly delegateShellFacts: DelegateShellFacts;
   readonly settingsCapabilities: SettingsCapabilities;
+  readonly nativeCommands: NativeCommandRoutes;
   readonly readNeutral: NeutralReading;
   readonly projectDocuments: DocumentProjection;
   readonly projectSettings: SettingsProjection;

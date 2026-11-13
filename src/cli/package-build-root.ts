@@ -2,7 +2,6 @@ import { createBuildPackaging, type BuildPackaging } from "../packaging/core-roo
 import type { ContentHasher } from "../packaging/application/ports.ts";
 import { DEFAULT_WORKSPACE } from "../projection/domain/workspace.ts";
 import type { MemoryCompanion, SharedRuntime } from "../projection/domain/neutral-surface.ts";
-import type { VersionStamp } from "../packaging/application/boundary-ports.ts";
 import type { NeutralSurface } from "../projection/domain/neutral-surface.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
@@ -12,14 +11,17 @@ import type { Result } from "../kernel/result.ts";
 import { createAuthoredMethodLoading } from "../workflow-definition/core-root.ts";
 import type { AuthoredCoreMethod, MethodReading } from "../workflow-definition/application/ports.ts";
 import { createBuildProjection, createHostedMethodProjection } from "../projection/core-root.ts";
-import type { CompiledMethodFiles, Projection } from "../projection/domain/projection.ts";
-import type { ProjectedFile } from "../projection/domain/projected-file.ts";
+import type { CompiledMethodFiles } from "../projection/domain/projection.ts";
 import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot,
   CapturedHostSources, HostSourcesRequest, HostBuildTable, HostModule, ReadHostDistribution,
   ProjectHost, BuildPayload } from "./roots.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { HarnessRenderers } from "../projection/application/ports/harness-assembly.ts";
-import type { ProjectionRefusal } from "../projection/domain/projection.ts";
+import type { Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
+import { pluginAuthoringFiles } from "../projection/application/plugin-authoring-files.ts";
+import { collectCommandRenderings } from "../projection/application/command-renderers.ts";
+import { readEveryEntry, type TreeFile, type FileSystem } from "../kernel/file-system-port.ts";
+import type { HostedPluginTarget } from "../projection/application/ports/plugins.ts";
 
 const projectFor = (request: { readonly authored: AuthoredCoreMethod; readonly target: CoreBuildTarget },
   serializeMethod: BuildProjection["serializeMethod"]):
@@ -112,28 +114,6 @@ const fullHostCapture = (ports: {
   };
 };
 
-const stampedFile = (file: ProjectedFile, stamp: VersionStamp): Result<ProjectedFile, ProjectionRefusal> => {
-  if (file.origin.kind !== "runtime-data" || file.origin.name !== "version-module") return accepted(file);
-  const stamped = stamp(file.content);
-  return stamped.ok ? accepted({ ...file, content: stamped.value })
-    : refused({ kind: "render-failed", concept: "host-data", name: "aidlc-version.ts",
-      reason: stamped.refusal.kind === "version-unstampable" ? stamped.refusal.reason : stamped.refusal.kind });
-};
-
-const stampedProjection = (projection: Projection, stamp: VersionStamp): Result<Projection, ProjectionRefusal> => {
-  const files = projection.files.map((file) => stampedFile(file, stamp));
-  const failed = files.find((file) => !file.ok);
-  return failed && !failed.ok ? failed
-    : accepted({ ...projection, files: files.flatMap((file) => file.ok ? [file.value] : []) });
-};
-
-const stampingVersion = (projectHost: ProjectHost, stamp: VersionStamp): ProjectHost => async (request) => {
-  const built = await projectHost(request);
-  if (!built.ok) return built;
-  const stamped = stampedProjection(built.value.projection, stamp);
-  return stamped.ok ? accepted({ ...built.value, projection: stamped.value }) : refused([stamped.refusal]);
-};
-
 const hostProjector = (ports: {
   readonly projection: BuildProjection; readonly capture: CaptureFullHost;
   readonly hosts: HostBuildTable; readonly readDistribution: ReadHostDistribution;
@@ -174,6 +154,8 @@ const payloadBuilder = (ports: {
   readonly projectHost: ProjectHost; readonly hosts: HostBuildTable; readonly packaging: BuildPackaging;
   readonly readDistribution: ReadHostDistribution; readonly hasher: ContentHasher;
   readonly projection: Pick<BuildProjection, "delegateShellFacts">;
+  readonly readPluginTemplates: () => Promise<Result<readonly TreeFile[], readonly ProjectionRefusal[]>>;
+  readonly readPluginTargets: () => Result<readonly HostedPluginTarget[], readonly (KernelRefusal | ProjectionRefusal)[]>;
 }): BuildPayload => async (request) => {
   const built = await ports.projectHost(request);
   if (!built.ok) return built;
@@ -182,8 +164,58 @@ const payloadBuilder = (ports: {
   if (!members) return refused([{ kind: "unknown-harness", harness: request.host.distribution }]);
   if (!distribution.ok) return distribution;
   const hostData = members.projection.renderData({ delegateShellFacts: ports.projection.delegateShellFacts });
+  const projection = request.channel === "native" ? await nativeAuthoringProjection({
+    ...ports, projection: built.value.projection, method: request.core.method, directory: request.host.directory,
+  }) : accepted(built.value.projection);
+  if (!projection.ok) return projection;
   return ports.packaging.packageHost({ hasher: ports.hasher, distribution: distribution.value, hostData,
-    projection: built.value.projection, channel: request.channel });
+    projection: projection.value, channel: request.channel, copy: request.copy });
+};
+
+const nativeAuthoringProjection = async (request: {
+  readonly projection: Projection; readonly method: CoreBuild["method"]; readonly directory: HostIdentity["directory"];
+  readonly readPluginTemplates: () => Promise<Result<readonly TreeFile[], readonly ProjectionRefusal[]>>;
+  readonly readPluginTargets: () => Result<readonly HostedPluginTarget[], readonly (KernelRefusal | ProjectionRefusal)[]>;
+}): Promise<Result<Projection, readonly (KernelRefusal | ProjectionRefusal)[]>> => {
+  const templates = await request.readPluginTemplates();
+  if (!templates.ok) return templates;
+  const targets = request.readPluginTargets();
+  if (!targets.ok) return targets;
+  const files = collectCommandRenderings([accepted(request.projection.files), accepted(pluginAuthoringFiles({
+    method: request.method, targets: targets.value, templates: templates.value, directory: request.directory,
+  }))]);
+  return files.ok ? accepted({ ...request.projection, files: files.value }) : refused([files.refusal]);
+};
+
+const pluginTargetReading = ({ hosts, readDistribution }: {
+  readonly hosts: HostBuildTable; readonly readDistribution: ReadHostDistribution;
+}): (() => Result<readonly HostedPluginTarget[], readonly (KernelRefusal | ProjectionRefusal)[]>) => {
+  let captured: Result<readonly HostedPluginTarget[], readonly (KernelRefusal | ProjectionRefusal)[]> | undefined;
+  const read = (): Result<readonly HostedPluginTarget[], readonly (KernelRefusal | ProjectionRefusal)[]> => {
+    const readings = [...hosts].sort((left, right) =>
+      left.host.distribution.localeCompare(right.host.distribution)).map((module) => {
+      const target = readDistribution({ host: module.host });
+      return target.ok ? accepted({ host: module.host, target: target.value.plugin }) : target;
+    });
+    const failures = readings.flatMap((reading) => reading.ok ? [] : reading.refusal);
+    return failures.length > 0 ? refused(failures)
+      : accepted(readings.flatMap((reading) => reading.ok ? [reading.value] : []));
+  };
+  return () => captured ??= read();
+};
+
+const pluginTemplateReading = ({ fileSystem, folder }: {
+  readonly fileSystem: Pick<FileSystem, "readTree">; readonly folder: URL;
+}): (() => Promise<Result<readonly TreeFile[], readonly ProjectionRefusal[]>>) => {
+  let captured: Promise<Result<readonly TreeFile[], readonly ProjectionRefusal[]>> | undefined;
+  const read = async (): Promise<Result<readonly TreeFile[], readonly ProjectionRefusal[]>> => {
+    const reading = await fileSystem.readTree({ folder, select: readEveryEntry });
+    if (!reading.ok) return refused([{ kind: "plugin-hook-template-unreadable", within: "", code: reading.refusal.code }]);
+    return reading.value.unreadable.length > 0 ? refused(reading.value.unreadable.map((failure) => ({
+      kind: "plugin-hook-template-unreadable", ...failure,
+    }))) : accepted(reading.value.files);
+  };
+  return () => captured ??= read();
 };
 
 const distributionReader = (request: {
@@ -205,21 +237,23 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const readSessions = sessionReading({ projection, core: request.sources.core });
   const readNeutral = neutralReading({ projection, core: request.sources.core });
   const readDistribution = distributionReader({ hosts: request.hosts, projection });
-  const packaging = createBuildPackaging();
+  const packaging = createBuildPackaging({ routes: projection.nativeCommands, historyReader: request.platform.fileSystem,
+    copyEraSource: new URL("../scripts/copy-era-files.json", request.sources.core) });
   let core: MethodReading<CoreBuild> | undefined;
   const loadCore = async (): MethodReading<CoreBuild> => {
     const loaded = await loading.loadCore(request.sources.core);
     return loaded.ok ? accepted({ ...loaded.value,
       project: (target) => projectFor({ authored: loaded.value, target }, projection.serializeMethod) }) : loaded;
   };
-  const unstampedHost = hostProjector({ projection, hosts: request.hosts, readDistribution,
+  const projectHost = hostProjector({ projection, hosts: request.hosts, readDistribution,
     capture: fullHostCapture({ projection, core: request.sources.core, readSessions, readNeutral }) });
-  const projectHost = stampingVersion(unstampedHost, packaging.stamp);
   return {
     settingsCapabilities: projection.settingsCapabilities, readHostDistribution: readDistribution,
     projectHost,
-    buildPayload: payloadBuilder({ projectHost: unstampedHost, hosts: request.hosts, packaging, readDistribution, projection,
-      hasher: request.platform.digester }),
+    buildPayload: payloadBuilder({ projectHost, hosts: request.hosts, packaging, readDistribution, projection,
+      hasher: request.platform.digester, readPluginTemplates: pluginTemplateReading({
+        fileSystem: request.platform.fileSystem, folder: request.sources.pluginHookTemplates }),
+      readPluginTargets: pluginTargetReading({ hosts: request.hosts, readDistribution }) }),
     loadCore: () => core ??= loadCore(),
     loadPlugins: ({ core: loaded }) => loading.loadPlugins({ core: loaded,
       pluginsRoot: request.sources.plugins }),

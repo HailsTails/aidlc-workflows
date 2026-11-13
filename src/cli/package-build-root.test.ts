@@ -16,6 +16,7 @@ import { hash, host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import type { CoreBuild, HostBuildRequest, HostModule, HostDistributionReader, Platform } from "./roots.ts";
 import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
 import { createPackageBuildRoot } from "./package-build-root.ts";
+import { readEveryEntry } from "../kernel/file-system-port.ts";
 
 const files = {
   "file:///core/aidlc-common/stages/.keep": "", "file:///core/agents/.keep": "",
@@ -216,6 +217,8 @@ const fullHostFiles = () => ({ ...files,
   "file:///core/tools/aidlc-version.ts": 'export const AIDLC_VERSION = "fixture";',
   "file:///core/tools/aidlc-utility.ts": "captured formatter",
   "file:///core/hooks/.keep": "",
+  "file:///scripts/copy-era-files.json": "{}",
+  "file:///hook-templates/nested/template.txt": "Raw {{INVOKE}}\r\n",
 });
 
 const fullHostRequest = (core: CoreBuild): HostBuildRequest => ({
@@ -319,7 +322,7 @@ test("buildPayload refuses an unknown distribution before compiling", async () =
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem, processRunner, yaml, digester, terminal },
     outliner, sources, runnerFrames });
   const loaded = accept(await root.loadCore());
-  expect(await root.buildPayload(fullHostRequest(loaded)))
+  expect(await root.buildPayload({ ...fullHostRequest(loaded), copy: null }))
     .toEqual(refused([{ kind: "unknown-harness", harness: "scratch" }]));
 });
 
@@ -332,6 +335,98 @@ test("buildPayload lays a routed host's projection out as a hashed payload", asy
     distribution: () => accepted({ ...scratchHostDistributionFixture, layout }) }],
     platform: { fileSystem, processRunner: fullHostProcess(), yaml, digester, terminal }, outliner, sources, runnerFrames });
   const loaded = accept(await root.loadCore());
-  const built = await root.buildPayload(fullHostRequest(loaded));
+  const built = await root.buildPayload({ ...fullHostRequest(loaded), copy: null });
   expect(accept(built).files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/aidlc-stamp.json") }));
+});
+
+
+test("copy and native payloads share captured history while Projection keeps the raw version module", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const readFile = mock(fileSystem.readFile);
+  const layout = { ...scratchHostDistributionFixture.layout, managedDirectories: [
+    ...scratchHostDistributionFixture.layout.managedDirectories,
+    { path: path("aidlc"), ownership: "whole-directory" as const }] };
+  const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(),
+    distribution: () => accepted({ ...scratchHostDistributionFixture, layout }) }],
+    platform: { fileSystem: { ...fileSystem, readFile }, processRunner: fullHostProcess(), yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  const request = fullHostRequest(core);
+  const projected = accept(await root.projectHost(request));
+  expect(projected.projection.files).toContainEqual(expect.objectContaining({
+    path: path(".scratch/tools/aidlc-version.ts"),
+    content: { kind: "text", text: 'export const AIDLC_VERSION = "fixture";' } }));
+  const copy = accept(await root.buildPayload({ ...request, copy: null }));
+  accept(await fileSystem.writeFile({ file: new URL("file:///scripts/copy-era-files.json"),
+    content: { kind: "text", text: "invalid after capture" } }));
+  readFile.mockClear();
+  const native = accept(await root.buildPayload({ ...request, channel: "native", copy }));
+  expect(native.files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/aidlc-projection.json"),
+    content: { kind: "text", text: expect.stringContaining('"retiredCopyFileHashes": {}') } }));
+  expect(readFile).not.toHaveBeenCalled();
+});
+
+test("only native metadata sees plugin authoring files, with one immutable template capture", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const readTree = mock(fileSystem.readTree);
+  const layout = { ...scratchHostDistributionFixture.layout, managedDirectories: [
+    ...scratchHostDistributionFixture.layout.managedDirectories,
+    { path: path("aidlc"), ownership: "whole-directory" as const }] };
+  const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(),
+    distribution: () => accepted({ ...scratchHostDistributionFixture, layout }) }],
+    platform: { fileSystem: { ...fileSystem, readTree }, processRunner: fullHostProcess(), yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  const request = fullHostRequest(core);
+  const copy = accept(await root.buildPayload({ ...request, copy: null }));
+  expect(copy.files).not.toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/plugin-authoring-context.json") }));
+  expect(readTree).not.toHaveBeenCalledWith({ folder: sources.pluginHookTemplates, select: readEveryEntry });
+  readTree.mockClear();
+  const native = accept(await root.buildPayload({ ...request, channel: "native", copy }));
+  expect(native.files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/plugin-targets.json") }));
+  expect(native.files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/plugin-authoring-context.json") }));
+  expect(readTree).toHaveBeenCalledTimes(1);
+  expect(readTree).toHaveBeenCalledWith({ folder: sources.pluginHookTemplates, select: readEveryEntry });
+  expect(native.files).toContainEqual(expect.objectContaining({
+    path: path(".scratch/tools/data/plugin-hooks-template/nested/template.txt"),
+    content: { kind: "bytes", bytes: new TextEncoder().encode("Raw {{INVOKE}}\r\n") },
+  }));
+  accept(await fileSystem.writeFile({ file: new URL("nested/template.txt", sources.pluginHookTemplates),
+    content: { kind: "text", text: "Changed after capture" } }));
+  const again = accept(await root.buildPayload({ ...request, channel: "native", copy }));
+  expect(again.files).toEqual(native.files);
+  expect(readTree).toHaveBeenCalledTimes(1);
+});
+
+test.each([["file:///hook-templates/", ""], ["file:///hook-templates/nested/template.txt", "nested/template.txt"]])(
+  "a native template failure at %s refuses the payload", async (location, within) => {
+    const fileSystem = createInMemoryFileSystem({ files: fullHostFiles(), faults: { [location]: "permission-denied" } });
+    const root = createPackageBuildRoot({ hosts: [distributionMembers()],
+      platform: { fileSystem, processRunner: fullHostProcess(), yaml, digester, terminal }, outliner, sources, runnerFrames });
+    const core = accept(await root.loadCore());
+    expect(await root.buildPayload({ ...fullHostRequest(core), channel: "native", copy: null }))
+      .toEqual(refused([{ kind: "plugin-hook-template-unreadable",
+        within, code: "permission-denied" }]));
+  });
+
+test("native authoring files refuse a collision with the host projection", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const placeNeutralDocument = mock<ReturnType<HostDocumentRenderer>["placeNeutralDocument"]>()
+    .mockReturnValue(accepted([])).mockReturnValueOnce(accepted([{
+      path: path(".scratch/tools/data/plugin-targets.json"), mode: "regular",
+      content: { kind: "text", text: "host-owned" },
+      origin: { kind: "neutral", source: source("aidlc-common/conductor.md") },
+    }]));
+  const render: HostDocumentRenderer = (inputs) => ({ ...scratchDocumentRenderer(inputs),
+    placeNeutralDocument,
+  });
+  const root = createPackageBuildRoot({ hosts: [withProjection({ documents: { inputs: [], render } })],
+    platform: { fileSystem, processRunner: fullHostProcess(), yaml, digester, terminal }, outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  expect(await root.buildPayload({ ...fullHostRequest(core), channel: "native", copy: null })).toEqual(refused([{
+    kind: "path-collision", path: path(".scratch/tools/data/plugin-targets.json"), origins: [
+      { kind: "neutral", source: source("aidlc-common/conductor.md") },
+      { kind: "runtime-data", name: "plugin-targets" },
+    ],
+  }]));
 });

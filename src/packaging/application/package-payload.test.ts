@@ -8,11 +8,15 @@ import type { ContentHasher } from "./ports.ts";
 import type { VersionStamp } from "./boundary-ports.ts";
 import { createPackagePayload } from "./package-payload.ts";
 
+const nativeRoutes = { prefix: "aidlc engine", namespace: "engine", delegates: [], adapterHooks: new Set<string>(),
+  trusted: (suffix: string) => `aidlc engine ${suffix}`, unresolvable: () => [] };
+const nativeReleases = { release: () => accepted({ replacements: [], copyOnly: [], permissionsLine: "prefix-only" as const }) };
+
 const fixture = claudeCopyPayloadFixture;
 const ZERO_HASH = hash("sha256:0000000000000000000000000000000000000000000000000000000000000000");
 const stampedText: VersionStamp = () => accepted({ kind: "text", text: "stamped" });
 const application = (stamp: VersionStamp = stampedText,
-  hasher: ContentHasher = { hash: () => accepted(ZERO_HASH) }) => createPackagePayload({
+  hasher: ContentHasher = { hash: () => accepted(ZERO_HASH) }) => createPackagePayload({ routes: nativeRoutes, releases: nativeReleases,
   bundler: { bundle: async () => accepted([]) },
   hasher,
   layouts: { layout: () => accepted(fixture.descriptor.layout) },
@@ -70,7 +74,7 @@ test("a requested runtime entry cannot be silently omitted", async () => {
 });
 
 test("metadata refusals pass through instead of assembling a partial payload", async () => {
-  const packagePayload = createPackagePayload({
+  const packagePayload = createPackagePayload({ routes: nativeRoutes, releases: nativeReleases,
     bundler: { bundle: async () => accepted([]) }, hasher: { hash: () => accepted(hash(
       "sha256:0000000000000000000000000000000000000000000000000000000000000000")) },
     stamp: stampedText, layouts: { layout: () => accepted(fixture.descriptor.layout) },
@@ -84,7 +88,7 @@ test("metadata refusals pass through instead of assembling a partial payload", a
 
 test("a projected content hash refusal stops before metadata assembly", async () => {
   const files = mock(() => accepted([]));
-  const packagePayload = createPackagePayload({ bundler: { bundle: async () => accepted([]) },
+  const packagePayload = createPackagePayload({ routes: nativeRoutes, releases: nativeReleases, bundler: { bundle: async () => accepted([]) },
     hasher: { hash: () => refused({ kind: "invalid-content-hash", raw: "bad digest" }) },
     stamp: stampedText, layouts: { layout: () => accepted(fixture.descriptor.layout) },
     history: { history: async () => accepted(fixture.descriptor.history) }, metadata: { files },
@@ -99,7 +103,7 @@ test("a projected content hash refusal stops before metadata assembly", async ()
 
 test("bundled content is rehashed and preserves the digester refusal", async () => {
   const entry = { name: "aidlc", compositionRoot: source("src/cli/main.ts") };
-  const packagePayload = createPackagePayload({ bundler: { bundle: async () => accepted([{
+  const packagePayload = createPackagePayload({ routes: nativeRoutes, releases: nativeReleases, bundler: { bundle: async () => accepted([{
     path: path(".claude/tools/lib/aidlc.js"), mode: "regular", content: { kind: "text", text: "bundle" },
     hash: hash("sha256:0000000000000000000000000000000000000000000000000000000000000000"),
     origin: { kind: "bundled-runtime", entry },
@@ -148,7 +152,7 @@ test("a projected version file is included and stamped", async () => {
 
 test("the bundler receives the projection host instead of inferring its directory from an entry", async () => {
   const bundler = createScriptedToolBundler(accepted([]));
-  const packaged = await createPackagePayload({ bundler, hasher: { hash: () => accepted(ZERO_HASH) },
+  const packaged = await createPackagePayload({ routes: nativeRoutes, releases: nativeReleases, bundler, hasher: { hash: () => accepted(ZERO_HASH) },
     layouts: { layout: () => accepted(fixture.descriptor.layout) },
     history: { history: async () => accepted(fixture.descriptor.history) },
     metadata: { files: () => accepted([]) }, stamp: stampedText,
@@ -156,4 +160,27 @@ test("the bundler receives the projection host instead of inferring its director
     projection: { host: fixture.descriptor.host, files: [versionModule("v")], findings: [] } });
   expect(packaged.ok).toBe(true);
   expect(bundler.received()).toEqual([{ entries: [], channel: "copy", host: fixture.descriptor.host }]);
+});
+
+test("native layout runs before hashing and removes copy-only root declarations", async () => {
+  const hasher = mock(() => accepted(ZERO_HASH));
+  const native = createPackagePayload({ bundler: { bundle: async () => accepted([]) }, hasher: { hash: hasher }, stamp: stampedText,
+    routes: nativeRoutes, releases: { release: () => accepted({ permissionsLine: "prefix-only",
+      replacements: [], copyOnly: [path(".vscode/settings.json")] }) },
+    layouts: { layout: () => accepted({ ...fixture.descriptor.layout, rootIntegrations: [{
+      path: path(".vscode/settings.json"), policy: "jsonc-settings", presence: "required" }] }) },
+    history: { history: async () => accepted(fixture.descriptor.history) }, metadata: { files: () => accepted([]) },
+  });
+  expect(await native.package({ version: fixture.version, channel: "native", runtime: [], projection: {
+    host: fixture.descriptor.host, findings: [], files: [versionModule("version"),
+      { path: path(".claude/tools/example.ts"), mode: "executable", content: { kind: "text", text:
+        "bun .claude/tools/aidlc.ts stage status" }, origin: { kind: "rendered", concept: "settings", name: "fixture" } },
+      { path: path(".vscode/settings.json"), mode: "regular", content: { kind: "text", text: "copy only" },
+        origin: { kind: "rendered", concept: "settings", name: "fixture" } },
+    ],
+  } })).toMatchObject({ ok: true, value: { descriptor: { layout: { rootIntegrations: [] } }, files: [
+    { path: path(".claude/tools/aidlc-version.ts"), content: { kind: "text", text: "stamped" } },
+    { path: path(".claude/tools/example.ts"), mode: "executable", content: { kind: "text", text: "aidlc engine stage status" } },
+  ] } });
+  expect(hasher).toHaveBeenCalledWith({ kind: "text", text: "aidlc engine stage status" });
 });

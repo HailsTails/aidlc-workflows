@@ -1,11 +1,10 @@
 #!/usr/bin/env bun
 import { bindCopiedSource } from "../src/projection/domain/source-binding.ts";
 import { z } from "zod";
-import type { HostBuildRequest, HostModule } from "../src/cli/roots.ts";
-import type { HostDistribution } from "../src/packaging/domain/payload.ts";
+import type { HostModule } from "../src/cli/roots.ts";
+import type { Payload, HostDistribution } from "../src/packaging/domain/payload.ts";
 import { trustEntries } from "../src/hosts/codex/projection/settings-renderer.ts";
 import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
-import type { FileContent } from "../src/kernel/file-content.ts";
 import type { HostIdentity } from "../src/kernel/host.ts";
 import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts";
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
@@ -42,10 +41,8 @@ import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts"
 // and fails CI only when the generator is nondeterministic.
 
 import {
-  chmodSync,
   cpSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -56,14 +53,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import {
-  basename,
   dirname,
   isAbsolute,
   join,
   posix,
   win32,
   relative,
-  sep,
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -71,12 +66,11 @@ import {
 } from "../src/cli/host-table.ts";
 import { sourcePath, type SourcePath } from "../src/kernel/values.ts";
 import type {
-  DistributionChannel, ProjectedFile,
+  DistributionChannel,
 } from "../src/projection/domain/projected-file.ts";
 import { openPackageBuildRoot } from "../src/cli/main.ts";
 import { createNodeFileSystem } from "../src/kernel/file-system.ts";
 import { writePayloadTree } from "../src/packaging/adapters/payload-tree-writer.ts";
-import { onboardingPathOf } from "../src/packaging/core-root.ts";
 import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
 import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
 import { createBunContentDigester } from "../src/kernel/content-digester.ts";
@@ -103,15 +97,11 @@ import {
 } from "../core/tools/aidlc-plugin-emit.ts";
 import { readEnvCap, readMemoryCap } from "../core/tools/aidlc-tiers.ts";
 import {
-  scanNamespaceInvocations,
   TRUSTED_COMMAND_PREFIX,
   TRUSTED_ROUTE_NAMESPACE,
-  trustedCommand,
 } from "../core/tools/aidlc-command.ts";
-import { ROUTES, TOOLS } from "../core/tools/aidlc.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
-import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../src/packaging/adapters/legacy-distribution.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CORE_ROOT = join(REPO_ROOT, "core");
@@ -228,8 +218,6 @@ function diffTrees(
 // The packager-emitted harness descriptor (vision T1 open-set seam): the
 // runtime reads tools/data/harness.json to learn this harness's rules-subdir
 // without a hardcoded map. Derived from the manifest, written into every tree.
-const STAMP_DATA = "tools/data/aidlc-stamp.json";
-const PROJECTION_DATA = "tools/data/aidlc-projection.json";
 
 // The plugin authoring validator must run from a copied distribution with no
 // framework checkout. Ship the compose hook's source of truth beside the tool
@@ -264,122 +252,6 @@ type DescriptorIntegration = {
   };
 };
 
-type ReleaseView = ReturnType<typeof routedListing> & {
-  readonly name: HostIdentity["distribution"];
-  readonly harnessDir: HostIdentity["directory"];
-  readonly productName: string;
-  readonly configNextStep: string;
-  readonly rootIntegrations: readonly DescriptorIntegration[];
-  readonly copyOnly: HostDistribution["native"]["copyOnly"];
-  readonly nativeReplacements: HostDistribution["native"]["replacements"];
-  readonly onboarding: string | undefined;
-};
-
-function writeProjectionData(outRoot: string, treeRoot: string, m: ReleaseView): void {
-  if (!harnessChoiceTextIsPlain(m)) {
-    throw new Error(`[${m.name}] choiceName or choiceNote is not text the harness lists can show`);
-  }
-  const rootIntegrationPaths = new Set(m.rootIntegrations.map((item) => item.path));
-  if (rootIntegrationPaths.size !== m.rootIntegrations.length) {
-    throw new Error(`[${m.name}] duplicate root integration path`);
-  }
-  for (const integration of m.rootIntegrations) {
-    if (!existsSync(join(outRoot, integration.path))) {
-      throw new Error(`[${m.name}] root integration is not projected: ${integration.path}`);
-    }
-  }
-  // A directory that holds only root integrations (.vscode/ for settings.json)
-  // is the project's, not a managed engine directory.
-  const onlyRootIntegrations = (entry: string): boolean => {
-    const files: string[] = [];
-    const visit = (dir: string): void => {
-      for (const name of readdirSync(join(outRoot, dir))) {
-        const rel = `${dir}/${name}`;
-        if (statSync(join(outRoot, rel)).isDirectory()) visit(rel);
-        else files.push(rel);
-      }
-    };
-    visit(entry);
-    return files.length > 0 && files.every((file) => rootIntegrationPaths.has(file));
-  };
-  const managedDirectories = readdirSync(outRoot)
-    .filter((entry) => statSync(join(outRoot, entry)).isDirectory())
-    .filter((entry) => !rootIntegrationPaths.has(entry) && !onlyRootIntegrations(entry))
-    .sort();
-  const allowedTopLevel = new Set([
-    ...managedDirectories,
-    ...m.rootIntegrations.map((item) => item.path.split("/")[0]),
-  ]);
-  const unclassified = readdirSync(outRoot)
-    .filter((entry) => !allowedTopLevel.has(entry))
-    .sort();
-  if (unclassified.length > 0) {
-    throw new Error(`[${m.name}] unclassified projection entries: ${unclassified.join(", ")}`);
-  }
-  const rootIntegrations = m.rootIntegrations.map((integration) => {
-    if (copyStartsWithout(integration) || integration.policy === "json-entries") {
-      // A copy starts without this file (or leaves the team's own in place);
-      // its shipped part rides along so config and the engine can add it
-      // without a download.
-      const dst = join(treeRoot, "tools", "data", "root-blocks", basename(integration.path));
-      mkdirSync(dirname(dst), { recursive: true });
-      writeFileSync(dst, readFileSync(join(outRoot, integration.path)));
-      return integration;
-    }
-    if (integration.policy !== "managed-block") return integration;
-    const bytes = readFileSync(join(outRoot, integration.path));
-    // Every managed block ships a copy inside the harness folder: siblings
-    // read it to combine .gitignore lines, the copy runtime leaves the root
-    // file out, and config and the engine add AI-DLC's part from it.
-    const dst = join(
-      treeRoot,
-      "tools",
-      "data",
-      "root-blocks",
-      integration.marker || basename(integration.path),
-    );
-    mkdirSync(dirname(dst), { recursive: true });
-    writeFileSync(dst, bytes);
-    const currentHash = sha256Bytes(bytes);
-    return {
-      ...integration,
-      legacySignatures: {
-        ...integration.legacySignatures,
-        wholeFileHashes: [
-          ...new Set([
-            ...(integration.legacySignatures?.wholeFileHashes ?? []),
-            currentHash,
-          ]),
-        ],
-      },
-    };
-  });
-  const projection = {
-    schemaVersion: 1,
-    distribution: m.name,
-    productName: m.productName,
-    ...(m.choiceName ? { choiceName: m.choiceName } : {}),
-    ...(m.choiceNote ? { choiceNote: m.choiceNote } : {}),
-    configNextStep: m.configNextStep,
-    ...(m.firstRunSteps ? { firstRunSteps: m.firstRunSteps } : {}),
-    ...(m.editorTerminalApp ? { editorTerminalApp: m.editorTerminalApp } : {}),
-    ...(m.cliFirst ? { cliFirst: m.cliFirst } : {}),
-    harnessDir: m.harnessDir,
-    ...(m.onboarding ? { onboarding: m.onboarding } : {}),
-    managedDirectories,
-    rootIntegrations: rootIntegrations.map(writtenRootIntegration),
-  };
-  const stamp = {
-    schemaVersion: 1,
-    frameworkVersion: BUILD_VERSION,
-    distribution: m.name,
-    harnessDir: m.harnessDir,
-  };
-  mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
-  writeFileSync(join(treeRoot, PROJECTION_DATA), `${JSON.stringify(projection, null, 2)}\n`);
-  writeFileSync(join(treeRoot, STAMP_DATA), `${JSON.stringify(stamp, null, 2)}\n`);
-}
-
 function emitPluginAuthoringData(treeRoot: string): void {
   for (const file of walk(PLUGIN_HOOKS_TEMPLATE_SRC)) {
     const outPath = join(
@@ -413,9 +285,6 @@ function emitPluginAuthoringData(treeRoot: string): void {
 // <harnessDir> (onboarding/config, workspace memory, emitted skills, and so on).
 // ---------------------------------------------------------------------------
 
-const hostContentBytes = (content: FileContent): Buffer => content.kind === "text"
-  ? Buffer.from(content.text, "utf-8") : Buffer.from(content.bytes);
-
 function shippedSettingsEntrypoints(treeRoot: string): readonly SourcePath[] {
   return ["hooks", "tools"].flatMap((folder) =>
     readdirSync(join(treeRoot, folder), { withFileTypes: true })
@@ -426,311 +295,6 @@ function shippedSettingsEntrypoints(treeRoot: string): readonly SourcePath[] {
     if (!path.ok) throw new Error(`The built settings entrypoint is not portable: ${raw}`);
     return path.value;
   });
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// A manifest's nativeReplacements, applied before the generic rewrite, which
-// would otherwise turn their copy-channel text into retired or unresolvable
-// engine spellings.
-function applyNativeReplacements(outRoot: string, m: ReleaseView): void {
-  for (const { from, to } of m.nativeReplacements) {
-    let found = false;
-    for (const file of walk(outRoot)) {
-      if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
-      const value = readFileSync(file, "utf-8");
-      if (!value.includes(from)) continue;
-      found = true;
-      writeFileSync(file, value.replaceAll(from, to));
-    }
-    if (!found) {
-      throw new Error(`[${m.name}] nativeReplacements: text not found in the native projection:\n${from}`);
-    }
-  }
-}
-
-// The native Permissions line. A harness whose native allow list carries the
-// exact read-only and turn-back-on commands names them; the others keep the
-// engine prefix alone.
-function nativePermissionsLine(exactReads: boolean): string {
-  return exactReads
-    ? `- **Permissions**: the \`aidlc\` agent pre-approves only the native \`${TRUSTED_COMMAND_PREFIX}\` command prefix, the read-only \`aidlc doctor\`, \`status\`, \`version\` and \`config <section> --show\` (with or without \`--json\`) and \`--help\` forms, turning a check back on (\`aidlc config flags --clear-bypass <switch> --yes\`), and its listed read-only tools; everything else prompts, including any other \`config\` change.`
-    : `- **Permissions**: the \`aidlc\` agent pre-approves only the native \`${TRUSTED_COMMAND_PREFIX}\` command prefix and its listed read-only tools; everything else prompts.`;
-}
-
-function rewriteNativeOnboarding(value: string, exactReads = false): string {
-  return value
-    .replace(
-      /^- \*\*bun\*\*:.*$/gm,
-      "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available. If `aidlc` is not found in this tool, give the person both fixes in one line, then end your turn without installing anything or working around it: if AI-DLC was installed while this tool was open, quit the tool fully and reopen it (a new tab or reloaded window is not enough); otherwise the installer's bin folder is not on PATH (an install with `-NoModifyPath`, or a Unix install whose PATH line was not applied), so add the folder the installer printed to PATH, or rerun the installer without `-NoModifyPath`, then reopen the tool.",
-    )
-    .replace(
-      /^- \*\*Hook permissions\*\*:.*$/gm,
-      "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.",
-    )
-    .replace(/^- \*\*Permissions\*\*:.*$/gm, nativePermissionsLine(exactReads))
-    .replace(
-      /TypeScript, run via bun/g,
-      "TypeScript sources invoked through the self-contained `aidlc` runtime",
-    )
-    .replace(
-      /pre-approves ONLY `bun \.kiro\/tools\/\*` shell commands/g,
-      `pre-approves only \`${TRUSTED_COMMAND_PREFIX}\` shell commands`,
-    )
-    .replace(
-      /^\*\*CWD drift warning\*\*: If a stage runs `cd` in Bash.*$/gm,
-      "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.",
-    );
-}
-
-// A copyOnly harness file ships in the copy runtime alone. The native tree
-// drops it and the root integration of the same path, so `aidlc config` never
-// writes it into a project.
-function dropCopyOnlyFiles(outRoot: string, m: ReleaseView): void {
-  if (m.copyOnly.length === 0) return;
-  for (const path of m.copyOnly) rmSync(join(outRoot, path), { force: true });
-  const dropped = new Set<string>(m.copyOnly);
-  const descriptorPath = join(outRoot, m.harnessDir, PROJECTION_DATA);
-  const descriptor = JSON.parse(readFileSync(descriptorPath, "utf-8")) as {
-    rootIntegrations: Array<Record<string, unknown>>;
-  };
-  descriptor.rootIntegrations = descriptor.rootIntegrations.filter((item) => !dropped.has(String(item.path)));
-  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
-}
-
-function projectedNamespaceInvocationViolations(
-  file: string,
-  value: string,
-): string[] {
-  return scanNamespaceInvocations(file, value, ROUTES)
-    .filter((invocation) => invocation.source === "aidlc" && !invocation.resolves)
-    .map((invocation) =>
-      `${file}:${invocation.line}: unresolvable projected namespace invocation "${invocation.command}"`
-    );
-}
-
-function rewriteNativeInvocations(
-  outRoot: string,
-  m: ReleaseView,
-  copyRoot: string,
-): void {
-  dropCopyOnlyFiles(outRoot, m);
-  applyNativeReplacements(outRoot, m);
-  const harnessDir = escapeRegExp(m.harnessDir);
-  // Deriving the delegate list from TOOLS keeps new delegates' bare bun aidlc-<name>.ts forms
-  // covered by both the rewrite and bareToolCheck. The leftover checks below
-  // still reject a rewrite to a non-route.
-  const delegateNames = Object.values(TOOLS)
-    .map((file) => escapeRegExp(file.slice("aidlc-".length, -".ts".length)))
-    .join("|");
-  // The authored subprocess adapters, each backed by an `aidlc engine adapter
-  // <harness>` dispatcher route. Only these project onto that route; any other
-  // hook file keeps the generic one-argument `engine hook <name>` rewrite.
-  const adapterHookNames: Record<string, true> = {
-    "kiro-adapter": true,
-    "codex-adapter": true,
-    "cursor-adapter": true,
-    "copilot-adapter": true,
-  };
-  const projectPrefix = String.raw`(?:"?(?:\$\{?CLAUDE_PROJECT_DIR\}?/)?`;
-  const suffix = `"?)`;
-  const toolPattern = new RegExp(
-    String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc(?:-([a-z0-9-]+))?\.ts${suffix}`,
-    "gi",
-  );
-  const hookPattern = new RegExp(
-    String.raw`\bbun\s+${projectPrefix}${harnessDir}/hooks/aidlc-([a-z0-9-]+)\.ts${suffix}`,
-    "gi",
-  );
-  const bareToolPattern = new RegExp(
-    String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`,
-    "gi",
-  );
-  const bareToolCheck = new RegExp(bareToolPattern.source, "i");
-  for (const file of walk(outRoot)) {
-    if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
-    let value = readFileSync(file, "utf-8");
-    // Claude's source hook/statusline dispatcher is rooted at the project, so
-    // it still loads after an application command changes cwd. JSON escapes
-    // its shell quotes; strip the complete invocation for native releases.
-    const escapedJsonDispatcher = new RegExp(
-      String.raw`\bbun\s+\\"\$CLAUDE_PROJECT_DIR/${harnessDir}/tools/aidlc\.ts\\"`,
-      "gi",
-    );
-    value = value.replace(escapedJsonDispatcher, "aidlc");
-    const escapedJsonHook = new RegExp(
-      String.raw`\bbun\s+\\"\$CLAUDE_PROJECT_DIR/${harnessDir}/hooks/aidlc-([a-z0-9-]+)\.ts\\"`,
-      "gi",
-    );
-    value = value.replace(escapedJsonHook, (_match, hook: string) => {
-      if (adapterHookNames[hook]) return trustedCommand(`adapter ${m.name}`);
-      return hook === "statusline"
-        ? trustedCommand("statusline")
-        : trustedCommand(`hook ${hook}`);
-    });
-    // Direct utility verbs whose dispatcher route lives under the `workspace`
-    // noun: rewrite verb-aware BEFORE the generic tool rewrite would emit the
-    // retired `engine utility` alias.
-    const workspaceUtilityPattern = new RegExp(
-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+(codekb-path|codekb-scope-diff|codekb-snapshot|codekb-publish|project-description|document-input)\b`,
-      "gi",
-    );
-    value = value.replace(
-      workspaceUtilityPattern,
-      (_match, verb: string) =>
-        `${trustedCommand("workspace")} ${verb === "codekb-path" ? "codekb" : verb}`,
-    );
-    // Settings share one utility transaction; project its first setting onto
-    // the dispatcher's config noun and preserve all trailing flags/selectors.
-    // The key list mirrors the dispatcher's `config set` verbs: guard-policy
-    // (with its retired spelling change-control, accepted for one release) and
-    // the four per-fence guard.<fence> switches. A key missing here falls
-    // through to the generic tool rewrite, which emits the retired `engine
-    // utility` alias that the leftover check below rejects.
-    const configUtilityPattern = new RegExp(
-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+config-change\s+--(depth|test-strategy|review|guard-policy|change-control|sensors|learnings|summary-confirmation|guard\.(?:plan-approval|review-freeze|state-transition|reviewer-scope))\b`,
-      "gi",
-    );
-    value = value.replace(
-      configUtilityPattern,
-      (_match, key: string) => trustedCommand(`config set ${key}`),
-    );
-    value = value.replace(toolPattern, (_match, delegate: string | undefined) =>
-      delegate ? trustedCommand(delegate) : TRUSTED_COMMAND_PREFIX
-    );
-    value = value.replace(
-      bareToolPattern,
-      (_match, delegate: string) => trustedCommand(delegate),
-    );
-    value = value.replace(hookPattern, (_match, hook: string) => {
-      if (adapterHookNames[hook]) return trustedCommand(`adapter ${m.name}`);
-      if (hook === "statusline") return trustedCommand("statusline");
-      return trustedCommand(`hook ${hook}`);
-    });
-    value = value.replaceAll(
-      `"bun \\\\${m.harnessDir}/tools/.*"`,
-      `"${trustedCommand(".*")}"`,
-    );
-    value = value.replaceAll(
-      `"bun \\\\$\\\\{?KIRO_PROJECT_DIR\\\\}?/${m.harnessDir}/tools/.*"`,
-      `"${trustedCommand(".*")}"`,
-    );
-    value = substituteInvocationTokens(value, m.harnessDir, "aidlc");
-    value = rewriteNativeOnboarding(value, ["claude", "cursor", "kiro", "kiro-ide"].includes(m.name));
-    writeFileSync(file, value);
-  }
-  // Before the copy's hashes are recorded below, so a part that changed here
-  // still has its copy bytes recognized, and --check builds it the same way.
-  syncRootBlockParts(outRoot, m);
-  const descriptorPath = join(outRoot, m.harnessDir, PROJECTION_DATA);
-  const descriptor = JSON.parse(readFileSync(descriptorPath, "utf-8")) as {
-    managedDirectories: string[];
-    legacyManagedFileHashes?: Record<string, string[]>;
-    retiredCopyFileHashes?: Record<string, string[]>;
-  };
-  const legacyManagedFileHashes: Record<string, string[]> = {};
-  for (const directory of descriptor.managedDirectories) {
-    const releaseDirectory = join(outRoot, directory);
-    if (!existsSync(releaseDirectory)) continue;
-    for (const file of walk(releaseDirectory)) {
-      const rel = relative(outRoot, file).split(sep).join("/");
-      const copy = join(copyRoot, rel);
-      if (!existsSync(copy) || !lstatSync(copy).isFile()) continue;
-      const releaseHash = sha256Bytes(readFileSync(file));
-      const copyHash = sha256Bytes(readFileSync(copy));
-      if (releaseHash !== copyHash) legacyManagedFileHashes[rel] = [copyHash];
-    }
-  }
-  // What the copy-era releases put at each path (scripts/copy-era-files.ts):
-  // they wrote no install record, so their unchanged files are told from the
-  // person's by these bytes.
-  // Read as data, not imported: a type for half a megabyte of JSON would weigh on the typecheck.
-  const copyEra = JSON.parse(readFileSync(join(REPO_ROOT, "scripts", "copy-era-files.json"), "utf-8")) as Record<string, Record<string, string[]>>;
-  const retiredCopyFileHashes: Record<string, string[]> = {};
-  for (const [rel, hashes] of Object.entries(copyEra[m.name] ?? {})) {
-    if (!descriptor.managedDirectories.some((directory) => rel.startsWith(`${directory}/`))) continue;
-    // The workspace's seeds are the team's once written (config preserves them,
-    // aidlc-init.ts workspaceSeed) and a copy runtime leaves them out
-    // (copyChannelOmits), so no signature is owed for them.
-    if (rel.startsWith("aidlc/")) continue;
-    const release = join(outRoot, rel);
-    if (!existsSync(release) || !lstatSync(release).isFile()) {
-      retiredCopyFileHashes[rel] = [...hashes].sort();
-      continue;
-    }
-    const releaseHash = sha256Bytes(readFileSync(release));
-    const known = new Set(legacyManagedFileHashes[rel] ?? []);
-    for (const hash of hashes) if (hash !== releaseHash) known.add(hash);
-    if (known.size > 0) legacyManagedFileHashes[rel] = [...known].sort();
-  }
-  descriptor.retiredCopyFileHashes = retiredCopyFileHashes;
-  const descriptorRel = `${m.harnessDir}/${PROJECTION_DATA}`.split(sep).join("/");
-  const copyDescriptor = join(copyRoot, descriptorRel);
-  if (existsSync(copyDescriptor)) {
-    legacyManagedFileHashes[descriptorRel] = [
-      sha256Bytes(readFileSync(copyDescriptor)),
-    ];
-  }
-  if (Object.keys(legacyManagedFileHashes).length > 0) {
-    descriptor.legacyManagedFileHashes = legacyManagedFileHashes;
-  } else {
-    delete descriptor.legacyManagedFileHashes;
-  }
-  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
-
-  // A manifest's nativeReplacements text is generated from the route table
-  // (permission globs, not invocations), so the prose check skips it; its
-  // lines stay as blank lines so reported line numbers still match the file.
-  const withoutNativeReplacements = (value: string): string =>
-    m.nativeReplacements.reduce(
-      (text, { to }) => text.replaceAll(to, to.replace(/[^\n]/g, "")),
-      value,
-    );
-  const leftovers: string[] = [];
-  for (const file of walk(outRoot)) {
-    if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
-    const value = readFileSync(file, "utf-8");
-    for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}", "{{OPTION_LETTERS}}"]) {
-      if (value.includes(token)) {
-        leftovers.push(`${relative(outRoot, file)}: unexpanded ${token}`);
-      }
-    }
-    if (new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: bun invocation survived native projection`);
-    }
-    if (bareToolCheck.test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: bare bun invocation survived native projection`);
-    }
-    if (/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: retired engine alias survived native projection`);
-    }
-    leftovers.push(
-      ...projectedNamespaceInvocationViolations(relative(outRoot, file), withoutNativeReplacements(value)),
-    );
-    if (
-      relative(outRoot, file).split(sep).join("/").includes("/agents/") &&
-      /"allowedCommands"\s*:\s*\[[\s\S]*?"bun [^"]*tools\//.test(value)
-    ) {
-      leftovers.push(`${relative(outRoot, file)}: bun allowlist survived native projection`);
-    }
-  }
-  if (leftovers.length > 0) {
-    throw new Error(`[${m.name}] native invocation projection failed:\n${leftovers.join("\n")}`);
-  }
-}
-
-function writeProjectedFiles(request: {
-  readonly files: readonly ProjectedFile[]; readonly projectRoot: string;
-}): void {
-  for (const file of request.files) {
-    const destination = join(request.projectRoot, file.path);
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, file.content.kind === "text"
-      ? file.content.text : file.content.bytes);
-    if (file.mode === "executable") chmodSync(destination, 0o755);
-  }
 }
 
 type RoutedHost = { members: HostModule; distribution: HostDistribution };
@@ -768,42 +332,10 @@ function routedIntegrations(distribution: HostDistribution): DescriptorIntegrati
   });
 }
 
-function routedListing(distribution: HostDistribution) {
-  const { listing } = distribution;
-  return { ...listing,
-    firstRunSteps: listing.firstRunSteps ? [...listing.firstRunSteps] : undefined,
-    cliFirst: listing.cliFirst ? { ...listing.cliFirst, env: [...listing.cliFirst.env],
-      firstRunSteps: [...listing.cliFirst.firstRunSteps] } : undefined };
-}
-
-function routedView(request: {
-  members: HostModule; distribution: HostDistribution; files: readonly Pick<ProjectedFile, "path" | "content" | "origin">[];
-}): ReleaseView {
-  const { members, distribution, files } = request;
-  const descriptorPath = `${members.host.directory}/tools/data/harness.json`;
-  const descriptor = files.find((file) => file.path === descriptorPath);
-  if (!descriptor) {
-    throw new Error(`The full host omitted its descriptor: ${members.host.distribution}`);
-  }
-  const decoded: unknown = JSON.parse(hostContentBytes(descriptor.content).toString("utf-8"));
-  const metadata = z.object({ productName: z.string(), configNextStep: z.string() })
-    .safeParse(decoded);
-  if (!metadata.success) {
-    throw new Error(`The rendered host descriptor is invalid: ${members.host.distribution}`);
-  }
-  const onboarding = onboardingPathOf({ host: members.host, files });
-  return { name: members.host.distribution, harnessDir: members.host.directory,
-    ...metadata.data, ...routedListing(distribution),
-    rootIntegrations: routedIntegrations(distribution),
-    copyOnly: distribution.native.copyOnly,
-    nativeReplacements: distribution.native.replacements,
-    onboarding: onboarding?.startsWith(`${members.host.directory}/`) ? onboarding : undefined,
-  };
-}
-
-async function buildHost({ name, outRoot, channel }: {
+async function buildHost({ name, outRoot, channel, copy }: {
   readonly name: string; readonly outRoot: string; readonly channel: DistributionChannel;
-}): Promise<ReleaseView> {
+  readonly copy: Payload | null;
+}): Promise<Payload> {
   const routed = routedHost(name);
   if (!routed) throw new Error(`The host is not routed through the composition root: ${name}`);
   const captured = hostBuildInputs.get(name);
@@ -812,70 +344,28 @@ async function buildHost({ name, outRoot, channel }: {
   const tokens = { ...members.projection.tokens, HARNESS_DIR: members.host.directory,
     ...channelTokens({ channel, directory: members.host.directory,
       prefix: TRUSTED_COMMAND_PREFIX, namespace: TRUSTED_ROUTE_NAMESPACE }) };
-  const request = { host: captured.host, core: coreBuild,
+  const built = await packageBuildRoot.buildPayload({ host: captured.host, core: coreBuild,
     files: captured.files, prepare: (file: AuthoredHostFile) => prepareHostSource({ host: captured.host, file,
       steps: [(content) => bindCopiedSource({ source: file.source, content, tokens })] }),
     tokens, channel, modelCap: TIER_CAP, entrypoints: shippedSettingsEntrypoints(CORE_ROOT),
-    projectRoot: pathToFileURL(outRoot), reviewerAgents };
-  if (channel === "copy") return buildCopyHost({ routed, request, outRoot });
-  const rendered = await packageBuildRoot.projectHost(request);
-  if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
-  writeProjectedFiles({ files: rendered.value.projection.files, projectRoot: outRoot });
-  const treeRoot = join(outRoot, members.host.directory);
-  emitPluginAuthoringData(treeRoot);
-  const view = routedView({ ...routed, files: rendered.value.projection.files });
-  writeProjectionData(outRoot, treeRoot, view);
-  return view;
-}
-
-async function buildCopyHost({ routed, request, outRoot }: {
-  readonly routed: RoutedHost; readonly request: HostBuildRequest; readonly outRoot: string;
-}): Promise<ReleaseView> {
-  const built = await packageBuildRoot.buildPayload(request);
+    projectRoot: pathToFileURL(outRoot), reviewerAgents, copy });
   if (!built.ok) throw new Error(JSON.stringify(built.refusal));
   const written = await writePayloadTree({ root: pathToFileURL(`${outRoot}/`), payload: built.value,
     fileSystem: nodeFileSystem });
   if (!written.ok) throw new Error(JSON.stringify(written.refusal));
-  emitPluginAuthoringData(join(outRoot, routed.members.host.directory));
-  return routedView({ ...routed, files: built.value.files.flatMap((file) =>
-    file.origin.kind === "projected" ? [{ path: file.path, content: file.content, origin: file.origin.origin }] : []) });
+  if (channel === "copy") emitPluginAuthoringData(join(outRoot, members.host.directory));
+  return built.value;
 }
 
-// ---------------------------------------------------------------------------
-// write mode: regenerate dist/<name> in place (clean-sweep).
-// ---------------------------------------------------------------------------
-async function writeCopyHarness(name: string): Promise<void> {
+async function writeHostPair(name: string): Promise<void> {
   const distDir = join(REPO_ROOT, "dist", name);
-  if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
-  const view = await buildHost({ name, outRoot: distDir, channel: "copy" });
-  console.log(`[${name}] regenerated dist/${name}/${view.harnessDir}`);
-}
-
-async function writeReleaseHarness(name: string): Promise<void> {
   const releaseDir = join(REPO_ROOT, "dist-release", name);
-  const copyRoot = join(REPO_ROOT, "dist", name);
+  if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  const m = await buildHost({ name, outRoot: releaseDir, channel: "native" });
-  rewriteNativeInvocations(releaseDir, m, copyRoot);
-  console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
-}
-
-// A root file's part under tools/data/root-blocks/ is that file's text, as
-// buildTree writes it. The native rewrite changes the root file (AGENTS.md's
-// native wording) and skips the part, which has no extension, so the part
-// takes the rewritten text again: config and the engine merge AI-DLC's text
-// from it, and a native install must never be told it needs bun.
-function syncRootBlockParts(outRoot: string, m: ReleaseView): void {
-  for (const integration of m.rootIntegrations) {
-    const part = integration.policy === "managed-block"
-      ? integration.marker || basename(integration.path)
-      : copyStartsWithout(integration) || integration.policy === "json-entries"
-      ? basename(integration.path)
-      : undefined;
-    const file = join(outRoot, integration.path);
-    const dst = part === undefined ? undefined : join(outRoot, m.harnessDir, "tools", "data", "root-blocks", part);
-    if (dst !== undefined && existsSync(file) && existsSync(dst)) writeFileSync(dst, readFileSync(file));
-  }
+  const copy = await buildHost({ name, outRoot: distDir, channel: "copy", copy: null });
+  console.log(`[${name}] regenerated dist/${name}/${copy.descriptor.host.directory}`);
+  const native = await buildHost({ name, outRoot: releaseDir, channel: "native", copy });
+  console.log(`[${name}] regenerated dist-release/${name}/${native.descriptor.host.directory}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1087,9 +577,8 @@ async function buildCheckPass(request: {
   for (const name of harnesses) {
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
-    await buildHost({ name, outRoot: copyRoot, channel: "copy" });
-    const view = await buildHost({ name, outRoot: nativeRoot, channel: "native" });
-    rewriteNativeInvocations(nativeRoot, view, copyRoot);
+    const copy = await buildHost({ name, outRoot: copyRoot, channel: "copy", copy: null });
+    await buildHost({ name, outRoot: nativeRoot, channel: "native", copy });
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
   assertIdenticalRootIntegrations(releaseRoot, harnesses);
@@ -1243,8 +732,7 @@ if (check) {
   cleanWriteOutputs({ harnesses: targets, kind: named === undefined ? "full" : "named",
     plugins: pluginBuilds });
   for (const n of targets) {
-    await writeCopyHarness(n);
-    await writeReleaseHarness(n);
+    await writeHostPair(n);
   }
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);

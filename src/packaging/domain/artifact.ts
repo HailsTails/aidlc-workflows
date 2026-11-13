@@ -1,3 +1,4 @@
+import type { HostIdentity } from "../../kernel/host.ts";
 import type { Brand } from "../../kernel/brand.ts";
 import type {
   ContentHash,
@@ -23,6 +24,12 @@ export type ReleaseArtifact = {
 };
 
 export type PackagingRefusal =
+  | { readonly kind: "copy-payload-unexpected"; readonly host: HostIdentity }
+  | { readonly kind: "copy-channel-mismatch"; readonly channel: Channel }
+  | { readonly kind: "copy-host-mismatch"; readonly host: HostIdentity; readonly copyHost: HostIdentity }
+  | { readonly kind: "release-history-unreadable"; readonly distribution: DistributionId; readonly reason: string }
+  | { readonly kind: "native-text-not-found"; readonly distribution: DistributionId; readonly text: string }
+  | { readonly kind: "native-leftover"; readonly path: ProjectPath; readonly reason: string }
   | { readonly kind: "listing-text-not-plain"; readonly distribution: DistributionId }
   | { readonly kind: "root-integration-duplicate"; readonly path: ProjectPath }
   | { readonly kind: "root-integration-missing"; readonly path: ProjectPath }

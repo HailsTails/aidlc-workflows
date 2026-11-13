@@ -404,12 +404,14 @@ silently put a Bun command into the native channel.
 
 ## Step 4 — the bounded transform classes
 
-Permitted transforms are the harness/rules projection, the two invocation
-tokens, declared tier/frontmatter additions, and the native host-surface
-rewrites in `rewriteNativeInvocations`. That native pass updates command
-allowlists, hook/adapter/statusline routes, onboarding runtime text, and native
-trust entries, then rejects any surviving token or Bun invocation into an AIDLC
-tool/hook. No blind `sed`. Truthful harness-specific literals in `core/` (the
+Permitted transforms are the harness/rules projection, the invocation tokens,
+and declared tier/frontmatter additions. Each host renderer owns its native
+permission syntax. Packaging applies the shared native layout through
+`nativeLayoutFiles` before hashing the payload: declared replacements and
+copy-only exclusions, command routes and onboarding runtime text. It refuses
+surviving tokens or Bun invocations into an AIDLC tool/hook. Both channels are
+written through `writePayloadTree`; no native rewrite runs over the written
+tree. No blind `sed`. Truthful harness-specific literals in `core/` (the
 `$CLAUDE_PROJECT_DIR` note, the harness-dir enumeration in
 workspace-detection) carry no token and pass through unchanged; the core-hygiene
 and native-projection tests guard the boundary.

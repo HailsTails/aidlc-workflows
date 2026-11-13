@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createCopyChannelAllowSource, dispatcherCommands, engineRouteAdmission, engineRoutes } from "./legacy-dispatcher.ts";
+import { createCopyChannelAllowSource, legacyDispatcherRoutes, dispatcherCommands, engineRouteAdmission, engineRoutes } from "./legacy-dispatcher.ts";
 
 const shippedAllows = {
   "ok": true,
@@ -94,4 +94,11 @@ test("engine routes stay within the requested namespace and expose their shipped
 test("engine route admission delegates reads and rejects an unadmitted mutation", () => {
   expect(engineRouteAdmission({ admitted: { "aidlc-state.ts": ["get"] }, words: ["state", "get"] })).toBe("admitted");
   expect(engineRouteAdmission({ admitted: { "aidlc-state.ts": ["get"] }, words: ["state", "set"] })).toBe("refused");
+});
+
+test("native route facts keep the exact adapter set and derive real delegate filenames", () => {
+  const native = legacyDispatcherRoutes();
+  expect(native.adapterHooks).toEqual(new Set(["kiro-adapter", "codex-adapter", "cursor-adapter", "copilot-adapter"]));
+  expect(native.delegates).toContain("testing-posture");
+  expect(native.routes).toContainEqual(expect.objectContaining({ namespace: "engine", group: "top", verbs: ["status"] }));
 });
