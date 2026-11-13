@@ -1,6 +1,8 @@
 import type { HostIdentity } from "../../kernel/host.ts";
-import type { ProjectPath, SourcePath } from "../../kernel/values.ts";
+import type { UnreadableTreeFile } from "../../kernel/file-system-port.ts";
+import type { DistributionId, ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { ProjectedFile, ProjectionOrigin, RenderedConcept } from "./projected-file.ts";
+import type { PluginId } from "../../workflow-definition/domain/identities.ts";
 import type { TemplateToken } from "./template-token.ts";
 
 export type ProjectionFinding =
@@ -36,7 +38,18 @@ export type ProjectionRefusal =
       readonly source: SourcePath;
       readonly reason: string;
     }
-  | { readonly kind: "neutral-source-unreadable"; readonly source: SourcePath; readonly reason: string };
+  | { readonly kind: "neutral-source-unreadable"; readonly source: SourcePath; readonly reason: string }
+  | {
+      readonly kind: "plugin-emit-failed";
+      readonly plugin: PluginId;
+      readonly host: DistributionId;
+      readonly reason: string;
+    }
+  | {
+      readonly kind: "plugin-hook-template-unreadable";
+      readonly within: string;
+      readonly code: UnreadableTreeFile["code"];
+    };
 
 export type Projection = {
   readonly host: HostIdentity;

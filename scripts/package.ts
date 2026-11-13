@@ -353,7 +353,7 @@ async function buildHost({ name, outRoot, channel, copy }: {
   const written = await writePayloadTree({ root: pathToFileURL(`${outRoot}/`), payload: built.value,
     fileSystem: nodeFileSystem });
   if (!written.ok) throw new Error(JSON.stringify(written.refusal));
-  emitPluginAuthoringData(join(outRoot, members.host.directory));
+  if (channel === "copy") emitPluginAuthoringData(join(outRoot, members.host.directory));
   return built.value;
 }
 
