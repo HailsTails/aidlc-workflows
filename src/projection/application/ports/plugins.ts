@@ -6,7 +6,7 @@ import type { ProjectionRefusal } from "../../domain/projection.ts";
 
 export type PluginProjectionRequest = {
   readonly plugin: PluginId;
-  readonly pluginDirectory: string;
+  readonly pluginFolder: URL;
   readonly host: HostIdentity;
   readonly target: HostPluginTarget;
   readonly output: URL;
