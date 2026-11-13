@@ -120,6 +120,11 @@
         "scripts/package-release.ts",
         "scripts/package-sources.ts",
         "tests/unit/t-package-sources.test.ts",
+        "tests/integration/t-e2e-isolated-runner.test.ts",
+        "tests/integration/t-e2e-native-cancellation.test.ts",
+        "tests/gen-coverage-registry.ts",
+        "tests/integration/t-runner-process-lifecycle.test.ts",
+        "tests/unit/t-runner-production-guards.test.ts",
         "src/cli/legacy-runner-child{,.test}.ts",
         "src/projection/adapters/compiled-method-file{,.test}.ts",
         "docs/reference/15-stage-definition.md",
@@ -330,6 +335,7 @@
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "src/hosts/{codex,opencode}/{distribution,onboarding-fills}{,.test}.ts",
         "src/hosts/{codex,opencode}/host{,.test}.ts",
+        "src/hosts/codex/trust-route{,.test}.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/cli/host-table{,.test}.ts"
       ],
@@ -345,6 +351,7 @@
         "src/hosts/{codex,opencode}/host-data{,.test}.ts",
         "src/hosts/{codex,opencode}/{distribution,onboarding-fills}{,.test}.ts",
         "src/hosts/{codex,opencode}/host{,.test}.ts",
+        "src/hosts/codex/trust-route{,.test}.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/cli/host-table{,.test}.ts"
       ],
