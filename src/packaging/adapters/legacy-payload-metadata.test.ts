@@ -1,8 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { distribution as distributionId, hash, path } from "../../kernel/fixtures/values.fixture.ts";
-import { SCRATCH_HOST_DATA } from "../../projection/fixtures/scratch-host.fixture.ts";
+import { SCRATCH_HOST, SCRATCH_HOST_DATA } from "../../projection/fixtures/scratch-host.fixture.ts";
 import { claudeCopyPayloadFixture } from "../fixtures/claude-payload.fixture.ts";
 import { scratchHostDistributionFixture } from "../fixtures/host-distribution.fixture.ts";
 import { createLegacyPayloadMetadata } from "./legacy-payload-metadata.ts";
@@ -24,7 +24,8 @@ const metadataPayload = () => ({ ...claudeCopyPayloadFixture, descriptor: {
     directory: path(".scratch") }, layout: distribution().layout,
 }, files: [file(".scratch/SKILL.md", "Skill"), file("aidlc/active-space", "default\n"),
   file(".vscode/settings.json", "{\n  // keep bytes\n}\n")] });
-const metadataReader = () => createLegacyPayloadMetadata({ copy: null, hasher, distribution: distribution(), hostData: SCRATCH_HOST_DATA,
+const originalProjection = () => ({ host: SCRATCH_HOST, files: [], findings: [] });
+const metadataReader = () => createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher, distribution: distribution(), hostData: SCRATCH_HOST_DATA,
   onboarding: path(".scratch/SKILL.md") });
 
 test("schema-one descriptor and stamp preserve exact serialization and exclude root-only directories", () => {
@@ -69,11 +70,11 @@ test("plugin authoring files do not change descriptor bytes", () => {
 });
 
 test("listing, duplicate and missing root checks are refusals", () => {
-  expect(createLegacyPayloadMetadata({ copy: null, hasher, distribution: { ...distribution(), listing: { choiceName: "bad\nline" } },
+  expect(createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher, distribution: { ...distribution(), listing: { choiceName: "bad\nline" } },
     hostData: SCRATCH_HOST_DATA }).files(metadataPayload())).toEqual({ ok: false, refusal: [
     { kind: "listing-text-not-plain", distribution: distributionId("claude") },
   ] });
-  expect(createLegacyPayloadMetadata({ copy: null, hasher, distribution: { ...distribution(), layout: {
+  expect(createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher, distribution: { ...distribution(), layout: {
     ...distribution().layout, rootIntegrations: [settingsIntegration(), settingsIntegration()],
   } }, hostData: SCRATCH_HOST_DATA }).files(metadataPayload())).toEqual({ ok: false, refusal: [
     { kind: "root-integration-duplicate", path: path(".vscode/settings.json") },
@@ -84,7 +85,7 @@ test("listing, duplicate and missing root checks are refusals", () => {
 });
 
 test("root blocks retain the payload's binary bytes without a text round trip", () => {
-  const reading = createLegacyPayloadMetadata({ copy: null, hasher, distribution: { ...distribution(), layout: {
+  const reading = createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher, distribution: { ...distribution(), layout: {
     ...distribution().layout, rootIntegrations: [{ path: path("settings.json"), policy: "json-map", key: "servers",
       presence: "optional" }],
   } }, hostData: SCRATCH_HOST_DATA });
@@ -95,7 +96,7 @@ test("root blocks retain the payload's binary bytes without a text round trip", 
 });
 
 test("a managed block preserves its root bytes and includes their current signature", () => {
-  const reading = createLegacyPayloadMetadata({ copy: null, hasher, distribution: { ...scratchHostDistributionFixture, layout: {
+  const reading = createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher, distribution: { ...scratchHostDistributionFixture, layout: {
     ...scratchHostDistributionFixture.layout, rootIntegrations: [{ path: path(".gitignore"),
       policy: "managed-block", marker: "gitignore", sharing: "union", presence: "required" }],
   } }, hostData: SCRATCH_HOST_DATA });
@@ -130,7 +131,7 @@ test("a managed block preserves its root bytes and includes their current signat
 });
 
 test("descriptor and stamp hash refusals are both returned without partial metadata", () => {
-  const reading = createLegacyPayloadMetadata({ copy: null, distribution: distribution(), hostData: SCRATCH_HOST_DATA,
+  const reading = createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, distribution: distribution(), hostData: SCRATCH_HOST_DATA,
     hasher: { hash: () => refused({ kind: "invalid-content-hash", raw: "invalid metadata digest" }) } });
   expect(reading.files(metadataPayload())).toEqual(refused([
     { kind: "invalid-content-hash", raw: "invalid metadata digest" },
@@ -150,13 +151,13 @@ test("native metadata keeps both copy-era cases and the copy descriptor in legac
       { path: path(".scratch/retired.md"), shippedHashes: [hash("sha256:2222222222222222222222222222222222222222222222222222222222222222")] },
     ] },
   } };
-  const files = accept(createLegacyPayloadMetadata({ copy, hasher, distribution: distribution(), hostData: SCRATCH_HOST_DATA,
+  const files = accept(createLegacyPayloadMetadata({ projection: originalProjection(), copy, hasher, distribution: distribution(), hostData: SCRATCH_HOST_DATA,
     onboarding: path(".scratch/SKILL.md") }).files(native));
   expect(files[0]?.content).toEqual({ kind: "text", text: "{\n  \"schemaVersion\": 1,\n  \"distribution\": \"claude\",\n  \"productName\": \"Scratch\",\n  \"configNextStep\": \"open Scratch in this project and run /aidlc\",\n  \"harnessDir\": \".scratch\",\n  \"onboarding\": \".scratch/SKILL.md\",\n  \"managedDirectories\": [\n    \".scratch\",\n    \"aidlc\"\n  ],\n  \"rootIntegrations\": [\n    {\n      \"path\": \".vscode/settings.json\",\n      \"policy\": \"whole-file\",\n      \"extendedPolicy\": \"jsonc-settings\"\n    }\n  ],\n  \"retiredCopyFileHashes\": {\n    \".scratch/retired.md\": [\n      \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n    ]\n  },\n  \"legacyManagedFileHashes\": {\n    \".scratch/SKILL.md\": [\n      \"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\n      \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n    ],\n    \".scratch/tools/data/aidlc-projection.json\": [\n      \"sha256:0000000000000000000000000000000000000000000000000000000000000000\"\n    ]\n  }\n}\n" });
 });
 
 test("explicit native absence skips copy-based root blocks and signatures", () => {
-  const reading = createLegacyPayloadMetadata({ copy: null, hasher, hostData: SCRATCH_HOST_DATA,
+  const reading = createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher, hostData: SCRATCH_HOST_DATA,
     distribution: { ...scratchHostDistributionFixture, layout: { ...scratchHostDistributionFixture.layout,
       rootIntegrations: [{ path: path(".gitignore"), policy: "managed-block", marker: "gitignore", sharing: "union", presence: "required" }],
     } } });
@@ -171,7 +172,7 @@ test("explicit native absence skips copy-based root blocks and signatures", () =
 
 test("native root-block parts keep the native root bytes before signatures are serialized", () => {
   const copy = metadataPayload();
-  const reading = createLegacyPayloadMetadata({ copy, hasher, hostData: SCRATCH_HOST_DATA,
+  const reading = createLegacyPayloadMetadata({ projection: originalProjection(), copy, hasher, hostData: SCRATCH_HOST_DATA,
     distribution: { ...scratchHostDistributionFixture, layout: { ...scratchHostDistributionFixture.layout,
       rootIntegrations: [{ path: path("settings.json"), policy: "json-map", key: "servers", presence: "optional" }],
     } } });
@@ -187,7 +188,7 @@ test("native root-block parts keep the native root bytes before signatures are s
 });
 
 test("native metadata uses the prepared layout after copy-only root declarations leave", () => {
-  const reading = createLegacyPayloadMetadata({ copy: metadataPayload(), hasher,
+  const reading = createLegacyPayloadMetadata({ projection: originalProjection(), copy: metadataPayload(), hasher,
     distribution: distribution(), hostData: SCRATCH_HOST_DATA });
   expect(reading.files({ ...metadataPayload(), channel: "native", descriptor: { ...metadataPayload().descriptor,
     layout: { ...distribution().layout, rootIntegrations: [] } }, files: [file(".scratch/SKILL.md", "Skill")],
@@ -196,4 +197,37 @@ test("native metadata uses the prepared layout after copy-only root declarations
       text: expect.not.stringContaining(".vscode/settings.json") } },
     { path: path(".scratch/tools/data/aidlc-stamp.json") },
   ] });
+});
+
+
+test("native block parts hold final bytes while their legacy signature keeps the pre-layout root", () => {
+  const hashContent = mock(() => accepted(hash(
+    "sha256:1111111111111111111111111111111111111111111111111111111111111111")));
+  const layout = { ...scratchHostDistributionFixture.layout,
+    rootIntegrations: [{ path: path("AGENTS.md"), policy: "managed-block" as const, marker: "agents",
+      sharing: "exclusive" as const, presence: "required" as const }] };
+  const reading = createLegacyPayloadMetadata({ copy: metadataPayload(),
+    projection: { host: SCRATCH_HOST, findings: [], files: [{ path: path("AGENTS.md"),
+      content: { kind: "text", text: "pre-layout onboarding" }, mode: "regular",
+      origin: { kind: "rendered", concept: "onboarding", name: "AGENTS.md" } }] },
+    hasher: { hash: hashContent }, distribution: { ...scratchHostDistributionFixture, layout },
+    hostData: SCRATCH_HOST_DATA });
+  const metadataFiles = accept(reading.files({ ...metadataPayload(), channel: "native",
+    descriptor: { ...metadataPayload().descriptor, layout }, files: [file("AGENTS.md", "final native onboarding")] }));
+  expect(metadataFiles[0]?.content).toEqual({ kind: "text", text: "final native onboarding" });
+  expect(metadataFiles[1]?.content).toMatchObject({ kind: "text", text: expect.stringContaining(
+    '"sha256:1111111111111111111111111111111111111111111111111111111111111111"') });
+  expect(hashContent).toHaveBeenCalledWith({ kind: "text", text: "pre-layout onboarding" });
+});
+
+
+test("a native root signature refuses a missing pre-layout source instead of using final bytes", () => {
+  const layout = { ...scratchHostDistributionFixture.layout,
+    rootIntegrations: [{ path: path("AGENTS.md"), policy: "managed-block" as const,
+      marker: "agents", sharing: "exclusive" as const, presence: "required" as const }] };
+  const reading = createLegacyPayloadMetadata({ projection: originalProjection(), copy: metadataPayload(),
+    hasher, distribution: { ...scratchHostDistributionFixture, layout }, hostData: SCRATCH_HOST_DATA });
+  expect(reading.files({ ...metadataPayload(), channel: "native", descriptor: { ...metadataPayload().descriptor, layout },
+    files: [file("AGENTS.md", "final native onboarding")] }))
+    .toEqual(refused([{ kind: "root-integration-missing", path: path("AGENTS.md") }]));
 });

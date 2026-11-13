@@ -1,7 +1,7 @@
 import { managedPayloadDirectories, nativeCopyHistory } from "../domain/native-copy-history.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import { projectPath, type ProjectPath, type KernelRefusal } from "../../kernel/values.ts";
+import { projectPath, type ProjectPath, type ContentHash, type KernelRefusal } from "../../kernel/values.ts";
 import type { ContentHasher, PayloadMetadata, PayloadMetadataRequest } from "../application/ports.ts";
 import type { PackagingRefusal } from "../domain/artifact.ts";
 import type { HostDistribution, Payload, PayloadFile } from "../domain/payload.ts";
@@ -77,6 +77,21 @@ const metadataRootIntegrations = (request: PayloadMetadataRequest, releasePayloa
   releasePayload.channel === "native" ? releasePayload.descriptor.layout.rootIntegrations
     : request.distribution.layout.rootIntegrations;
 
+const rootSignature = ({ inputs, releasePayload, rootFile }: {
+  readonly inputs: PayloadMetadataRequest; readonly releasePayload: Payload; readonly rootFile: PayloadFile;
+}): Result<ContentHash, PackagingRefusal | KernelRefusal> => {
+  if (releasePayload.channel === "copy") return accepted(rootFile.hash);
+  const original = inputs.projection.files.find((candidate) => candidate.path === rootFile.path);
+  return original ? inputs.hasher.hash(original.content)
+    : refused({ kind: "root-integration-missing", path: rootFile.path });
+};
+
+const rootPartName = (integration: LegacyPayloadRootIntegration): string | undefined => {
+  const basename = integration.path.split("/").at(-1);
+  return copyStartsWithout(integration) || integration.policy === "json-entries" ? basename
+    : integration.policy === "managed-block" ? integration.marker || basename : undefined;
+};
+
 const rootParts = (releasePayload: Payload, request: PayloadMetadataRequest): LegacyPayloadRootParts => {
   if (releasePayload.channel === "native" && request.copy === null) return {
     integrations: metadataRootIntegrations(request, releasePayload).map((root) =>
@@ -87,16 +102,17 @@ const rootParts = (releasePayload: Payload, request: PayloadMetadataRequest): Le
     const file = releasePayload.files.find((candidate) => candidate.path === root.path);
     if (!file) return { integration, files: refused<readonly (PackagingRefusal | KernelRefusal)[]>([
       { kind: "root-integration-missing", path: root.path }]) };
-    const basename = root.path.split("/").at(-1);
-    const part = copyStartsWithout(integration) || root.policy === "json-entries" ? basename
-      : root.policy === "managed-block" ? root.marker || basename : undefined;
+    const part = rootPartName(integration);
     const files = part === undefined ? accepted([]) : metadataFile({
       path: `${releasePayload.descriptor.host.directory}/tools/data/root-blocks/${part}`,
       content: file.content, origin: "distribution-descriptor" }, request.hasher);
     if (root.policy !== "managed-block" || copyStartsWithout(integration)) return { integration, files };
+    const signature = rootSignature({ inputs: request, releasePayload, rootFile: file });
+    if (!signature.ok) return { integration, files: refused([signature.refusal]) };
     return { integration: { ...integration, legacySignatures: { ...integration.legacySignatures,
       wholeFileHashes: [...new Set([...(integration.legacySignatures?.wholeFileHashes ?? []),
-        file.hash])] } }, files };
+        signature.value])] } }, files };
+
   });
   return { integrations: readings.map((reading) => writtenRootIntegration(reading.integration)),
     files: readings.flatMap((reading) => reading.files.ok ? reading.files.value : []),

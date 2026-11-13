@@ -51,7 +51,7 @@ export const createBuildPackagingUseCase = (ports: {
           return history.ok ? accepted({ ...history.value, priorIntegrations: request.distribution.priorIntegrations }) : history;
         } },
         bundler: { bundle: async () => accepted([]) },
-        metadata: ports.metadata.forHost({ hasher: request.hasher, distribution: request.distribution,
+        metadata: ports.metadata.forHost({ projection: request.projection, hasher: request.hasher, distribution: request.distribution,
           hostData: request.hostData, copy: request.copy, ...(onboarding ? { onboarding } : {}) }),
       }).package({ projection: request.projection, channel: request.channel, version: version.value, runtime: [] });
     } };

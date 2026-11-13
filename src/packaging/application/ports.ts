@@ -45,6 +45,7 @@ export interface PayloadMetadata {
 }
 
 export type PayloadMetadataRequest = {
+  readonly projection: Projection;
   readonly hasher: ContentHasher;
   readonly distribution: HostDistribution;
   readonly hostData: HostData;
