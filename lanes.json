@@ -117,6 +117,7 @@
         "src/cli/legacy-runner-child{,.test}.ts",
         "src/projection/adapters/compiled-method-file{,.test}.ts",
         "docs/reference/15-stage-definition.md",
+        "docs/reference/01-architecture.md",
         "docs/harness-engineering/09-porting-to-a-new-harness.md",
         "docs/reference/06-hooks-and-tools.md",
         "harness/claude/manifest.ts",
