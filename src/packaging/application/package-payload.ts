@@ -88,7 +88,7 @@ export const createPackagePayload = (dependencies: Dependencies): PackagePayload
     const history = await dependencies.history.history(host.distribution);
     if (!history.ok) return refused([history.refusal]);
     const bundled = await dependencies.bundler.bundle({ entries: request.runtime,
-      channel: request.channel });
+      channel: request.channel, host });
     if (!bundled.ok) return refused([bundled.refusal]);
     const missing = missingEntries({ package: request, files: bundled.value });
     if (missing.length > 0) return refused(missing);
