@@ -19,6 +19,7 @@ import type { DelegateShellFacts } from "../projection/application/ports/delegat
 import type { ConceptMembers, HostProjectionParts } from "../projection/application/ports/host-parts.ts";
 import type { AuthoredFilePreparer } from "../projection/application/ports/host-sources.ts";
 import type { CommandSource } from "../projection/application/ports/commands.ts";
+import type { PluginProjector } from "../projection/application/ports/plugins.ts";
 import type { Harness } from "../projection/application/ports/harness.ts";
 import type { HostAgentRenderer } from "../projection/application/ports/agents.ts";
 import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
@@ -35,6 +36,7 @@ import type {
   AuthoredPluginBuild,
   MarkdownOutliner,
   MethodReading,
+  PluginBuildTarget,
 } from "../workflow-definition/application/ports.ts";
 
 export type ExitStatus = 0 | 1 | 2;
@@ -173,10 +175,30 @@ export type CapturedHostSources = {
 export type ReadHostDistribution = (request: {
   readonly host: HostIdentity;
 }) => Result<HostDistribution, readonly (KernelRefusal | ProjectionRefusal)[]>;
+export type PluginsBuildRequest = {
+  readonly plugins: readonly PluginBuildTarget[];
+  readonly hosts: readonly HostIdentity[];
+  readonly output: URL;
+  readonly boundary: URL;
+};
+
+export type PluginsBuilt = {
+  readonly emitted: readonly URL[];
+  readonly catalogues: readonly string[];
+};
+
+export type BuildPlugins = (
+  request: PluginsBuildRequest,
+) => Result<PluginsBuilt, readonly (KernelRefusal | ProjectionRefusal)[]>;
+
+export type BuildRoutes = () => readonly CommandRoute[];
+
 export interface PackageBuildRoot {
   readonly settingsCapabilities: SettingsCapabilities;
   readonly projectHost: ProjectHost;
   readonly buildPayload: BuildPayload;
+  readonly buildPlugins: BuildPlugins;
+  readonly buildRoutes: BuildRoutes;
   readonly readHostDistribution: ReadHostDistribution;
   loadCore(): MethodReading<CoreBuild>;
   loadPlugins(request: { readonly core: CoreBuild }): MethodReading<AuthoredPluginBuild>;
@@ -192,6 +214,8 @@ export type CreatePackageBuildRoot = (createPackageBuildRootArgs: {
   readonly outliner: MarkdownOutliner;
   readonly sources: BuildSources;
   readonly runnerFrames: URL;
+  readonly workingDirectory: URL;
+  readonly plugins: PluginProjector;
 }) => PackageBuildRoot;
 
 export interface RuntimeRoot {

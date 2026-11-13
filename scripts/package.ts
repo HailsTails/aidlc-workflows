@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 import { bindCopiedSource } from "../src/projection/domain/source-binding.ts";
-import { z } from "zod";
 import type { HostModule } from "../src/cli/roots.ts";
 import type { Payload, HostDistribution } from "../src/packaging/domain/payload.ts";
 import { trustEntries } from "../src/hosts/codex/projection/settings-renderer.ts";
@@ -41,20 +40,16 @@ import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts"
 // and fails CI only when the generator is nondeterministic.
 
 import {
-  cpSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   dirname,
-  isAbsolute,
   join,
   posix,
   win32,
@@ -75,26 +70,24 @@ import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
 import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
 import { createBunContentDigester } from "../src/kernel/content-digester.ts";
 import { createProcessTerminal } from "../src/kernel/terminal.ts";
+import { createLegacyPluginProjector } from "../src/projection/adapters/legacy-plugin-emit.ts";
 import { createPackageBuildRoot } from "../src/cli/package-build-root.ts";
 import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 const nodeFileSystem = createNodeFileSystem();
 const packageBuildRoot = openPackageBuildRoot({ createNodeFileSystem: () => nodeFileSystem, createNodeProcessRunner,
-  createBunYamlParser, createBunContentDigester, createProcessTerminal, createPackageBuildRoot,
-  outliner: createMarkdownOutliner(markdownBlocks) });
-import { pluginId as pluginBuildName } from "../src/workflow-definition/domain/identities.ts";
+  createBunYamlParser, createBunContentDigester, createPluginProjector: createLegacyPluginProjector,
+  createProcessTerminal: () => createProcessTerminal({ streams: {
+    stdout: process.argv.includes("--check") ? { write: () => true } : process.stdout,
+    stderr: process.stderr,
+  } }), createPackageBuildRoot,
+  outliner: createMarkdownOutliner(markdownBlocks), workingDirectory: pathToFileURL(`${process.cwd()}/`) });
 import { reviewerAgentSet }
   from "../src/workflow-definition/domain/method-participation.ts";
 import { prepareHostSource } from "../src/projection/application/prepared-host-source.ts";
-import type { AuthoredPluginBuild as PluginBuildCatalog, PluginBuildTarget }
+import type { AuthoredPluginBuild as PluginBuildCatalog }
   from "../src/workflow-definition/application/ports.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
-import {
-  buildPluginProjection as emitPluginProjection,
-  writeFirstPartyCatalogues,
-  type PluginTarget,
-  type PluginTargetTable,
-} from "../core/tools/aidlc-plugin-emit.ts";
 import { readEnvCap, readMemoryCap } from "../core/tools/aidlc-tiers.ts";
 import {
   TRUSTED_COMMAND_PREFIX,
@@ -219,26 +212,6 @@ function diffTrees(
 // runtime reads tools/data/harness.json to learn this harness's rules-subdir
 // without a hardcoded map. Derived from the manifest, written into every tree.
 
-// The plugin authoring validator must run from a copied distribution with no
-// framework checkout. Ship the compose hook's source of truth beside the tool
-// so a vendored hooks/compose.ts can be byte-compared offline.
-const PLUGIN_HOOKS_TEMPLATE_SRC = join(
-  REPO_ROOT,
-  "scripts",
-  "plugin-hooks-template",
-);
-const PLUGIN_HOOKS_TEMPLATE_DST = join(
-  "tools",
-  "data",
-  "plugin-hooks-template",
-);
-const PLUGIN_TARGETS_DST = join("tools", "data", "plugin-targets.json");
-const PLUGIN_AUTHORING_CONTEXT_DST = join(
-  "tools",
-  "data",
-  "plugin-authoring-context.json",
-);
-
 type DescriptorIntegration = {
   readonly path: string;
   readonly policy: "managed-block" | "json-map" | "json-array" | "whole-file" | "jsonc-settings" | "json-entries";
@@ -251,33 +224,6 @@ type DescriptorIntegration = {
     readonly jsonEntryHashes?: Record<string, string[]>;
   };
 };
-
-function emitPluginAuthoringData(treeRoot: string): void {
-  for (const file of walk(PLUGIN_HOOKS_TEMPLATE_SRC)) {
-    const outPath = join(
-      treeRoot,
-      PLUGIN_HOOKS_TEMPLATE_DST,
-      relative(PLUGIN_HOOKS_TEMPLATE_SRC, file),
-    );
-    mkdirSync(dirname(outPath), { recursive: true });
-    cpSync(file, outPath);
-  }
-  const targetsPath = join(treeRoot, PLUGIN_TARGETS_DST);
-  mkdirSync(dirname(targetsPath), { recursive: true });
-  writeFileSync(
-    targetsPath,
-    `${JSON.stringify(pluginTargets(), null, 2)}\n`,
-  );
-  const contextPath = join(treeRoot, PLUGIN_AUTHORING_CONTEXT_DST);
-  const agents = coreBuild.method.agents.filter((agent) => agent.owner.kind === "core")
-    .map((agent) => agent.slug).toSorted();
-  const stages = coreBuild.method.stages.filter((stage) => stage.owner.kind === "core")
-    .map((stage) => stage.slug).toSorted();
-  writeFileSync(
-    contextPath,
-    `${JSON.stringify({ agents, stages }, null, 2)}\n`,
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Build one harness tree into `outRoot` (the dist/<name> dir). Returns the full
@@ -353,7 +299,6 @@ async function buildHost({ name, outRoot, channel, copy }: {
   const written = await writePayloadTree({ root: pathToFileURL(`${outRoot}/`), payload: built.value,
     fileSystem: nodeFileSystem });
   if (!written.ok) throw new Error(JSON.stringify(written.refusal));
-  if (channel === "copy") emitPluginAuthoringData(join(outRoot, members.host.directory));
   return built.value;
 }
 
@@ -431,85 +376,15 @@ if (argv[0] === "codex" && argv[1] === "trust") {
   process.exit(0);
 }
 
-const PLUGINS_ROOT = join(REPO_ROOT, "plugins");
-
-// Per-harness plugin projection descriptors are derived from manifests once,
-// consumed directly by the checkout emitter, and emitted into every tools/data
-// bundle for the standalone builder. Native placements supplement legacy rows.
-let pluginTargetCache: PluginTargetTable | null = null;
-function routedPluginTarget(name: string, routed: RoutedHost): PluginTarget {
-  const plugin = routed.distribution.plugin;
-  const kind = z.enum(["store", "kiro", "kiro-ide", "cursor"]).safeParse(plugin.format);
-  if (!kind.success) {
-    throw new Error(`The legacy plugin emitter does not support format ${plugin.format}`);
-  }
-  return { harnessName: name, manifestDir: plugin.manifestDir,
-    marketplaceDir: plugin.marketplaceDir, hostCatalogue: plugin.catalogue === "written",
-    harnessLeaf: routed.members.host.directory, kind: kind.data,
-    installRoots: [...plugin.installRoots] };
-}
-
-function pluginTargets(): PluginTargetTable {
-  if (pluginTargetCache) return pluginTargetCache;
-  pluginTargetCache = {};
-  for (const harnessName of discoverHarnessNames()) {
-    const routed = routedHost(harnessName);
-    if (!routed) throw new Error(`The host is not routed through the composition root: ${harnessName}`);
-    pluginTargetCache[harnessName] = routedPluginTarget(harnessName, routed);
-  }
-  return pluginTargetCache;
-}
-
-function pluginTargetFor(harnessName: string): PluginTarget | null {
-  return pluginTargets()[harnessName] ?? null;
-}
-
-function buildRepositoryPluginProjection(request: {
-  plugin: PluginBuildTarget; harnessName: string; outDir: string;
-  reviewerAgents: ReadonlySet<string>; outputBoundary?: string;
-}): void {
-  const { plugin, harnessName, outDir, reviewerAgents, outputBoundary = REPO_ROOT } = request;
-  const target = pluginTargetFor(harnessName);
-  if (!target) {
-    throw new Error(
-      `no plugin target for harness "${harnessName}" (missing manifest)`,
-    );
-  }
-  emitPluginProjection({
-    pluginRoot: join(PLUGINS_ROOT, plugin.directory),
-    target,
-    outDir,
-    outputBoundary,
-    templateHooksDir: PLUGIN_HOOKS_TEMPLATE_SRC,
-    reviewerAgents,
-    // This repository's own plugins/ are AI-DLC's: aidlc-<name> in aidlc-plugins.
-    firstParty: true,
+function buildPluginsFromRoot(request: { harnesses: string[]; plugins: PluginBuildCatalog; distRoot: string }): void {
+  const hosts = request.harnesses.map((name) => {
+    const member = HOSTS.find((candidate) => candidate.host.distribution === name);
+    if (!member) throw new Error(`The host is not routed through the composition root: ${name}`);
+    return member.host;
   });
-}
-
-// Which harnesses get a projection = every built harness with a manifest (each
-// derives a plugin target). Derived, so a new harness is covered automatically.
-function pluginHarnessesFor(harnesses: string[]): string[] {
-  return harnesses.filter((h) => pluginTargetFor(h) !== null);
-}
-
-function emitPlugins(request: { harnesses: string[]; plugins: PluginBuildCatalog;
-  distRoot?: string; output?: "verbose" | "silent" }): void {
-  const { harnesses, plugins, distRoot = join(REPO_ROOT, "dist"), output = "verbose" } = request;
-  const reviewerAgents = reviewerAgentSet(plugins.method);
-  for (const plugin of plugins.plugins) {
-    for (const harnessName of pluginHarnessesFor(harnesses)) {
-      buildRepositoryPluginProjection({ plugin, harnessName, reviewerAgents,
-        outDir: join(distRoot, "plugins", plugin.directory, harnessName), outputBoundary: distRoot });
-      if (output === "verbose") {
-        console.log(`[plugin:${plugin.directory}] emitted dist/plugins/${plugin.directory}/${harnessName}/`);
-      }
-    }
-  }
-  const built = pluginHarnessesFor(harnesses).map((name) => pluginTargetFor(name) as PluginTarget);
-  for (const file of writeFirstPartyCatalogues(join(distRoot, "plugins"), built)) {
-    if (output === "verbose") console.log(`[plugins] emitted dist/plugins/${file}`);
-  }
+  const output = pathToFileURL(`${request.distRoot}/`);
+  const built = packageBuildRoot.buildPlugins({ plugins: request.plugins.plugins, hosts, output, boundary: output });
+  if (!built.ok) throw new Error(JSON.stringify(built.refusal));
 }
 
 function removeUnexpectedGeneratedEntries(
@@ -540,7 +415,7 @@ function cleanWriteOutputs(request: { harnesses: string[]; kind: "full" | "named
   }
 
   for (const plugin of plugins.plugins) {
-    for (const harnessName of pluginHarnessesFor(harnesses)) {
+    for (const harnessName of harnesses) {
       rmSync(
         join(distRoot, "plugins", plugin.directory, harnessName),
         { recursive: true, force: true },
@@ -582,7 +457,7 @@ async function buildCheckPass(request: {
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
   assertIdenticalRootIntegrations(releaseRoot, harnesses);
-  emitPlugins({ harnesses, plugins, distRoot, output: "silent" });
+  buildPluginsFromRoot({ harnesses, plugins, distRoot });
 }
 
 async function checkPackageDeterminism(
@@ -607,62 +482,9 @@ async function checkPackageDeterminism(
   }
 }
 
-// `package.ts plugin build <plugin> <harness> <outDir>` — render ONE plugin
-// projection into an arbitrary dir. The target-dir seam that lets t188 (and any
-// caller) exercise the real emitter WITHOUT touching the local dist/plugins/
-// trees — writeCopyHarness/emitPlugins rmSync + rewrite dist, which a parallel test
-// tier must never do (it races sibling tests). Pure builder call.
-if (argv[0] === "plugin" && argv[1] === "build") {
-  const [pluginName, harnessName, outDir, ...extra] = argv.slice(2);
-  if (
-    !pluginName ||
-    !harnessName ||
-    !outDir ||
-    extra.length > 0 ||
-    [pluginName, harnessName, outDir].some((arg) => arg.startsWith("-"))
-  ) {
-    console.error("usage: package.ts plugin build <plugin> <harness> <outDir>");
-    process.exit(1);
-  }
-  const identity = pluginBuildName(pluginName);
-  if (!identity.ok) {
-    console.error(identity.refusal.kind === "reserved-plugin-name"
-      ? `plugin name "${identity.refusal.raw}" is reserved; choose a non-reserved plugin name.`
-      : `invalid plugin name "${identity.refusal.raw}"; use a lowercase kebab-case name.`);
-    process.exit(1);
-  }
-  const core = await packageBuildRoot.loadCore();
-  if (!core.ok) {
-    console.error(JSON.stringify(core.refusal));
-    process.exit(1);
-  }
-  const catalog = await packageBuildRoot.loadPlugins({ core: core.value });
-  if (!catalog.ok) {
-    console.error(JSON.stringify(catalog.refusal));
-    process.exit(1);
-  }
-  const plugin = catalog.value.plugins.find((entry) => entry.directory === pluginName);
-  if (!plugin) {
-    console.error(`unknown plugin "${pluginName}" (have: ${catalog.value.plugins
-      .map((entry) => entry.directory).join(", ") || "none"})`);
-    process.exit(1);
-  }
-  const target = pluginTargetFor(harnessName);
-  if (!target) {
-    console.error(`unknown plugin harness "${harnessName}" (have: ${discoverHarnessNames().join(", ")})`);
-    process.exit(1);
-  }
-  const outArg = outDir.replace(/[/\\]+$/, "") || outDir;
-  const resolvedOut = isAbsolute(outArg) ? outArg : join(process.cwd(), outArg);
-  try {
-    buildRepositoryPluginProjection({ plugin, harnessName, outDir: resolvedOut,
-      outputBoundary: resolvedOut, reviewerAgents: reviewerAgentSet(catalog.value.method) });
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  }
-  process.exit(0);
-}
+const pluginRoute = packageBuildRoot.buildRoutes().find((route) =>
+  route.verb[0] === argv[0] && route.verb[1] === argv[1]);
+if (pluginRoute) process.exit(await pluginRoute.run(argv.slice(pluginRoute.verb.length)));
 
 if (HOST_BUILD_REFUSALS.length > 0) {
   for (const refusal of HOST_BUILD_REFUSALS) console.error(JSON.stringify(refusal));
@@ -736,7 +558,7 @@ if (check) {
   }
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);
-  emitPlugins({ harnesses: targets, plugins: pluginBuilds });
+  buildPluginsFromRoot({ harnesses: targets, plugins: pluginBuilds, distRoot: join(REPO_ROOT, "dist") });
   // Last, so only a finished build from unchanged sources is recorded as current.
   if (!recordPackagedSources(REPO_ROOT, targets, builtFrom)) {
     console.error(

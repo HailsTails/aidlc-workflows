@@ -1,4 +1,7 @@
 import { createBuildPackaging, type BuildPackaging } from "../packaging/core-root.ts";
+import { createPluginBuildRoute } from "./adapters/routes/build/plugin-route.ts";
+import { createPluginBuilds } from "./adapters/routes/build/plugin-builds.ts";
+import { reviewerAgentSet } from "../workflow-definition/domain/method-participation.ts";
 import type { ContentHasher } from "../packaging/application/ports.ts";
 import { DEFAULT_WORKSPACE } from "../projection/domain/workspace.ts";
 import type { MemoryCompanion, SharedRuntime } from "../projection/domain/neutral-surface.ts";
@@ -9,12 +12,12 @@ import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
 import { createAuthoredMethodLoading } from "../workflow-definition/core-root.ts";
-import type { AuthoredCoreMethod, MethodReading } from "../workflow-definition/application/ports.ts";
+import type { AuthoredCoreMethod, AuthoredPluginBuild, PluginBuildTarget, MethodReading } from "../workflow-definition/application/ports.ts";
 import { createBuildProjection, createHostedMethodProjection } from "../projection/core-root.ts";
 import type { CompiledMethodFiles } from "../projection/domain/projection.ts";
 import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot,
   CapturedHostSources, HostSourcesRequest, HostBuildTable, HostModule, ReadHostDistribution,
-  ProjectHost, BuildPayload } from "./roots.ts";
+  ProjectHost, BuildPayload, BuildPlugins, PackageBuildRoot } from "./roots.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { HarnessRenderers } from "../projection/application/ports/harness-assembly.ts";
 import type { Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
@@ -164,15 +167,15 @@ const payloadBuilder = (ports: {
   if (!members) return refused([{ kind: "unknown-harness", harness: request.host.distribution }]);
   if (!distribution.ok) return distribution;
   const hostData = members.projection.renderData({ delegateShellFacts: ports.projection.delegateShellFacts });
-  const projection = request.channel === "native" ? await nativeAuthoringProjection({
+  const completed = await authoringProjection({
     ...ports, projection: built.value.projection, method: request.core.method, directory: request.host.directory,
-  }) : accepted(built.value.projection);
-  if (!projection.ok) return projection;
+  });
+  if (!completed.ok) return completed;
   return ports.packaging.packageHost({ hasher: ports.hasher, distribution: distribution.value, hostData,
-    projection: projection.value, channel: request.channel, copy: request.copy });
+    projection: completed.value, channel: request.channel, copy: request.copy });
 };
 
-const nativeAuthoringProjection = async (request: {
+const authoringProjection = async (request: {
   readonly projection: Projection; readonly method: CoreBuild["method"]; readonly directory: HostIdentity["directory"];
   readonly readPluginTemplates: () => Promise<Result<readonly TreeFile[], readonly ProjectionRefusal[]>>;
   readonly readPluginTargets: () => Result<readonly HostedPluginTarget[], readonly (KernelRefusal | ProjectionRefusal)[]>;
@@ -228,10 +231,42 @@ const distributionReader = (request: {
   const distribution = members.distribution({ delegateShellFacts: request.projection.delegateShellFacts });
   return distribution.ok ? distribution : refused([distribution.refusal]);
 };
+
+const projectPlugin = (ports: {
+  readonly projection: Pick<BuildProjection, "plugins">; readonly readDistribution: ReadHostDistribution;
+  readonly sources: URL;
+}, request: { readonly plugin: PluginBuildTarget; readonly host: HostIdentity;
+  readonly output: URL; readonly boundary: URL; readonly reviewerAgents: ReadonlySet<string>;
+}): Result<URL, readonly (KernelRefusal | ProjectionRefusal)[]> => {
+  const distribution = ports.readDistribution({ host: request.host });
+  if (!distribution.ok) return distribution;
+  const emitted = ports.projection.plugins.project({ plugin: request.plugin.plugin,
+    pluginFolder: new URL(`${encodeURIComponent(request.plugin.directory)}/`, ports.sources),
+    host: request.host, target: distribution.value.plugin, output: request.output,
+    boundary: request.boundary, reviewerAgents: request.reviewerAgents });
+  return emitted.ok ? emitted : refused([emitted.refusal]);
+};
+
+const pluginCatalogues = (ports: {
+  readonly projection: Pick<BuildProjection, "plugins">; readonly readDistribution: ReadHostDistribution;
+}, request: { readonly output: URL; readonly hosts: readonly HostIdentity[] }):
+  Result<readonly string[], readonly (KernelRefusal | ProjectionRefusal)[]> => {
+  const readings = request.hosts.map((host) => {
+    const distribution = ports.readDistribution({ host });
+    return distribution.ok ? accepted({ host, target: distribution.value.plugin }) : distribution;
+  });
+  const failures = readings.flatMap((reading) => reading.ok ? [] : reading.refusal);
+  if (failures.length > 0) return refused(failures);
+  const written = ports.projection.plugins.writeCatalogues({ output: request.output,
+    targets: readings.flatMap((reading) => reading.ok ? [reading.value] : []) });
+  return written.ok ? written : refused([written.refusal]);
+};
+
 export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const loading = createAuthoredMethodLoading({ reader: request.platform.fileSystem,
     parser: request.platform.yaml, outliner: request.outliner });
   const projection = createBuildProjection({ hostFiles: request.platform.fileSystem, sessionFiles: request.platform.fileSystem,
+    plugins: request.plugins,
     runnerProcess: request.platform.processRunner, runnerScratch: request.platform.fileSystem,
     runnerFrames: request.runnerFrames, runnerChild: new URL("./legacy-runner-child.ts", import.meta.url) });
   const readSessions = sessionReading({ projection, core: request.sources.core });
@@ -240,6 +275,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const packaging = createBuildPackaging({ routes: projection.nativeCommands, historyReader: request.platform.fileSystem,
     copyEraSource: new URL("../scripts/copy-era-files.json", request.sources.core) });
   let core: MethodReading<CoreBuild> | undefined;
+  let pluginMethod: AuthoredPluginBuild | null = null;
   const loadCore = async (): MethodReading<CoreBuild> => {
     const loaded = await loading.loadCore(request.sources.core);
     return loaded.ok ? accepted({ ...loaded.value,
@@ -247,18 +283,40 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   };
   const projectHost = hostProjector({ projection, hosts: request.hosts, readDistribution,
     capture: fullHostCapture({ projection, core: request.sources.core, readSessions, readNeutral }) });
-  return {
+  const buildPlugins: BuildPlugins = (build) => {
+    const captured = pluginMethod;
+    return captured ? createPluginBuilds({ terminal: request.platform.terminal,
+      emit: (plugin) => projectPlugin({ projection, readDistribution, sources: request.sources.plugins },
+        { ...plugin, reviewerAgents: reviewerAgentSet(captured.method) }),
+      catalogues: (catalogues) => pluginCatalogues({ projection, readDistribution }, catalogues),
+    })(build) : refused([{ kind: "render-failed", concept: "host-data", name: "plugin-build",
+      reason: "Load the plugin Method before building its projections." }]);
+  };
+  const root: PackageBuildRoot = {
     settingsCapabilities: projection.settingsCapabilities, readHostDistribution: readDistribution,
     projectHost,
+    buildPlugins,
+    buildRoutes: () => [createPluginBuildRoute({ root, hosts: request.hosts.map((module) => module.host),
+      terminal: request.platform.terminal, workingDirectory: request.workingDirectory,
+      emit: (plugin) => {
+        const emitted = projectPlugin({ projection, readDistribution, sources: request.sources.plugins },
+          { ...plugin, boundary: plugin.output });
+        return emitted.ok ? accepted(undefined) : refused(emitted.refusal
+          .map((failure) => "reason" in failure ? failure.reason : JSON.stringify(failure)).join("\n"));
+      } })],
     buildPayload: payloadBuilder({ projectHost, hosts: request.hosts, packaging, readDistribution, projection,
       hasher: request.platform.digester, readPluginTemplates: pluginTemplateReading({
         fileSystem: request.platform.fileSystem, folder: request.sources.pluginHookTemplates }),
       readPluginTargets: pluginTargetReading({ hosts: request.hosts, readDistribution }) }),
     loadCore: () => core ??= loadCore(),
-    loadPlugins: ({ core: loaded }) => loading.loadPlugins({ core: loaded,
-      pluginsRoot: request.sources.plugins }),
+    loadPlugins: async ({ core: loaded }) => {
+      const captured = await loading.loadPlugins({ core: loaded, pluginsRoot: request.sources.plugins });
+      if (captured.ok) pluginMethod = captured.value;
+      return captured;
+    },
     prepareCommandSource: ({ core: loaded, ...command }) => projection.prepareCommandSource({ ...command,
       method: loaded.method, sources: loaded.sources }),
     readHostSources: (host) => captureHost(host, { hosts: request.hosts, projection }),
   };
+  return root;
 };

@@ -15,8 +15,13 @@ import { createRecordingTerminal } from "../kernel/fixtures/terminal.fake.ts";
 import { hash, host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import type { CoreBuild, HostBuildRequest, HostModule, HostDistributionReader, Platform } from "./roots.ts";
 import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
-import { createPackageBuildRoot } from "./package-build-root.ts";
+import { createPackageBuildRoot as createRoot } from "./package-build-root.ts";
+import { createRecordingPluginProjector } from "../projection/fixtures/plugin-projector.fake.ts";
 import { readEveryEntry } from "../kernel/file-system-port.ts";
+import { pluginId } from "../workflow-definition/domain/identities.ts";
+
+const createPackageBuildRoot = (request: Omit<Parameters<typeof createRoot>[0], "workingDirectory" | "plugins">) =>
+  createRoot({ ...request, workingDirectory: new URL("file:///H:/working/"), plugins: createRecordingPluginProjector() });
 
 const files = {
   "file:///core/aidlc-common/stages/.keep": "", "file:///core/agents/.keep": "",
@@ -366,7 +371,7 @@ test("copy and native payloads share captured history while Projection keeps the
   expect(readFile).not.toHaveBeenCalled();
 });
 
-test("only native metadata sees plugin authoring files, with one immutable template capture", async () => {
+test("both payloads carry authoring files from one immutable template capture", async () => {
   const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
   const readTree = mock(fileSystem.readTree);
   const layout = { ...scratchHostDistributionFixture.layout, managedDirectories: [
@@ -379,14 +384,13 @@ test("only native metadata sees plugin authoring files, with one immutable templ
   const core = accept(await root.loadCore());
   const request = fullHostRequest(core);
   const copy = accept(await root.buildPayload({ ...request, copy: null }));
-  expect(copy.files).not.toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/plugin-authoring-context.json") }));
-  expect(readTree).not.toHaveBeenCalledWith({ folder: sources.pluginHookTemplates, select: readEveryEntry });
+  expect(copy.files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/plugin-authoring-context.json") }));
+  expect(readTree).toHaveBeenCalledWith({ folder: sources.pluginHookTemplates, select: readEveryEntry });
   readTree.mockClear();
   const native = accept(await root.buildPayload({ ...request, channel: "native", copy }));
   expect(native.files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/plugin-targets.json") }));
   expect(native.files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/plugin-authoring-context.json") }));
-  expect(readTree).toHaveBeenCalledTimes(1);
-  expect(readTree).toHaveBeenCalledWith({ folder: sources.pluginHookTemplates, select: readEveryEntry });
+  expect(readTree).not.toHaveBeenCalled();
   expect(native.files).toContainEqual(expect.objectContaining({
     path: path(".scratch/tools/data/plugin-hooks-template/nested/template.txt"),
     content: { kind: "bytes", bytes: new TextEncoder().encode("Raw {{INVOKE}}\r\n") },
@@ -395,7 +399,7 @@ test("only native metadata sees plugin authoring files, with one immutable templ
     content: { kind: "text", text: "Changed after capture" } }));
   const again = accept(await root.buildPayload({ ...request, channel: "native", copy }));
   expect(again.files).toEqual(native.files);
-  expect(readTree).toHaveBeenCalledTimes(1);
+  expect(readTree).not.toHaveBeenCalled();
 });
 
 test.each([["file:///hook-templates/", ""], ["file:///hook-templates/nested/template.txt", "nested/template.txt"]])(
@@ -429,4 +433,39 @@ test("native authoring files refuse a collision with the host projection", async
       { kind: "runtime-data", name: "plugin-targets" },
     ],
   }]));
+});
+
+test("the root exposes its plugin command without reading authored inputs for invalid arguments", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const readTree = mock(fileSystem.readTree);
+  const terminal = createRecordingTerminal();
+  const root = createPackageBuildRoot({ hosts: [distributionMembers()],
+    platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
+  expect(root.buildRoutes()).toMatchObject([{ verb: ["plugin", "build"] }]);
+  expect(await root.buildRoutes()[0]?.run([])).toBe(1);
+  expect(terminal.errors()).toEqual(["usage: package.ts plugin build <plugin> <harness> <outDir>\n"]);
+  expect(readTree).not.toHaveBeenCalled();
+});
+
+test("bulk plugin builds refuse before emission when no plugin Method was loaded", () => {
+  const root = createPackageBuildRoot({ hosts: [distributionMembers()],
+    platform: { fileSystem: createInMemoryFileSystem({ files: {} }), processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  expect(root.buildPlugins({ plugins: [], hosts: [], output: new URL("file:///H:/output/"), boundary: new URL("file:///H:/output/") }))
+    .toEqual(refused([{ kind: "render-failed", concept: "host-data", name: "plugin-build",
+      reason: "Load the plugin Method before building its projections." }]));
+});
+
+test("bulk plugin builds preserve the distribution reader's KernelRefusal before emitter IO", async () => {
+  const distribution: HostDistributionReader = () => refused({ kind: "invalid-path", base: "project", raw: "../outside" });
+  const terminal = createRecordingTerminal();
+  const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(), distribution }],
+    platform: { fileSystem: createInMemoryFileSystem({ files }), processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  accept(await root.loadPlugins({ core }));
+  expect(root.buildPlugins({ plugins: [{ plugin: accept(pluginId("test-pro")), directory: "test-pro" }],
+    hosts: [SCRATCH_HOST], output: new URL("file:///H:/output/"), boundary: new URL("file:///H:/output/") }))
+    .toEqual(refused([{ kind: "invalid-path", base: "project", raw: "../outside" }]));
+  expect(terminal.output()).toEqual([]);
 });

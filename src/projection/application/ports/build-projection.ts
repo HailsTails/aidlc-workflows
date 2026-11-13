@@ -11,6 +11,7 @@ import type { AgentProjection } from "./agents.ts";
 import type { CommandSource, CommandSourceRequest } from "./commands.ts";
 import type { CompiledMethodRequest } from "./compiled-method.ts";
 import type { HostSourceCapture } from "./host-sources.ts";
+import type { PluginProjector } from "./plugins.ts";
 import type { HostSurfaceProjection } from "./host-surface.ts";
 import type { RuntimeProjection, RuntimeReading } from "./runtime.ts";
 import type { SettingsProjection } from "./settings.ts";
@@ -23,6 +24,7 @@ export interface BuildProjection {
   readonly delegateShellFacts: DelegateShellFacts;
   readonly settingsCapabilities: SettingsCapabilities;
   readonly nativeCommands: NativeCommandRoutes;
+  readonly plugins: PluginProjector;
   readonly readNeutral: NeutralReading;
   readonly projectDocuments: DocumentProjection;
   readonly projectSettings: SettingsProjection;

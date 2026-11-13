@@ -17,6 +17,7 @@ import type { Method } from "../workflow-definition/domain/method.ts";
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
 import type { HostModule } from "./roots.ts";
 import { createPackageBuildRoot } from "./package-build-root.ts";
+import { createRecordingPluginProjector } from "../projection/fixtures/plugin-projector.fake.ts";
 
 const SCRATCH_MODULE: HostModule = {
   host: SCRATCH_HOST, distribution: () => accepted(scratchHostDistributionFixture), routes: () => [],
@@ -65,7 +66,8 @@ const projectEighthHost = async () => {
     outliner: { outline: (text: string) => ({ text, headings: [] }) },
     sources: { core: new URL("file:///core/"), plugins: new URL("file:///plugins/"),
       pluginHookTemplates: new URL("file:///hook-templates/") },
-    runnerFrames: new URL("file:///frames/") });
+    runnerFrames: new URL("file:///frames/"), workingDirectory: new URL("file:///H:/working/"),
+    plugins: createRecordingPluginProjector() });
   const loaded = accept(await root.loadCore());
   return accept(await root.projectHost({ host: SCRATCH_HOST,
     core: { ...loaded, method: AGENTS_ONLY_METHOD, sources: [] },

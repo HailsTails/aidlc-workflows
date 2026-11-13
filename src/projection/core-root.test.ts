@@ -10,11 +10,14 @@ import { accepted, refused } from "../kernel/result.ts";
 import { tokenBindingsFixture } from "./fixtures/token-bindings.fixture.ts";
 import type { HostAgentRenderer } from "./application/ports/agents.ts";
 import type { HostSettingsRenderer } from "./application/ports/settings.ts";
-import { createBuildProjection } from "./core-root.ts";
+import { createBuildProjection as createProjection } from "./core-root.ts";
+import { createRecordingPluginProjector } from "./fixtures/plugin-projector.fake.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
 import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
 
 const identity = host({ name: "claude", directory: ".claude" });
+const createBuildProjection = (request: Omit<Parameters<typeof createProjection>[0], "plugins">) =>
+  createProjection({ ...request, plugins: createRecordingPluginProjector() });
 
 test("Projection composes host capture and graph serialization through its own adapters", async () => {
   const fileSystem = createInMemoryFileSystem({ files: { "file:///host/SKILL.md": "raw" } });

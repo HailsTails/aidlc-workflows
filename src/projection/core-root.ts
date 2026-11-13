@@ -1,4 +1,5 @@
 import { createAgentPersonaPreparer } from "./application/agent-persona.ts";
+import type { PluginProjector } from "./application/ports/plugins.ts";
 import { legacyMarkdownAgentSurface, legacyCliModelPolicy,
   legacyAgentTiersData, legacyAgentModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
@@ -120,12 +121,14 @@ export const createBuildProjection = (request: {
   readonly hostFiles: HostFileReader; readonly sessionFiles: SessionSkillTreeReader;
   readonly runnerProcess: LegacyRunnerProcess; readonly runnerScratch: LegacyRunnerScratch;
   readonly runnerFrames: URL; readonly runnerChild: URL;
+  readonly plugins: PluginProjector;
 }): BuildProjection => {
   const allows = createCopyChannelAllowSource();
   const facts = delegateShellFacts();
   const settingsCapabilities: SettingsCapabilities = {
     extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(), hookTrust: legacyHookTrustHash };
   return {
+    plugins: request.plugins,
     delegateShellFacts: facts, settingsCapabilities, nativeCommands: createLegacyNativeCommands(legacyDispatcherRoutes()),
     assembleHarness: harnessAssembler({ allows, facts, capabilities: settingsCapabilities, scratch: request.runnerScratch,
       processRunner: request.runnerProcess, frames: request.runnerFrames, child: request.runnerChild }),

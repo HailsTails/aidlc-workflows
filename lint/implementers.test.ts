@@ -39,6 +39,15 @@ describe("IMPLEMENTERS", () => {
         hermeticTest: "src/kernel/content-digester.hermetic.test.ts",
       },
       {
+        capability: "plugin-emitter",
+        file: "src/projection/adapters/legacy-plugin-emit.ts",
+        port: "src/projection/application/ports/plugins.ts",
+        globals: ["Bun.fileURLToPath"],
+        factory: "createLegacyPluginProjector",
+        fakeSeam: "src/projection/fixtures/plugin-projector.fake.ts",
+        hermeticTest: "src/projection/adapters/legacy-plugin-emit.hermetic.test.ts",
+      },
+      {
         capability: "terminal",
         factory: "createProcessTerminal",
         hermeticTest: "src/kernel/terminal.hermetic.test.ts",

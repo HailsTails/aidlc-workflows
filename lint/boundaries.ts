@@ -338,29 +338,37 @@ const unregisteredModules = (implementer: Implementer): ImportRestriction => ({
     "in lint/implementers.json; a module outside that list is another way to reach the platform.",
 });
 
-const implementerConfig = (implementer: Implementer): Linter.Config => ({
-  name: `aidlc/src/kernel/implementer/${implementer.capability}`,
-  files: [implementer.file],
-  rules: {
-    ...restrict({
-      imports: [
-        ...srcImportRestrictions({ context: "kernel", layer: "adapters" }),
-        unregisteredModules(implementer),
-      ],
-      syntax: [...productionSyntax("kernel", "adapters"), dynamicImport],
-    }),
-    ...globalsWithout(registeredGlobalRoots(implementer)),
-  },
+const implementerPlacement = (file: string): { readonly context: ContextName; readonly layer: Layer } => ({
+  context: contextOf(file) ?? "kernel",
+  layer: layerOfReader(file),
 });
 
-const hermeticTestConfig = (implementer: Implementer): Linter.Config => ({
-  name: `aidlc/src/kernel/implementer/${implementer.capability}/hermetic-test`,
-  files: [implementer.hermeticTest],
-  rules: restrict({
-    imports: hermeticTestImportRestrictions({ context: "kernel", layer: "adapters" }),
-    syntax: sampleSyntax("kernel", "adapters"),
-  }),
-});
+const implementerConfig = (implementer: Implementer): Linter.Config => {
+  const { context, layer } = implementerPlacement(implementer.file);
+  return {
+    name: `aidlc/src/kernel/implementer/${implementer.capability}`,
+    files: [implementer.file],
+    rules: {
+      ...restrict({
+        imports: [...srcImportRestrictions({ context, layer }), unregisteredModules(implementer)],
+        syntax: [...productionSyntax(context, layer), dynamicImport],
+      }),
+      ...globalsWithout(registeredGlobalRoots(implementer)),
+    },
+  };
+};
+
+const hermeticTestConfig = (implementer: Implementer): Linter.Config => {
+  const { context, layer } = implementerPlacement(implementer.hermeticTest);
+  return {
+    name: `aidlc/src/kernel/implementer/${implementer.capability}/hermetic-test`,
+    files: [implementer.hermeticTest],
+    rules: restrict({
+      imports: hermeticTestImportRestrictions({ context, layer }),
+      syntax: sampleSyntax(context, layer),
+    }),
+  };
+};
 
 const processEntryConfig: Linter.Config = {
   name: "aidlc/src/cli/process-entries",
