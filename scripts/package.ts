@@ -80,12 +80,14 @@ import { onboardingPathOf } from "../src/packaging/core-root.ts";
 import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
 import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
 import { createBunContentDigester } from "../src/kernel/content-digester.ts";
+import { createProcessTerminal } from "../src/kernel/terminal.ts";
 import { createPackageBuildRoot } from "../src/cli/package-build-root.ts";
 import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 const nodeFileSystem = createNodeFileSystem();
 const packageBuildRoot = openPackageBuildRoot({ createNodeFileSystem: () => nodeFileSystem, createNodeProcessRunner,
-  createBunYamlParser, createBunContentDigester, createPackageBuildRoot, outliner: createMarkdownOutliner(markdownBlocks) });
+  createBunYamlParser, createBunContentDigester, createProcessTerminal, createPackageBuildRoot,
+  outliner: createMarkdownOutliner(markdownBlocks) });
 import { pluginId as pluginBuildName } from "../src/workflow-definition/domain/identities.ts";
 import { reviewerAgentSet }
   from "../src/workflow-definition/domain/method-participation.ts";

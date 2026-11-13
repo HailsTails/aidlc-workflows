@@ -31,5 +31,6 @@ export const claudeHost = () => {
       bindingHeading: CLAUDE_BINDING_HEADING,
     },
     distribution: claudeDistribution,
+    routes: () => [],
   });
 };

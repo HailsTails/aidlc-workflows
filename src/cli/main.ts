@@ -8,6 +8,7 @@ type MainComposition = {
   readonly createNodeProcessRunner: () => Platform["processRunner"];
   readonly createBunYamlParser: () => Platform["yaml"];
   readonly createBunContentDigester: () => Platform["digester"];
+  readonly createProcessTerminal: () => Platform["terminal"];
   readonly createPackageBuildRoot: CreatePackageBuildRoot;
 };
 
@@ -17,10 +18,12 @@ export const openPackageBuildRoot = (composition: MainComposition): PackageBuild
     processRunner: composition.createNodeProcessRunner(),
     yaml: composition.createBunYamlParser(),
     digester: composition.createBunContentDigester(),
+    terminal: composition.createProcessTerminal(),
   };
   return composition.createPackageBuildRoot({ hosts: HOSTS,
     platform, outliner: composition.outliner,
-    sources: { core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url) },
+    sources: { core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url),
+      pluginHookTemplates: new URL("../../scripts/plugin-hooks-template/", import.meta.url) },
     runnerFrames: new URL("../../.cache/runner-frames/", import.meta.url),
   });
 };

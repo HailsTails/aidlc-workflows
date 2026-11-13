@@ -30,6 +30,7 @@ test("kiro module gathers the identity, distribution and every projection part t
       derive: deriveKiroHarnessRecord,
     },
     distribution: kiroDistribution,
+    routes: expect.any(Function),
   }));
 });
 

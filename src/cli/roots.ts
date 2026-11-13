@@ -9,6 +9,7 @@ import type { ContentDigester } from "../kernel/content-digester-port.ts";
 import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { ProcessRunner } from "../kernel/process-runner-port.ts";
+import type { Terminal } from "../kernel/terminal-port.ts";
 import type { Result } from "../kernel/result.ts";
 import type { KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
@@ -26,7 +27,7 @@ import type { HostSkillRenderer } from "../projection/application/ports/skills.t
 import type { AuthoredHostFile } from "../projection/domain/host-surface.ts";
 import type { DistributionChannel } from "../projection/domain/projected-file.ts";
 import type { CompiledMethodFiles, Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
-import type { TokenBindings } from "../projection/domain/template-token.ts";
+import type { ChannelTokens, TokenBindings } from "../projection/domain/template-token.ts";
 import type { AgentSlug } from "../workflow-definition/domain/identities.ts";
 import type { Tier } from "../workflow-definition/domain/vocabulary.ts";
 import type {
@@ -67,10 +68,18 @@ export type HostDistributionInputs = {
 
 export type HostDistributionReader = (inputs: HostDistributionInputs) => Result<HostDistribution, KernelRefusal>;
 
+export type HostRouteBindings = {
+  readonly copyTokens: ChannelTokens;
+  readonly terminal: Terminal;
+};
+
+export type HostRoutes = (bindings: HostRouteBindings) => readonly CommandRoute[];
+
 export type HostModule = {
   readonly host: HostIdentity;
   readonly projection: HostProjectionParts;
   readonly distribution: HostDistributionReader;
+  readonly routes: HostRoutes;
 };
 
 export type { ConceptMembers };
@@ -117,11 +126,13 @@ export type Platform = {
   readonly processRunner: ProcessRunner;
   readonly yaml: YamlParser;
   readonly digester: ContentDigester;
+  readonly terminal: Terminal;
 };
 
 export type BuildSources = {
   readonly core: URL;
   readonly plugins: URL;
+  readonly pluginHookTemplates: URL;
 };
 
 export type CoreBuildTarget = {

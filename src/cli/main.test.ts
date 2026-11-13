@@ -3,6 +3,7 @@ const outliner = { outline: (text: string) => ({ text, headings: [] }) };
 import { expect, mock, test } from "bun:test";
 import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
 import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
+import { createRecordingTerminal } from "../kernel/fixtures/terminal.fake.ts";
 import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { hash } from "../kernel/fixtures/values.fixture.ts";
@@ -13,6 +14,7 @@ import { openPackageBuildRoot } from "./main.ts";
 const fileSystem = createInMemoryFileSystem({ files: {} });
 const processRunner = createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) });
 const yaml = createInMemoryYamlParser({ documents: {} });
+const terminal = createRecordingTerminal();
 const digester: ContentDigester = { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) };
 const root: PackageBuildRoot = {
   settingsCapabilities: { extendedSubprocessTimeoutMs: 1, hookTrust: () => "unused" },
@@ -30,17 +32,20 @@ test("the entry constructs each implementer once and binds its instance to the c
   const createNodeProcessRunner = mock(() => processRunner);
   const createBunYamlParser = mock(() => yaml);
   const createBunContentDigester = mock(() => digester);
+  const createProcessTerminal = mock(() => terminal);
   const createPackageBuildRoot = mock<CreatePackageBuildRoot>(() => root);
   expect(openPackageBuildRoot({ createNodeFileSystem, createNodeProcessRunner,
-    createBunYamlParser, createBunContentDigester, createPackageBuildRoot, outliner })).toBe(root);
+    createBunYamlParser, createBunContentDigester, createProcessTerminal, createPackageBuildRoot, outliner })).toBe(root);
   expect(createNodeFileSystem).toHaveBeenCalledTimes(1);
   expect(createNodeProcessRunner).toHaveBeenCalledTimes(1);
   expect(createBunYamlParser).toHaveBeenCalledTimes(1);
   expect(createBunContentDigester).toHaveBeenCalledTimes(1);
+  expect(createProcessTerminal).toHaveBeenCalledTimes(1);
   expect(createPackageBuildRoot).toHaveBeenCalledTimes(1);
   expect(createPackageBuildRoot).toHaveBeenCalledWith({ hosts: HOSTS, outliner,
-    platform: { fileSystem, processRunner, yaml, digester },
-    sources: { core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url) },
+    platform: { fileSystem, processRunner, yaml, digester, terminal },
+    sources: { core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url),
+      pluginHookTemplates: new URL("../../scripts/plugin-hooks-template/", import.meta.url) },
     runnerFrames: new URL("../../.cache/runner-frames/", import.meta.url),
   });
 });

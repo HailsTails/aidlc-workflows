@@ -33,5 +33,6 @@ export const cursorHost = () => {
       bindingHeading: CURSOR_BINDING_HEADING,
     },
     distribution: cursorDistribution,
+    routes: () => [],
   });
 };

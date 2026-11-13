@@ -35,6 +35,7 @@ export const kiroHost = () => {
       derive: deriveKiroHarnessRecord,
     },
     distribution: kiroDistribution,
+    routes: () => [],
   });
 };
 

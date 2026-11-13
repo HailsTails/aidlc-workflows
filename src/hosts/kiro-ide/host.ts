@@ -46,5 +46,6 @@ export const kiroIdeHost = (personas: KiroIdePersonaRendering) => {
       derive: deriveKiroIdeFiles,
     },
     distribution: kiroIdeDistribution,
+    routes: () => [],
   });
 };

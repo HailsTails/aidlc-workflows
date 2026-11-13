@@ -33,5 +33,6 @@ export const codexHost = () => {
       bindingHeading: CODEX_BINDING_HEADING,
     },
     distribution: codexDistribution,
+    routes: () => [],
   });
 };
