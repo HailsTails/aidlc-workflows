@@ -216,6 +216,7 @@ const fullHostFiles = () => ({ ...files,
   "file:///core/tools/aidlc-version.ts": 'export const AIDLC_VERSION = "fixture";',
   "file:///core/tools/aidlc-utility.ts": "captured formatter",
   "file:///core/hooks/.keep": "",
+  "file:///scripts/copy-era-files.json": "{}",
 });
 
 const fullHostRequest = (core: CoreBuild): HostBuildRequest => ({
@@ -319,7 +320,7 @@ test("buildPayload refuses an unknown distribution before compiling", async () =
   const root = createPackageBuildRoot({ hosts: [], platform: { fileSystem, processRunner, yaml, digester, terminal },
     outliner, sources, runnerFrames });
   const loaded = accept(await root.loadCore());
-  expect(await root.buildPayload(fullHostRequest(loaded)))
+  expect(await root.buildPayload({ ...fullHostRequest(loaded), copy: null }))
     .toEqual(refused([{ kind: "unknown-harness", harness: "scratch" }]));
 });
 
@@ -332,6 +333,33 @@ test("buildPayload lays a routed host's projection out as a hashed payload", asy
     distribution: () => accepted({ ...scratchHostDistributionFixture, layout }) }],
     platform: { fileSystem, processRunner: fullHostProcess(), yaml, digester, terminal }, outliner, sources, runnerFrames });
   const loaded = accept(await root.loadCore());
-  const built = await root.buildPayload(fullHostRequest(loaded));
+  const built = await root.buildPayload({ ...fullHostRequest(loaded), copy: null });
   expect(accept(built).files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/aidlc-stamp.json") }));
+});
+
+
+test("copy and native payloads share captured history while Projection keeps the raw version module", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const readFile = mock(fileSystem.readFile);
+  const layout = { ...scratchHostDistributionFixture.layout, managedDirectories: [
+    ...scratchHostDistributionFixture.layout.managedDirectories,
+    { path: path("aidlc"), ownership: "whole-directory" as const }] };
+  const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(),
+    distribution: () => accepted({ ...scratchHostDistributionFixture, layout }) }],
+    platform: { fileSystem: { ...fileSystem, readFile }, processRunner: fullHostProcess(), yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  const request = fullHostRequest(core);
+  const projected = accept(await root.projectHost(request));
+  expect(projected.projection.files).toContainEqual(expect.objectContaining({
+    path: path(".scratch/tools/aidlc-version.ts"),
+    content: { kind: "text", text: 'export const AIDLC_VERSION = "fixture";' } }));
+  const copy = accept(await root.buildPayload({ ...request, copy: null }));
+  const copiedReads = readFile.mock.calls.length;
+  accept(await fileSystem.writeFile({ file: new URL("file:///scripts/copy-era-files.json"),
+    content: { kind: "text", text: "invalid after capture" } }));
+  const native = accept(await root.buildPayload({ ...request, channel: "native", copy }));
+  expect(native.files).toContainEqual(expect.objectContaining({ path: path(".scratch/tools/data/aidlc-projection.json"),
+    content: { kind: "text", text: expect.stringContaining('"retiredCopyFileHashes": {}') } }));
+  expect(readFile).toHaveBeenCalledTimes(copiedReads);
 });

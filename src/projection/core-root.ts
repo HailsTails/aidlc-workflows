@@ -2,10 +2,10 @@ import { createAgentPersonaPreparer } from "./application/agent-persona.ts";
 import { legacyMarkdownAgentSurface, legacyCliModelPolicy,
   legacyAgentTiersData, legacyAgentModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
-import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
+import { createLegacyNativeCommands, legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
 import { createNeutralReading } from "./adapters/neutral-surface-files.ts";
 import { projectMethodDocuments } from "./application/project-method-documents.ts";
-import { createCopyChannelAllowSource } from "./adapters/legacy-dispatcher.ts";
+import { legacyDispatcherRoutes, createCopyChannelAllowSource } from "./adapters/legacy-dispatcher.ts";
 import { projectMethodSettings } from "./application/project-method-settings.ts";
 import { projectRuntime } from "./application/project-runtime.ts";
 import { projectWorkspace } from "./application/project-workspace.ts";
@@ -126,7 +126,7 @@ export const createBuildProjection = (request: {
   const settingsCapabilities: SettingsCapabilities = {
     extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(), hookTrust: legacyHookTrustHash };
   return {
-    delegateShellFacts: facts, settingsCapabilities,
+    delegateShellFacts: facts, settingsCapabilities, nativeCommands: createLegacyNativeCommands(legacyDispatcherRoutes()),
     assembleHarness: harnessAssembler({ allows, facts, capabilities: settingsCapabilities, scratch: request.runnerScratch,
       processRunner: request.runnerProcess, frames: request.runnerFrames, child: request.runnerChild }),
     projectWorkspace,

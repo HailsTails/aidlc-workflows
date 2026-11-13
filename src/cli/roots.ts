@@ -108,8 +108,12 @@ export type ProjectHost = (
   request: HostBuildRequest,
 ) => Promise<Result<HostBuild, readonly (KernelRefusal | ProjectionRefusal)[]>>;
 
+export type PayloadBuildRequest = HostBuildRequest & {
+  readonly copy: Payload | null;
+};
+
 export type BuildPayload = (
-  request: HostBuildRequest,
+  request: PayloadBuildRequest,
 ) => Promise<Result<Payload, readonly (KernelRefusal | ProjectionRefusal | PackagingRefusal)[]>>;
 
 export type RuntimeHost = {

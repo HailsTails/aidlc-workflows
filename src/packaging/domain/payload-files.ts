@@ -11,3 +11,13 @@ export const orderedPayloadFiles = (
     ? [{ kind: "duplicate-path" as const, path: file.path }] : []);
   return duplicates.length > 0 ? refused(duplicates) : accepted(ordered);
 };
+
+export const payloadTreeOrder = (first: Pick<PayloadFile, "path">, second: Pick<PayloadFile, "path">): number => {
+  const firstParts = first.path.split("/");
+  const secondParts = second.path.split("/");
+  const difference = firstParts.slice(0, secondParts.length).map((firstPart, index) => {
+    const secondPart = secondParts[index] ?? "";
+    return firstPart < secondPart ? -1 : Number(firstPart > secondPart);
+  }).find((order) => order !== 0);
+  return difference ?? firstParts.length - secondParts.length;
+};

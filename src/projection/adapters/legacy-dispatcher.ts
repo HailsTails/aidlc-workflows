@@ -1,5 +1,5 @@
 import type { DelegateShellFacts, EngineRoute } from "../application/ports/delegate-shell.ts";
-import { ROUTES, admittedEngineRoute, copyChannelDispatcherCommands, copyChannelToolScripts } from "../../../core/tools/aidlc.ts";
+import { ROUTES, TOOLS, admittedEngineRoute, copyChannelDispatcherCommands, copyChannelToolScripts } from "../../../core/tools/aidlc.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { CopyChannelAllows, CopyChannelAllowSource } from "../application/ports/copy-channel.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
@@ -27,3 +27,11 @@ export const engineRoutes = (namespace: string): readonly EngineRoute[] => ROUTE
 
 export const engineRouteAdmission: DelegateShellFacts["engineRouteAdmission"] = ({ admitted, words }) =>
   admittedEngineRoute(admitted, words) ? "admitted" : "refused";
+
+const ADAPTER_HOOKS = ["kiro-adapter", "codex-adapter", "cursor-adapter", "copilot-adapter"] as const;
+
+export const legacyDispatcherRoutes = () => ({
+  routes: ROUTES,
+  delegates: Object.values(TOOLS).map((file) => file.slice("aidlc-".length, -".ts".length)),
+  adapterHooks: new Set<string>(ADAPTER_HOOKS),
+});
