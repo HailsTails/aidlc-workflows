@@ -236,7 +236,7 @@
 {"name":"ArchiveFormat","context":"packaging","kind":"concept","definition":"tar.gz or zip."},
 {"name":"ReleaseArtifact","context":"packaging","kind":"concept","definition":"A built release archive: version, channel, distributions, digest and entries.","legacy":["ArchiveEntry"]},
 {"name":"PackagingRefusal","context":"packaging","kind":"concept","definition":"Why a payload or release cannot be built."},
-{"name":"ToolBundler","context":"packaging","kind":"port","definition":"Port: bundles runtime entry points for a channel."},
+{"name":"ToolBundler","context":"packaging","kind":"port","definition":"Port: bundles runtime entry points for a channel into one host's directory."},
 {"name":"ArtifactWriter","context":"packaging","kind":"port","definition":"Port: writes payloads into a release archive."},
 {"name":"ContentHasher","context":"packaging","kind":"port","definition":"Port: hashes file content."},
 {"name":"PackagePayloadRequest","context":"packaging","kind":"concept","definition":"The projection, channel, version and runtime entries to package."},
