@@ -39,6 +39,11 @@ describe("IMPLEMENTERS", () => {
         hermeticTest: "src/kernel/content-digester.hermetic.test.ts",
       },
       {
+        capability: "terminal",
+        factory: "createProcessTerminal",
+        hermeticTest: "src/kernel/terminal.hermetic.test.ts",
+      },
+      {
         capability: "tool-bundler",
         file: "src/packaging/adapters/bun-tool-bundler.ts",
         port: "src/packaging/application/ports.ts",

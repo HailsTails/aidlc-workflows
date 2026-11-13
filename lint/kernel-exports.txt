@@ -42,6 +42,7 @@ RemoveFolderArgs
 Result
 RunCurrentRuntimeArgs
 SourcePath
+Terminal
 Timestamp
 TreeEntry
 TreeFile
@@ -59,8 +60,10 @@ createBunContentDigester
 createBunYamlParser
 createNodeFileSystem
 createNodeProcessRunner
+createProcessTerminal
 distributionId
 frameworkVersion
+joinNativePath
 projectPath
 readEveryEntry
 refused

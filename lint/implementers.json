@@ -42,6 +42,16 @@
       "hermeticTest": "src/kernel/content-digester.hermetic.test.ts"
     },
     {
+      "capability": "terminal",
+      "file": "src/kernel/terminal.ts",
+      "port": "src/kernel/terminal-port.ts",
+      "modules": [],
+      "globals": ["process.stdout", "process.stderr"],
+      "factory": "createProcessTerminal",
+      "fakeSeam": "src/kernel/fixtures/terminal.fake.ts",
+      "hermeticTest": "src/kernel/terminal.hermetic.test.ts"
+    },
+    {
       "capability": "tool-bundler",
       "file": "src/packaging/adapters/bun-tool-bundler.ts",
       "port": "src/packaging/application/ports.ts",

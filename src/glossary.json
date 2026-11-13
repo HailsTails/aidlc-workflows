@@ -31,6 +31,7 @@
 {"name":"NodeProcessLib","context":"kernel","kind":"technical","definition":"The runtime calls the process-runner implementer wraps; its own test fakes them."},
 {"name":"CreateNodeProcessRunnerArgs","context":"kernel","kind":"technical","definition":"The optional NodeProcessLib seam the process-runner implementer is built with."},
 {"name":"YamlParser","context":"kernel","kind":"port","definition":"Port: parses YAML text into an unknown value for a Zod schema to decode, or refuses it."},
+{"name":"Terminal","context":"kernel","kind":"port","definition":"Port: writes text to the person's standard output and standard error, so a command reports without touching the process streams itself."},
 {"name":"ContentDigester","context":"kernel","kind":"port","definition":"Port: the SHA-256 ContentHash of file content, text hashed as its UTF-8 bytes, or a refusal when the platform digest is not one. A consumer such as Packaging ContentHasher declares its narrower port from it."},
 {"name":"ParseYamlArgs","context":"kernel","kind":"technical","definition":"The YAML text to parse."},
 {"name":"YamlRefusal","context":"kernel","kind":"concept","definition":"Why text could not be parsed as YAML."},
