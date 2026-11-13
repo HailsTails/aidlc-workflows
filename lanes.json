@@ -121,6 +121,7 @@
         "scripts/package-release.ts",
         "scripts/package-sources.ts",
         "tests/unit/t-package-sources.test.ts",
+        "tests/unit-shard-weights.json",
         "tests/integration/t-e2e-isolated-runner.test.ts",
         "tests/integration/t-e2e-native-cancellation.test.ts",
         "tests/gen-coverage-registry.ts",
