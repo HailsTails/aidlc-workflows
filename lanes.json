@@ -113,6 +113,7 @@
         "src/installation/**",
         "src/hosts/{claude,codex,opencode}/{packaging,installation}/**",
         "src/cli/adapters/routes/{packaging,installation}/**",
+        "src/cli/adapters/routes/build/**",
         "src/cli/core-build-root{,.test}.ts",
         "src/cli/package-build-root{,.test}.ts",
         "scripts/package.ts",
@@ -277,6 +278,7 @@
         "core/hooks/**"
       ],
       "notOwned": [
+        "src/cli/adapters/routes/build/**",
         "src/cli/core-build-root{,.test}.ts",
         "src/cli/main{,.test}.ts",
         "src/cli/package-build-root{,.test}.ts",
