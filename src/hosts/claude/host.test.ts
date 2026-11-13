@@ -34,5 +34,6 @@ test("Claude's module gathers the identity, distribution and every projection pa
       bindingHeading: CLAUDE_BINDING_HEADING,
     },
     distribution: claudeDistribution,
+    routes: expect.any(Function),
   }));
 });

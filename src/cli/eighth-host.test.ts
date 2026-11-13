@@ -3,6 +3,7 @@ import { scratchHostDistributionFixture } from "../packaging/fixtures/host-distr
 import { accept } from "../kernel/fixtures/accept.ts";
 import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
 import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
+import { createRecordingTerminal } from "../kernel/fixtures/terminal.fake.ts";
 import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
 import { accepted } from "../kernel/result.ts";
 import { hash } from "../kernel/fixtures/values.fixture.ts";
@@ -18,7 +19,7 @@ import type { HostModule } from "./roots.ts";
 import { createPackageBuildRoot } from "./package-build-root.ts";
 
 const SCRATCH_MODULE: HostModule = {
-  host: SCRATCH_HOST, distribution: () => accepted(scratchHostDistributionFixture),
+  host: SCRATCH_HOST, distribution: () => accepted(scratchHostDistributionFixture), routes: () => [],
   projection: {
     tokens: SCRATCH_TOKENS, commands: scratchCommandPlacement, fills: ONBOARDING_FILLS_FIXTURE,
     bindingHeading: "Scratch", renderData: () => SCRATCH_HOST_DATA, placements: [],
@@ -59,9 +60,11 @@ const projectEighthHost = async () => {
     platform: { fileSystem: createInMemoryFileSystem({ files: CORE_FILES }),
       processRunner: createScriptedProcessRunner({ outcome: RUNNER_OUTCOME }),
       yaml: createInMemoryYamlParser({ documents: {} }),
-      digester: { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) } },
+      digester: { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) },
+      terminal: createRecordingTerminal() },
     outliner: { outline: (text: string) => ({ text, headings: [] }) },
-    sources: { core: new URL("file:///core/"), plugins: new URL("file:///plugins/") },
+    sources: { core: new URL("file:///core/"), plugins: new URL("file:///plugins/"),
+      pluginHookTemplates: new URL("file:///hook-templates/") },
     runnerFrames: new URL("file:///frames/") });
   const loaded = accept(await root.loadCore());
   return accept(await root.projectHost({ host: SCRATCH_HOST,

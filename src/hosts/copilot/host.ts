@@ -33,5 +33,6 @@ export const copilotHost = () => {
       bindingHeading: COPILOT_BINDING_HEADING,
     },
     distribution: copilotDistribution,
+    routes: () => [],
   });
 };

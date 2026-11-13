@@ -33,5 +33,6 @@ export const openCodeHost = () => {
       bindingHeading: OPENCODE_BINDING_HEADING,
     },
     distribution: openCodeDistribution,
+    routes: () => [],
   });
 };

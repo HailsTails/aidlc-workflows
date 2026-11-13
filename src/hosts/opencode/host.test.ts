@@ -27,5 +27,6 @@ test("openCode module gathers the identity, distribution and every projection pa
       bindingHeading: OPENCODE_BINDING_HEADING,
     },
     distribution: openCodeDistribution,
+    routes: expect.any(Function),
   }));
 });

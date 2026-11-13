@@ -27,5 +27,6 @@ test("codex module gathers the identity, distribution and every projection part 
       bindingHeading: CODEX_BINDING_HEADING,
     },
     distribution: codexDistribution,
+    routes: expect.any(Function),
   }));
 });

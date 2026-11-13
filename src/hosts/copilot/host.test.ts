@@ -27,5 +27,6 @@ test("copilot module gathers the identity, distribution and every projection par
       bindingHeading: COPILOT_BINDING_HEADING,
     },
     distribution: copilotDistribution,
+    routes: expect.any(Function),
   }));
 });

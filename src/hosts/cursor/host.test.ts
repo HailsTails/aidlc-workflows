@@ -27,5 +27,6 @@ test("cursor module gathers the identity, distribution and every projection part
       bindingHeading: CURSOR_BINDING_HEADING,
     },
     distribution: cursorDistribution,
+    routes: expect.any(Function),
   }));
 });

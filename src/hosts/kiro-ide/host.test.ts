@@ -33,6 +33,7 @@ test("kiroIde module gathers the identity, distribution and every projection par
       derive: expect.any(Function),
     },
     distribution: kiroIdeDistribution,
+    routes: expect.any(Function),
   }));
 });
 
