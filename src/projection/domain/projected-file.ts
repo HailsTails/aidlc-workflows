@@ -17,7 +17,14 @@ export const RENDERED_CONCEPTS = [
 
 export type RenderedConcept = (typeof RENDERED_CONCEPTS)[number];
 
-export type RuntimeDataName = "agent-tiers" | "settings-schema" | "stage-graph" | "scope-grid" | "version-module";
+export type RuntimeDataName =
+  | "agent-tiers"
+  | "settings-schema"
+  | "stage-graph"
+  | "scope-grid"
+  | "version-module"
+  | "plugin-targets"
+  | "plugin-authoring-context";
 
 export type MemoryCopy = "space" | "seed";
 
