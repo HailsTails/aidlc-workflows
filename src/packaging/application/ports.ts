@@ -1,5 +1,5 @@
 import type { HostIdentity } from "../../kernel/host.ts";
-import type { Projection } from "../../projection/domain/projection.ts";
+import type { Projection, ProjectionRefusal } from "../../projection/domain/projection.ts";
 import type { HostData } from "../../projection/domain/host-surface.ts";
 import type { HostDistribution } from "../domain/payload.ts";
 import type { FrameworkVersion, ProjectPath } from "../../kernel/values.ts";
@@ -15,6 +15,7 @@ import type {
   RuntimeEntryPoint,
 } from "../domain/payload.ts";
 import type { ReleaseHistory } from "../domain/release-history.ts";
+import type { TreeFile } from "../../kernel/file-system-port.ts";
 
 export interface ReleaseHistorySource {
   history(distribution: DistributionId): Promise<Result<ReleaseHistory, PackagingRefusal>>;
@@ -84,4 +85,42 @@ export interface PackagedSources {
     readonly builtFrom: string;
   }): Promise<Result<"recorded" | "inputs-changed", PackagingRefusal>>;
   staleness(host: DistributionId): Promise<Result<string | null, PackagingRefusal>>;
+}
+
+export interface OutputTrees {
+  readonly root: URL;
+  list(folder: URL): Promise<Result<readonly string[], PackagingRefusal>>;
+  remove(entry: URL): Promise<Result<URL, PackagingRefusal>>;
+  writePayload(request: { readonly root: URL; readonly payload: Payload }): Promise<Result<URL, PackagingRefusal>>;
+  scratch(): Promise<Result<URL, PackagingRefusal>>;
+  read(folder: URL): Promise<Result<readonly TreeFile[], PackagingRefusal>>;
+}
+
+export type DistributionBuildFailure = KernelRefusal | ProjectionRefusal | PackagingRefusal;
+
+export type DistributionPayloads = (request: {
+  readonly host: HostIdentity;
+  readonly channel: Channel;
+  readonly projectRoot: URL;
+  readonly copy: Payload | null;
+}) => Promise<Result<Payload, readonly DistributionBuildFailure[]>>;
+
+export interface DistributionPlugins {
+  readonly directories: readonly string[];
+  build(request: { readonly hosts: readonly HostIdentity[]; readonly output: URL; readonly boundary: URL }):
+    Result<void, readonly DistributionBuildFailure[]>;
+}
+
+export type DistributionTargets = {
+  readonly hosts: readonly HostIdentity[];
+  readonly refusals: readonly PackagingRefusal[];
+};
+
+export interface PackageDistributions {
+  build(request: DistributionTargets & { readonly sweep: "full" | "named" }):
+    Promise<Result<{ readonly record: "recorded" | "inputs-changed" }, readonly DistributionBuildFailure[]>>;
+  check(request: DistributionTargets): Promise<Result<{
+    readonly problems: readonly string[];
+    readonly inputs: "unchanged" | "inputs-changed";
+  }, readonly DistributionBuildFailure[]>>;
 }

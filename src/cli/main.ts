@@ -1,7 +1,8 @@
 import { HOSTS } from "./host-table.ts";
 import type { PluginProjector } from "../projection/application/ports/plugins.ts";
 import type { MarkdownOutliner } from "../workflow-definition/application/ports.ts";
-import type { CreatePackageBuildRoot, PackageBuildRoot, Platform } from "./roots.ts";
+import type { CreatePackageBuildRoot, ExitStatus, PackageBuildRoot, Platform } from "./roots.ts";
+import type { ResolveModelCap } from "../projection/domain/model-cap.ts";
 
 type MainComposition = {
   readonly workingDirectory: URL;
@@ -31,4 +32,16 @@ export const openPackageBuildRoot = (composition: MainComposition): PackageBuild
     sources, plugins: composition.createPluginProjector({ hookTemplates: sources.pluginHookTemplates }),
     runnerFrames: new URL("../../.cache/runner-frames/", import.meta.url),
   });
+};
+
+export const runPackageCommand = async ({ argv, composition, resolveModelCap }: {
+  readonly argv: readonly string[];
+  readonly composition: MainComposition;
+  readonly resolveModelCap: ResolveModelCap;
+}): Promise<ExitStatus> => {
+  const root = openPackageBuildRoot(composition);
+  const route = root.buildRoutes({ resolveModelCap })
+    .filter((candidate) => candidate.verb.every((word, index) => word === argv[index]))
+    .toSorted((first, second) => second.verb.length - first.verb.length)[0];
+  return route ? route.run(argv.slice(route.verb.length)) : 2;
 };

@@ -6,12 +6,8 @@ import { kiroIdeHost } from "../hosts/kiro-ide/host.ts";
 import { kiroHost, kiroPersonas } from "../hosts/kiro/host.ts";
 import { openCodeHost } from "../hosts/opencode/host.ts";
 import type { HostIdentity } from "../kernel/host.ts";
+import type { PackagingRefusal } from "../packaging/domain/artifact.ts";
 import type { HostBuildTable, HostModule } from "./roots.ts";
-
-export type HostBuildRefusal = {
-  readonly kind: "host-build-refused";
-  readonly reason: unknown;
-};
 
 const BUILT = [
   claudeHost(), kiroHost(), kiroIdeHost(kiroPersonas), codexHost(), cursorHost(), openCodeHost(),
@@ -20,7 +16,7 @@ const BUILT = [
 
 export const HOSTS: HostBuildTable = BUILT.flatMap((built) => built.ok ? [built.value] : []);
 
-export const HOST_BUILD_REFUSALS: readonly HostBuildRefusal[] = BUILT.flatMap((built) =>
+export const HOST_BUILD_REFUSALS: readonly PackagingRefusal[] = BUILT.flatMap((built) =>
   built.ok ? [] : [{ kind: "host-build-refused" as const, reason: built.refusal }]);
 
 export const hostModule = (host: HostIdentity): HostModule | undefined =>

@@ -5,6 +5,9 @@ import type { PackagingRefusal } from "../domain/artifact.ts";
 
 const assignment = /^export const AIDLC_VERSION = "[^"]+";$/m;
 
+export const buildVersionNotice = (version: string): string | null => version === AIDLC_VERSION ? null
+  : `[version] stamping projections with AIDLC_BUILD_VERSION=${version}\n`;
+
 export const createVersionStamp = (version: Result<string, PackagingRefusal>) => (module: FileContent): Result<FileContent, PackagingRefusal> => {
   if (!version.ok) return version;
   if (version.value === AIDLC_VERSION) return accepted(module);

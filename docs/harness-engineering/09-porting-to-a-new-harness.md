@@ -99,9 +99,9 @@ Register the admitted factory in
 [`src/cli/host-table.ts`](../../src/cli/host-table.ts)'s `BUILT` list. The table
 collects successful modules into `HOSTS` and failures into
 `HOST_BUILD_REFUSALS`; preserve that refusal handling. `openPackageBuildRoot`
-in `main.ts` supplies `HOSTS` to the package root. The current package entry's
-`discoverHarnessNames()` derives its sorted names from that list, not a scan
-of `harness/`. The root derives protocol binding headings from the same
+in `main.ts` supplies `HOSTS` to the package root. Its default build route
+selects and sorts the registered host identities, rather than scanning
+`harness/`. The root derives protocol binding headings from the same
 modules; do not maintain another `BINDING_HEADINGS` list.
 
 The eighth-host test deliberately supplies its module directly to the root,

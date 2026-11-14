@@ -79,3 +79,24 @@ test("a core load refusal stops before reading the plugin catalogue", async () =
   expect(terminal.errors()).toEqual(['[{"kind":"source-unreadable","location":{"kind":"authored-tree","tree":"core","within":"agents/"},"code":"permission-denied"}]\n']);
   expect(loadPlugins).not.toHaveBeenCalled();
 });
+
+const outputLocations = process.platform === "win32" ? [
+  { argument: "C:\\", expected: "file:///C:/" },
+  { argument: "C:\\\\", expected: "file:///C:/" },
+  { argument: "\\\\fixture-host\\share\\", expected: "file://fixture-host/share/" },
+  { argument: "/", expected: "file:///H:/" },
+  { argument: "../out/", expected: "file:///H:/out" },
+  { argument: "out\\\\", expected: "file:///H:/work/out" },
+] : [
+  { argument: "/", expected: "file:///" },
+  { argument: "////", expected: "file:///" },
+  { argument: "../out/", expected: "file:///H:/out" },
+  { argument: "out///", expected: "file:///H:/work/out" },
+];
+
+test.each(outputLocations)("output $argument preserves native root semantics", async ({ argument, expected }) => {
+  const current = fixture();
+  expect(await current.route.run(["test-pro", "claude", argument])).toBe(0);
+  expect(current.project.mock.calls[0]?.[0].output.href).toBe(expected);
+  expect(current.terminal.errors()).toEqual([]);
+});

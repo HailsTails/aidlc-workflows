@@ -21,6 +21,8 @@ import { createPackageBuildRoot as createRoot } from "./package-build-root.ts";
 import { createRecordingPluginProjector } from "../projection/fixtures/plugin-projector.fake.ts";
 import { readEveryEntry } from "../kernel/file-system-port.ts";
 import { pluginId } from "../workflow-definition/domain/identities.ts";
+import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
+import type { ProjectionRefusal } from "../projection/domain/projection.ts";
 
 const createPackageBuildRoot = (request: Omit<Parameters<typeof createRoot>[0], "workingDirectory" | "plugins">) =>
   createRoot({ ...request, workingDirectory: new URL("file:///H:/working/"), plugins: createRecordingPluginProjector() });
@@ -233,6 +235,274 @@ import { tokenBindingsFixture } from "../projection/fixtures/token-bindings.fixt
 const NO_MODEL_CAP: BuildRoutesRequest = {
   resolveModelCap: () => ({ cap: null, source: null, environment: "unset" }),
 };
+
+const preparationFixture = async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const writeFile = mock(fileSystem.writeFile);
+  const removeEntry = mock(fileSystem.removeEntry);
+  const removeFolder = mock(fileSystem.removeFolder);
+  const makeScratchFolder = mock(fileSystem.makeScratchFolder);
+  const listFolder = mock(fileSystem.listFolder);
+  const terminal = createRecordingTerminal();
+  const root = createPackageBuildRoot({ hosts: [distributionMembers()], platform: {
+    fileSystem: { ...fileSystem, writeFile, removeEntry, removeFolder, makeScratchFolder, listFolder },
+    processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  const loadCore = spyOn(root, "loadCore").mockResolvedValue(accepted(core));
+  const loadPlugins = spyOn(root, "loadPlugins").mockResolvedValue(accepted({ method: methodSliceFixture, plugins: [] }));
+  const readHostDistribution = spyOn(root, "readHostDistribution");
+  const readHostSources = spyOn(root, "readHostSources").mockResolvedValue(accepted({ host: SCRATCH_HOST, files: [] }));
+  const buildPayload = spyOn(root, "buildPayload");
+  return { root, terminal, loadCore, loadPlugins, readHostDistribution, readHostSources, buildPayload,
+    writeFile, removeEntry, removeFolder, makeScratchFolder, listFolder, fileSystem };
+};
+
+const packageInvocations: { readonly argv: readonly string[] }[] = [{ argv: [] }, { argv: ["--check"] }];
+
+test.each(packageInvocations)("core preparation prints its contextual Method line and exits one before mutation", async ({ argv }) => {
+  const current = await preparationFixture();
+  const failures: readonly MethodRefusal[] = [{ kind: "source-unreadable",
+    location: { kind: "authored-tree", tree: "core", within: "agents/" }, code: "permission-denied" },
+    { kind: "source-unreadable", location: { kind: "authored-tree", tree: "core", within: "scopes/" }, code: "not-found" }];
+  current.loadCore.mockResolvedValue(refused(failures));
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  expect(await route?.run(argv)).toBe(1);
+  expect(current.loadCore).toHaveBeenCalledTimes(1);
+  expect(current.loadPlugins).toHaveBeenCalledTimes(0);
+  expect(current.readHostSources).not.toHaveBeenCalled();
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+  expect(current.terminal.errors()).toEqual([`Cannot load the fresh Method: ${JSON.stringify(failures)}\n`]);
+  expect(current.terminal.output()).toEqual([]);
+});
+
+test.each(packageInvocations)("plugins preparation prints its contextual Method line and exits one before mutation", async ({ argv }) => {
+  const current = await preparationFixture();
+  const failures: readonly MethodRefusal[] = [{ kind: "source-unreadable",
+    location: { kind: "authored-tree", tree: "plugins", within: "agents/" }, code: "permission-denied" },
+    { kind: "source-unreadable", location: { kind: "authored-tree", tree: "plugins", within: "scopes/" }, code: "not-found" }];
+  current.loadPlugins.mockResolvedValue(refused(failures));
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  expect(await route?.run(argv)).toBe(1);
+  expect(current.loadCore).toHaveBeenCalledTimes(1);
+  expect(current.loadPlugins).toHaveBeenCalledTimes(1);
+  expect(current.readHostSources).not.toHaveBeenCalled();
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+  expect(current.terminal.errors()).toEqual([`Cannot load the plugin Method: ${JSON.stringify(failures)}\n`]);
+  expect(current.terminal.output()).toEqual([]);
+});
+
+test.each(packageInvocations)("entrypoint faults read both folders and print typed refusals in hooks then tools order", async ({ argv }) => {
+  const current = await preparationFixture();
+  current.listFolder.mockResolvedValueOnce(refused({ kind: "unreadable", code: "permission-denied" }))
+    .mockResolvedValueOnce(refused({ kind: "unreadable", code: "not-found" }));
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  expect(await route?.run(argv)).toBe(1);
+  expect(current.listFolder).toHaveBeenNthCalledWith(1, { folder: new URL("file:///core/hooks/") });
+  expect(current.listFolder).toHaveBeenNthCalledWith(2, { folder: new URL("file:///core/tools/") });
+  expect(current.listFolder).toHaveBeenCalledTimes(2);
+  expect(current.terminal.errors()).toEqual([
+    '{"kind":"neutral-source-unreadable","source":"hooks","reason":"permission-denied"}\n',
+    '{"kind":"neutral-source-unreadable","source":"tools","reason":"not-found"}\n',
+  ]);
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+  expect(current.terminal.output()).toEqual([]);
+});
+
+test("an invalid entrypoint name prints its existing Kernel path refusal without a native-error reconstruction", async () => {
+  const current = await preparationFixture();
+  current.listFolder.mockResolvedValueOnce(accepted([]))
+    .mockResolvedValueOnce(accepted([{ kind: "file", name: "../escape.ts" }]));
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  expect(await route?.run([])).toBe(1);
+  expect(current.terminal.errors()).toEqual(['{"kind":"invalid-path","base":"source","raw":"tools/../escape.ts"}\n']);
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+});
+
+test.each(packageInvocations)("host preparation preserves the original ordered JSON list and exit one without mutation", async ({ argv }) => {
+  const current = await preparationFixture();
+  const failures: readonly ProjectionRefusal[] = [{ kind: "host-source-unreadable", host: SCRATCH_HOST,
+    source: source("settings.json"), reason: "permission-denied" },
+    { kind: "host-source-unreadable", host: SCRATCH_HOST, source: source("agent.md"), reason: "not-found" }];
+  current.readHostSources.mockResolvedValue(refused(failures));
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  expect(await route?.run(argv)).toBe(1);
+  expect(current.loadCore).toHaveBeenCalledTimes(1);
+  expect(current.loadPlugins).toHaveBeenCalledTimes(1);
+  expect(current.readHostSources).toHaveBeenCalledTimes(1);
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+  expect(current.terminal.errors()).toEqual([`${JSON.stringify(failures)}\n`]);
+  expect(current.terminal.output()).toEqual([]);
+});
+
+test.each(packageInvocations)("host distribution admission retains its legacy Error before capture and output changes", async ({ argv }) => {
+  const current = await preparationFixture();
+  const failures: readonly ProjectionRefusal[] = [{ kind: "unknown-harness", harness: "scratch" }];
+  current.readHostDistribution.mockReturnValue(refused(failures));
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  await expect(route?.run(argv)).rejects.toEqual(new Error(JSON.stringify(failures)));
+  expect(current.loadCore).toHaveBeenCalledTimes(1);
+  expect(current.loadPlugins).toHaveBeenCalledTimes(1);
+  expect(current.readHostDistribution).toHaveBeenCalledWith({ host: SCRATCH_HOST });
+  expect(current.readHostSources).not.toHaveBeenCalled();
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+  expect(current.terminal.errors()).toEqual([]);
+});
+
+test.each(packageInvocations)("an unexpected core exception keeps its identity", async ({ argv }) => {
+  const current = await preparationFixture();
+  const failure = new Error("capability exception identity");
+  current.loadCore.mockRejectedValue(failure);
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  await expect(route?.run(argv)).rejects.toBe(failure);
+  expect(current.loadPlugins).toHaveBeenCalledTimes(0);
+  expect(current.readHostSources).toHaveBeenCalledTimes(0);
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+  expect(current.terminal.errors()).toEqual([]);
+});
+
+test.each(packageInvocations)("an unexpected plugins exception keeps its identity", async ({ argv }) => {
+  const current = await preparationFixture();
+  const failure = new Error("capability exception identity");
+  current.loadPlugins.mockRejectedValue(failure);
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  await expect(route?.run(argv)).rejects.toBe(failure);
+  expect(current.loadPlugins).toHaveBeenCalledTimes(1);
+  expect(current.readHostSources).toHaveBeenCalledTimes(0);
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+  expect(current.terminal.errors()).toEqual([]);
+});
+
+test.each(packageInvocations)("an unexpected host exception keeps its identity", async ({ argv }) => {
+  const current = await preparationFixture();
+  const failure = new Error("capability exception identity");
+  current.readHostSources.mockRejectedValue(failure);
+  const route = current.root.buildRoutes(NO_MODEL_CAP)[1];
+  await expect(route?.run(argv)).rejects.toBe(failure);
+  expect(current.loadPlugins).toHaveBeenCalledTimes(1);
+  expect(current.readHostSources).toHaveBeenCalledTimes(1);
+  expect(current.buildPayload).not.toHaveBeenCalled();
+  expect(current.writeFile).not.toHaveBeenCalled();
+  expect(current.removeEntry).not.toHaveBeenCalled();
+  expect(current.removeFolder).not.toHaveBeenCalled();
+  expect(current.makeScratchFolder).not.toHaveBeenCalled();
+  expect(current.terminal.errors()).toEqual([]);
+});
+
+test("host utility dispatch does no model-cap work and plugin validation resolves before loading", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const terminal = createRecordingTerminal();
+  const utility = { verb: ["scratch", "trust"], run: mock(async () => 0 as const) };
+  const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(), routes: () => [utility] }],
+    platform: { fileSystem, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
+  const resolveModelCap = mock<BuildRoutesRequest["resolveModelCap"]>().mockReturnValue({
+    cap: "balanced", source: "environment", environment: "applied",
+  });
+  const loadCore = spyOn(root, "loadCore");
+  const commands = root.buildRoutes({ resolveModelCap });
+  expect(resolveModelCap).not.toHaveBeenCalled();
+  expect(await commands[1]?.run([])).toBe(0);
+  expect(resolveModelCap).not.toHaveBeenCalled();
+  expect(await commands[0]?.run([])).toBe(1);
+  expect(resolveModelCap).toHaveBeenCalledTimes(1);
+  expect(resolveModelCap).toHaveBeenCalledWith("build");
+  expect(loadCore).not.toHaveBeenCalled();
+  expect(terminal.errors()).toEqual([
+    "[tier] pack-time tier cap active: balanced (source: AIDLC_TIER_CAP env var)\n",
+    "usage: package.ts plugin build <plugin> <harness> <outDir>\n",
+  ]);
+});
+
+const pairedCheckFixture = async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const terminal = createRecordingTerminal();
+  const root = createPackageBuildRoot({ hosts: [distributionMembers()],
+    platform: { fileSystem, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  const loadPlugins = spyOn(root, "loadPlugins");
+  const captured = { host: SCRATCH_HOST, files: [] };
+  const readHostSources = spyOn(root, "readHostSources").mockResolvedValue(accepted(captured));
+  const copy = { ...claudeCopyPayloadFixture, files: [], descriptor: {
+    ...claudeCopyPayloadFixture.descriptor, host: SCRATCH_HOST } };
+  const buildPayload = spyOn(root, "buildPayload").mockResolvedValueOnce(accepted(copy))
+    .mockResolvedValueOnce(accepted({ ...copy, channel: "native" }))
+    .mockResolvedValueOnce(accepted(copy)).mockResolvedValueOnce(accepted({ ...copy, channel: "native" }));
+  const resolveModelCap = mock<BuildRoutesRequest["resolveModelCap"]>().mockReturnValue({
+    cap: "balanced", source: "memory", environment: "ignored",
+  });
+  return { root, terminal, core, loadPlugins, captured, readHostSources, copy, buildPayload, resolveModelCap };
+};
+
+test("the production check route shares its capture and forwards per-pass roots, copy and memory cap", async () => {
+  const { root, terminal, core, loadPlugins, captured, readHostSources, copy, buildPayload, resolveModelCap } = await pairedCheckFixture();
+  const route = root.buildRoutes({ resolveModelCap })[1];
+  expect(await route?.run(["--check"])).toBe(0);
+  expect(resolveModelCap).toHaveBeenCalledTimes(1);
+  expect(resolveModelCap).toHaveBeenCalledWith("check");
+  expect(loadPlugins).toHaveBeenCalledTimes(1);
+  expect(readHostSources).toHaveBeenCalledTimes(1);
+  expect(readHostSources).toHaveBeenCalledWith({ name: "scratch", directory: ".scratch",
+    root: new URL("file:///harness/scratch/"), copied: [], required: [] });
+  expect(buildPayload).toHaveBeenCalledTimes(4);
+  const common = { core, files: captured.files, modelCap: "balanced",
+    entrypoints: [source("tools/aidlc-utility.ts"), source("tools/aidlc-version.ts")] };
+  expect(buildPayload).toHaveBeenNthCalledWith(1, expect.objectContaining({ ...common,
+    channel: "copy", copy: null, tokens: expect.objectContaining({ ["INVOKE"]: "bun .scratch/tools/aidlc.ts" }) }));
+  expect(buildPayload.mock.calls[0]?.[0].projectRoot.href).toContain("/dist/scratch/");
+  expect(buildPayload).toHaveBeenNthCalledWith(2, expect.objectContaining({ ...common,
+    channel: "native", copy: copy, tokens: expect.objectContaining({ ["INVOKE"]: "aidlc" }) }));
+  expect(buildPayload.mock.calls[1]?.[0].projectRoot.href).toContain("/dist-release/scratch/");
+  expect(buildPayload).toHaveBeenNthCalledWith(3, expect.objectContaining({ ...common,
+    channel: "copy", copy: null, tokens: expect.objectContaining({ ["INVOKE"]: "bun .scratch/tools/aidlc.ts" }) }));
+  expect(buildPayload.mock.calls[2]?.[0].projectRoot.href).toContain("/dist/scratch/");
+  expect(buildPayload).toHaveBeenNthCalledWith(4, expect.objectContaining({ ...common,
+    channel: "native", copy: copy, tokens: expect.objectContaining({ ["INVOKE"]: "aidlc" }) }));
+  expect(buildPayload.mock.calls[3]?.[0].projectRoot.href).toContain("/dist-release/scratch/");
+  expect(buildPayload.mock.calls[1]?.[0].copy).toBe(copy);
+  expect(buildPayload.mock.calls[3]?.[0].copy).toBe(copy);
+  expect(buildPayload.mock.calls[0]?.[0].files).toBe(captured.files);
+  expect(buildPayload.mock.calls[1]?.[0].files).toBe(captured.files);
+  expect(buildPayload.mock.calls[2]?.[0].files).toBe(captured.files);
+  expect(buildPayload.mock.calls[3]?.[0].files).toBe(captured.files);
+  expect(buildPayload.mock.calls[0]?.[0].core).toBe(core);
+  expect(buildPayload.mock.calls[1]?.[0].core).toBe(core);
+  expect(buildPayload.mock.calls[2]?.[0].core).toBe(core);
+  expect(buildPayload.mock.calls[3]?.[0].core).toBe(core);
+  expect(buildPayload.mock.calls[0]?.[0].projectRoot.href).not.toBe(buildPayload.mock.calls[2]?.[0].projectRoot.href);
+  expect(terminal.output()).toEqual(["package --check: deterministic across two independent build(s) for scratch.\n"]);
+  expect(terminal.errors()).toEqual(["[tier] pack-time tier cap active: balanced (source: core/memory tier_cap:)\n"]);
+});
 
 test("settings remain required by the shared snapshot after the legacy copy row retires", async () => {
   const root = createPackageBuildRoot({ hosts: HOSTS, platform: { fileSystem: createInMemoryFileSystem({
@@ -563,7 +833,7 @@ test("the root binds registered host routes with copy-channel tokens and its exi
   const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(), routes }],
     platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
   const commands = root.buildRoutes(NO_MODEL_CAP);
-  expect(commands).toMatchObject([{ verb: ["plugin", "build"] }, { verb: ["scratch", "trust"] }]);
+  expect(commands).toMatchObject([{ verb: ["plugin", "build"] }, { verb: ["scratch", "trust"] }, { verb: [] }]);
   expect(commands[1]).toBe(route);
   expect(routes).toHaveBeenCalledTimes(1);
   expect(routes).toHaveBeenCalledWith({ terminal, settings: root.settingsCapabilities,
@@ -577,7 +847,7 @@ test("the root exposes its plugin command without reading authored inputs for in
   const terminal = createRecordingTerminal();
   const root = createPackageBuildRoot({ hosts: [distributionMembers()],
     platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
-  expect(root.buildRoutes(NO_MODEL_CAP)).toMatchObject([{ verb: ["plugin", "build"] }]);
+  expect(root.buildRoutes(NO_MODEL_CAP)).toMatchObject([{ verb: ["plugin", "build"] }, { verb: [] }]);
   expect(await root.buildRoutes(NO_MODEL_CAP)[0]?.run([])).toBe(1);
   expect(terminal.errors()).toEqual(["usage: package.ts plugin build <plugin> <harness> <outDir>\n"]);
   expect(readTree).not.toHaveBeenCalled();

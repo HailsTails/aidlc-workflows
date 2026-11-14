@@ -15,6 +15,10 @@ import type { ContentHasher } from "./application/ports.ts";
 import type { BuildPackaging, HostPayloadRequest } from "./application/ports.ts";
 export type { BuildPackaging } from "./application/ports.ts";
 export type { BuildReleaseArtifact } from "./application/use-cases.ts";
+export { createPackageDistributions } from "./application/package-distributions.ts";
+export { createOutputTrees } from "./adapters/output-trees.ts";
+export { createPackagedSourcesFile } from "./adapters/packaged-sources-file.ts";
+export { buildVersionNotice } from "./adapters/legacy-version.ts";
 export type PhaseOnePackagingRequest = HostPayloadRequest;
 export type OnboardingSource = Parameters<typeof selectOnboardingPath>[0];
 

@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
-import { createVersionStamp } from "./legacy-version.ts";
+import { buildVersionNotice, createVersionStamp } from "./legacy-version.ts";
+
+test("version diagnostics are absent for source builds and retain preview framing", () => {
+  expect(buildVersionNotice("2.11.3")).toBeNull();
+  expect(buildVersionNotice("2.11.4-preview.20261109.1"))
+    .toBe("[version] stamping projections with AIDLC_BUILD_VERSION=2.11.4-preview.20261109.1\n");
+});
 
 test("source-version builds retain even an unmodified version module's original bytes", () => {
   expect(createVersionStamp(accepted("2.11.3"))({ kind: "bytes", bytes: new Uint8Array([0, 255]) }))

@@ -61,8 +61,7 @@ const emitSelected = ({ ports, args, catalogue }: { readonly ports: PluginRouteP
   const host = ports.hosts.find((candidate) => candidate.distribution === args.harness);
   if (!host) return refused(
     `unknown plugin harness "${args.harness}" (have: ${ports.hosts.map((candidate) => candidate.distribution).toSorted().join(", ")})`);
-  const outputArg = args.output.replace(/[/\\]+$/, "") || args.output;
-  const output = pathToFileURL(resolve(fileURLToPath(ports.workingDirectory), outputArg));
+  const output = pathToFileURL(resolve(fileURLToPath(ports.workingDirectory), args.output));
   return ports.emit({ plugin: selected.value, host, output, reviewerAgents: reviewerAgentSet(catalogue.method) });
 };
 
