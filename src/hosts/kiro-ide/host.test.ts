@@ -33,7 +33,7 @@ test("kiroIde module gathers the identity, distribution and every projection par
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/workflow.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createKiroIdeSkillRenderer },
       settings: { inputs: [source("settings/cli.json"), source("hooks/aidlc-record-human-turn.json"), source("hooks/aidlc-guard-tool-call.json"), source("hooks/aidlc-log-subagent.json"), source("hooks/aidlc-session-start.json"), source("hooks/aidlc-continue-workflow.json")], render: createKiroIdeSettingsRenderer },
       documents: { inputs: [], render: createKiroIdeDocumentRenderer },
-      fills: KIRO_IDE_ONBOARDING_FILLS,
+      fills: expect.any(Function),
       bindingHeading: KIRO_IDE_BINDING_HEADING,
       derive: expect.any(Function),
     },
@@ -59,4 +59,10 @@ test("kiroIde says Kiro CLI's native permissions line, handed in by the root", (
   const module = accept(kiroIdeHost(kiroCli));
   const distribution = accept(module.distribution({ delegateShellFacts: DELEGATE_SHELL_FACTS }));
   expect(distribution.native.permissions).toEqual({ kind: "host-line", line: permissionsLine });
+});
+
+test("host onboarding binds channel fills without changing its copy facts", () => {
+  const module = accept(kiroIdeHost(kiroCli));
+  expect(module.projection.fills("copy")).toEqual(KIRO_IDE_ONBOARDING_FILLS);
+  expect(module.projection.fills("native")).toBe(KIRO_IDE_ONBOARDING_FILLS);
 });

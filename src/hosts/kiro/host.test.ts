@@ -1,3 +1,4 @@
+import { accept } from "../../kernel/fixtures/accept.ts";
 import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
@@ -27,7 +28,7 @@ test("kiro module gathers the identity, distribution and every projection part t
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createKiroSkillRenderer },
       settings: { inputs: [source("settings/cli.json"), source("hooks/aidlc-record-human-turn.kiro.hook"), source("hooks/aidlc-plan-approval-guard.kiro.hook")], render: createKiroSettingsRenderer },
       documents: { inputs: [], render: createKiroDocumentRenderer },
-      fills: KIRO_ONBOARDING_FILLS,
+      fills: expect.any(Function),
       bindingHeading: KIRO_BINDING_HEADING,
 
     },
@@ -38,4 +39,10 @@ test("kiro module gathers the identity, distribution and every projection part t
 
 test("Kiro offers its persona renderer beside its module for the host that builds on it", () => {
   expect(kiroPersonas).toBe(kiroAgentRenderer);
+});
+
+test("host onboarding binds channel fills without changing its copy facts", () => {
+  const module = accept(kiroHost());
+  expect(module.projection.fills("copy")).toEqual(KIRO_ONBOARDING_FILLS);
+  expect(module.projection.fills("native")).toBe(KIRO_ONBOARDING_FILLS);
 });

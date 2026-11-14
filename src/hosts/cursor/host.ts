@@ -3,7 +3,7 @@ import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { cursorDistribution } from "./distribution.ts";
 import { CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_TIER_FLAVOR, CURSOR_HOST_DATA, CURSOR_TOKENS, cursorHostIdentity } from "./host-data.ts";
-import { CURSOR_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { cursorOnboardingFills } from "./onboarding-fills.ts";
 import { cursorAgents } from "./projection/agent-renderer.ts";
 import { cursorCommandPath } from "./projection/command-renderer.ts";
 import { createCursorDocumentRenderer } from "./projection/document-renderer.ts";
@@ -32,7 +32,7 @@ export const cursorHost = () => {
       skills: { inputs: skillInputs.value, render: createCursorSkillRenderer },
       settings: { inputs: settingsInputs.value, render: createCursorSettingsRenderer },
       documents: { inputs: [], render: createCursorDocumentRenderer },
-      fills: CURSOR_ONBOARDING_FILLS,
+      fills: cursorOnboardingFills,
       bindingHeading: CURSOR_BINDING_HEADING,
     },
     distribution: cursorDistribution,

@@ -23,7 +23,7 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
     sources: request.core.sources, host: request.host, renderers: renderersOf(members),
     files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,
     modelCap: request.modelCap, tierFlavor: members.projection.tierFlavor,
-    entrypoints: request.entrypoints, fills: members.projection.fills,
+    entrypoints: request.entrypoints, fills: members.projection.fills(request.channel),
     bindingHeadings: ports.members.map((member) => member.projection.bindingHeading), projectRoot: request.projectRoot,
     reviewerAgents: request.reviewerAgents, runtime: captured.value.runtime, compiled: compiled.value });
   if (!assembled.ok) return assembled;

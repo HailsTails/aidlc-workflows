@@ -1,3 +1,4 @@
+import { accept } from "../../kernel/fixtures/accept.ts";
 import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
@@ -33,10 +34,16 @@ test("Claude's module gathers the identity, distribution and every projection pa
       },
       settings: { inputs: [source("settings.json")], render: createClaudeSettingsRenderer },
       documents: { inputs: [], render: createClaudeDocumentRenderer },
-      fills: CLAUDE_ONBOARDING_FILLS,
+      fills: expect.any(Function),
       bindingHeading: CLAUDE_BINDING_HEADING,
     },
     distribution: claudeDistribution,
     routes: expect.any(Function),
   }));
+});
+
+test("host onboarding binds channel fills without changing its copy facts", () => {
+  const module = accept(claudeHost());
+  expect(module.projection.fills("copy")).toEqual(CLAUDE_ONBOARDING_FILLS);
+  expect(module.projection.fills("native")).toBe(CLAUDE_ONBOARDING_FILLS);
 });

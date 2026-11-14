@@ -1,3 +1,4 @@
+import type { HostProjectionParts } from "../../projection/application/ports/host-parts.ts";
 import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
@@ -9,6 +10,8 @@ import { claudeCommandPath } from "./projection/command-renderer.ts";
 import { createClaudeDocumentRenderer } from "./projection/document-renderer.ts";
 import { CLAUDE_SETTINGS_INPUTS, createClaudeSettingsRenderer } from "./projection/settings-renderer.ts";
 import { CLAUDE_SKILL_INPUTS, createClaudeSkillRenderer } from "./projection/skill-renderer.ts";
+
+const onboardingFills: HostProjectionParts["fills"] = () => CLAUDE_ONBOARDING_FILLS;
 
 export const claudeHost = () => {
   const identity = claudeHostIdentity();
@@ -30,7 +33,7 @@ export const claudeHost = () => {
       skills: { inputs: skillInputs.value, render: createClaudeSkillRenderer },
       settings: { inputs: settingsInputs.value, render: createClaudeSettingsRenderer },
       documents: { inputs: [], render: createClaudeDocumentRenderer },
-      fills: CLAUDE_ONBOARDING_FILLS,
+      fills: onboardingFills,
       bindingHeading: CLAUDE_BINDING_HEADING,
     },
     distribution: claudeDistribution,

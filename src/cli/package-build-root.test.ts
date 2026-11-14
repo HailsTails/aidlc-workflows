@@ -608,7 +608,7 @@ const distributionMembers = (): HostModule => ({
     skills: { inputs: [], render: scratchSkillRenderer },
     settings: { inputs: [], render: scratchSettingsRenderer },
     documents: { inputs: [], render: scratchDocumentRenderer },
-    fills: { invoke: "/aidlc", slots: {} }, bindingHeading: "Scratch",
+    fills: () => ({ invoke: "/aidlc", slots: {} }), bindingHeading: "Scratch",
   },
 });
 

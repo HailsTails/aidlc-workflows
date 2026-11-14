@@ -1,3 +1,4 @@
+import { accept } from "../../kernel/fixtures/accept.ts";
 import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
@@ -26,10 +27,16 @@ test("openCode module gathers the identity, distribution and every projection pa
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createOpenCodeSkillRenderer },
       settings: { inputs: [source("opencode.json"), source("plugin/aidlc-opencode-adapter.ts")], render: createOpenCodeSettingsRenderer },
       documents: { inputs: [], render: createOpenCodeDocumentRenderer },
-      fills: OPENCODE_ONBOARDING_FILLS,
+      fills: expect.any(Function),
       bindingHeading: OPENCODE_BINDING_HEADING,
     },
     distribution: openCodeDistribution,
     routes: expect.any(Function),
   }));
+});
+
+test("host onboarding binds channel fills without changing its copy facts", () => {
+  const module = accept(openCodeHost());
+  expect(module.projection.fills("copy")).toEqual(OPENCODE_ONBOARDING_FILLS);
+  expect(module.projection.fills("native")).toBe(OPENCODE_ONBOARDING_FILLS);
 });

@@ -1,3 +1,4 @@
+import type { HostProjectionParts } from "../../projection/application/ports/host-parts.ts";
 import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
@@ -9,6 +10,8 @@ import { openCodeCommandPath } from "./projection/command-renderer.ts";
 import { createOpenCodeDocumentRenderer } from "./projection/document-renderer.ts";
 import { OPENCODE_SETTINGS_INPUTS, createOpenCodeSettingsRenderer } from "./projection/settings-renderer.ts";
 import { OPENCODE_SKILL_INPUTS, createOpenCodeSkillRenderer } from "./projection/skill-renderer.ts";
+
+const onboardingFills: HostProjectionParts["fills"] = () => OPENCODE_ONBOARDING_FILLS;
 
 export const openCodeHost = () => {
   const identity = openCodeHostIdentity();
@@ -32,7 +35,7 @@ export const openCodeHost = () => {
       skills: { inputs: skillInputs.value, render: createOpenCodeSkillRenderer },
       settings: { inputs: settingsInputs.value, render: createOpenCodeSettingsRenderer },
       documents: { inputs: [], render: createOpenCodeDocumentRenderer },
-      fills: OPENCODE_ONBOARDING_FILLS,
+      fills: onboardingFills,
       bindingHeading: OPENCODE_BINDING_HEADING,
     },
     distribution: openCodeDistribution,

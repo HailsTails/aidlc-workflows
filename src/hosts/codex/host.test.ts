@@ -30,7 +30,7 @@ test("codex module gathers the identity, distribution and every projection part 
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createCodexSkillRenderer },
       settings: { inputs: [], render: expect.any(Function) },
       documents: { inputs: [], render: createCodexDocumentRenderer },
-      fills: CODEX_ONBOARDING_FILLS,
+      fills: expect.any(Function),
       bindingHeading: CODEX_BINDING_HEADING,
     },
     distribution: codexDistribution,
@@ -54,4 +54,10 @@ test("Codex binds the real host-owned hash into both hook settings and the trust
   expect(terminal.errors()).toEqual([]);
   expect(terminal.output()[0]).toContain(
     'trusted_hash = "sha256:58956c1f8f0b66e96c0f4d02e26946e79979e0f30599e8dc06a512ebecf03843"');
+});
+
+test("host onboarding binds channel fills without changing its copy facts", () => {
+  const module = accept(codexHost());
+  expect(module.projection.fills("copy")).toEqual(CODEX_ONBOARDING_FILLS);
+  expect(module.projection.fills("native")).toBe(CODEX_ONBOARDING_FILLS);
 });

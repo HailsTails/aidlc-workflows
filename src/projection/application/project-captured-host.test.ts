@@ -26,7 +26,7 @@ const member: HostProjectionMember = { host: SCRATCH_HOST, projection: {
   placements: [{ source: "required.md", destination: ".scratch/required.md" }],
   agents: { inputs: [], render: scratchAgentRenderer }, commands: scratchCommandPlacement,
   skills: { inputs: [], render: scratchSkillRenderer }, settings: { inputs: [], render: scratchSettingsRenderer },
-  documents: { inputs: [], render: scratchDocumentRenderer }, fills: { invoke: "/aidlc", slots: {} }, bindingHeading: "Scratch",
+  documents: { inputs: [], render: scratchDocumentRenderer }, fills: () => ({ invoke: "/aidlc", slots: {} }), bindingHeading: "Scratch",
 } };
 const other: HostProjectionMember = { host: host({ name: "other", directory: ".other" }),
   projection: { ...member.projection, bindingHeading: "Other" } };
@@ -123,7 +123,7 @@ test("assembly receives Projection-owned renderer mapping and every host heading
       documents: scratchDocumentRenderer, data: renderData, record: commonHarnessRecord, placements: member.projection.placements,
       commandPlacement: scratchCommandPlacement },
     files: [requiredFile, unusedFile], prepare: accepted, tokens, channel: "copy", modelCap: "balanced", tierFlavor: "claude",
-    entrypoints: [source("tools/aidlc.ts")], fills: member.projection.fills, bindingHeadings: ["Scratch", "Other"],
+    entrypoints: [source("tools/aidlc.ts")], fills: { invoke: "/aidlc", slots: {} }, bindingHeadings: ["Scratch", "Other"],
     projectRoot: new URL("file:///project/"), reviewerAgents: new Set([agent("reviewer")]), runtime: captured.runtime, compiled });
   expect(current.hosted).toHaveBeenCalledWith({ host: SCRATCH_HOST, harness });
   expect(current.project).toHaveBeenCalledWith({ harness: SCRATCH_HOST.distribution, method: methodSliceFixture,
@@ -139,4 +139,25 @@ test("an optional host deriver remains the exact assembly capability", async () 
   expect(await current.projectHost(current.request)).toBe(completion);
   expect(current.assemble).toHaveBeenCalledWith(expect.objectContaining({ renderers: expect.objectContaining({ derive }) }));
   expect(derive).not.toHaveBeenCalled();
+});
+
+test("Projection requests the channel's fills once after admission and forwards the exact authored value", async () => {
+  const fills = { invoke: "custom", slots: { ["prereq_bullets"]: "Opaque custom prerequisite" } };
+  const readFills = mock<HostProjectionMember["projection"]["fills"]>().mockReturnValue(fills);
+  const current = fixture([{ ...member, projection: { ...member.projection, fills: readFills } }]);
+  expect(await current.projectHost({ ...current.request, channel: "native" })).toBe(completion);
+  expect(readFills).toHaveBeenCalledWith("native");
+  expect(readFills).toHaveBeenCalledTimes(1);
+  expect(current.assemble.mock.calls[0]?.[0].fills).toBe(fills);
+});
+
+test("a full-capture refusal does not request channel fills or start serialization", async () => {
+  const readFills = mock<HostProjectionMember["projection"]["fills"]>();
+  const current = fixture([{ ...member, projection: { ...member.projection, fills: readFills } }]);
+  const failure = refused([{ kind: "render-failed" as const, concept: "host-data" as const,
+    name: "capture", reason: "controlled capture refusal" }]);
+  current.capture.mockResolvedValue(failure);
+  expect(await current.projectHost(current.request)).toBe(failure);
+  expect(readFills).not.toHaveBeenCalled();
+  expect(current.assemble).not.toHaveBeenCalled();
 });

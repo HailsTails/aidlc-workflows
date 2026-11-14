@@ -1,3 +1,4 @@
+import type { DistributionChannel } from "../../domain/projected-file.ts";
 import type { SourcePath } from "../../../kernel/values.ts";
 import type { AuthoredPlacement } from "../../domain/host-surface.ts";
 import type { OnboardingFills } from "../../domain/neutral-surface.ts";
@@ -27,7 +28,7 @@ export type HostProjectionParts = {
   readonly skills: ConceptMembers<HostSkillRenderer>;
   readonly settings: ConceptMembers<HostSettingsRenderer>;
   readonly documents: ConceptMembers<HostDocumentRenderer>;
-  readonly fills: OnboardingFills;
+  readonly fills: (channel: DistributionChannel) => OnboardingFills;
   readonly bindingHeading: string;
   readonly derive?: HostFileDeriver;
 };

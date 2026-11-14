@@ -23,7 +23,7 @@ import { createRecordingPluginProjector } from "../projection/fixtures/plugin-pr
 const SCRATCH_MODULE: HostModule = {
   host: SCRATCH_HOST, distribution: () => accepted(scratchHostDistributionFixture), routes: () => [],
   projection: {
-    tokens: SCRATCH_TOKENS, commands: scratchCommandPlacement, fills: ONBOARDING_FILLS_FIXTURE,
+    tokens: SCRATCH_TOKENS, commands: scratchCommandPlacement, fills: () => ONBOARDING_FILLS_FIXTURE,
     bindingHeading: "Scratch", renderData: () => SCRATCH_HOST_DATA, record: commonHarnessRecord, placements: [],
     tierFlavor: "claude",
     agents: { inputs: [], render: scratchAgentRenderer },
