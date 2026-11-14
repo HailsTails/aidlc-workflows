@@ -22,6 +22,7 @@ const root: PackageBuildRoot = {
   projectHost: mock<PackageBuildRoot["projectHost"]>(),
   readHostDistribution: mock<PackageBuildRoot["readHostDistribution"]>(),
   buildPayload: mock<PackageBuildRoot["buildPayload"]>(),
+  buildReleaseArchives: mock<PackageBuildRoot["buildReleaseArchives"]>(),
   buildPlugins: mock<PackageBuildRoot["buildPlugins"]>(),
   buildRoutes: mock<PackageBuildRoot["buildRoutes"]>(),
   loadCore: mock<PackageBuildRoot["loadCore"]>(),

@@ -4,6 +4,16 @@ import type { SourcePath } from "../../kernel/values.ts";
 import type { HostFileReader, HostSourceCapture, HostSurfaceReader } from "./ports/host-sources.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
+import type { HostProjectionParts } from "./ports/host-parts.ts";
+
+type SourceConcept = "agents" | "skills" | "settings" | "documents";
+type HostSourceParts = { readonly [Concept in SourceConcept]: Pick<HostProjectionParts[Concept], "inputs"> }
+  & Pick<HostProjectionParts, "placements">;
+
+export const requiredHostSources = (projection: HostSourceParts): readonly string[] => [
+  ...projection.agents.inputs, ...projection.skills.inputs, ...projection.settings.inputs,
+  ...projection.documents.inputs, ...projection.placements.map((placement) => placement.source),
+];
 
 type HostFiles = Result<readonly AuthoredHostFile[], readonly ProjectionRefusal[]>;
 type HostSourceOptions = HostSourceCapture & { readonly reader: HostFileReader };

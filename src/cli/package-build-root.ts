@@ -1,4 +1,9 @@
-import { createBuildPackaging, type BuildPackaging } from "../packaging/core-root.ts";
+import { createBuildPackaging, createReleaseArtifacts, type BuildPackaging, type BuildReleaseArtifact } from "../packaging/core-root.ts";
+import { channelTokens } from "../packaging/domain/channel-tokens.ts";
+import { bindCopiedSource } from "../projection/domain/source-binding.ts";
+import { prepareHostSource } from "../projection/application/prepared-host-source.ts";
+import { requiredHostSources } from "../projection/application/host-source-files.ts";
+import type { Payload } from "../packaging/domain/payload.ts";
 import { createPluginBuildRoute } from "./adapters/routes/build/plugin-route.ts";
 import { createPluginBuilds } from "./adapters/routes/build/plugin-builds.ts";
 import { reviewerAgentSet } from "../workflow-definition/domain/method-participation.ts";
@@ -9,7 +14,7 @@ import type { NeutralSurface } from "../projection/domain/neutral-surface.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
 import { accepted, refused } from "../kernel/result.ts";
-import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
+import { distributionId, projectPath, sourcePath, type KernelRefusal, type SourcePath } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
 import { createAuthoredMethodLoading } from "../workflow-definition/core-root.ts";
 import type { AuthoredCoreMethod, AuthoredPluginBuild, PluginBuildTarget, MethodReading } from "../workflow-definition/application/ports.ts";
@@ -17,7 +22,9 @@ import { createBuildProjection, createHostedMethodProjection } from "../projecti
 import type { CompiledMethodFiles } from "../projection/domain/projection.ts";
 import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot,
   CapturedHostSources, HostSourcesRequest, HostBuildTable, HostModule, ReadHostDistribution,
-  ProjectHost, BuildPayload, BuildPlugins, PackageBuildRoot } from "./roots.ts";
+  ProjectHost, BuildPayload, BuildPlugins, PackageBuildRoot, ReleaseArchivesRequest, ReleaseArchives } from "./roots.ts";
+import type { ArchiveFile, PackagingRefusal } from "../packaging/domain/artifact.ts";
+import type { AgentSlug } from "../workflow-definition/domain/identities.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { HarnessRenderers } from "../projection/application/ports/harness-assembly.ts";
 import type { Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
@@ -61,8 +68,7 @@ const captureHost = async (capture: HostSourcesRequest,
     if (!directory.ok) return refused([directory.refusal]);
     const host = { distribution: distribution.value, directory: directory.value };
     const members = memberFor(request.hosts, host);
-    const required = [...capture.required, ...(members?.projection.skills.inputs ?? []), ...(members?.projection.settings.inputs ?? []),
-      ...(members?.projection.placements.map((placement) => placement.source) ?? [])];
+    const required = [...capture.required, ...(members ? requiredHostSources(members.projection) : [])];
     const paths = [...new Set([...capture.copied, ...required])].map(sourcePath);
     const failures = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
     if (failures.length > 0) return refused(failures);
@@ -262,6 +268,100 @@ const pluginCatalogues = (ports: {
   return written.ok ? written : refused([written.refusal]);
 };
 
+const releaseEntrypoints = async (request: Parameters<CreatePackageBuildRoot>[0]) => {
+  const listings = await Promise.all(["hooks", "tools"].map(async (folder) => {
+    const source = sourcePath(folder);
+    if (!source.ok) return refused([source.refusal]);
+    const reading = await request.platform.fileSystem.listFolder({ folder: new URL(`${folder}/`, request.sources.core) });
+    return reading.ok ? accepted(reading.value.filter((entry) => entry.kind === "file" && entry.name.endsWith(".ts"))
+      .map((entry) => sourcePath(`${folder}/${entry.name}`))) : refused([{ kind: "neutral-source-unreadable" as const,
+      source: source.value, reason: reading.refusal.code }]);
+  }));
+  const failures = listings.flatMap<KernelRefusal | ProjectionRefusal>((reading) => reading.ok ? [] : reading.refusal);
+  if (failures.length > 0) return refused(failures);
+  const paths = listings.flatMap((reading) => reading.ok ? reading.value : []);
+  const invalid = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
+  return invalid.length > 0 ? refused(invalid) : accepted(paths.flatMap((path) => path.ok ? [path.value] : []).sort());
+};
+
+const releaseHostPair = async (ports: {
+  readonly root: PackageBuildRoot; readonly request: Parameters<CreatePackageBuildRoot>[0];
+  readonly projection: BuildProjection; readonly core: CoreBuild; readonly entrypoints: readonly SourcePath[];
+  readonly reviewerAgents: ReadonlySet<AgentSlug>; readonly members: HostModule;
+  readonly release: ReleaseArchivesRequest;
+}) => {
+  const { members, root } = ports;
+  const captured = await root.readHostSources({ name: members.host.distribution, directory: members.host.directory,
+    root: new URL(`../harness/${members.host.distribution}/`, ports.request.sources.core), copied: [], required: [] });
+  if (!captured.ok) return captured;
+  const build = (channel: "copy" | "native", copy: Payload | null) => {
+    const tokens = { ...members.projection.tokens, ["HARNESS_DIR"]: members.host.directory,
+      ...channelTokens({ channel, directory: members.host.directory,
+        prefix: ports.projection.nativeCommands.prefix, namespace: ports.projection.nativeCommands.namespace }) };
+    return root.buildPayload({ host: captured.value.host, core: ports.core, files: captured.value.files,
+      prepare: (file) => prepareHostSource({ host: captured.value.host, file,
+        steps: [(content) => bindCopiedSource({ source: file.source, content, tokens })] }),
+      tokens, channel, modelCap: ports.release.modelCap, entrypoints: ports.entrypoints, reviewerAgents: ports.reviewerAgents, copy,
+      projectRoot: new URL(`../${channel === "copy" ? "dist" : "dist-release"}/${members.host.distribution}`, ports.request.sources.core) });
+  };
+  const copy = await build("copy", null);
+  if (!copy.ok) return copy;
+  const native = await build("native", copy.value);
+  return native.ok ? accepted({ copy: copy.value, native: native.value }) : native;
+};
+
+const releasePayloads = (ports: Omit<Parameters<typeof releaseHostPair>[0], "members">) => {
+  const empty: { readonly copies: readonly Payload[]; readonly natives: readonly Payload[] } = { copies: [], natives: [] };
+  return [...ports.request.hosts].sort((a, b) => a.host.distribution.localeCompare(b.host.distribution))
+    .reduce<Promise<Result<typeof empty, readonly (KernelRefusal | ProjectionRefusal | PackagingRefusal)[]>>>(
+      async (pending, members) => {
+        const accumulated = await pending;
+        if (!accumulated.ok) return accumulated;
+        const pair = await releaseHostPair({ ...ports, members });
+        return pair.ok ? accepted({ copies: [...accumulated.value.copies, pair.value.copy],
+          natives: [...accumulated.value.natives, pair.value.native] }) : pair;
+      }, Promise.resolve(accepted(empty)));
+};
+
+const writeReleaseArchives = async ({ artifacts, release, pairs }: {
+  readonly artifacts: { readonly build: BuildReleaseArtifact["build"];
+    readonly readPlugins: (root: URL) => Promise<Result<readonly ArchiveFile[], readonly PackagingRefusal[]>> };
+  readonly release: ReleaseArchivesRequest;
+  readonly pairs: { readonly copies: readonly Payload[]; readonly natives: readonly Payload[] };
+}): Promise<Result<ReleaseArchives, readonly PackagingRefusal[]>> => {
+  const additions = await artifacts.readPlugins(release.pluginTrees);
+  if (!additions.ok) return additions;
+  const runtime = await artifacts.build({ name: release.names.runtime, format: "tar.gz", payloads: pairs.natives,
+    additions: additions.value });
+  if (!runtime.ok) return runtime;
+  const copyRuntime = await artifacts.build({ name: release.names.copyRuntime, format: "tar.gz", payloads: pairs.copies,
+    additions: additions.value });
+  return copyRuntime.ok ? accepted({ runtime: runtime.value, copyRuntime: copyRuntime.value }) : copyRuntime;
+};
+
+const releaseArchives = (ports: {
+  readonly request: Parameters<CreatePackageBuildRoot>[0]; readonly root: () => PackageBuildRoot;
+  readonly packaging: BuildPackaging; readonly projection: BuildProjection;
+}) => async (release: ReleaseArchivesRequest) => {
+  if (!ports.packaging.version.ok) return refused([ports.packaging.version.refusal]);
+  if (ports.packaging.version.value !== release.stampedAs) return refused([{
+    kind: "mixed-versions" as const, versions: [ports.packaging.version.value, release.stampedAs] as const,
+  }]);
+  const root = ports.root();
+  const loaded = await root.loadCore();
+  if (!loaded.ok) return loaded;
+  const plugins = await root.loadPlugins({ core: loaded.value });
+  if (!plugins.ok) return plugins;
+  const entrypoints = await releaseEntrypoints(ports.request);
+  if (!entrypoints.ok) return entrypoints;
+  const pairs = await releasePayloads({ ...ports, release, root, core: loaded.value, entrypoints: entrypoints.value,
+    reviewerAgents: reviewerAgentSet(plugins.value.method) });
+  if (!pairs.ok) return pairs;
+  const artifacts = createReleaseArtifacts({ folder: release.archives,
+    fileSystem: ports.request.platform.fileSystem, hasher: ports.request.platform.digester });
+  return writeReleaseArchives({ artifacts, release, pairs: pairs.value });
+};
+
 export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const loading = createAuthoredMethodLoading({ reader: request.platform.fileSystem,
     parser: request.platform.yaml, outliner: request.outliner });
@@ -296,6 +396,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
     settingsCapabilities: projection.settingsCapabilities, readHostDistribution: readDistribution,
     projectHost,
     buildPlugins,
+    buildReleaseArchives: releaseArchives({ request, root: () => root, packaging, projection }),
     buildRoutes: () => [createPluginBuildRoute({ root, hosts: request.hosts.map((module) => module.host),
       terminal: request.platform.terminal, workingDirectory: request.workingDirectory,
       emit: (plugin) => {

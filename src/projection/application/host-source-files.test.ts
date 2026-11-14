@@ -4,11 +4,26 @@ import { host, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import type { HostFileReader } from "./ports/host-sources.ts";
-import { createHostSurfaceReader } from "./host-source-files.ts";
+import { createHostSurfaceReader, requiredHostSources } from "./host-source-files.ts";
 
 const identity = host({ name: "kiro", directory: ".kiro" });
 const agent = source("agents/reviewer.json");
 const missing = source("optional.md");
+
+test("projection declares every source concept in capture order without sorting away duplicates", () => {
+  expect(requiredHostSources({
+    agents: { inputs: [source("agents/z.md"), source("shared.md")] },
+    skills: { inputs: [source("skills/a.md")] },
+    settings: { inputs: [source("settings.json"), source("shared.md")] },
+    documents: { inputs: [source("documents/a.md")] },
+    placements: [{ source: "placement.md", destination: ".kiro/placed.md" }],
+  })).toEqual(["agents/z.md", "shared.md", "skills/a.md", "settings.json", "shared.md", "documents/a.md", "placement.md"]);
+});
+
+test("empty projection declarations produce no inferred capture defaults", () => {
+  expect(requiredHostSources({ agents: { inputs: [] }, skills: { inputs: [] },
+    settings: { inputs: [] }, documents: { inputs: [] }, placements: [] })).toEqual([]);
+});
 
 test("one snapshot keeps binary bytes after the source is replaced", async () => {
   const files = createInMemoryFileSystem({ files: {

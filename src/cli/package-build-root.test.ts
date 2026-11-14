@@ -4,7 +4,7 @@ import { SCRATCH_HOST, SCRATCH_TOKENS, SCRATCH_HOST_DATA, scratchAgentRenderer, 
 import { scratchHostDistributionFixture } from "../packaging/fixtures/host-distribution.fixture.ts";
 const outliner = { outline: (text: string) => ({ text, headings: [] }) };
 import { HOSTS } from "./host-table.ts";
-import { expect, mock, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import { accept } from "../kernel/fixtures/accept.ts";
 import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
 import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
@@ -12,7 +12,9 @@ import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts
 import { accepted, refused } from "../kernel/result.ts";
 import type { ContentDigester } from "../kernel/content-digester-port.ts";
 import { createRecordingTerminal } from "../kernel/fixtures/terminal.fake.ts";
-import { hash, host, path, source } from "../kernel/fixtures/values.fixture.ts";
+import { hash, host, path, source, version } from "../kernel/fixtures/values.fixture.ts";
+import { buildVersionFixture, claudeCopyPayloadFixture } from "../packaging/fixtures/claude-payload.fixture.ts";
+import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
 import type { CoreBuild, HostBuildRequest, HostModule, HostDistributionReader, Platform } from "./roots.ts";
 import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
 import { createPackageBuildRoot as createRoot } from "./package-build-root.ts";
@@ -34,6 +36,8 @@ const yaml = createInMemoryYamlParser({ documents: {} });
 const terminal = createRecordingTerminal();
 const digester: ContentDigester = { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) };
 const runnerFrames = new URL("file:///frames/");
+const releaseRequest = { archives: new URL("file:///archives/"), pluginTrees: new URL("file:///built-plugins/"),
+  names: { runtime: "runtime.tar.gz", copyRuntime: "copy.tar.gz" }, stampedAs: version("0.0.0"), modelCap: null };
 const processRunner = createScriptedProcessRunner({ outcome: refused({
   kind: "not-started", reason: "No process expected",
 }) });
@@ -56,6 +60,78 @@ test("one admitted core snapshot projects to multiple hosts without another sour
   expect(core.project({ name: "../outside", directory: ".claude", memoryRoot: "memory" })).toEqual({
     ok: false, refusal: { kind: "invalid-distribution-id", raw: "../outside" },
   });
+});
+
+test("release asset version mismatch refuses before method capture or archive writes", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const readTree = mock(fileSystem.readTree);
+  const writeFile = mock(fileSystem.writeFile);
+  const root = createPackageBuildRoot({ hosts: [],
+    platform: { fileSystem: { ...fileSystem, readTree, writeFile }, processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const archives = await root.buildReleaseArchives(releaseRequest);
+  expect(archives).toMatchObject({ ok: false, refusal: [{ kind: "mixed-versions", versions: [expect.any(String), "0.0.0"] }] });
+  expect(readTree).not.toHaveBeenCalled();
+  expect(writeFile).not.toHaveBeenCalled();
+});
+
+test("release archives preserve the Method refusal list without writing an archive", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const writeFile = mock(fileSystem.writeFile);
+  const root = createPackageBuildRoot({ hosts: [],
+    platform: { fileSystem: { ...fileSystem, writeFile }, processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const failures = [{ kind: "source-unreadable" as const,
+    location: { kind: "authored-tree" as const, tree: "core" as const, within: "stages/" }, code: "permission-denied" as const }];
+  spyOn(root, "loadCore").mockResolvedValue(refused(failures));
+  expect(await root.buildReleaseArchives({ ...releaseRequest, stampedAs: buildVersionFixture() })).toEqual(refused(failures));
+  expect(writeFile).not.toHaveBeenCalled();
+});
+
+test("release entrypoint listing uses the published neutral-source refusal", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const listFolder = mock<Platform["fileSystem"]["listFolder"]>().mockResolvedValueOnce(refused({
+    kind: "unreadable", code: "permission-denied" })).mockResolvedValueOnce(accepted([]));
+  const root = createPackageBuildRoot({ hosts: [],
+    platform: { fileSystem: { ...fileSystem, listFolder }, processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  spyOn(root, "loadPlugins").mockResolvedValue(accepted({ method: methodSliceFixture, plugins: [] }));
+  expect(await root.buildReleaseArchives({ ...releaseRequest, stampedAs: buildVersionFixture() })).toEqual(refused([{
+    kind: "neutral-source-unreadable", source: source("hooks"), reason: "permission-denied",
+  }]));
+});
+
+test.each([null, "balanced"] as const)("release root pairs each copy payload with native under repository cap %s", async (modelCap) => {
+  const fileSystem = createInMemoryFileSystem({ files: { ...fullHostFiles(),
+    "file:///core/hooks/z-last.ts": "hook",
+    "file:///core/tools/a-first.ts": "tool",
+    "file:///core/hooks/nested/ignored.ts": "nested",
+    "file:///core/tools/ignored.TS": "upper-case",
+    "file:///core/tools/readme.md": "not an entrypoint",
+    "file:///built-plugins/.catalogue/catalogue.json": "catalogue" } });
+  const root = createPackageBuildRoot({ hosts: [distributionMembers()],
+    platform: { fileSystem, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
+  const stampedAs = buildVersionFixture();
+  const loaded = accept(await root.loadCore());
+  spyOn(root, "loadPlugins").mockResolvedValue(accepted({ method: methodSliceFixture, plugins: [] }));
+  spyOn(root, "readHostSources").mockResolvedValue(accepted({ host: SCRATCH_HOST, files: [] }));
+  const copy = { ...claudeCopyPayloadFixture, version: stampedAs, files: [] };
+  const buildPayload = spyOn(root, "buildPayload").mockResolvedValueOnce(accepted(copy))
+    .mockResolvedValueOnce(accepted({ ...copy, channel: "native" }));
+  const built = accept(await root.buildReleaseArchives({ ...releaseRequest, stampedAs, modelCap }));
+  expect(buildPayload).toHaveBeenCalledTimes(2);
+  expect(buildPayload).toHaveBeenNthCalledWith(1, expect.objectContaining({ channel: "copy", copy: null, core: loaded,
+    modelCap, projectRoot: new URL("file:///dist/scratch"),
+    entrypoints: [source("hooks/z-last.ts"), source("tools/a-first.ts"), source("tools/aidlc-utility.ts"), source("tools/aidlc-version.ts")],
+    tokens: expect.objectContaining({ ["HARNESS_DIR"]: ".scratch", ["INVOKE"]: "bun .scratch/tools/aidlc.ts",
+      ["TOOL_PREFIX"]: "bun .scratch/tools/" }) }));
+  expect(buildPayload).toHaveBeenNthCalledWith(2, expect.objectContaining({ channel: "native", copy,
+    modelCap, projectRoot: new URL("file:///dist-release/scratch"),
+    tokens: expect.objectContaining({ ["HARNESS_DIR"]: ".scratch", ["INVOKE"]: "aidlc" }) }));
+  expect(built.runtime).toMatchObject({ version: stampedAs, channel: "native", entries: ["plugins/.catalogue/catalogue.json"] });
+  expect(built.copyRuntime).toMatchObject({ version: stampedAs, channel: "copy", entries: ["plugins/.catalogue/catalogue.json"] });
+  expect(accept(await fileSystem.readFile({ file: new URL("runtime.tar.gz", releaseRequest.archives) })).kind).toBe("bytes");
+  expect(accept(await fileSystem.readFile({ file: new URL("copy.tar.gz", releaseRequest.archives) })).kind).toBe("bytes");
 });
 
 test("plugin builds use the admitted core without re-reading changed authored core files", async () => {
@@ -181,6 +257,45 @@ const withProjection = (parts: Partial<HostModule["projection"]>): HostModule =>
   const module = distributionMembers();
   return { ...module, projection: { ...module.projection, ...parts } };
 };
+
+test("host capture owns the declared agent document skill settings and placement inputs", async () => {
+  const members = distributionMembers();
+  const fileSystem = createInMemoryFileSystem({ files: {
+    "file:///host/agent.md": "agent", "file:///host/document.md": "document", "file:///host/skill.md": "skill",
+    "file:///host/settings.json": "settings", "file:///host/placement.md": "placement",
+  } });
+  const root = createPackageBuildRoot({ hosts: [{ ...members, projection: { ...members.projection,
+    agents: { ...members.projection.agents, inputs: [source("agent.md")] },
+    documents: { ...members.projection.documents, inputs: [source("document.md")] },
+    skills: { ...members.projection.skills, inputs: [source("skill.md")] },
+    settings: { ...members.projection.settings, inputs: [source("settings.json")] },
+    placements: [{ source: "placement.md", destination: ".scratch/placement.md" }],
+  } }], platform: { fileSystem, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
+  const captured = accept(await root.readHostSources({ name: "scratch", directory: ".scratch",
+    root: new URL("file:///host/"), copied: [], required: [] }));
+  expect(captured.files).toEqual([
+    expect.objectContaining({ source: source("agent.md") }), expect.objectContaining({ source: source("skill.md") }),
+    expect.objectContaining({ source: source("settings.json") }), expect.objectContaining({ source: source("document.md") }),
+    expect.objectContaining({ source: source("placement.md") }),
+  ]);
+});
+
+test("capture merges caller required and optional copies before declared inputs, retaining first-seen order", async () => {
+  const members = distributionMembers();
+  const fileSystem = createInMemoryFileSystem({ files: {
+    "file:///host/agent.md": "agent", "file:///host/caller.md": "caller", "file:///host/copy.md": "copy",
+  } });
+  const root = createPackageBuildRoot({ hosts: [{ ...members, projection: { ...members.projection,
+    agents: { ...members.projection.agents, inputs: [source("agent.md")] },
+    documents: { ...members.projection.documents, inputs: [source("caller.md")] },
+  } }], platform: { fileSystem, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
+  const captured = accept(await root.readHostSources({ name: "scratch", directory: ".scratch",
+    root: new URL("file:///host/"), copied: ["copy.md", "agent.md", "copy.md", "optional.md"], required: ["caller.md"] }));
+  expect(captured.files).toEqual([
+    expect.objectContaining({ source: source("copy.md") }), expect.objectContaining({ source: source("agent.md") }),
+    expect.objectContaining({ source: source("caller.md") }),
+  ]);
+});
 
 test("the public distribution reader supplies one captured facts instance without authored IO", () => {
   const fileSystem = createInMemoryFileSystem({ files: {} });

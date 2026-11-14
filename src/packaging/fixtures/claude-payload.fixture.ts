@@ -1,10 +1,15 @@
 import type { FileContent } from "../../kernel/file-content.ts";
+import { accept } from "../../kernel/fixtures/accept.ts";
+import { frameworkVersion } from "../../kernel/values.ts";
+import { readBuildVersion } from "../adapters/legacy-channel.ts";
 import { hash, path, source, version } from "../../kernel/fixtures/values.fixture.ts";
 import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
 import { claudeProjectionFixture } from "../../projection/fixtures/claude-projection.fixture.ts";
 import type { Payload, PayloadFile, RuntimeEntryPoint } from "../domain/payload.ts";
 import { claudeLayoutFixture, claudePriorIntegrationsFixture } from "./claude-layout.fixture.ts";
 import { hashOf } from "./content-hashes.fixture.ts";
+
+export const buildVersionFixture = () => accept(frameworkVersion(accept(readBuildVersion())));
 
 const fromProjection = (file: ProjectedFile): PayloadFile => ({
   path: file.path,

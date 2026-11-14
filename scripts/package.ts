@@ -524,11 +524,8 @@ const hostBuildInputs = new Map<string, {
 for (const name of targets) {
   const routed = routedHost(name);
   if (!routed) throw new Error(`The host is not routed through the composition root: ${name}`);
-  const required = [...routed.members.projection.agents.inputs, ...routed.members.projection.skills.inputs,
-    ...routed.members.projection.settings.inputs, ...routed.members.projection.documents.inputs,
-    ...routed.members.projection.placements.map((placement) => placement.source)];
   const captured = await packageBuildRoot.readHostSources({ name, directory: routed.members.host.directory,
-    root: pathToFileURL(join(HARNESS_ROOT, name)), copied: [], required });
+    root: pathToFileURL(join(HARNESS_ROOT, name)), copied: [], required: [] });
   if (!captured.ok) {
     console.error(JSON.stringify(captured.refusal));
     process.exit(1);

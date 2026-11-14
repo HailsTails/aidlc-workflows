@@ -1,7 +1,7 @@
 import type { Result } from "../../kernel/result.ts";
 import type { FrameworkVersion, KernelRefusal } from "../../kernel/values.ts";
 import type { Projection } from "../../projection/domain/projection.ts";
-import type { ArchiveFormat, PackagingRefusal, ReleaseArtifact } from "../domain/artifact.ts";
+import type { ArchiveFile, ArchiveFormat, PackagingRefusal, ReleaseArtifact } from "../domain/artifact.ts";
 import type { Channel, Payload, RuntimeEntryPoint } from "../domain/payload.ts";
 
 export type PackagePayloadRequest = {
@@ -19,6 +19,7 @@ export type BuildReleaseArtifactRequest = {
   readonly name: string;
   readonly format: ArchiveFormat;
   readonly payloads: readonly Payload[];
+  readonly additions: readonly ArchiveFile[];
 };
 
 export interface BuildReleaseArtifact {

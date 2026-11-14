@@ -1,4 +1,6 @@
 import type { HostIdentity } from "../../kernel/host.ts";
+import type { FileContent, FileMode } from "../../kernel/file-content.ts";
+import type { FileSystemFault } from "../../kernel/file-system-port.ts";
 import type { Brand } from "../../kernel/brand.ts";
 import type {
   ContentHash,
@@ -9,9 +11,15 @@ import type {
 import type { ProjectionOrigin } from "../../projection/domain/projected-file.ts";
 import type { Channel } from "./payload.ts";
 
-export type ArchiveFormat = "tar.gz" | "zip";
+export type ArchiveFormat = "tar.gz";
 
 export type ArchiveEntry = Brand<string, "ArchiveEntry">;
+
+export type ArchiveFile = {
+  readonly entry: ArchiveEntry;
+  readonly content: FileContent;
+  readonly mode: FileMode;
+};
 
 export type ReleaseArtifact = {
   readonly name: string;
@@ -30,6 +38,9 @@ export type PackagingRefusal =
   | { readonly kind: "release-history-unreadable"; readonly distribution: DistributionId; readonly reason: string }
   | { readonly kind: "native-text-not-found"; readonly distribution: DistributionId; readonly text: string }
   | { readonly kind: "native-leftover"; readonly path: ProjectPath; readonly reason: string }
+  | { readonly kind: "no-payloads" }
+  | { readonly kind: "mixed-channels"; readonly channels: readonly [Channel, Channel] }
+  | { readonly kind: "plugin-tree-unreadable"; readonly within: string; readonly code: FileSystemFault | "unportable-name" }
   | { readonly kind: "listing-text-not-plain"; readonly distribution: DistributionId }
   | { readonly kind: "root-integration-duplicate"; readonly path: ProjectPath }
   | { readonly kind: "root-integration-missing"; readonly path: ProjectPath }

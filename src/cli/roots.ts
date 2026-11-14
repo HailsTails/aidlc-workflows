@@ -11,9 +11,9 @@ import type { HostIdentity } from "../kernel/host.ts";
 import type { ProcessRunner } from "../kernel/process-runner-port.ts";
 import type { Terminal } from "../kernel/terminal-port.ts";
 import type { Result } from "../kernel/result.ts";
-import type { KernelRefusal, SourcePath } from "../kernel/values.ts";
+import type { FrameworkVersion, KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
-import type { PackagingRefusal } from "../packaging/domain/artifact.ts";
+import type { PackagingRefusal, ReleaseArtifact } from "../packaging/domain/artifact.ts";
 import type { DistributionLayout, HostDistribution, Payload } from "../packaging/domain/payload.ts";
 import type { DelegateShellFacts } from "../projection/application/ports/delegate-shell.ts";
 import type { ConceptMembers, HostProjectionParts } from "../projection/application/ports/host-parts.ts";
@@ -30,6 +30,7 @@ import type { DistributionChannel } from "../projection/domain/projected-file.ts
 import type { CompiledMethodFiles, Projection, ProjectionRefusal } from "../projection/domain/projection.ts";
 import type { ChannelTokens, TokenBindings } from "../projection/domain/template-token.ts";
 import type { AgentSlug } from "../workflow-definition/domain/identities.ts";
+import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
 import type { Tier } from "../workflow-definition/domain/vocabulary.ts";
 import type {
   AuthoredCoreMethod,
@@ -192,6 +193,24 @@ export type BuildPlugins = (
 ) => Result<PluginsBuilt, readonly (KernelRefusal | ProjectionRefusal)[]>;
 
 export type BuildRoutes = () => readonly CommandRoute[];
+export type ReleaseArchivesRequest = {
+  readonly archives: URL;
+  readonly pluginTrees: URL;
+  readonly names: { readonly runtime: string; readonly copyRuntime: string };
+  readonly stampedAs: FrameworkVersion;
+  readonly modelCap: Tier | null;
+};
+
+export type ReleaseArchives = {
+  readonly runtime: ReleaseArtifact;
+  readonly copyRuntime: ReleaseArtifact;
+};
+
+export type BuildReleaseArchives = (
+  request: ReleaseArchivesRequest,
+) => Promise<
+  Result<ReleaseArchives, readonly (KernelRefusal | ProjectionRefusal | PackagingRefusal | MethodRefusal)[]>
+>;
 
 export interface PackageBuildRoot {
   readonly settingsCapabilities: SettingsCapabilities;
@@ -199,6 +218,7 @@ export interface PackageBuildRoot {
   readonly buildPayload: BuildPayload;
   readonly buildPlugins: BuildPlugins;
   readonly buildRoutes: BuildRoutes;
+  readonly buildReleaseArchives: BuildReleaseArchives;
   readonly readHostDistribution: ReadHostDistribution;
   loadCore(): MethodReading<CoreBuild>;
   loadPlugins(request: { readonly core: CoreBuild }): MethodReading<AuthoredPluginBuild>;

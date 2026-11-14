@@ -6,11 +6,24 @@ import { createBuildPackagingUseCase, selectOnboardingPath } from "./application
 import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { NativeCommandRoutes } from "../projection/domain/native-command.ts";
 import { accepted } from "../kernel/result.ts";
+import { createBuildReleaseArtifact } from "./application/build-release-artifact.ts";
+import { createLegacyArtifactWriter } from "./adapters/legacy-archive.ts";
+import { createCopyRuntimeOmissions } from "./adapters/legacy-distribution.ts";
+import { readPluginTreeFiles } from "./adapters/plugin-tree-files.ts";
+import type { ContentHasher } from "./application/ports.ts";
 
 import type { BuildPackaging, HostPayloadRequest } from "./application/ports.ts";
 export type { BuildPackaging } from "./application/ports.ts";
+export type { BuildReleaseArtifact } from "./application/use-cases.ts";
 export type PhaseOnePackagingRequest = HostPayloadRequest;
 export type OnboardingSource = Parameters<typeof selectOnboardingPath>[0];
+
+export const createReleaseArtifacts = (binding: {
+  readonly folder: URL; readonly fileSystem: FileSystem; readonly hasher: ContentHasher;
+}) => ({
+  ...createBuildReleaseArtifact({ writer: createLegacyArtifactWriter(binding), omissions: createCopyRuntimeOmissions() }),
+  readPlugins: (root: URL) => readPluginTreeFiles({ root, fileSystem: binding.fileSystem }),
+});
 
 export const onboardingPathOf = (request: OnboardingSource) => selectOnboardingPath(request);
 

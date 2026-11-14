@@ -7,7 +7,7 @@ import type { VersionStamp } from "./boundary-ports.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { ContentHash, DistributionId, KernelRefusal } from "../../kernel/values.ts";
-import type { ArchiveFormat, PackagingRefusal, ReleaseArtifact } from "../domain/artifact.ts";
+import type { ArchiveFile, ArchiveFormat, PackagingRefusal } from "../domain/artifact.ts";
 import type {
   Channel,
   Payload,
@@ -32,8 +32,8 @@ export interface ArtifactWriter {
   write(request: {
     readonly name: string;
     readonly format: ArchiveFormat;
-    readonly payloads: readonly Payload[];
-  }): Promise<Result<ReleaseArtifact, PackagingRefusal>>;
+    readonly files: readonly ArchiveFile[];
+  }): Promise<Result<ContentHash, PackagingRefusal>>;
 }
 
 export interface ContentHasher {
@@ -70,4 +70,8 @@ export interface BuildPackaging {
   readonly version: Result<FrameworkVersion, KernelRefusal | PackagingRefusal>;
   readonly stamp: VersionStamp;
   packageHost(request: HostPayloadRequest): Promise<Result<Payload, readonly (PackagingRefusal | KernelRefusal)[]>>;
+}
+
+export interface CopyRuntimeOmissions {
+  omitted(copyPayload: Payload): readonly ProjectPath[];
 }
