@@ -1,17 +1,14 @@
-import type { HostProjectionParts } from "../../projection/application/ports/host-parts.ts";
 import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { copilotDistribution } from "./distribution.ts";
 import { COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING, COPILOT_TIER_FLAVOR, COPILOT_HOST_DATA, COPILOT_TOKENS, copilotHostIdentity } from "./host-data.ts";
-import { COPILOT_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { copilotOnboardingFills } from "./onboarding-fills.ts";
 import { copilotAgents } from "./projection/agent-renderer.ts";
 import { copilotCommandPath } from "./projection/command-renderer.ts";
 import { createCopilotDocumentRenderer } from "./projection/document-renderer.ts";
 import { COPILOT_SETTINGS_INPUTS, createCopilotSettingsRenderer } from "./projection/settings-renderer.ts";
 import { COPILOT_SKILL_INPUTS, createCopilotSkillRenderer } from "./projection/skill-renderer.ts";
-
-const onboardingFills: HostProjectionParts["fills"] = () => COPILOT_ONBOARDING_FILLS;
 
 export const copilotHost = () => {
   const identity = copilotHostIdentity();
@@ -35,7 +32,7 @@ export const copilotHost = () => {
       skills: { inputs: skillInputs.value, render: createCopilotSkillRenderer },
       settings: { inputs: settingsInputs.value, render: createCopilotSettingsRenderer },
       documents: { inputs: [], render: createCopilotDocumentRenderer },
-      fills: onboardingFills,
+      fills: copilotOnboardingFills,
       bindingHeading: COPILOT_BINDING_HEADING,
     },
     distribution: copilotDistribution,
