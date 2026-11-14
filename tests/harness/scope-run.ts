@@ -27,10 +27,9 @@ import { cleanupTestProject, proposalFollowUp, REPO_ROOT, setupIntegrationProjec
 import { PersonTurnLedger } from "./person-turns.ts";
 import { testGuardEnvironment } from "./runner-profile.ts";
 import { NATIVE_STARTUP_TIMEOUT_MS, remainingOperationTimeoutMs } from "./test-budget.ts";
-import kiroManifest from "../../harness/kiro/manifest.ts";
+import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
 import { LAUNCHER_ENV, LAUNCHER_PATH } from "../../core/tools/aidlc-launcher-voucher.ts";
 
-const KIRO_HOOK_SUFFIX = kiroManifest.hookCommandSuffix ?? "";
 
 export type Directive = Record<string, unknown> & { kind?: string };
 
@@ -300,8 +299,8 @@ export class ScopeHost {
   argv(line: string): string[] {
     // A Kiro CLI hook line ends with its row's exit shape, which hands back the
     // command's own status in the shell Kiro starts it in: running the command is the same.
-    const command = KIRO_HOOK_SUFFIX !== "" && line.trimEnd().endsWith(KIRO_HOOK_SUFFIX)
-      ? line.trimEnd().slice(0, -KIRO_HOOK_SUFFIX.length)
+    const command = line.trimEnd().endsWith(KIRO_HOOK_COMMAND_SUFFIX)
+      ? line.trimEnd().slice(0, -KIRO_HOOK_COMMAND_SUFFIX.length)
       : line;
     const [first, ...rest] = commandWords(command);
     if (first === "bun" && this.launcher === null) return [process.execPath, ...rest];

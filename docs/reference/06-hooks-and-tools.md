@@ -1739,7 +1739,7 @@ Kiro IDE and Kiro CLI v3 supply no such identity: a delegated agent's own calls
 reach the hook with the conductor's session and no agent name (measured on Kiro
 IDE 1.2.4), so there the guard applies the conductor's rules to them. The
 kiro-ide row instead gives each delegated persona its own shell deny
-(`harness/kiro-ide/delegate-shell-deny.ts`): it denies the conductor's command
+(`src/hosts/kiro-ide/projection/delegate-shell-deny.ts`): it denies the conductor's command
 allow and excludes only the script verbs the guard admits a delegate
 (`delegateAdmittedVerbs`: reads and the work a persona is dispatched to do; the
 Bolt worktree create, merge, discard and restore for pipeline-deploy only, a

@@ -34,7 +34,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { cleanupTestProject, createTestProject, REPO_ROOT, seededStateFile } from "../harness/fixtures.ts";
 import { NATIVE_STARTUP_TIMEOUT_MS, remainingOperationTimeoutMs } from "../harness/test-budget.ts";
-import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
+import { HARNESS_MATRIX, onboardingFillsSource } from "../harness/harness-matrix.ts";
 
 /** Authored conductor SKILLs for every manifest-discovered distribution. */
 function harnessSkills(): string[] {
@@ -472,7 +472,7 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
     const prose = [
       ...skills,
       "core/templates/onboarding-harness.md",
-      ...HARNESS_MATRIX.map((harness) => `harness/${harness.name}/onboarding.fills.ts`),
+      ...HARNESS_MATRIX.map((harness) => onboardingFillsSource(harness.name)),
     ];
     // The onboarding every chat loads is the one place for the checks (#1330):
     // a plain chat turn has only it, and the skill no longer repeats it.

@@ -267,9 +267,9 @@ harness/<name>/        # per-CLI surface: manifest.ts + orchestrator skill +
 scripts/package.ts     # the build: copy core (token→.claude/.kiro/.codex) +
                        #   harness, compile the graph, generate runners, emit;
                        #   writes both channels; `--check` builds twice and compares
-scripts/package-sources.ts # content fingerprint of the build's inputs, recorded
-                       #   per harness in dist/.package-sources.json; tools that
-                       #   read dist/ (the coverage generator) refuse a stale tree
+src/packaging/adapters/packaged-sources-file.ts # PackagedSources owner: input
+                       #   fingerprint and per-host dist/.package-sources.json,
+                       #   through injected file-system and content-hasher ports
 scripts/build-binaries.ts # release-only binary compiler + smoke gate, writing
                        #   per-target executable + runtime/<harness>/ bundles
                        #   under ignored build/binaries/
@@ -277,6 +277,21 @@ dist/<harness>/        # GENERATED + ignored: claude/.claude, kiro/.kiro,
                        #   kiro-ide/.kiro, codex/{.codex,.agents},
                        #   opencode/{.aidlc,.opencode}, copilot/{.aidlc,.github} — never hand-edited
 ```
+
+Packaging's `PackagedSources` port is implemented by
+`createPackagedSourcesFile({ repository, record, fileSystem, hasher })`; both
+locations are explicit absolute URLs, not the current directory. Its async
+`fingerprint`, `forget`, `record` and `staleness` operations return `Result`
+values. The fingerprint preserves the legacy input selection and single
+sorted stream of portable path, NUL, raw file bytes, NUL. It stores the bare
+SHA-256 hex in the unchanged schema-1 per-host record, rather than the
+hasher's `sha256:` prefix. A source edit during a build produces
+`"inputs-changed"`; a stale host keeps the existing command-to-rebuild message.
+Missing, malformed or unreadable records retain the legacy empty-record
+outcome; input-read, hash and record-write failures are explicit Packaging
+refusals. The build and coverage generator use this adapter; isolated runner
+fixtures copy its explicit runtime module closure alongside the kernel
+file-system and content-digester adapters.
 
 `core/` `.ts` is byte-copied untransformed; the runtime `harnessDir()` seam
 (`core/tools/aidlc-lib.ts`) derives the harness dir from the shipped layout at

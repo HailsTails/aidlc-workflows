@@ -35,7 +35,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runtimePathsReadTypedNames, typedHarnessName } from "../core/tools/aidlc-runtime-paths.ts";
 import { KIRO_HOOK_GROUPS } from "../harness/kiro-ide/hooks/aidlc-kiro-tool-names.ts";
-import kiro from "../harness/kiro/manifest.ts";
+import { KIRO_HOOK_COMMAND_SUFFIX } from "../src/hosts/kiro/projection/json-agent-renderer.ts";
 import type { WorkResult } from "../tests/harness/work-open.ts";
 
 export const HARNESSES = ["claude", "codex", "copilot", "cursor", "kiro", "kiro-ide", "opencode"] as const;
@@ -64,10 +64,9 @@ const COPY_TOOL_DIRS: Record<(typeof HARNESSES)[number], string> = {
 const DISPATCHED = /^(?:aidlc|bun (?:"\$CLAUDE_PROJECT_DIR\/)?\.[a-z]+\/tools\/aidlc\.ts"?) engine (?:hook|adapter) [a-z0-9-]+(?: [a-z0-9-]+)*$/;
 const ADAPTER_FILE = /^bun \.[a-z]+\/hooks\/aidlc-[a-z]+-adapter\.ts [a-z0-9-]+$/;
 // A Kiro CLI hook line ends with its row's exit shape; the command is what comes before it.
-const KIRO_HOOK_SUFFIX = kiro.hookCommandSuffix ?? "";
 function hookCommandOf(line: string): string {
   const trimmed = line.trim();
-  return KIRO_HOOK_SUFFIX !== "" && trimmed.endsWith(KIRO_HOOK_SUFFIX) ? trimmed.slice(0, -KIRO_HOOK_SUFFIX.length) : trimmed;
+  return trimmed.endsWith(KIRO_HOOK_COMMAND_SUFFIX) ? trimmed.slice(0, -KIRO_HOOK_COMMAND_SUFFIX.length) : trimmed;
 }
 const WINDOWS = process.platform === "win32";
 const REPOSITORY = process.env.GITHUB_REPOSITORY || "awslabs/aidlc-workflows";
