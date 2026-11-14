@@ -1,29 +1,39 @@
-import type { FileContent } from "../../../kernel/file-content.ts";
 import type { DistributionChannel } from "../../../projection/domain/projected-file.ts";
+import type { DelegateShellPolicy } from "./delegate-shell-deny.ts";
 
-export const kiroIdeNativePermissionText = ({ text, namespace }: {
-  readonly text: string;
-  readonly namespace: string;
-}): string => text.replace(
-  / {4}- capability: shell\n {6}effect: (?:allow|ask)\n[\s\S]*?(?=\n {4}- capability:|\n---|\n\S|$)/g,
-  (block: string) => {
-    const trusted = `- "aidlc ${namespace} *"`;
-    return block
-      .replaceAll('- "bun .kiro/tools/aidlc-*"', trusted)
-      .replaceAll('- "bun .kiro/tools/aidlc*', '- "aidlc*')
-      .replaceAll('- "bun .kiro/tools/aidlc.ts ', '- "aidlc ')
-      .replaceAll(`- "aidlc ${namespace} engine `, `- "aidlc ${namespace} `)
-      .replaceAll(`${trusted}\n        ${trusted}`, trusted);
-  },
-);
+const matchLines = (effect: "allow" | "ask", patterns: readonly string[]): string[] => [
+  "    - capability: shell", `      effect: ${effect}`, "      match:",
+  ...patterns.map((pattern) => `        - "${pattern}"`),
+];
 
-export const kiroIdeAgentPermissionContent = ({ content, channel, namespace }: {
-  readonly content: FileContent;
+export const kiroIdeShellPermissionLines = ({ policy, channel, dispatcherCommands = [], role = "delegate" }: {
+  readonly policy: DelegateShellPolicy;
   readonly channel: DistributionChannel;
-  readonly namespace: string;
-}): FileContent => {
-  if (channel === "copy") return content;
-  const text = content.kind === "text" ? content.text
-    : new TextDecoder("utf-8", { ignoreBOM: true }).decode(content.bytes);
-  return { kind: "text", text: kiroIdeNativePermissionText({ text, namespace }) };
+  readonly dispatcherCommands?: readonly string[];
+  readonly role?: "conductor" | "delegate";
+}): { readonly allow: readonly string[]; readonly ask: readonly string[] } => {
+  const commands = policy.shellCommands(channel);
+  return {
+    allow: matchLines("allow", [...commands.allow.slice(0, -1),
+      ...dispatcherCommands.map((command) => `${commands.invoke} ${command}`), ...commands.allow.slice(-1)]),
+    ask: matchLines("ask", [...commands.ask, ...(role === "conductor" ? commands.conductorAsk : [])]),
+  };
+};
+
+export const kiroIdeConductorPermissionSource = ({ source, policy, channel, dispatcherCommands }: {
+  readonly source: string;
+  readonly policy: DelegateShellPolicy;
+  readonly channel: DistributionChannel;
+  readonly dispatcherCommands: readonly string[];
+}): string => {
+  const newline = source.startsWith("---\r\n") ? "\r\n" : "\n";
+  const end = source.startsWith(`---${newline}`) ? source.indexOf(`${newline}---`, 3 + newline.length) : -1;
+  if (end < 0) return source;
+  const shell = kiroIdeShellPermissionLines({ policy, channel, dispatcherCommands, role: "conductor" });
+  const authored = source.slice(0, end);
+  const blocks = [...authored.matchAll(/^ {4}- capability: shell\r?\n {6}effect: (allow|ask)\r?\n[\s\S]*?(?=\r?\n {4}- capability:|(?![\s\S]))/gm)];
+  return blocks.reduceRight((text, block) => {
+    const lines = block[1] === "allow" ? shell.allow : shell.ask;
+    return text.slice(0, block.index) + lines.join(newline) + text.slice(block.index + block[0].length);
+  }, authored) + source.slice(end);
 };

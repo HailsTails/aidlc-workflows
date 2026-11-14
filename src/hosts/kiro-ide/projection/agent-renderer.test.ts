@@ -69,7 +69,12 @@ test("Kiro IDE preserves its document refusal and uses the persona port's exact 
 });
 
 const policy = { shellDeny: () => ["    - capability: shell", "      effect: deny",
-  "      match:", '        - "forbidden engine route"'], riskyForms: ["$", ">"] };
+  "      match:", '        - "forbidden engine route"'], riskyForms: ["$", ">"],
+  shellCommands: () => ({ invoke: "bun .kiro/tools/aidlc.ts", conductorAsk: [],
+    allow: ["bun .kiro/tools/aidlc-*", "bun .kiro/tools/aidlc.ts engine *", "bun --version"],
+    ask: ["bun .kiro/tools/aidlc.ts engine config set *", "bun .kiro/tools/aidlc.ts engine adapter *",
+      "bun .kiro/tools/aidlc*$*", "bun .kiro/tools/aidlc*>*"],
+  }) };
 
 const expectedLines = [
   'tools: ["read", "write", "shell"]', "includeMcpJson: true", "permissions:", "  rules:",
@@ -90,11 +95,11 @@ const expectedLines = [
 
 describe("Kiro IDE persona permissions", () => {
   test("preserves tools, asks, shell denials, workspace writes and engine protection in order", () => {
-    expect(kiroIdePermissionLines(policy)("aidlc-architect-agent")).toEqual(expectedLines);
+    expect(kiroIdePermissionLines({ policy, channel: "copy" })("aidlc-architect-agent")).toEqual(expectedLines);
   });
 
   test("limits the composer to its proposal while preserving every other permission", () => {
-    expect(kiroIdePermissionLines(policy)("aidlc-composer-agent")).toEqual(
+    expect(kiroIdePermissionLines({ policy, channel: "copy" })("aidlc-composer-agent")).toEqual(
       [
         'tools: ["read", "write", "shell"]', "includeMcpJson: true", "permissions:", "  rules:",
         "    - capability: shell", "      effect: allow", "      match:",
@@ -115,7 +120,7 @@ describe("Kiro IDE persona permissions", () => {
 
   test("uses the same owner for plugin personas and asks its shell policy for their name", () => {
     const shellDeny = mock(policy.shellDeny);
-    expect(kiroIdePermissionLines({ ...policy, shellDeny })("plugin-agent")).toEqual(expectedLines);
+    expect(kiroIdePermissionLines({ policy: { ...policy, shellDeny }, channel: "copy" })("plugin-agent")).toEqual(expectedLines);
     expect(shellDeny).toHaveBeenCalledWith("plugin-agent");
   });
 });

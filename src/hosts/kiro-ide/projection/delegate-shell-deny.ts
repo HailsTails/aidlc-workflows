@@ -1,10 +1,17 @@
 import type {
   DelegateShellFacts,
 } from "../../../projection/application/ports/delegate-shell.ts";
+import type { DistributionChannel } from "../../../projection/domain/projected-file.ts";
 
 export type DelegateShellPolicy = {
   readonly shellDeny: (agent: string) => readonly string[];
   readonly riskyForms: readonly string[];
+  readonly shellCommands: (channel: DistributionChannel) => {
+    readonly allow: readonly string[];
+    readonly ask: readonly string[];
+    readonly invoke: string;
+    readonly conductorAsk: readonly string[];
+  };
 };
 
 export type ShellDeny = { match: string[]; exclude: string[] };
@@ -134,6 +141,18 @@ export const kiroIdeDelegateShellPolicy = ({ facts, directory }: {
   facts: DelegateShellFacts;
   directory: string;
 }): DelegateShellPolicy => ({
+  shellCommands: (channel) => {
+    const invoke = channel === "native" ? "aidlc" : `bun ${directory}/tools/aidlc.ts`;
+    const engine = `${invoke} ${facts.engineNamespace}`;
+    const tools = `bun ${directory}/tools/aidlc`;
+    return {
+      invoke,
+      conductorAsk: ["doctor", "init", "lifecycle", "machine-config"].map((name) => `*aidlc-${name}.ts*`),
+      allow: [...(channel === "copy" ? [`${tools}-*`] : []), `${engine} *`, "bun --version"],
+      ask: [`${engine} config set *`, `${engine} adapter *`,
+        ...RISKY_SHELL_FORMS.map((form) => `${channel === "native" ? "aidlc" : tools}*${form}*`)],
+    };
+  },
   shellDeny: (agent) => [
     ...shellDenyLines(copyChannelDelegateShellDeny({ facts, harnessDir: directory, agent })),
     ...riskyFormDenyLines([`bun ${directory}/tools/aidlc`]),

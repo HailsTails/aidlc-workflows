@@ -1,4 +1,6 @@
-import { kiroIdeNativePermissionText, kiroIdeAgentPermissionContent } from "./native-permissions.ts";
+import { kiroIdeShellPermissionLines, kiroIdeConductorPermissionSource } from "./native-permissions.ts";
+import type { DistributionChannel } from "../../../projection/domain/projected-file.ts";
+import type { FileContent } from "../../../kernel/file-content.ts";
 import type { AgentDocumentRequest, HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
 import type { Harness, Rendering } from "../../../projection/application/ports/harness.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -20,26 +22,24 @@ export type KiroIdePersonaRendering = (profile: KiroIdePersonaProfile) => Harnes
 const composerProposalPath = "aidlc/spaces/*/intents/.aidlc-engine/composer-proposal.json";
 const spacePaths = ["aidlc/spaces/**", ".aidlc/worktrees/*/aidlc/spaces/**"];
 const quoted = (paths: readonly string[]) => paths.map((path) => `        - "${path}"`);
+const contentText = (content: FileContent): string => content.kind === "text" ? content.text
+  : new TextDecoder("utf-8", { ignoreBOM: true }).decode(content.bytes);
+const conductorContent = (content: FileContent, channel: DistributionChannel): FileContent =>
+  channel === "copy" ? content : { kind: "text", text: contentText(content) };
 
-export const kiroIdePermissionLines = (policy: DelegateShellPolicy) => (agent: string): string[] => {
+export const kiroIdePermissionLines = ({ policy, channel }: {
+  readonly policy: DelegateShellPolicy;
+  readonly channel: DistributionChannel;
+}) => (agent: string): string[] => {
   const writePaths = agent === "aidlc-composer-agent" ? [composerProposalPath] : spacePaths;
+  const shell = kiroIdeShellPermissionLines({ policy, channel });
   return [
     `tools: ["read", "write", "shell"]`,
     "includeMcpJson: true",
     "permissions:",
     "  rules:",
-    "    - capability: shell",
-    "      effect: allow",
-    "      match:",
-    `        - "bun .kiro/tools/aidlc-*"`,
-    `        - "bun .kiro/tools/aidlc.ts engine *"`,
-    `        - "bun --version"`,
-    "    - capability: shell",
-    "      effect: ask",
-    "      match:",
-    `        - "bun .kiro/tools/aidlc.ts engine config set *"`,
-    `        - "bun .kiro/tools/aidlc.ts engine adapter *"`,
-    ...quoted(policy.riskyForms.map((form) => `bun .kiro/tools/aidlc*${form}*`)),
+    ...shell.allow,
+    ...shell.ask,
     ...policy.shellDeny(agent),
     "    - capability: fs_read",
     "      effect: allow",
@@ -82,11 +82,9 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
           insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
       }),
       promptLines: (agent) => {
-        const lines = kiroIdePermissionLines(kiroIdeDelegateShellPolicy({
+        return kiroIdePermissionLines({ policy: kiroIdeDelegateShellPolicy({
           facts: inputs.delegateShellFacts, directory: inputs.host.directory,
-        }))(agent.slug);
-        return inputs.channel === "native" ? kiroIdeNativePermissionText({ text: lines.join("\n"),
-          namespace: inputs.delegateShellFacts.engineNamespace }).split("\n") : lines;
+        }), channel: inputs.channel })(agent.slug);
       },
       inlineReading: (agent) => inlineAgents.has(agent.slug) ? "reads-inline" : "dispatched-only",
     }),
@@ -94,14 +92,15 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
       const file = inputs.files.find((candidate) => candidate.source === "agents/aidlc-aidlc.md");
       if (!file) return refused({ kind: "render-failed", concept: "agent", name: "agents/aidlc-aidlc.md",
         reason: "The authored Kiro IDE conductor was not captured." });
-      const content = file.content.kind === "text" ? file.content.text
-        : new TextDecoder("utf-8", { ignoreBOM: true }).decode(file.content.bytes);
+      const content = contentText(file.content);
       const expanded = expandKiroIdeConductorAllows({ content, invoke: "{{INVOKE}}", allows: inputs.allows });
       if (!expanded.ok) return expanded;
-      const prepared = inputs.prepare({ ...file, content: { kind: "text", text: expanded.value } });
+      const text = kiroIdeConductorPermissionSource({ source: expanded.value, channel: inputs.channel,
+        policy: kiroIdeDelegateShellPolicy({ facts: inputs.delegateShellFacts, directory: inputs.host.directory }),
+        dispatcherCommands: inputs.allows.dispatcherCommands });
+      const prepared = inputs.prepare({ ...file, content: { kind: "text", text } });
       if (!prepared.ok) return prepared;
-      const projectedContent = kiroIdeAgentPermissionContent({ content: prepared.value.content, channel: inputs.channel,
-        namespace: inputs.delegateShellFacts.engineNamespace });
+      const projectedContent = conductorContent(prepared.value.content, inputs.channel);
       const path = projectPath(".kiro/agents/aidlc-aidlc.md");
       return path.ok ? accepted([{ path: path.value, content: projectedContent,
         mode: "regular", origin: { kind: "harness-authored", source: file.source } }])

@@ -72,17 +72,36 @@ test("a token preparation refusal is preserved exactly", () => {
   expect(kiroIdeAgents({ ...inputs, prepare: () => failure }).renderConductorAgent({ knowledge: [] })).toEqual(failure);
 });
 
-test("native conductor collapses the trusted pair after preparation and preserves dispatcher ordering", () => {
-  const captured = { ...file, content: { kind: "text" as const, text:
-    'permissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "bun .kiro/tools/aidlc-*"\n        - "{{INVOKE}} engine *"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "{{INVOKE}} engine config set *"\n        - "bun .kiro/tools/aidlc*$*"\n' } };
-  const prepare = mock(() => accepted({ ...file, content: { kind: "text" as const, text:
-    'permissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "bun .kiro/tools/aidlc-*"\n        - "aidlc engine *"\n        - "aidlc doctor"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "aidlc engine config set *"\n        - "bun .kiro/tools/aidlc*$*"\n' } }));
-  expect(kiroIdeAgents({ ...inputs, files: [captured], prepare }).renderConductorAgent({ knowledge: [] }))
+const capturedConductor = { ...file, content: { kind: "text" as const, text:
+  '---\npermissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "bun {{HARNESS_DIR}}/tools/aidlc-*"\n        - "{{INVOKE}} engine *"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "authored source placeholder"\n    - capability: fs_read\n      effect: allow\n      match:\n        - "**"\n---\nBody: bun .kiro/tools/aidlc.ts engine *\n' } };
+
+const nativeConductorSource = '---\npermissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "aidlc engine *"\n        - "aidlc doctor"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "aidlc engine config set *"\n        - "aidlc engine adapter *"\n        - "aidlc*$*"\n        - "aidlc*`*"\n        - "aidlc*>*"\n        - "aidlc*<*"\n        - "aidlc*&*"\n        - "aidlc*@(*"\n        - "aidlc*@{*"\n        - "aidlc*\\n*"\n        - "*aidlc-doctor.ts*"\n        - "*aidlc-init.ts*"\n        - "*aidlc-lifecycle.ts*"\n        - "*aidlc-machine-config.ts*"\n    - capability: fs_read\n      effect: allow\n      match:\n        - "**"\n---\nBody: bun .kiro/tools/aidlc.ts engine *\n';
+
+test("native conductor generates policy before preparation and never reinterprets prepared output", () => {
+  const prepare = mock(() => accepted({ ...file, content: { kind: "text" as const,
+    text: '    - capability: shell\n      effect: ask\n      match:\n        - "bun .kiro/tools/aidlc*$*"\n' } }));
+  expect(kiroIdeAgents({ ...inputs, files: [capturedConductor], prepare }).renderConductorAgent({ knowledge: [] }))
     .toEqual(accepted([{ path: path(".kiro/agents/aidlc-aidlc.md"), mode: "regular",
       origin: { kind: "harness-authored", source: file.source }, content: { kind: "text", text:
-        'permissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "aidlc engine *"\n        - "aidlc doctor"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "aidlc engine config set *"\n        - "aidlc*$*"\n' },
+        '    - capability: shell\n      effect: ask\n      match:\n        - "bun .kiro/tools/aidlc*$*"\n' },
     }]));
   expect(prepare).toHaveBeenCalledTimes(1);
-  expect(prepare).toHaveBeenCalledWith({ ...captured, content: { kind: "text", text:
-    'permissions:\n  rules:\n    - capability: shell\n      effect: allow\n      match:\n        - "bun .kiro/tools/aidlc-*"\n        - "{{INVOKE}} engine *"\n        - "{{INVOKE}} doctor"\n        - "bun --version"\n    - capability: shell\n      effect: ask\n      match:\n        - "{{INVOKE}} engine config set *"\n        - "bun .kiro/tools/aidlc*$*"\n' } });
+  expect(prepare).toHaveBeenCalledWith({ ...capturedConductor, content: { kind: "text", text: nativeConductorSource } });
+});
+
+test("copy conductor preserves the preparer's byte object", () => {
+  const content = { kind: "bytes" as const, bytes: new Uint8Array([255, 0, 17]) };
+  const prepare = mock(() => accepted({ ...file, content }));
+  const rendering = kiroIdeAgents({ ...inputs, channel: "copy", prepare }).renderConductorAgent({ knowledge: [] });
+  expect(rendering).toEqual(accepted([{ path: path(".kiro/agents/aidlc-aidlc.md"), mode: "regular", content,
+    origin: { kind: "harness-authored", source: file.source } }]));
+  expect(rendering.ok && rendering.value[0]?.content).toBe(content);
+});
+
+test("native conductor decodes prepared bytes without changing their text", () => {
+  const prepare = mock(() => accepted({ ...file, content: { kind: "bytes" as const, bytes: new Uint8Array([35, 32, 65, 10]) } }));
+  expect(kiroIdeAgents({ ...inputs, prepare }).renderConductorAgent({ knowledge: [] })).toEqual(accepted([{
+    path: path(".kiro/agents/aidlc-aidlc.md"), content: { kind: "text", text: "# A\n" }, mode: "regular",
+    origin: { kind: "harness-authored", source: file.source },
+  }]));
 });
