@@ -1,11 +1,10 @@
-import type { HostProjectionParts } from "../../projection/application/ports/host-parts.ts";
 import { accepted } from "../../kernel/result.ts";
 import type { NativePermissionsLine } from "../../packaging/domain/payload.ts";
 import type { DelegateShellFacts } from "../../projection/application/ports/delegate-shell.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { kiroIdeDistribution } from "./distribution.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TIER_FLAVOR, KIRO_IDE_TOKENS, kiroIdeHostIdentity } from "./host-data.ts";
-import { KIRO_IDE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { kiroIdeOnboardingFills } from "./onboarding-fills.ts";
 import { createKiroIdeAgents, type KiroIdePersonaRendering } from "./projection/agent-renderer.ts";
 import { kiroIdeHostData } from "./projection/host-data-renderer.ts";
 import { kiroIdeCommandPath } from "./projection/command-renderer.ts";
@@ -14,8 +13,6 @@ import { KIRO_IDE_SETTINGS_INPUTS, createKiroIdeSettingsRenderer } from "./proje
 import { KIRO_IDE_SKILL_INPUTS, createKiroIdeSkillRenderer } from "./projection/skill-renderer.ts";
 import { createKiroIdeHarnessRecord } from "./projection/harness-record.ts";
 import { deriveKiroIdeSteering } from "./projection/steering-deriver.ts";
-
-const onboardingFills: HostProjectionParts["fills"] = () => KIRO_IDE_ONBOARDING_FILLS;
 
 export type KiroCliShare = {
   readonly personas: KiroIdePersonaRendering;
@@ -44,7 +41,7 @@ export const kiroIdeHost = ({ personas, permissionsLine }: KiroCliShare) => {
       skills: { inputs: skillInputs.value, render: createKiroIdeSkillRenderer },
       settings: { inputs: settingsInputs.value, render: createKiroIdeSettingsRenderer },
       documents: { inputs: [], render: createKiroIdeDocumentRenderer },
-      fills: onboardingFills,
+      fills: kiroIdeOnboardingFills,
       bindingHeading: KIRO_IDE_BINDING_HEADING,
       derive: deriveKiroIdeSteering,
     },

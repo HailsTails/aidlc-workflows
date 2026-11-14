@@ -1,6 +1,11 @@
+import type { DistributionChannel } from "../../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../../projection/domain/neutral-surface.ts";
 
-export const OPENCODE_ONBOARDING_FILLS: OnboardingFills = {
+const runtimePrerequisite = (channel: DistributionChannel): string => channel === "native"
+  ? "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available. If `aidlc` is not found in this tool, give the person both fixes in one line, then end your turn without installing anything or working around it: if AI-DLC was installed while this tool was open, quit the tool fully and reopen it (a new tab or reloaded window is not enough); otherwise the installer's bin folder is not on PATH (an install with `-NoModifyPath`, or a Unix install whose PATH line was not applied), so add the folder the installer printed to PATH, or rerun the installer without `-NoModifyPath`, then reopen the tool."
+  : `- **bun**: Required for the CLI tools and hook scripts (tracking progress, writing the decision log, deciding what runs next). Install via \`curl -fsSL https://bun.sh/install | bash\`. \`bun\` must be on your PATH for the shells opencode spawns; the AIDLC adapter plugin also probes \`~/.bun/bin/bun\` directly.`;
+
+export const openCodeOnboardingFills = (channel: DistributionChannel): OnboardingFills => ({
   invoke: "/aidlc",
   slots: {
     ["title_block"]: `# AI-DLC on opencode
@@ -8,7 +13,7 @@ export const OPENCODE_ONBOARDING_FILLS: OnboardingFills = {
 This project uses AI-DLC (AI-Driven Development Life Cycle) for structured development, running on the **opencode harness**. The workspace shell ships in \`.aidlc/\` (no setup command); describe what you want to build and it sets up the workflow for you. Run \`/aidlc\` followed by a scope or project description to begin. Run \`/aidlc --doctor\` to validate your setup, \`/aidlc --version\` to print the framework version, \`/aidlc --stage <slug>\` to jump to a specific stage, \`/aidlc --phase <name>\` to jump to a phase, \`/aidlc --depth <level>\` to override depth, \`/aidlc --test-strategy <level>\` to override test volume, \`/aidlc --review <class>\` to cap stage reviews (adversarial, advisory, none). Run \`/aidlc compose "<task>"\` to get a plan tailored to that task (works up front, from a scan report via \`--report <path>\`, and mid-workflow to re-shape the pending stages - every proposal stops at an approve/edit/reject gate).`,
 
     ["prereq_bullets"]: `- **opencode 1.18.29 or newer, or OpenCode 2**: the adapter plugin carries one entry point for each line (opencode 1 calls \`server()\`, OpenCode 2 calls \`setup()\`), and project-local \`.aidlc/skills/\` + \`.opencode/agents/\` discovery works on both. On OpenCode 2 the todo-driven statusline sync does not run (there is no todo tool); use \`/aidlc --status\`. Check with \`opencode --version\`.
-- **bun**: Required for the CLI tools and hook scripts (tracking progress, writing the decision log, deciding what runs next). Install via \`curl -fsSL https://bun.sh/install | bash\`. \`bun\` must be on your PATH for the shells opencode spawns; the AIDLC adapter plugin also probes \`~/.bun/bin/bun\` directly.
+${runtimePrerequisite(channel)}
 - **Model/provider**: the shipped \`opencode.json\` and agent definitions pin no model. Your global opencode configuration (\`~/.config/opencode/opencode.json\`) supplies the provider and default model; balanced reviewers retain only their medium reasoning variant.
 - **Permissions**: the shipped project \`opencode.json\` lets AI-DLC's own direct framework tool invocations run without a prompt; the adapter rejects chaining, redirection, expansion, and command substitution. Edits under \`.aidlc/tools/\` and \`.aidlc/hooks/\` prompt, and so do \`rm -r...\` and \`git push\`, once each. Every other command follows your own opencode settings (opencode's default is allow; to be asked, set \`"permission": {"bash": "ask"}\` in this project's \`opencode.json\`, or \`"bash": {"*": "ask"}\` in your global config: opencode replaces a global short form with any project map). In \`opencode run\` non-interactive sessions, pass \`--auto\` only if you accept auto-approval of the remaining prompts; prefer interactive sessions for gated workflows.`,
 
@@ -37,4 +42,6 @@ The opencode-specific guide (install, what differs, verification) is https://aws
 
     ["sections_after_resumption"]: "",
   },
-};
+});
+
+export const OPENCODE_ONBOARDING_FILLS = openCodeOnboardingFills("copy");

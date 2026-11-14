@@ -1,10 +1,9 @@
-import type { HostProjectionParts } from "../../projection/application/ports/host-parts.ts";
 import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { codexDistribution } from "./distribution.ts";
 import { CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TIER_FLAVOR, CODEX_HOST_DATA, CODEX_TOKENS, codexHostIdentity } from "./host-data.ts";
-import { CODEX_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { codexOnboardingFills } from "./onboarding-fills.ts";
 import { codexAgents } from "./projection/agent-renderer.ts";
 import { codexCommandPath } from "./projection/command-renderer.ts";
 import { createCodexDocumentRenderer } from "./projection/document-renderer.ts";
@@ -12,8 +11,6 @@ import { CODEX_SETTINGS_INPUTS, createCodexSettingsRenderer } from "./projection
 import { CODEX_SKILL_INPUTS, createCodexSkillRenderer } from "./projection/skill-renderer.ts";
 import { codexTrustRoutes } from "./trust-route.ts";
 import { codexHookTrust } from "./projection/hook-trust.ts";
-
-const onboardingFills: HostProjectionParts["fills"] = () => CODEX_ONBOARDING_FILLS;
 
 export const codexHost = () => {
   const identity = codexHostIdentity();
@@ -37,7 +34,7 @@ export const codexHost = () => {
       skills: { inputs: skillInputs.value, render: createCodexSkillRenderer },
       settings: { inputs: settingsInputs.value, render: createCodexSettingsRenderer(codexHookTrust) },
       documents: { inputs: [], render: createCodexDocumentRenderer },
-      fills: onboardingFills,
+      fills: codexOnboardingFills,
       bindingHeading: CODEX_BINDING_HEADING,
     },
     distribution: codexDistribution,

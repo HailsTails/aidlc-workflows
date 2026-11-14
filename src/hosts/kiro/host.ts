@@ -1,17 +1,14 @@
-import type { HostProjectionParts } from "../../projection/application/ports/host-parts.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { kiroDistribution } from "./distribution.ts";
 import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TIER_FLAVOR, KIRO_HOST_DATA, KIRO_TOKENS, kiroHostIdentity } from "./host-data.ts";
-import { KIRO_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { kiroOnboardingFills } from "./onboarding-fills.ts";
 import { createKiroHarnessRecord } from "./projection/harness-record.ts";
 import { KIRO_AGENT_JSON, kiroAgents } from "./projection/json-agent-renderer.ts";
 import { kiroCommandPath } from "./projection/command-renderer.ts";
 import { createKiroDocumentRenderer } from "./projection/document-renderer.ts";
 import { KIRO_SETTINGS_INPUTS, createKiroSettingsRenderer } from "./projection/settings-renderer.ts";
 import { KIRO_SKILL_INPUTS, createKiroSkillRenderer } from "./projection/skill-renderer.ts";
-
-const onboardingFills: HostProjectionParts["fills"] = () => KIRO_ONBOARDING_FILLS;
 
 export const kiroHost = () => {
   const identity = kiroHostIdentity();
@@ -35,7 +32,7 @@ export const kiroHost = () => {
       skills: { inputs: skillInputs.value, render: createKiroSkillRenderer },
       settings: { inputs: settingsInputs.value, render: createKiroSettingsRenderer },
       documents: { inputs: [], render: createKiroDocumentRenderer },
-      fills: onboardingFills,
+      fills: kiroOnboardingFills,
       bindingHeading: KIRO_BINDING_HEADING,
     },
     distribution: kiroDistribution,

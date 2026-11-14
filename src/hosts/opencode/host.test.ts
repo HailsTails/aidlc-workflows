@@ -6,7 +6,7 @@ import { accepted } from "../../kernel/result.ts";
 import { openCodeDistribution } from "./distribution.ts";
 import { OPENCODE_AUTHORED_PLACEMENTS, OPENCODE_BINDING_HEADING, OPENCODE_TIER_FLAVOR, OPENCODE_TOKENS } from "./host-data.ts";
 import { openCodeHost } from "./host.ts";
-import { OPENCODE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { OPENCODE_ONBOARDING_FILLS, openCodeOnboardingFills } from "./onboarding-fills.ts";
 import { openCodeAgents } from "./projection/agent-renderer.ts";
 import { openCodeCommandPath } from "./projection/command-renderer.ts";
 import { createOpenCodeDocumentRenderer } from "./projection/document-renderer.ts";
@@ -38,5 +38,5 @@ test("openCode module gathers the identity, distribution and every projection pa
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(openCodeHost());
   expect(module.projection.fills("copy")).toEqual(OPENCODE_ONBOARDING_FILLS);
-  expect(module.projection.fills("native")).toBe(OPENCODE_ONBOARDING_FILLS);
+  expect(module.projection.fills).toBe(openCodeOnboardingFills);
 });

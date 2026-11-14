@@ -7,7 +7,7 @@ import { DELEGATE_SHELL_FACTS } from "../../projection/fixtures/delegate-shell-f
 import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TIER_FLAVOR, KIRO_IDE_TOKENS } from "./host-data.ts";
 import { kiroIdeHost } from "./host.ts";
-import { KIRO_IDE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { KIRO_IDE_ONBOARDING_FILLS, kiroIdeOnboardingFills } from "./onboarding-fills.ts";
 import type { KiroIdePersonaRendering } from "./projection/agent-renderer.ts";
 import { kiroIdeHostData } from "./projection/host-data-renderer.ts";
 import { kiroIdeCommandPath } from "./projection/command-renderer.ts";
@@ -64,5 +64,5 @@ test("kiroIde says Kiro CLI's native permissions line, handed in by the root", (
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(kiroIdeHost(kiroCli));
   expect(module.projection.fills("copy")).toEqual(KIRO_IDE_ONBOARDING_FILLS);
-  expect(module.projection.fills("native")).toBe(KIRO_IDE_ONBOARDING_FILLS);
+  expect(module.projection.fills).toBe(kiroIdeOnboardingFills);
 });

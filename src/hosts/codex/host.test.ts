@@ -8,7 +8,7 @@ import { settingsRenderingInputsFixture } from "../../projection/fixtures/settin
 import { codexDistribution } from "./distribution.ts";
 import { CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TIER_FLAVOR, CODEX_TOKENS } from "./host-data.ts";
 import { codexHost } from "./host.ts";
-import { CODEX_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { CODEX_ONBOARDING_FILLS, codexOnboardingFills } from "./onboarding-fills.ts";
 import { codexAgents } from "./projection/agent-renderer.ts";
 import { codexCommandPath } from "./projection/command-renderer.ts";
 import { createCodexDocumentRenderer } from "./projection/document-renderer.ts";
@@ -59,5 +59,5 @@ test("Codex binds the real host-owned hash into both hook settings and the trust
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(codexHost());
   expect(module.projection.fills("copy")).toEqual(CODEX_ONBOARDING_FILLS);
-  expect(module.projection.fills("native")).toBe(CODEX_ONBOARDING_FILLS);
+  expect(module.projection.fills).toBe(codexOnboardingFills);
 });

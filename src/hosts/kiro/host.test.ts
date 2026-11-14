@@ -5,7 +5,7 @@ import { accepted } from "../../kernel/result.ts";
 import { kiroDistribution } from "./distribution.ts";
 import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TIER_FLAVOR, KIRO_TOKENS } from "./host-data.ts";
 import { kiroHost, kiroPersonas } from "./host.ts";
-import { KIRO_ONBOARDING_FILLS } from "./onboarding-fills.ts";
+import { KIRO_ONBOARDING_FILLS, kiroOnboardingFills } from "./onboarding-fills.ts";
 import { kiroAgentRenderer } from "./projection/agent-renderer.ts";
 import { createKiroHarnessRecord } from "./projection/harness-record.ts";
 import { kiroAgents } from "./projection/json-agent-renderer.ts";
@@ -44,5 +44,5 @@ test("Kiro offers its persona renderer beside its module for the host that build
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(kiroHost());
   expect(module.projection.fills("copy")).toEqual(KIRO_ONBOARDING_FILLS);
-  expect(module.projection.fills("native")).toBe(KIRO_ONBOARDING_FILLS);
+  expect(module.projection.fills).toBe(kiroOnboardingFills);
 });
