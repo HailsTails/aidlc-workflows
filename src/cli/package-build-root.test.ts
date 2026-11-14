@@ -15,7 +15,7 @@ import { createRecordingTerminal } from "../kernel/fixtures/terminal.fake.ts";
 import { hash, host, path, source, version } from "../kernel/fixtures/values.fixture.ts";
 import { buildVersionFixture, claudeCopyPayloadFixture } from "../packaging/fixtures/claude-payload.fixture.ts";
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
-import type { CoreBuild, HostBuildRequest, HostModule, HostDistributionReader, Platform } from "./roots.ts";
+import type { BuildRoutesRequest, CoreBuild, HostBuildRequest, HostModule, HostDistributionReader, Platform } from "./roots.ts";
 import type { HostDocumentRenderer } from "../projection/application/ports/documents.ts";
 import { createPackageBuildRoot as createRoot } from "./package-build-root.ts";
 import { createRecordingPluginProjector } from "../projection/fixtures/plugin-projector.fake.ts";
@@ -229,6 +229,10 @@ test("native placement inputs are required by capture even after their old copy 
     }]));
 });
 import { tokenBindingsFixture } from "../projection/fixtures/token-bindings.fixture.ts";
+
+const NO_MODEL_CAP: BuildRoutesRequest = {
+  resolveModelCap: () => ({ cap: null, source: null, environment: "unset" }),
+};
 
 test("settings remain required by the shared snapshot after the legacy copy row retires", async () => {
   const root = createPackageBuildRoot({ hosts: HOSTS, platform: { fileSystem: createInMemoryFileSystem({
@@ -558,7 +562,7 @@ test("the root binds registered host routes with copy-channel tokens and its exi
   const routes = mock<HostModule["routes"]>(() => [route]);
   const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(), routes }],
     platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
-  const commands = root.buildRoutes();
+  const commands = root.buildRoutes(NO_MODEL_CAP);
   expect(commands).toMatchObject([{ verb: ["plugin", "build"] }, { verb: ["scratch", "trust"] }]);
   expect(commands[1]).toBe(route);
   expect(routes).toHaveBeenCalledTimes(1);
@@ -573,8 +577,8 @@ test("the root exposes its plugin command without reading authored inputs for in
   const terminal = createRecordingTerminal();
   const root = createPackageBuildRoot({ hosts: [distributionMembers()],
     platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
-  expect(root.buildRoutes()).toMatchObject([{ verb: ["plugin", "build"] }]);
-  expect(await root.buildRoutes()[0]?.run([])).toBe(1);
+  expect(root.buildRoutes(NO_MODEL_CAP)).toMatchObject([{ verb: ["plugin", "build"] }]);
+  expect(await root.buildRoutes(NO_MODEL_CAP)[0]?.run([])).toBe(1);
   expect(terminal.errors()).toEqual(["usage: package.ts plugin build <plugin> <harness> <outDir>\n"]);
   expect(readTree).not.toHaveBeenCalled();
 });

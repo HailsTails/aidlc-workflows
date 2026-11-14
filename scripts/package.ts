@@ -88,6 +88,7 @@ import type { AuthoredPluginBuild as PluginBuildCatalog }
 import { createPackagedSourcesFile } from "../src/packaging/adapters/packaged-sources-file.ts";
 import { distributionId } from "../src/kernel/values.ts";
 import { readEnvCap, readMemoryCap } from "../core/tools/aidlc-tiers.ts";
+import type { ResolveModelCap } from "../src/projection/domain/model-cap.ts";
 import {
   TRUSTED_COMMAND_PREFIX,
   TRUSTED_ROUTE_NAMESPACE,
@@ -112,22 +113,27 @@ const HARNESS_ROOT = join(REPO_ROOT, "harness");
 // with the repo, so it applies in both modes and keeps write and check
 // consistent. The diagnostic below names the active cap and mode.
 const argv = process.argv.slice(2);
-const command = packageBuildRoot.buildRoutes().find((route) =>
+const resolveModelCap: ResolveModelCap = (mode) => {
+  const environment = mode === "check" ? null : readEnvCap();
+  const memory = readMemoryCap(join(CORE_ROOT, "memory"));
+  return { cap: environment ?? memory, source: environment ? "environment" : memory ? "memory" : null,
+    environment: environment ? "applied" : mode === "check" && process.env.AIDLC_TIER_CAP ? "ignored" : "unset" };
+};
+const command = packageBuildRoot.buildRoutes({ resolveModelCap }).find((route) =>
   route.verb.every((word, index) => word === argv[index]));
 // Host utility commands do not project a tree; plugin builds keep the existing cap resolution.
 const pluginCommand = command?.verb[0] === "plugin";
 if (command && !pluginCommand) process.exit(await command.run(argv.slice(command.verb.length)));
 
 const IS_CHECK_MODE = process.argv.includes("--check");
-const ENV_CAP = IS_CHECK_MODE ? null : readEnvCap();
-const MEMORY_CAP = readMemoryCap(join(CORE_ROOT, "memory"));
-const TIER_CAP = ENV_CAP ?? MEMORY_CAP;
+const CAP_READING = resolveModelCap(IS_CHECK_MODE ? "check" : "build");
+const TIER_CAP = CAP_READING.cap;
 if (TIER_CAP) {
   console.error(
     `[tier] pack-time tier cap active: ${TIER_CAP} ` +
-      `(source: ${ENV_CAP ? "AIDLC_TIER_CAP env var" : "core/memory tier_cap:"})`,
+      `(source: ${CAP_READING.source === "environment" ? "AIDLC_TIER_CAP env var" : "core/memory tier_cap:"})`,
   );
-} else if (IS_CHECK_MODE && process.env.AIDLC_TIER_CAP) {
+} else if (CAP_READING.environment === "ignored") {
   console.error(
     "[tier] AIDLC_TIER_CAP is set but IGNORED under --check " +
       "(the env cap is a one-shot write knob; persistent caps live in core/memory)",

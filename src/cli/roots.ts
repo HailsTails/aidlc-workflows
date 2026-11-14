@@ -10,6 +10,7 @@ import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { ProcessRunner } from "../kernel/process-runner-port.ts";
 import type { Terminal } from "../kernel/terminal-port.ts";
+import type { ResolveModelCap } from "../projection/domain/model-cap.ts";
 import type { CapturedHostSources, HostSourcesRequest } from "../projection/application/ports/build-sources.ts";
 import type { Result } from "../kernel/result.ts";
 import type { FrameworkVersion, KernelRefusal, SourcePath } from "../kernel/values.ts";
@@ -181,7 +182,11 @@ export type BuildPlugins = (
   request: PluginsBuildRequest,
 ) => Result<PluginsBuilt, readonly (KernelRefusal | ProjectionRefusal)[]>;
 
-export type BuildRoutes = () => readonly CommandRoute[];
+export type BuildRoutesRequest = {
+  readonly resolveModelCap: ResolveModelCap;
+};
+
+export type BuildRoutes = (request: BuildRoutesRequest) => readonly CommandRoute[];
 export type ReleaseArchivesRequest = {
   readonly archives: URL;
   readonly pluginTrees: URL;

@@ -34,7 +34,7 @@
         "lanes.json",
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}{,.test}.ts",
         "src/workflow-definition/application/use-cases{,.test}.ts",
-        "src/projection/domain/{projected-file,neutral-surface,host-surface,native-command,projection,template-token}{,.test}.ts",
+        "src/projection/domain/{projected-file,neutral-surface,host-surface,native-command,projection,template-token,model-cap}{,.test}.ts",
         "src/projection/application/ports/*.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}{,.test}.ts",
         "src/packaging/application/boundary-ports{,.test}.ts",
@@ -48,7 +48,7 @@
       "contractFiles": [
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}.ts",
         "src/workflow-definition/application/use-cases.ts",
-        "src/projection/domain/{projected-file,neutral-surface,host-surface,native-command,projection,template-token}.ts",
+        "src/projection/domain/{projected-file,neutral-surface,host-surface,native-command,projection,template-token,model-cap}.ts",
         "src/projection/application/ports/*.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}.ts",
         "src/packaging/application/boundary-ports.ts",
