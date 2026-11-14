@@ -113,8 +113,6 @@ function fixture(files: Record<string, string>): string {
   const root = scratch();
   for (const path of [
     "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts",
-    "lint/gate/adapters/runner-progress.ts",
-    "lint/gate/adapters/package-lock.ts",
     "tests/lib/test-matrix.ts", "tests/lib/test-source.ts",
     "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
     "tests/harness/tui-process-identity.ts",

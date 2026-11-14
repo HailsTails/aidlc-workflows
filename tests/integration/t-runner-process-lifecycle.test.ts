@@ -38,8 +38,6 @@ function git(cwd: string, args: string[]): void {
 
 const RUNNER_SOURCE_FILES = [
     "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts",
-    "lint/gate/adapters/runner-progress.ts",
-    "lint/gate/adapters/package-lock.ts",
     "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
     "tests/harness/tui-process-identity.ts",
     "tests/harness/tui-screen.ts", "tests/harness/tui-time-budget.ts",

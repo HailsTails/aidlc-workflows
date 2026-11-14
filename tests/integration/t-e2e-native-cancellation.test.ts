@@ -231,8 +231,6 @@ function runnerFixture(mode: "success" | "timeout" | "cancel" | "capture", witne
   const fixture = join(scratch(), "runner");
   const copied = [
     "tests/run-tests.ts", "tests/gen-coverage-registry.ts", "tests/harness/claude-gate.ts",
-    "lint/gate/adapters/runner-progress.ts",
-    "lint/gate/adapters/package-lock.ts",
     "tests/lib/test-matrix.ts", "tests/lib/test-source.ts",
     "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts",
     "src/kernel/file-system-port.ts",

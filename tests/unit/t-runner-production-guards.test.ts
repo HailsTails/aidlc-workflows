@@ -249,8 +249,6 @@ function runnerFixture(files: Record<string, string>) {
   for (const file of [
     "tests/run-tests.sh",
     "tests/run-tests.ts",
-    "lint/gate/adapters/runner-progress.ts",
-    "lint/gate/adapters/package-lock.ts",
     "tests/lib/test-matrix.ts", "tests/lib/test-source.ts",
     "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
     "tests/harness/tui-process-identity.ts",
