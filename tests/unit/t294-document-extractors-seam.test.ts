@@ -1,4 +1,4 @@
-// covers: function:documentExtractors function:DocumentExtractorSpec
+// covers: function:documentExtractors file:src/hosts/claude/host-data.ts
 //
 // t294 - the `documentExtractors` configuration seam: a team commits its text
 // extractor choice so it travels to every clone.
@@ -54,7 +54,7 @@ const REPO = join(import.meta.dir, "..", "..");
 // only things read from REPO are `dist/claude/.claude/tools/aidlc-lib.ts`
 // (import, read-only) and the fixture-copy source list below (read-only cp).
 // No path under REPO is ever opened for writing by this file.
-const SCRATCH_SOURCES = ["core", "harness", "scripts", "plugins"] as const;
+const SCRATCH_SOURCES = ["core", "harness", "scripts", "plugins", "src"] as const;
 const SCRATCH_FILES = ["package.json", "bun.lock", "tsconfig.json"] as const;
 
 let scratch = "";
@@ -313,14 +313,14 @@ describe("t294 present when a manifest sets it, and it SURVIVES a repackage", ()
     // The three properties that together make this a working seam. "Survives a
     // second build" is the one the hand-edit route fails, and it is the reason a
     // team's authored choice actually reaches every generated projection.
-    const path = guard("harness/claude/manifest.ts");
+    const path = guard("src/hosts/claude/host-data.ts");
     const src = readFileSync(path, "utf-8");
-    expect(src).toContain("rulesRename: null,");
+    expect(src).toContain('"rulesFolder": null,');
     writeFileSync(
       path,
       src.replace(
-        "rulesRename: null,",
-        'rulesRename: null,\n  documentExtractors: { "application/pdf": ' +
+        '"rulesFolder": null,',
+        '"rulesFolder": null,\n  documentExtractors: { "application/pdf": ' +
           '{ argv: ["pdftotext", "-q", "$IN", "-"], timeoutMs: 30000 } },',
       ),
     );

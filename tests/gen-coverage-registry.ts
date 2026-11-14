@@ -1395,10 +1395,29 @@ async function main(): Promise<void> {
   // Loaded here so modules that import this file's helpers (the runner, the
   // live filter) never need the packager's module.
   if (existsSync(join(REPO_ROOT, "core"))) {
-    const { stalePackageMessage } = await import("../scripts/package-sources.ts");
-    const stale = stalePackageMessage(REPO_ROOT, "claude");
-    if (stale) {
-      console.error(`coverage registry: ${stale}`);
+    const [
+      { createPackagedSourcesFile }, { createNodeFileSystem },
+      { createBunContentDigester }, { distributionId }, { pathToFileURL },
+    ] = await Promise.all([
+      import("../src/packaging/adapters/packaged-sources-file.ts"),
+      import("../src/kernel/file-system.ts"), import("../src/kernel/content-digester.ts"),
+      import("../src/kernel/values.ts"), import("node:url"),
+    ]);
+    const host = distributionId("claude");
+    if (!host.ok) {
+      console.error(`coverage registry: ${JSON.stringify(host.refusal)}`);
+      process.exit(1);
+    }
+    const sources = createPackagedSourcesFile({ repository: pathToFileURL(`${REPO_ROOT}/`),
+      record: pathToFileURL(join(REPO_ROOT, "dist", ".package-sources.json")),
+      fileSystem: createNodeFileSystem(), hasher: createBunContentDigester() });
+    const stale = await sources.staleness(host.value);
+    if (!stale.ok) {
+      console.error(`coverage registry: ${JSON.stringify(stale.refusal)}`);
+      process.exit(1);
+    }
+    if (stale.value) {
+      console.error(`coverage registry: ${stale.value}`);
       process.exit(1);
     }
   }

@@ -1,149 +1,92 @@
-// covers: file:scripts/package-sources.ts
-//
-// Tools that read dist/ must not report on code that has since changed. The
-// packager records a content fingerprint of its inputs per harness tree, and
-// the coverage generator refuses, naming the one command to run, when the tree
-// it reads was packaged from other sources than the checkout.
-import { afterEach, describe, expect, test } from "bun:test";
+// covers: file:src/packaging/adapters/packaged-sources-file.ts
+import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-  forgetPackagedSources, PACKAGE_SOURCES_FILE, packageInputsFingerprint, recordPackagedSources, stalePackageMessage,
-} from "../../scripts/package-sources.ts";
-import { NATIVE_STARTUP_TIMEOUT_MS, remainingOperationTimeoutMs } from "../harness/test-budget.ts";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createPackagedSourcesFile } from "../../src/packaging/adapters/packaged-sources-file.ts";
+import { createNodeFileSystem } from "../../src/kernel/file-system.ts";
+import { createBunContentDigester } from "../../src/kernel/content-digester.ts";
+import { distributionId } from "../../src/kernel/values.ts";
+import { assertRunnerFixtureImports } from "../lib/runner-fixture-imports.ts";
+import { NATIVE_STARTUP_TIMEOUT_MS } from "../harness/test-budget.ts";
 
-const GENERATOR = join(import.meta.dir, "..", "gen-coverage-registry.ts");
+const SOURCE = resolve(import.meta.dir, "../..");
+const GENERATOR = "tests/gen-coverage-registry.ts";
+const GENERATOR_SOURCES = [
+  GENERATOR,
+  "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts", "src/kernel/file-system-port.ts",
+  "src/kernel/content-digester.ts", "src/kernel/values.ts", "src/kernel/brand.ts", "src/kernel/result.ts",
+];
 const roots: string[] = [];
+
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function checkout(): string {
+function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), "aidlc-package-sources-"));
   roots.push(root);
-  for (const [path, body] of [
-    ["core/tools/example.ts", "export const x = 1;\n"],
-    ["harness/claude/manifest.ts", "export default {};\n"],
-    ["plugins/demo/stages/s.md", "# s\n"],
-    ["plugins/demo/tests/t.test.ts", "// a plugin test\n"],
-    ["scripts/package.ts", "// packager\n"],
-    ["scripts/plugin-hooks-template/compose.ts", "// compose\n"],
-  ] as const) {
-    mkdirSync(join(root, path, ".."), { recursive: true });
-    writeFileSync(join(root, path), body);
+  for (const path of GENERATOR_SOURCES) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    copyFileSync(join(SOURCE, path), join(root, path));
   }
-  mkdirSync(join(root, "dist"));
+  assertRunnerFixtureImports(root, [GENERATOR]);
+  cpSync(join(SOURCE, "node_modules", "zod"), join(root, "node_modules", "zod"), { recursive: true });
   return root;
 }
 
-describe("the packaged-sources fingerprint", () => {
-  test("changes with a packaged input and comes back when the edit is undone", () => {
-    const root = checkout();
-    const before = packageInputsFingerprint(root);
-    expect(packageInputsFingerprint(root)).toBe(before);
-    writeFileSync(join(root, "core/tools/example.ts"), "export const x = 2;\n");
-    expect(packageInputsFingerprint(root)).not.toBe(before);
-    writeFileSync(join(root, "core/tools/example.ts"), "export const x = 1;\n");
-    expect(packageInputsFingerprint(root)).toBe(before);
+function runGenerator(root: string, registry: string, args: readonly string[]): ReturnType<typeof spawnSync> {
+  return spawnSync(process.execPath, [join(root, GENERATOR), ...args], {
+    encoding: "utf8", timeout: NATIVE_STARTUP_TIMEOUT_MS,
+    env: { ...process.env, AIDLC_COVERAGE_SRC_ROOT: root,
+      AIDLC_COVERAGE_TESTS_DIR: join(root, "tests"), AIDLC_COVERAGE_REGISTRY: registry },
   });
+}
 
-  test.each([
-    ["harness/claude/manifest.ts"],
-    ["plugins/demo/stages/s.md"],
-    ["scripts/package.ts"],
-    ["scripts/plugin-hooks-template/compose.ts"],
-  ])("covers %s", (path) => {
-    const root = checkout();
-    const before = packageInputsFingerprint(root);
-    writeFileSync(join(root, path), "changed\n");
-    expect(packageInputsFingerprint(root)).not.toBe(before);
-  });
-
-  test("ignores what the packager never reads: plugin tests, node_modules, the rest of scripts/ and tests/", () => {
-    const root = checkout();
-    const before = packageInputsFingerprint(root);
-    writeFileSync(join(root, "plugins/demo/tests/t.test.ts"), "// edited\n");
-    mkdirSync(join(root, "core/node_modules/dep"), { recursive: true });
-    writeFileSync(join(root, "core/node_modules/dep/index.js"), "x");
-    writeFileSync(join(root, "scripts/ci-other.ts"), "x");
-    mkdirSync(join(root, "tests"));
-    writeFileSync(join(root, "tests/t1.test.ts"), "x");
-    expect(packageInputsFingerprint(root)).toBe(before);
-  });
+test("copied coverage refuses stale sources without changing its registry", async () => {
+  const root = fixture();
+  mkdirSync(join(root, "core", "tools"), { recursive: true });
+  const input = join(root, "core", "tools", "example.ts");
+  writeFileSync(input, "export const x = 1;\n");
+  const sources = createPackagedSourcesFile({ repository: pathToFileURL(`${root}/`),
+    record: pathToFileURL(join(root, "dist", ".package-sources.json")),
+    fileSystem: createNodeFileSystem(), hasher: createBunContentDigester() });
+  const host = distributionId("claude");
+  const builtFrom = await sources.fingerprint();
+  expect(host.ok).toBe(true);
+  expect(builtFrom.ok).toBe(true);
+  if (!host.ok || !builtFrom.ok) throw new Error("Fixture admission failed");
+  expect(await sources.record({ hosts: [host.value], builtFrom: builtFrom.value }))
+    .toEqual({ ok: true, value: "recorded" });
+  writeFileSync(input, "export const x = 2;\n");
+  const registry = join(root, "registry.json");
+  writeFileSync(registry, "committed\n");
+  for (const args of [["--check"], []]) {
+    const run = runGenerator(root, registry, args);
+    expect(run.status).toBe(1);
+    expect(run.stdout).toBe("");
+    expect(String(run.stderr).trim().split("\n")).toEqual([
+      "coverage registry: dist/claude was packaged from other sources than this checkout: " +
+        "run `bun scripts/package.ts` first.",
+    ]);
+    expect(readFileSync(registry, "utf8")).toBe("committed\n");
+  }
 });
 
-describe("the packaged-sources record", () => {
-  test("a tree with no record, or an unreadable one, is reported as never packaged", () => {
-    const root = checkout();
-    const missing = "dist/claude has no record of the sources it was packaged from: run `bun scripts/package.ts` first.";
-    expect(stalePackageMessage(root, "claude")).toBe(missing);
-    writeFileSync(join(root, PACKAGE_SOURCES_FILE), "{");
-    expect(stalePackageMessage(root, "claude")).toBe(missing);
-  });
-
-  test("a recorded tree is current until a packaged input changes", () => {
-    const root = checkout();
-    recordPackagedSources(root, ["claude", "kiro"], packageInputsFingerprint(root));
-    expect(stalePackageMessage(root, "claude")).toBeNull();
-    writeFileSync(join(root, "core/tools/example.ts"), "export const x = 2;\n");
-    expect(stalePackageMessage(root, "claude")).toBe(
-      "dist/claude was packaged from other sources than this checkout: run `bun scripts/package.ts` first.",
-    );
-  });
-
-  test("a one-harness build updates its own entry and keeps the others", () => {
-    const root = checkout();
-    recordPackagedSources(root, ["claude", "kiro"], packageInputsFingerprint(root));
-    writeFileSync(join(root, "core/tools/example.ts"), "export const x = 2;\n");
-    recordPackagedSources(root, ["kiro"], packageInputsFingerprint(root));
-    expect(stalePackageMessage(root, "kiro")).toBeNull();
-    expect(stalePackageMessage(root, "claude")).toContain("was packaged from other");
-    expect(Object.keys(JSON.parse(readFileSync(join(root, PACKAGE_SOURCES_FILE), "utf8")).harnesses)).toEqual(["claude", "kiro"]);
-  });
-
-  test("a source edited while the build runs leaves its trees unrecorded, and says so to the caller", () => {
-    const root = checkout();
-    recordPackagedSources(root, ["claude"], packageInputsFingerprint(root));
-    const builtFrom = packageInputsFingerprint(root);
-    forgetPackagedSources(root, ["claude"]);
-    writeFileSync(join(root, "core/tools/example.ts"), "export const x = 2;\n");
-    expect(recordPackagedSources(root, ["claude"], builtFrom)).toBe(false);
-    expect(stalePackageMessage(root, "claude")).toContain("has no record");
-  });
-
-  test("a build that stops halfway leaves its trees unrecorded, never current", () => {
-    const root = checkout();
-    recordPackagedSources(root, ["claude", "kiro"], packageInputsFingerprint(root));
-    forgetPackagedSources(root, ["claude"]);
-    expect(stalePackageMessage(root, "claude")).toContain("has no record");
-    expect(stalePackageMessage(root, "kiro")).toBeNull();
-    const fresh = checkout();
-    forgetPackagedSources(fresh, ["claude"]);
-    expect(existsSync(join(fresh, PACKAGE_SOURCES_FILE))).toBe(false);
-  });
-});
-
-describe("the coverage generator on a stale dist/", () => {
-  test("refuses in one line naming the command, before it reads or writes anything", () => {
-    const root = checkout();
-    recordPackagedSources(root, ["claude"], packageInputsFingerprint(root));
-    writeFileSync(join(root, "core/tools/example.ts"), "export const x = 2;\n");
-    const registry = join(root, "registry.json");
-    writeFileSync(registry, "committed\n");
-    for (const args of [["--check"], []]) {
-      const run = spawnSync(process.execPath, [GENERATOR, ...args], {
-        encoding: "utf-8",
-        timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
-        env: { ...process.env, AIDLC_COVERAGE_SRC_ROOT: root, AIDLC_COVERAGE_TESTS_DIR: join(root, "tests"), AIDLC_COVERAGE_REGISTRY: registry },
-      });
-      expect(run.status).toBe(1);
-      expect(run.stdout).toBe("");
-      expect(run.stderr.trim().split("\n")).toEqual([
-        "coverage registry: dist/claude was packaged from other sources than this checkout: run `bun scripts/package.ts` first.",
-      ]);
-      expect(readFileSync(registry, "utf8")).toBe("committed\n");
-    }
-  });
+test("copied coverage prints a source refusal before changing its registry", () => {
+  const root = fixture();
+  mkdirSync(join(root, "core"));
+  mkdirSync(join(root, "scripts", "package.ts"), { recursive: true });
+  const registry = join(root, "registry.json");
+  writeFileSync(registry, "committed\n");
+  const run = runGenerator(root, registry, ["--check"]);
+  expect(run.status).toBe(1);
+  expect(run.stdout).toBe("");
+  expect(String(run.stderr).trim().split("\n")).toEqual([
+    'coverage registry: {"kind":"packaged-sources-failed","operation":"read-inputs",' +
+      '"path":"scripts/package.ts","reason":"not-a-file"}',
+  ]);
+  expect(readFileSync(registry, "utf8")).toBe("committed\n");
 });

@@ -817,7 +817,7 @@ authored
 Kiro IDE surfaces live in `harness/kiro-ide/`: the orchestrator skill
 (`skills/aidlc/`), always-included active-memory steering (`steering/`),
 the conductor Markdown (`agents/aidlc-aidlc.md`), the hook adapter and v2 hook JSON
-files (`hooks/`), the personas' delegate shell deny (`delegate-shell-deny.ts`),
+files (`hooks/`),
 and onboarding fills — edit those
 (or `core/`), never hand-edit the generated `dist/kiro-ide`.
 

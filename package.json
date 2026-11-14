@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.tests.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.adapters.json",
+    "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.tests.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.adapters.json && tsc -b src/tsconfig.shipped-types.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p src/tsconfig.json",
     "lint": "biome check --error-on-warnings core harness scripts plugins tests",
     "check": "bun scripts/package.ts && bun scripts/package.ts --check && bun run typecheck && bun run lint"
   },
@@ -22,7 +22,8 @@
     "bun-types": "^1.3.13",
     "eslint": "10.11.0",
     "smol-toml": "1.9.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "zod": "4.4.3"
   },
   "overrides": {
     "proxy-addr": "2.0.8"
