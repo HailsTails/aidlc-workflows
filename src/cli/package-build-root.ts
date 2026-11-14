@@ -30,7 +30,7 @@ import type { EnrichPluginAuthoring } from "../projection/application/ports/plug
 import { createPackageDistributions, createOutputTrees, createPackagedSourcesFile, buildVersionNotice }
   from "../packaging/core-root.ts";
 import { announceBuiltPayload, announceModelCap, createBuildRoute,
-  entrypointPreparationDiagnostic, methodPreparationDiagnostic } from "./adapters/routes/build/build-route.ts";
+  entrypointPreparationDiagnostic, methodPreparationDiagnostic, type PreparationDiagnostic } from "./adapters/routes/build/build-route.ts";
 import { HOST_BUILD_REFUSALS } from "./host-table.ts";
 import type { BuildMode, ModelCapReading } from "../projection/domain/model-cap.ts";
 import type { DistributionBuildFailure, DistributionPayloads } from "../packaging/application/ports.ts";
@@ -142,17 +142,18 @@ const prepareDistributionHosts = (ports: {
 const prepareDistributions = async (ports: {
   readonly root: PackageBuildRoot; readonly request: Parameters<CreatePackageBuildRoot>[0];
   readonly packaging: BuildPackaging;
-}, hosts: readonly HostIdentity[]): Promise<Result<PreparedDistributions, readonly DistributionBuildFailure[]>> => {
+}, hosts: readonly HostIdentity[]): Promise<Result<PreparedDistributions,
+  readonly (DistributionBuildFailure | PreparationDiagnostic)[]>> => {
   if (!ports.packaging.version.ok) return refused([ports.packaging.version.refusal]);
   const core = await ports.root.loadCore();
-  if (!core.ok) throw methodPreparationDiagnostic({ method: "core", refusals: core.refusal });
+  if (!core.ok) return refused([methodPreparationDiagnostic({ method: "core", refusals: core.refusal })]);
   const plugins = await ports.root.loadPlugins({ core: core.value });
-  if (!plugins.ok) throw methodPreparationDiagnostic({ method: "plugin", refusals: plugins.refusal });
+  if (!plugins.ok) return refused([methodPreparationDiagnostic({ method: "plugin", refusals: plugins.refusal })]);
   const captured = await prepareDistributionHosts(ports, hosts);
   if (!captured.ok) return captured;
   const entrypoints = await captureReleaseEntrypoints({ core: ports.request.sources.core,
     reader: ports.request.platform.fileSystem });
-  if (!entrypoints.ok) throw entrypointPreparationDiagnostic(entrypoints.refusal);
+  if (!entrypoints.ok) return refused([entrypointPreparationDiagnostic(entrypoints.refusal)]);
   return accepted({ core: core.value, plugins: plugins.value, hosts: captured.value, entrypoints: entrypoints.value });
 };
 
@@ -179,12 +180,13 @@ const distributionBuild = (ports: {
   readonly reading: ModelCapReading; readonly mode: BuildMode;
   readonly buildPlugins: BuildPlugins;
 }) => {
-  let preparation: Promise<Result<PreparedDistributions, readonly DistributionBuildFailure[]>> | undefined;
+  let preparation: Promise<Result<PreparedDistributions,
+  readonly (DistributionBuildFailure | PreparationDiagnostic)[]>> | undefined;
   let prepared: PreparedDistributions | undefined;
   const unavailable = () => refused([{ kind: "render-failed" as const, concept: "host-data" as const,
     name: "package-build", reason: "Prepare the build sources before projecting distributions." }]);
   const repository = new URL("../", ports.request.sources.core);
-  return createPackageDistributions({
+  return createPackageDistributions<PreparationDiagnostic>({
     prepare: async ({ hosts }) => {
       const captured = await (preparation ??= prepareDistributions(ports, hosts));
       if (!captured.ok) return captured;

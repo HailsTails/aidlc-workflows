@@ -3,7 +3,7 @@ import { accepted, refused } from "../../../../kernel/result.ts";
 import { host, path } from "../../../../kernel/fixtures/values.fixture.ts";
 import { createRecordingTerminal } from "../../../../kernel/fixtures/terminal.fake.ts";
 import type { PackagingRefusal } from "../../../../packaging/domain/artifact.ts";
-import { createBuildRoute } from "./build-route.ts";
+import { createBuildRoute, methodPreparationDiagnostic, entrypointPreparationDiagnostic } from "./build-route.ts";
 
 const claude = host({ name: "claude", directory: ".claude" });
 const codex = host({ name: "codex", directory: ".codex" });
@@ -82,5 +82,38 @@ test("a completed build with changed inputs keeps the sources warning and failur
   expect(current.terminal.errors()).toEqual([
     "[sources] a packaging input changed while packaging, so the generated trees may mix " +
       "old and new files: run `bun scripts/package.ts` again.\n",
+  ]);
+});
+
+const methodPreparationCases: { readonly method: "core" | "plugin";
+  readonly argv: readonly string[]; readonly line: string }[] = [
+  { method: "core", argv: [], line: 'Cannot load the fresh Method: [{"kind":"core-namespace-claimed","plugin":"fixture"}]\n' },
+  { method: "core", argv: ["--check"], line: 'Cannot load the fresh Method: [{"kind":"core-namespace-claimed","plugin":"fixture"}]\n' },
+  { method: "plugin", argv: [], line: 'Cannot load the plugin Method: [{"kind":"core-namespace-claimed","plugin":"fixture"}]\n' },
+  { method: "plugin", argv: ["--check"], line: 'Cannot load the plugin Method: [{"kind":"core-namespace-claimed","plugin":"fixture"}]\n' },
+];
+
+test.each(methodPreparationCases)("typed $method preparation refusal preserves route bytes for $argv", async (entry) => {
+  const current = fixture();
+  const diagnostic = methodPreparationDiagnostic({ method: entry.method,
+    refusals: [{ kind: "core-namespace-claimed", plugin: "fixture" }] });
+  current.build.mockResolvedValue(refused([diagnostic]));
+  current.check.mockResolvedValue(refused([diagnostic]));
+  expect(await current.route.run(entry.argv)).toBe(1);
+  expect(current.terminal.errors()).toEqual([entry.line]);
+  expect(current.terminal.output()).toEqual([]);
+});
+
+test("typed entrypoint preparation preserves every refusal line in order", async () => {
+  const current = fixture();
+  const diagnostic = entrypointPreparationDiagnostic([
+    { kind: "invalid-path", base: "source", raw: "../hooks" },
+    { kind: "invalid-path", base: "source", raw: "../tools" },
+  ]);
+  current.check.mockResolvedValue(refused([diagnostic]));
+  expect(await current.route.run(["--check"])).toBe(1);
+  expect(current.terminal.errors()).toEqual([
+    '{"kind":"invalid-path","base":"source","raw":"../hooks"}\n',
+    '{"kind":"invalid-path","base":"source","raw":"../tools"}\n',
   ]);
 });

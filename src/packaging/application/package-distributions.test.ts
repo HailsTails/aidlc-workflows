@@ -1,6 +1,7 @@
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
+import { createPackageDistributions } from "./package-distributions.ts";
 import type { PackagingRefusal } from "../domain/artifact.ts";
 import { createDistributionBuildFixture as fixture } from "../fixtures/package-distributions.fake.ts";
 
@@ -172,4 +173,23 @@ test("an unexpected rejected capability still removes both allocated roots", asy
   const checking = current.operation.check({ hosts: [claude], refusals: [] });
   await expect(checking).rejects.toThrow("unexpected capability rejection");
   expect(current.remove.mock.calls).toEqual([[first], [second]]);
+});
+
+test.each(["build", "check"] as const)("%s preserves an opaque typed preparation refusal without mutation", async (mode) => {
+  const current = fixture();
+  const failure = refused([{ kind: "caller-input-refused", source: "captured-method" }] as const);
+  const prepare = mock<() => Promise<typeof failure>>().mockResolvedValue(failure);
+  const operation = createPackageDistributions({ prepare, payloads: current.payloads,
+    plugins: { directories: [], build: current.buildPlugins },
+    outputs: { root: new URL("file:///repo/"), list: current.list, remove: current.remove,
+      writePayload: current.writePayload, scratch: current.scratch, read: current.read },
+    sources: { fingerprint: current.fingerprint, forget: current.forget, record: current.record,
+      staleness: async () => accepted(null) } });
+  expect(await operation[mode]({ hosts: [claude], sweep: "full", refusals: [] })).toBe(failure);
+  expect(prepare).toHaveBeenCalledWith({ hosts: [claude] });
+  expect(current.events).toEqual(["fingerprint"]);
+  expect(current.forget).not.toHaveBeenCalled();
+  expect(current.scratch).not.toHaveBeenCalled();
+  expect(current.remove).not.toHaveBeenCalled();
+  expect(current.writePayload).not.toHaveBeenCalled();
 });

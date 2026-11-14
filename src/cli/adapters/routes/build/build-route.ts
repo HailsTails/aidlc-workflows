@@ -9,28 +9,23 @@ import type { MethodRefusal } from "../../../../workflow-definition/domain/refus
 import type { KernelRefusal } from "../../../../kernel/values.ts";
 import type { ProjectionRefusal } from "../../../../projection/domain/projection.ts";
 
-class PreparationDiagnostic extends Error {
+export type PreparationDiagnostic = {
+  readonly kind: "build-preparation-refused";
   readonly lines: readonly string[];
   readonly refusals: readonly (MethodRefusal | KernelRefusal | ProjectionRefusal)[];
-  constructor(request: {
-    readonly lines: readonly string[];
-    readonly refusals: readonly (MethodRefusal | KernelRefusal | ProjectionRefusal)[];
-  }) {
-    super(request.lines.join("\n"));
-    this.lines = request.lines;
-    this.refusals = request.refusals;
-  }
-}
+};
 
 export const methodPreparationDiagnostic = (request: {
   readonly method: "core" | "plugin"; readonly refusals: readonly MethodRefusal[];
-}): Error => new PreparationDiagnostic({ refusals: request.refusals,
+}): PreparationDiagnostic => ({ kind: "build-preparation-refused", refusals: request.refusals,
   lines: [`Cannot load the ${request.method === "core" ? "fresh" : "plugin"} Method: ${JSON.stringify(request.refusals)}`] });
 
-export const entrypointPreparationDiagnostic = (refusals: readonly (KernelRefusal | ProjectionRefusal)[]): Error =>
-  new PreparationDiagnostic({ refusals, lines: refusals.map((refusal) => JSON.stringify(refusal)) });
+export const entrypointPreparationDiagnostic = (
+  refusals: readonly (KernelRefusal | ProjectionRefusal)[],
+): PreparationDiagnostic => ({ kind: "build-preparation-refused", refusals,
+  lines: refusals.map((refusal) => JSON.stringify(refusal)) });
 
-type BuildRouteFailure = KernelRefusal | ProjectionRefusal | PackagingRefusal;
+type BuildRouteFailure = KernelRefusal | ProjectionRefusal | PackagingRefusal | PreparationDiagnostic;
 
 type RouteDistributionBuilds = {
   build(request: {
@@ -57,6 +52,11 @@ type BuildRoutePorts = {
 const failed = (request: {
   readonly terminal: Terminal; readonly failures: readonly BuildRouteFailure[] }):
   ExitStatus => {
+  const diagnostic = request.failures.find((failure) => failure.kind === "build-preparation-refused");
+  if (diagnostic) {
+    diagnostic.lines.forEach((line) => { request.terminal.writeError(`${line}\n`); });
+    return 1;
+  }
   if (request.failures.some((failure) => failure.kind === "host-build-refused")) {
     for (const failure of request.failures) request.terminal.writeError(`${JSON.stringify(failure)}\n`);
     request.terminal.writeError(
@@ -128,15 +128,7 @@ const executeBuild = async (ports: BuildRoutePorts, argv: readonly string[]): Pr
 
 export const createBuildRoute = (ports: BuildRoutePorts): CommandRoute => ({
   verb: [],
-  run: async (argv) => {
-    try {
-      return await executeBuild(ports, argv);
-    } catch (error) {
-      if (!(error instanceof PreparationDiagnostic)) throw error;
-      for (const line of error.lines) ports.terminal.writeError(`${line}\n`);
-      return 1;
-    }
-  },
+  run: (argv) => executeBuild(ports, argv),
 });
 
 export const announceModelCap = (request: { readonly terminal: Terminal; readonly reading: ModelCapReading }): void => {

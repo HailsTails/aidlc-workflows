@@ -8,16 +8,19 @@ import type { Payload } from "../domain/payload.ts";
 import type { DistributionBuildFailure, DistributionPayloads, DistributionPlugins,
   OutputTrees, PackageDistributions, PackagedSources } from "./ports.ts";
 
-type DistributionPorts = {
+type DistributionEffects = {
   readonly payloads: DistributionPayloads;
   readonly plugins: DistributionPlugins;
   readonly outputs: OutputTrees;
   readonly sources: PackagedSources;
+};
+
+type DistributionPorts<PreparationFailure> = DistributionEffects & {
   readonly prepare: (request: { readonly hosts: readonly HostIdentity[] }) =>
-    Promise<Result<void, readonly DistributionBuildFailure[]>>;
+    Promise<Result<void, readonly (DistributionBuildFailure | PreparationFailure)[]>>;
 };
 type PassRequest = {
-  readonly ports: Omit<DistributionPorts, "prepare">;
+  readonly ports: DistributionEffects;
   readonly root: URL;
   readonly hosts: readonly HostIdentity[];
 };
@@ -131,7 +134,7 @@ const cleanup = async (request: { readonly outputs: OutputTrees; readonly roots:
   }, Promise.resolve([]));
 };
 
-const scratchCheck = async (ports: DistributionPorts, request: {
+const scratchCheck = async (ports: DistributionEffects, request: {
   readonly hosts: readonly HostIdentity[]; readonly builtFrom: string;
 }) => {
   const first = await ports.outputs.scratch();
@@ -147,7 +150,9 @@ const scratchCheck = async (ports: DistributionPorts, request: {
   return removed.length > 0 ? refused([...(checked.ok ? [] : checked.refusal), ...removed]) : checked;
 };
 
-export const createPackageDistributions = (ports: DistributionPorts): PackageDistributions => ({
+export const createPackageDistributions = <PreparationFailure = never>(
+  ports: DistributionPorts<PreparationFailure>,
+): PackageDistributions<PreparationFailure> => ({
   build: async ({ hosts, sweep, refusals }) => {
     if (refusals.length > 0) return refused(refusals);
     const fingerprint = await ports.sources.fingerprint();

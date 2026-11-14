@@ -131,11 +131,11 @@ export type DistributionTargets = {
   readonly refusals: readonly PackagingRefusal[];
 };
 
-export interface PackageDistributions {
+export interface PackageDistributions<PreparationFailure = never> {
   build(request: DistributionTargets & { readonly sweep: "full" | "named" }):
-    Promise<Result<{ readonly record: "recorded" | "inputs-changed" }, readonly DistributionBuildFailure[]>>;
+    Promise<Result<{ readonly record: "recorded" | "inputs-changed" }, readonly (DistributionBuildFailure | PreparationFailure)[]>>;
   check(request: DistributionTargets): Promise<Result<{
     readonly problems: readonly string[];
     readonly inputs: "unchanged" | "inputs-changed";
-  }, readonly DistributionBuildFailure[]>>;
+  }, readonly (DistributionBuildFailure | PreparationFailure)[]>>;
 }
