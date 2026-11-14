@@ -27,4 +27,22 @@ describe("no-comments", () => {
 
     expect(messages).toEqual([]);
   });
+
+  test("allows the shebang an executable script starts with", () => {
+    const messages = new Linter({ configType: "flat" }).verify(
+      "#!/usr/bin/env bun\nexport const answer = 42;\n",
+      NO_COMMENTS,
+    );
+
+    expect(messages).toEqual([]);
+  });
+
+  test("still reports a comment on the line after a shebang", () => {
+    const messages = new Linter({ configType: "flat" }).verify(
+      "#!/usr/bin/env bun\n// the answer\nexport const answer = 42;\n",
+      NO_COMMENTS,
+    );
+
+    expect(messages).toEqual([expect.objectContaining({ ruleId: "aidlc/no-comments", line: 2 })]);
+  });
 });

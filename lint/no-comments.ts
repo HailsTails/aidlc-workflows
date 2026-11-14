@@ -14,8 +14,10 @@ export const noComments: Rule.RuleModule = {
   },
   create: (context) => ({
     Program: () => {
-      context.sourceCode
+      const { sourceCode } = context;
+      sourceCode
         .getAllComments()
+        .filter((comment) => !(comment.range?.[0] === 0 && sourceCode.text.startsWith("#!")))
         .filter((comment) => !ALLOWED.test(comment.value))
         .forEach((comment) => {
           if (comment.loc) {
