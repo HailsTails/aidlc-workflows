@@ -175,9 +175,9 @@ describe("t145 packager contract regressions", () => {
     try {
       const renderer = join(root, "src", "hosts", "claude", "projection", "settings-renderer.ts");
       const source = readFileSync(renderer, "utf-8");
-      const stable = "allow: expanded } }, null, 2)";
+      const stable = "allow: channelAllow } }, null, 2)";
       expect(source.split(stable)).toHaveLength(2);
-      writeFileSync(renderer, source.replace(stable, "allow: expanded }, nonce: Math.random() }, null, 2)"));
+      writeFileSync(renderer, source.replace(stable, "allow: channelAllow }, nonce: Math.random() }, null, 2)"));
       const run = runPackage(root, "claude", "--check");
       expect(run.status).not.toBe(0);
       expect(output(run).replaceAll("\\", "/")).toContain(

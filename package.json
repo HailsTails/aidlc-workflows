@@ -4,9 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.tests.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.adapters.json",
-    "lint": "bun scripts/gate.ts --full --only records,lint,monolith",
-    "gate": "bun scripts/gate.ts",
+    "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.tests.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.adapters.json && tsc -b src/tsconfig.shipped-types.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p src/tsconfig.json",
+    "lint": "biome check --error-on-warnings core harness scripts plugins tests",
     "check": "bun scripts/package.ts && bun scripts/package.ts --check && bun run typecheck && bun run lint"
   },
   "description": "Dev-only tooling for the multi-harness AI-DLC framework. Generated distributions live under dist/<harness>/ and run via bun without requiring this private package.",
@@ -18,14 +17,12 @@
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.158",
-    "@typescript-eslint/parser": "8.71.2",
+    "@biomejs/biome": "2.4.16",
     "@xterm/headless": "^6.0.0",
     "bun-types": "^1.3.13",
     "eslint": "10.11.0",
-    "jiti": "2.6.1",
     "smol-toml": "1.9.1",
     "typescript": "^6.0.3",
-    "typescript-eslint": "8.71.2",
     "zod": "4.4.3"
   },
   "overrides": {

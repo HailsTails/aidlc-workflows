@@ -13,11 +13,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ANSWERS } from "../harness/aidlc-answers-corpus.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
-import { HARNESS_MATRIX, harnessByName } from "../harness/harness-matrix.ts";
+import { HARNESS_MATRIX, harnessByName, type ShippedHarnessName } from "../harness/harness-matrix.ts";
 
 const HARNESS_NAMES = HARNESS_MATRIX.map((harness) => harness.name);
 
-async function protocolOf(name: string): Promise<string> {
+async function protocolOf(name: ShippedHarnessName): Promise<string> {
   return readFileSync(join(REPO_ROOT, "dist", name, harnessByName(name).manifest.harnessDir, "aidlc-common", "protocols", "stage-protocol.md"), "utf-8");
 }
 
