@@ -13,6 +13,7 @@ import type { MemoryCompanion, SharedRuntime } from "../projection/domain/neutra
 import type { NeutralSurface } from "../projection/domain/neutral-surface.ts";
 import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
+import type { FullHostCapture } from "../projection/application/ports/build-sources.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal, type SourcePath } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
@@ -98,9 +99,6 @@ const neutralReading = (request: { readonly projection: BuildProjection; readonl
   return (core) => captured ??= request.projection.readNeutral({ core: request.core, sources: core.sources });
 };
 
-type FullHostCapture = {
-  readonly surface: NeutralSurface; readonly runtime: SharedRuntime; readonly companions: readonly MemoryCompanion[];
-};
 type CaptureFullHost = (core: CoreBuild) => Promise<Result<FullHostCapture, readonly ProjectionRefusal[]>>;
 
 const fullHostCapture = (ports: {

@@ -10,6 +10,7 @@ import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { ProcessRunner } from "../kernel/process-runner-port.ts";
 import type { Terminal } from "../kernel/terminal-port.ts";
+import type { CapturedHostSources, HostSourcesRequest } from "../projection/application/ports/build-sources.ts";
 import type { Result } from "../kernel/result.ts";
 import type { FrameworkVersion, KernelRefusal, SourcePath } from "../kernel/values.ts";
 import type { YamlParser } from "../kernel/yaml-parser-port.ts";
@@ -87,6 +88,7 @@ export type HostModule = {
 };
 
 export type { ConceptMembers };
+export type { CapturedHostSources, HostSourcesRequest } from "../projection/application/ports/build-sources.ts";
 
 export type HostBuildTable = readonly HostModule[];
 
@@ -158,19 +160,6 @@ export type CoreCommandRequest = {
   readonly projectRoot: URL;
   readonly harnessDir: string;
   readonly harnessName: string;
-};
-
-export type HostSourcesRequest = {
-  readonly name: string;
-  readonly directory: string;
-  readonly root: URL;
-  readonly copied: readonly string[];
-  readonly required: readonly string[];
-};
-
-export type CapturedHostSources = {
-  readonly host: HostIdentity;
-  readonly files: readonly AuthoredHostFile[];
 };
 
 export type ReadHostDistribution = (request: {
