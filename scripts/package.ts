@@ -19,7 +19,8 @@ process.exitCode = await runPackageCommand({ argv: process.argv.slice(2),
     memory: readMemoryCap(Bun.fileURLToPath(new URL("../core/memory/", import.meta.url))) }),
   composition: { createNodeFileSystem, createNodeProcessRunner, createBunYamlParser,
     createBunContentDigester, createPluginProjector: createLegacyPluginProjector,
-    createProcessTerminal: () => createProcessTerminal({ streams: { stdout: process.stdout, stderr: process.stderr } }),
+    createProcessTerminal: () => createProcessTerminal({
+      streams: { stdout: process.stdout, stderr: process.stderr } }),
     createPackageBuildRoot, outliner: createMarkdownOutliner(markdownBlocks),
     workingDirectory: Bun.pathToFileURL(`${process.cwd()}/`) },
 });
