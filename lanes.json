@@ -129,6 +129,7 @@
       ],
       "notOwned": [
         "harness/{codex,opencode}/manifest.ts",
+        "src/projection/core-root{,.test}.ts",
         "src/projection/adapters/legacy-includes{,.test}.ts",
         "harness/{kiro,kiro-ide,cursor,copilot}/manifest.ts",
         "harness/{codex,opencode,copilot}/emit.ts",
