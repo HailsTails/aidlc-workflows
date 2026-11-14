@@ -6,6 +6,7 @@ import type {
   ContentHash,
   DistributionId,
   FrameworkVersion,
+  KernelRefusal,
   ProjectPath,
 } from "../../kernel/values.ts";
 import type { ProjectionOrigin } from "../../projection/domain/projected-file.ts";
@@ -66,4 +67,5 @@ export type PackagingRefusal =
       readonly distribution: DistributionId;
       readonly channel: Channel;
     }
-  | { readonly kind: "archive-not-written"; readonly name: string; readonly reason: string };
+  | { readonly kind: "archive-not-written"; readonly name: string; readonly reason: string }
+  | { readonly kind: "host-build-refused"; readonly reason: KernelRefusal };
