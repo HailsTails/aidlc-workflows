@@ -5,7 +5,7 @@ structured, verifiable software-delivery workflows. One harness-neutral core
 runs natively in Claude Code, Kiro CLI, Kiro IDE, Codex CLI, Cursor, opencode,
 and GitHub Copilot.
 
-![version](https://img.shields.io/badge/version-2.11.3-blue)
+![version](https://img.shields.io/badge/version-2.11.4-blue)
 ![license](https://img.shields.io/badge/license-MIT--0-green)
 
 The Quick Start below installs the latest stable AI-DLC release.
@@ -63,7 +63,7 @@ project folder you have not trusted yet, Kiro first asks whether you trust it.
 Choose **Trust Folder & Continue** only for your own project or one you have
 checked, because trusting lets the folder's `.kiro` hooks run commands on your
 machine; otherwise choose **Cancel** and review the folder first (see
-[First run](docs/guide/harnesses/kiro-ide.md#first-run)).
+[First run](docs/guide/harnesses/kiro.md#first-run)).
 
 ### 3. Start a workflow
 
@@ -86,8 +86,8 @@ guide in the table below. The complete walkthrough is in
 | Harness | Configure | Open | Invoke | Guide |
 | --- | --- | --- | --- | --- |
 | Claude Code | `aidlc config --harness claude` | `claude` | `/aidlc` | [Getting Started](docs/guide/01-getting-started.md) |
-| Kiro: Kiro IDE >= 1.1.70 / Kiro CLI >= 2.24.1 (v3) | `aidlc config --harness kiro` | Open the project in Kiro IDE and choose **aidlc** in the chat panel's agent picker, or run `kiro-cli --v3` (when Kiro asks whether you trust the folder and you know what is in it, choose **Trust, continue**) | `/aidlc` | [Kiro IDE](docs/guide/harnesses/kiro-ide.md) |
-| Kiro CLI (V2) >= 2.6 | `aidlc config --harness kiro-v2` | `kiro-cli --v2` (Kiro CLI 2.21.4 or later; for an older one, see [Kiro CLI](docs/guide/harnesses/kiro-cli.md#prerequisites)) | `/aidlc` | [Kiro CLI](docs/guide/harnesses/kiro-cli.md) |
+| Kiro: Kiro IDE >= 1.1.70 / Kiro CLI >= 2.24.1 (v3) | `aidlc config --harness kiro` | Open the project in Kiro IDE and choose **aidlc** in the chat panel's agent picker, or run `kiro-cli --v3` (when Kiro asks whether you trust the folder and you know what is in it, choose **Trust, continue**) | `/aidlc` | [Kiro](docs/guide/harnesses/kiro.md) |
+| Kiro CLI (V2) >= 2.6 | `aidlc config --harness kiro-v2` | `kiro-cli --v2` (Kiro CLI 2.21.4 or later; for an older one, see [Kiro CLI (V2) prerequisites](docs/guide/harnesses/kiro.md#kiro-cli-v2-prerequisites)) | `/aidlc` | [Kiro CLI (V2)](docs/guide/harnesses/kiro.md#kiro-cli-v2) |
 | Codex CLI >= 0.145.0 | `aidlc config --harness codex` | `codex` | `$aidlc` | [Codex CLI](docs/guide/harnesses/codex-cli.md) |
 | Cursor | `aidlc config --harness cursor` | Open Cursor or run `agent` | `/aidlc` | [Cursor](docs/guide/harnesses/cursor.md) |
 | opencode >= 1.18.29 / OpenCode 2 | `aidlc config --harness opencode` | `opencode` | `/aidlc` | [opencode](docs/guide/harnesses/opencode.md) |
@@ -102,7 +102,7 @@ record manual setup for other harnesses. Kiro CLI and Kiro IDE need no provider
 answer because model access comes with Kiro. For Kiro's v3 engine on Kiro CLI
 2.24.1 or later, use `kiro` and start `kiro-cli --v3` (when it asks to trust the folder
 and you know what is in it, choose **Trust, continue**); `kiro-v2` is Kiro CLI (V2)
-([Kiro CLI](docs/guide/harnesses/kiro-cli.md) says how an existing Kiro CLI
+([Kiro CLI (V2)](docs/guide/harnesses/kiro.md#kiro-cli-v2) says how an existing Kiro CLI
 (V2) project switches). The methodology itself is
 provider-independent.
 
@@ -190,7 +190,7 @@ Run `aidlc doctor` from the project root first. Common fixes:
 | Symptom | Fix |
 | --- | --- |
 | `aidlc` is not found | On Windows, quit and reopen the terminal app or IDE (a new tab inside one that was open during the install keeps the old PATH), or use the direct command printed with [`-NoModifyPath`](docs/guide/18-install-and-lifecycle.md#windows-powershell). On Unix, apply the installer's PATH instruction. |
-| Project/runtime version skew | Finish the active workflow, then run `aidlc config` |
+| Project/runtime version skew | Run `aidlc config` |
 | Codex hooks do not run | Trust the project hooks as described in the [Codex guide](docs/guide/harnesses/codex-cli.md) |
 | Bedrock access fails | Enable the configured models and verify AWS credentials and region |
 | Plugin stages disappear after refresh | Run `/aidlc plugin sync` |
