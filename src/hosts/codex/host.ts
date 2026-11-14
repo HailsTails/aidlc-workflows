@@ -8,6 +8,7 @@ import { codexCommandPath } from "./projection/command-renderer.ts";
 import { createCodexDocumentRenderer } from "./projection/document-renderer.ts";
 import { CODEX_SETTINGS_INPUTS, createCodexSettingsRenderer } from "./projection/settings-renderer.ts";
 import { CODEX_SKILL_INPUTS, createCodexSkillRenderer } from "./projection/skill-renderer.ts";
+import { codexTrustRoutes } from "./trust-route.ts";
 
 export const codexHost = () => {
   const identity = codexHostIdentity();
@@ -33,6 +34,6 @@ export const codexHost = () => {
       bindingHeading: CODEX_BINDING_HEADING,
     },
     distribution: codexDistribution,
-    routes: () => [],
+    routes: codexTrustRoutes,
   });
 };

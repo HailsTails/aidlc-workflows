@@ -362,6 +362,12 @@ const releaseArchives = (ports: {
   return writeReleaseArchives({ artifacts, release, pairs: pairs.value });
 };
 
+const hostRoutes = (request: Parameters<CreatePackageBuildRoot>[0], projection: BuildProjection) =>
+  request.hosts.flatMap((module) => module.routes({ terminal: request.platform.terminal,
+    settings: projection.settingsCapabilities, copyTokens: channelTokens({ channel: "copy",
+      directory: module.host.directory, prefix: projection.nativeCommands.prefix,
+      namespace: projection.nativeCommands.namespace }) }));
+
 export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
   const loading = createAuthoredMethodLoading({ reader: request.platform.fileSystem,
     parser: request.platform.yaml, outliner: request.outliner });
@@ -404,7 +410,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
           { ...plugin, boundary: plugin.output });
         return emitted.ok ? accepted(undefined) : refused(emitted.refusal
           .map((failure) => "reason" in failure ? failure.reason : JSON.stringify(failure)).join("\n"));
-      } })],
+      } }), ...hostRoutes(request, projection)],
     buildPayload: payloadBuilder({ projectHost, hosts: request.hosts, packaging, readDistribution, projection,
       hasher: request.platform.digester, readPluginTemplates: pluginTemplateReading({
         fileSystem: request.platform.fileSystem, folder: request.sources.pluginHookTemplates }),

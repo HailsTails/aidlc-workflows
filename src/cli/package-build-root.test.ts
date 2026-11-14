@@ -550,6 +550,23 @@ test("native authoring files refuse a collision with the host projection", async
   }]));
 });
 
+test("the root binds registered host routes with copy-channel tokens and its existing terminal/settings", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const readTree = mock(fileSystem.readTree);
+  const terminal = createRecordingTerminal();
+  const route = { verb: ["scratch", "trust"], run: mock(async () => 0 as const) };
+  const routes = mock<HostModule["routes"]>(() => [route]);
+  const root = createPackageBuildRoot({ hosts: [{ ...distributionMembers(), routes }],
+    platform: { fileSystem: { ...fileSystem, readTree }, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames });
+  const commands = root.buildRoutes();
+  expect(commands).toMatchObject([{ verb: ["plugin", "build"] }, { verb: ["scratch", "trust"] }]);
+  expect(commands[1]).toBe(route);
+  expect(routes).toHaveBeenCalledTimes(1);
+  expect(routes).toHaveBeenCalledWith({ terminal, settings: root.settingsCapabilities,
+    copyTokens: { ["INVOKE"]: "bun .scratch/tools/aidlc.ts", ["TOOL_PREFIX"]: "bun .scratch/tools/", ["TRUSTED_NAMESPACE"]: "engine" } });
+  expect(readTree).not.toHaveBeenCalled();
+});
+
 test("the root exposes its plugin command without reading authored inputs for invalid arguments", async () => {
   const fileSystem = createInMemoryFileSystem({ files: {} });
   const readTree = mock(fileSystem.readTree);

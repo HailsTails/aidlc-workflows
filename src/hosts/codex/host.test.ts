@@ -10,6 +10,7 @@ import { codexCommandPath } from "./projection/command-renderer.ts";
 import { createCodexDocumentRenderer } from "./projection/document-renderer.ts";
 import { createCodexSettingsRenderer } from "./projection/settings-renderer.ts";
 import { createCodexSkillRenderer } from "./projection/skill-renderer.ts";
+import { codexTrustRoutes } from "./trust-route.ts";
 
 test("codex module gathers the identity, distribution and every projection part the host already has", () => {
   expect(codexHost()).toEqual(accepted({
@@ -27,6 +28,6 @@ test("codex module gathers the identity, distribution and every projection part 
       bindingHeading: CODEX_BINDING_HEADING,
     },
     distribution: codexDistribution,
-    routes: expect.any(Function),
+    routes: codexTrustRoutes,
   }));
 });

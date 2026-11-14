@@ -2,7 +2,6 @@
 import { bindCopiedSource } from "../src/projection/domain/source-binding.ts";
 import type { HostModule } from "../src/cli/roots.ts";
 import type { Payload, HostDistribution } from "../src/packaging/domain/payload.ts";
-import { trustEntries } from "../src/hosts/codex/projection/settings-renderer.ts";
 import { channelTokens } from "../src/packaging/domain/channel-tokens.ts";
 import type { HostIdentity } from "../src/kernel/host.ts";
 import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts";
@@ -51,8 +50,6 @@ import { tmpdir } from "node:os";
 import {
   dirname,
   join,
-  posix,
-  win32,
   relative,
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -114,17 +111,18 @@ const HARNESS_ROOT = join(REPO_ROOT, "harness");
 // runner's environment must not alter either build. The memory cap travels
 // with the repo, so it applies in both modes and keeps write and check
 // consistent. The diagnostic below names the active cap and mode.
-// The `codex trust` subcommand performs NO projection (it prints trust
-// entries for the installer), so it skips cap resolution entirely - a
-// malformed cap must not break an installer command that never uses it.
+const argv = process.argv.slice(2);
+const command = packageBuildRoot.buildRoutes().find((route) =>
+  route.verb.every((word, index) => word === argv[index]));
+// Host utility commands do not project a tree; plugin builds keep the existing cap resolution.
+const pluginCommand = command?.verb[0] === "plugin";
+if (command && !pluginCommand) process.exit(await command.run(argv.slice(command.verb.length)));
+
 const IS_CHECK_MODE = process.argv.includes("--check");
-const IS_TRUST_MODE = process.argv[2] === "codex" && process.argv[3] === "trust";
-const ENV_CAP = IS_CHECK_MODE || IS_TRUST_MODE ? null : readEnvCap();
-const MEMORY_CAP = IS_TRUST_MODE ? null : readMemoryCap(join(CORE_ROOT, "memory"));
+const ENV_CAP = IS_CHECK_MODE ? null : readEnvCap();
+const MEMORY_CAP = readMemoryCap(join(CORE_ROOT, "memory"));
 const TIER_CAP = ENV_CAP ?? MEMORY_CAP;
 if (TIER_CAP) {
-  // stderr, not stdout: the `codex trust` subcommand's stdout is pasted
-  // verbatim into a config.toml and must stay clean.
   console.error(
     `[tier] pack-time tier cap active: ${TIER_CAP} ` +
       `(source: ${ENV_CAP ? "AIDLC_TIER_CAP env var" : "core/memory tier_cap:"})`,
@@ -145,9 +143,6 @@ const BUILD_VERSION = releaseBuildVersion();
 if (BUILD_VERSION !== AIDLC_VERSION) {
   console.error(`[version] stamping projections with ${BUILD_VERSION_ENV}=${BUILD_VERSION}`);
 }
-const INVOKE_TOKEN = /\{\{INVOKE\}\}/g;
-const TOOL_PREFIX_TOKEN = /\{\{TOOL_PREFIX\}\}/g;
-const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
 // Harnesses the packager builds = every harness/<name>/ that carries a
 // manifest.ts. DISCOVERED, not hardcoded: adding harness #N is one harness/<n>/
 // dir + manifest row (+ optional emit.ts), with zero edits here — the
@@ -156,23 +151,6 @@ const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
 function discoverHarnessNames(): string[] {
   return HOSTS
     .map((member) => member.host.distribution).sort();
-}
-
-// ---------------------------------------------------------------------------
-// Transform: token substitution on authored prose and the
-// TypeScript invocation seam; compiled JSON is regenerated per tree.
-// ---------------------------------------------------------------------------
-function substituteInvocationTokens(
-  s: string,
-  harnessDir: string,
-  invoke = `bun ${harnessDir}/tools/aidlc.ts`,
-): string {
-  const bindings = channelTokens({ channel: invoke === "aidlc" ? "native" : "copy",
-    directory: harnessDir, prefix: TRUSTED_COMMAND_PREFIX, namespace: TRUSTED_ROUTE_NAMESPACE });
-  return s
-    .replace(INVOKE_TOKEN, invoke)
-    .replace(TOOL_PREFIX_TOKEN, bindings.TOOL_PREFIX)
-    .replace(TRUSTED_NAMESPACE_TOKEN, bindings.TRUSTED_NAMESPACE);
 }
 
 function* walk(dir: string): Generator<string> {
@@ -321,65 +299,6 @@ async function writeHostPair(name: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
-const argv = process.argv.slice(2);
-
-// `package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]` —
-// print the codex hook-trust entries with <PROJECT_DIR> substituted, for the
-// installer to paste into $CODEX_HOME/config.toml (the trust-seed.toml recipe).
-if (argv[0] === "codex" && argv[1] === "trust") {
-  const usage =
-    "usage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]";
-  const failTrustArgs = (reason: string): never => {
-    console.error(`codex trust: ${reason}`);
-    console.error(usage);
-    process.exit(1);
-  };
-  const fullyQualifiedOnEitherPlatform = (path: string): boolean => {
-    const startsAsUnc = path.startsWith("\\\\") || path.startsWith("//");
-    if (startsAsUnc) {
-      return /^[\\/]{2}[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/.test(path);
-    }
-    return posix.isAbsolute(path) || /^[A-Za-z]:[\\/]/.test(path);
-  };
-  let project: string | null = null;
-  let hooksJson: string | null = null;
-  const trustArgs = argv.slice(2);
-  for (let i = 0; i < trustArgs.length; i += 2) {
-    const flag = trustArgs[i];
-    const value = trustArgs[i + 1];
-    if (flag !== "--project" && flag !== "--hooks-json") {
-      failTrustArgs(`unknown argument "${flag}"`);
-    }
-    if (!value || value.startsWith("--")) {
-      failTrustArgs(`${flag} requires an absolute path`);
-    }
-    if (!fullyQualifiedOnEitherPlatform(value)) {
-      failTrustArgs(`${flag} must be a fully qualified absolute path`);
-    }
-    if (flag === "--project") {
-      if (project !== null) failTrustArgs("--project may be specified only once");
-      project = value;
-    } else {
-      if (hooksJson !== null) failTrustArgs("--hooks-json may be specified only once");
-      hooksJson = value;
-    }
-  }
-  const resolvedProject = project ?? failTrustArgs("--project is required");
-  const projectPath = win32.isAbsolute(resolvedProject) &&
-    (!posix.isAbsolute(resolvedProject) || resolvedProject.startsWith("//")) ? win32 : posix;
-  const trusted = trustEntries({
-    hooksJsonPath: hooksJson ?? projectPath.join(resolvedProject, ".codex", "hooks.json"),
-    harnessName: "codex",
-    invoke: substituteInvocationTokens("{{INVOKE}}", ".codex"),
-    trustedNamespace: TRUSTED_ROUTE_NAMESPACE,
-  }, packageBuildRoot.settingsCapabilities);
-  if (!trusted.ok) {
-    console.error(trusted.refusal.reason);
-    process.exit(1);
-  }
-  console.log(trusted.value);
-  process.exit(0);
-}
 
 function buildPluginsFromRoot(request: { harnesses: string[]; plugins: PluginBuildCatalog; distRoot: string }): void {
   const hosts = request.harnesses.map((name) => {
@@ -487,9 +406,7 @@ async function checkPackageDeterminism(
   }
 }
 
-const pluginRoute = packageBuildRoot.buildRoutes().find((route) =>
-  route.verb[0] === argv[0] && route.verb[1] === argv[1]);
-if (pluginRoute) process.exit(await pluginRoute.run(argv.slice(pluginRoute.verb.length)));
+if (command) process.exit(await command.run(argv.slice(command.verb.length)));
 
 if (HOST_BUILD_REFUSALS.length > 0) {
   for (const refusal of HOST_BUILD_REFUSALS) console.error(JSON.stringify(refusal));
