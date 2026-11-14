@@ -174,6 +174,73 @@ test("host path refusal precedes IO and a valid capture retains its host", async
     } });
 });
 
+test("one production root reuses its captured host bytes while a second root reads independently", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: { "file:///host/a.bin": new Uint8Array([0, 255]) } });
+  const readFile = mock<Platform["fileSystem"]["readFile"]>(fileSystem.readFile);
+  const platform = { fileSystem: { ...fileSystem, readFile }, processRunner, yaml, digester, terminal };
+  const root = createPackageBuildRoot({ hosts: [], platform, outliner, sources, runnerFrames });
+  const request = { name: "fixture-host", directory: ".fixture", root: new URL("file:///host/"),
+    copied: ["a.bin"], required: ["a.bin"] };
+  const first = await root.readHostSources(request);
+  accept(await fileSystem.writeFile({ file: new URL("a.bin", request.root),
+    content: { kind: "bytes", bytes: new Uint8Array([9]) } }));
+  expect(await root.readHostSources(request)).toBe(first);
+  expect(first).toEqual(accepted({ host: host({ name: "fixture-host", directory: ".fixture" }),
+    files: [{ source: source("a.bin"), content: { kind: "bytes", bytes: new Uint8Array([0, 255]) } }] }));
+  expect(readFile).toHaveBeenCalledTimes(1);
+  const next = createPackageBuildRoot({ hosts: [], platform, outliner, sources, runnerFrames });
+  expect(await next.readHostSources(request)).toEqual(accepted({
+    host: host({ name: "fixture-host", directory: ".fixture" }),
+    files: [{ source: source("a.bin"), content: { kind: "bytes", bytes: new Uint8Array([9]) } }],
+  }));
+  expect(readFile).toHaveBeenCalledTimes(2);
+});
+
+test("the production host capture keeps a failed read cached for its build lifetime", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const readFile = mock<Platform["fileSystem"]["readFile"]>()
+    .mockResolvedValue(refused({ kind: "unreadable", code: "permission-denied" }));
+  const root = createPackageBuildRoot({ hosts: [],
+    platform: { fileSystem: { ...fileSystem, readFile }, processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const request = { name: "fixture-host", directory: ".fixture", root: new URL("file:///host/"),
+    copied: [], required: ["a.md"] };
+  const first = await root.readHostSources(request);
+  readFile.mockResolvedValue(accepted({ kind: "text", text: "now readable" }));
+  expect(await root.readHostSources(request)).toBe(first);
+  expect(first).toMatchObject({ ok: false, refusal: [{ kind: "host-source-unreadable", source: "a.md" }] });
+  expect(readFile).toHaveBeenCalledTimes(1);
+});
+
+test("production host capture reads eight deduplicated sources once and preserves their byte order", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {
+    "file:///host/copy.md": new Uint8Array([1]), "file:///host/shared.md": new Uint8Array([2]),
+    "file:///host/caller.md": new Uint8Array([3]), "file:///host/agents/a.md": new Uint8Array([4]),
+    "file:///host/skills/a.md": new Uint8Array([5]), "file:///host/settings.json": new Uint8Array([6]),
+    "file:///host/documents/a.md": new Uint8Array([7]), "file:///host/placement.md": new Uint8Array([8]),
+  } });
+  const readFile = mock<Platform["fileSystem"]["readFile"]>(fileSystem.readFile);
+  const root = createPackageBuildRoot({ hosts: [],
+    platform: { fileSystem: { ...fileSystem, readFile }, processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const request = { name: "fixture-host", directory: ".fixture", root: new URL("file:///host/"),
+    copied: ["copy.md", "shared.md", "copy.md"], required: ["caller.md", "shared.md", "agents/a.md",
+      "skills/a.md", "settings.json", "documents/a.md", "placement.md"] };
+  const first = await root.readHostSources(request);
+  expect(first).toEqual(accepted({ host: host({ name: "fixture-host", directory: ".fixture" }), files: [
+    { source: source("copy.md"), content: { kind: "bytes", bytes: new Uint8Array([1]) } },
+    { source: source("shared.md"), content: { kind: "bytes", bytes: new Uint8Array([2]) } },
+    { source: source("caller.md"), content: { kind: "bytes", bytes: new Uint8Array([3]) } },
+    { source: source("agents/a.md"), content: { kind: "bytes", bytes: new Uint8Array([4]) } },
+    { source: source("skills/a.md"), content: { kind: "bytes", bytes: new Uint8Array([5]) } },
+    { source: source("settings.json"), content: { kind: "bytes", bytes: new Uint8Array([6]) } },
+    { source: source("documents/a.md"), content: { kind: "bytes", bytes: new Uint8Array([7]) } },
+    { source: source("placement.md"), content: { kind: "bytes", bytes: new Uint8Array([8]) } },
+  ] }));
+  expect(await root.readHostSources(request)).toBe(first);
+  expect(readFile).toHaveBeenCalledTimes(8);
+});
+
 test("the root wires runner process failures as source failures and removes private scratch", async () => {
   const fileSystem = createInMemoryFileSystem({ files });
   const removeFolder = mock<Platform["fileSystem"]["removeFolder"]>(fileSystem.removeFolder);

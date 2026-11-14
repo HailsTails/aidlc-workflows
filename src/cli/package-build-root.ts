@@ -2,27 +2,24 @@ import { createBuildPackaging, createReleaseArtifacts, type BuildPackaging, type
 import { channelTokens } from "../packaging/domain/channel-tokens.ts";
 import { bindCopiedSource } from "../projection/domain/source-binding.ts";
 import { prepareHostSource } from "../projection/application/prepared-host-source.ts";
-import { requiredHostSources } from "../projection/application/host-source-files.ts";
 import type { Payload } from "../packaging/domain/payload.ts";
 import { createPluginBuildRoute } from "./adapters/routes/build/plugin-route.ts";
 import { createPluginBuilds } from "./adapters/routes/build/plugin-builds.ts";
 import { reviewerAgentSet } from "../workflow-definition/domain/method-participation.ts";
 import type { ContentHasher } from "../packaging/application/ports.ts";
 import { DEFAULT_WORKSPACE } from "../projection/domain/workspace.ts";
-import type { MemoryCompanion, SharedRuntime } from "../projection/domain/neutral-surface.ts";
-import type { NeutralSurface } from "../projection/domain/neutral-surface.ts";
-import type { SessionSkill } from "../projection/domain/neutral-surface.ts";
 import type { BuildProjection } from "../projection/application/ports/build-projection.ts";
-import type { FullHostCapture } from "../projection/application/ports/build-sources.ts";
+import type { BuildSourceCapture, CapturedHostSources } from "../projection/application/ports/build-sources.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { distributionId, projectPath, sourcePath, type KernelRefusal, type SourcePath } from "../kernel/values.ts";
 import type { Result } from "../kernel/result.ts";
 import { createAuthoredMethodLoading } from "../workflow-definition/core-root.ts";
 import type { AuthoredCoreMethod, AuthoredPluginBuild, PluginBuildTarget, MethodReading } from "../workflow-definition/application/ports.ts";
-import { createBuildProjection, createHostedMethodProjection } from "../projection/core-root.ts";
+import { captureBuildSources, createBuildProjection, createHostedMethodProjection }
+  from "../projection/core-root.ts";
 import type { CompiledMethodFiles } from "../projection/domain/projection.ts";
 import type { CoreBuild, CoreBuildTarget, CreatePackageBuildRoot,
-  CapturedHostSources, HostSourcesRequest, HostBuildTable, HostModule, ReadHostDistribution,
+  HostBuildTable, HostModule, ReadHostDistribution,
   ProjectHost, BuildPayload, BuildPlugins, PackageBuildRoot, ReleaseArchivesRequest, ReleaseArchives } from "./roots.ts";
 import type { BuildRoutesRequest, CommandRoute } from "./roots.ts";
 import type { ArchiveFile, PackagingRefusal } from "../packaging/domain/artifact.ts";
@@ -69,69 +66,8 @@ const memberFor = (hosts: HostBuildTable, host: HostIdentity): HostModule | unde
 const bindingHeadingsOf = (hosts: HostBuildTable): readonly string[] =>
   hosts.map((module) => module.projection.bindingHeading);
 
-const captureHost = async (capture: HostSourcesRequest,
-  request: { readonly hosts: HostBuildTable; readonly projection: Pick<BuildProjection, "readHostSources"> }):
-    Promise<Result<CapturedHostSources, readonly (KernelRefusal | ProjectionRefusal)[]>> => {
-    const distribution = distributionId(capture.name);
-    if (!distribution.ok) return refused([distribution.refusal]);
-    const directory = projectPath(capture.directory);
-    if (!directory.ok) return refused([directory.refusal]);
-    const host = { distribution: distribution.value, directory: directory.value };
-    const members = memberFor(request.hosts, host);
-    const required = [...capture.required, ...(members ? requiredHostSources(members.projection) : [])];
-    const paths = [...new Set([...capture.copied, ...required])].map(sourcePath);
-    const failures = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
-    if (failures.length > 0) return refused(failures);
-    const sources = paths.flatMap((path) => path.ok ? [path.value] : []);
-    const files = await request.projection.readHostSources({ root: capture.root, host, sources,
-      required: sources.filter((path) => required.includes(path)) });
-    return files.ok ? accepted({ host, files: files.value }) : files;
-  };
-
-
-type SessionReading = () => Promise<Result<readonly SessionSkill[], readonly ProjectionRefusal[]>>;
-type CoreNeutralCapture = (core: CoreBuild) => Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
-
-const sessionReading = (request: { readonly projection: BuildProjection; readonly core: URL }): SessionReading => {
-  let captured: ReturnType<SessionReading> | undefined;
-  return () => {
-    const source = sourcePath("skills");
-    return source.ok ? captured ??= request.projection.readSessionSkills({ source: source.value,
-      folder: new URL("skills/", request.core) }) : Promise.resolve(refused([{
-        kind: "render-failed", concept: "session-skill", name: "skills", reason: "The session source path is invalid.",
-      }]));
-  };
-};
-
-const neutralReading = (request: { readonly projection: BuildProjection; readonly core: URL }): CoreNeutralCapture => {
-  let captured: ReturnType<CoreNeutralCapture> | undefined;
-  return (core) => captured ??= request.projection.readNeutral({ core: request.core, sources: core.sources });
-};
-
-type CaptureFullHost = (core: CoreBuild) => Promise<Result<FullHostCapture, readonly ProjectionRefusal[]>>;
-
-const fullHostCapture = (ports: {
-  readonly projection: BuildProjection; readonly core: URL;
-  readonly readSessions: SessionReading; readonly readNeutral: CoreNeutralCapture;
-}): CaptureFullHost => {
-  let runtime: Promise<Result<SharedRuntime, readonly ProjectionRefusal[]>> | undefined;
-  let companions: Promise<Result<readonly MemoryCompanion[], readonly ProjectionRefusal[]>> | undefined;
-  return async (core) => {
-    const neutral = await ports.readNeutral(core);
-    if (!neutral.ok) return neutral;
-    const sessions = await ports.readSessions();
-    if (!sessions.ok) return sessions;
-    const captured = await (runtime ??= ports.projection.readRuntime({ core: ports.core,
-      method: core.method }));
-    if (!captured.ok) return captured;
-    const memory = await (companions ??= ports.projection.readMemoryCompanions({ core: ports.core }));
-    return memory.ok ? accepted({ surface: { ...neutral.value, skills: sessions.value },
-      runtime: captured.value, companions: memory.value }) : memory;
-  };
-};
-
 const hostProjector = (ports: {
-  readonly projection: BuildProjection; readonly capture: CaptureFullHost;
+  readonly projection: BuildProjection; readonly capture: BuildSourceCapture["captureFullHost"];
   readonly hosts: HostBuildTable; readonly readDistribution: ReadHostDistribution;
 }): ProjectHost => {
   return async (request) => {
@@ -518,8 +454,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
     plugins: request.plugins,
     runnerProcess: request.platform.processRunner, runnerScratch: request.platform.fileSystem,
     runnerFrames: request.runnerFrames, runnerChild: new URL("./legacy-runner-child.ts", import.meta.url) });
-  const readSessions = sessionReading({ projection, core: request.sources.core });
-  const readNeutral = neutralReading({ projection, core: request.sources.core });
+  const sourceCapture = captureBuildSources({ projection, core: request.sources.core, hosts: request.hosts });
   const readDistribution = distributionReader({ hosts: request.hosts, projection });
   const packaging = createBuildPackaging({ routes: projection.nativeCommands, historyReader: request.platform.fileSystem,
     copyEraSource: new URL("../scripts/copy-era-files.json", request.sources.core) });
@@ -531,7 +466,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
       project: (target) => projectFor({ authored: loaded.value, target }, projection.serializeMethod) }) : loaded;
   };
   const projectHost = hostProjector({ projection, hosts: request.hosts, readDistribution,
-    capture: fullHostCapture({ projection, core: request.sources.core, readSessions, readNeutral }) });
+    capture: sourceCapture.captureFullHost });
   const pluginsFor = (terminal: Terminal): BuildPlugins => (build) => {
     const captured = pluginMethod;
     return captured ? createPluginBuilds({ terminal,
@@ -560,7 +495,7 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
     },
     prepareCommandSource: ({ core: loaded, ...command }) => projection.prepareCommandSource({ ...command,
       method: loaded.method, sources: loaded.sources }),
-    readHostSources: (host) => captureHost(host, { hosts: request.hosts, projection }),
+    readHostSources: sourceCapture.readHostSources,
   };
   return root;
 };

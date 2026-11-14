@@ -40,6 +40,8 @@ import type { HostedHarness, Harness } from "./application/ports/harness.ts";
 import type { SkillTableRenderer } from "./domain/neutral-surface.ts";
 import type { CommandSource } from "./application/ports/commands.ts";
 
+export { captureBuildSources } from "./application/capture-build-sources.ts";
+
 const agentInputs = ({ agents, allows, facts }: {
   readonly agents: AgentProjectionRequest; readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts;
 }): AgentRenderingInputs => {
