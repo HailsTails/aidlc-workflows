@@ -41,6 +41,8 @@ export type PackagingRefusal =
   | { readonly kind: "no-payloads" }
   | { readonly kind: "mixed-channels"; readonly channels: readonly [Channel, Channel] }
   | { readonly kind: "plugin-tree-unreadable"; readonly within: string; readonly code: FileSystemFault | "unportable-name" }
+  | { readonly kind: "packaged-sources-failed"; readonly operation: "read-inputs" | "hash-inputs" | "write-record";
+      readonly path: string; readonly reason: string }
   | { readonly kind: "listing-text-not-plain"; readonly distribution: DistributionId }
   | { readonly kind: "root-integration-duplicate"; readonly path: ProjectPath }
   | { readonly kind: "root-integration-missing"; readonly path: ProjectPath }

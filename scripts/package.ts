@@ -75,8 +75,9 @@ import { createPackageBuildRoot } from "../src/cli/package-build-root.ts";
 import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 const nodeFileSystem = createNodeFileSystem();
+const contentDigester = createBunContentDigester();
 const packageBuildRoot = openPackageBuildRoot({ createNodeFileSystem: () => nodeFileSystem, createNodeProcessRunner,
-  createBunYamlParser, createBunContentDigester, createPluginProjector: createLegacyPluginProjector,
+  createBunYamlParser, createBunContentDigester: () => contentDigester, createPluginProjector: createLegacyPluginProjector,
   createProcessTerminal: () => createProcessTerminal({ streams: {
     stdout: process.argv.includes("--check") ? { write: () => true } : process.stdout,
     stderr: process.stderr,
@@ -87,7 +88,8 @@ import { reviewerAgentSet }
 import { prepareHostSource } from "../src/projection/application/prepared-host-source.ts";
 import type { AuthoredPluginBuild as PluginBuildCatalog }
   from "../src/workflow-definition/application/ports.ts";
-import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
+import { createPackagedSourcesFile } from "../src/packaging/adapters/packaged-sources-file.ts";
+import { distributionId } from "../src/kernel/values.ts";
 import { readEnvCap, readMemoryCap } from "../core/tools/aidlc-tiers.ts";
 import {
   TRUSTED_COMMAND_PREFIX,
@@ -97,6 +99,9 @@ import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const packagedSources = createPackagedSourcesFile({ repository: pathToFileURL(`${REPO_ROOT}/`),
+  record: pathToFileURL(join(REPO_ROOT, "dist", ".package-sources.json")),
+  fileSystem: nodeFileSystem, hasher: contentDigester });
 const CORE_ROOT = join(REPO_ROOT, "core");
 const HARNESS_ROOT = join(REPO_ROOT, "harness");
 
@@ -505,7 +510,14 @@ if (named && !discoverHarnessNames().includes(named)) {
   process.exit(1);
 }
 
-const builtFrom = packageInputsFingerprint(REPO_ROOT);
+const targetHosts = targets.map((name) => {
+  const identity = distributionId(name);
+  if (!identity.ok) throw new Error(JSON.stringify(identity.refusal));
+  return identity.value;
+});
+const fingerprintReading = await packagedSources.fingerprint();
+if (!fingerprintReading.ok) throw new Error(JSON.stringify(fingerprintReading.refusal));
+const builtFrom = fingerprintReading.value;
 const loadedBuild = await packageBuildRoot.loadCore();
 if (!loadedBuild.ok) {
   throw new Error(`Cannot load the fresh Method: ${JSON.stringify(loadedBuild.refusal)}`);
@@ -539,7 +551,9 @@ if (check) {
     for (const p of problems.slice(0, 40)) console.error("  " + p);
     process.exit(1);
   }
-  if (packageInputsFingerprint(REPO_ROOT) !== builtFrom) {
+  const checkedFingerprint = await packagedSources.fingerprint();
+  if (!checkedFingerprint.ok) throw new Error(JSON.stringify(checkedFingerprint.refusal));
+  if (checkedFingerprint.value !== builtFrom) {
     throw new Error("A packaging input changed during the determinism check; run it again.");
   }
   console.log(
@@ -547,7 +561,8 @@ if (check) {
       `for ${targets.join(", ")}.`,
   );
 } else {
-  forgetPackagedSources(REPO_ROOT, targets);
+  const forgotten = await packagedSources.forget(targetHosts);
+  if (!forgotten.ok) throw new Error(JSON.stringify(forgotten.refusal));
   cleanWriteOutputs({ harnesses: targets, kind: named === undefined ? "full" : "named",
     plugins: pluginBuilds });
   for (const n of targets) {
@@ -557,7 +572,9 @@ if (check) {
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);
   buildPluginsFromRoot({ harnesses: targets, plugins: pluginBuilds, distRoot: join(REPO_ROOT, "dist") });
   // Last, so only a finished build from unchanged sources is recorded as current.
-  if (!recordPackagedSources(REPO_ROOT, targets, builtFrom)) {
+  const recorded = await packagedSources.record({ hosts: targetHosts, builtFrom });
+  if (!recorded.ok) throw new Error(JSON.stringify(recorded.refusal));
+  if (recorded.value === "inputs-changed") {
     console.error(
       "[sources] a packaging input changed while packaging, so the generated trees may mix old and new files: run `bun scripts/package.ts` again.",
     );

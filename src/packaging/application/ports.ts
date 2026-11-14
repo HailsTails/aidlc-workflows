@@ -75,3 +75,13 @@ export interface BuildPackaging {
 export interface CopyRuntimeOmissions {
   omitted(copyPayload: Payload): readonly ProjectPath[];
 }
+
+export interface PackagedSources {
+  fingerprint(): Promise<Result<string, PackagingRefusal>>;
+  forget(hosts: readonly DistributionId[]): Promise<Result<void, PackagingRefusal>>;
+  record(request: {
+    readonly hosts: readonly DistributionId[];
+    readonly builtFrom: string;
+  }): Promise<Result<"recorded" | "inputs-changed", PackagingRefusal>>;
+  staleness(host: DistributionId): Promise<Result<string | null, PackagingRefusal>>;
+}
