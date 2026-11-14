@@ -62,6 +62,48 @@ describe("createNodeFileSystem on a real folder", () => {
     });
   });
 
+});
+
+describe("createNodeFileSystem removes entries on a real folder", () => {
+  test("removes a file at its URL and leaves the folder beside it", async () => {
+    const folder = accept(await fileSystem.makeScratchFolder({ parent: below("work") }));
+    const file = new URL("kept/a.md", folder);
+    await fileSystem.writeFile({ file, content: { kind: "text", text: "a" } });
+    await fileSystem.writeFile({ file: new URL("kept/b.md", folder), content: { kind: "text", text: "b" } });
+
+    const removed = await fileSystem.removeEntry({ entry: file });
+    const left = await fileSystem.listFolder({ folder: new URL("kept/", folder) });
+    await fileSystem.removeFolder({ folder });
+
+    expect({ removed, left }).toEqual({
+      removed: { ok: true, value: file },
+      left: { ok: true, value: [{ name: "b.md", kind: "file" }] },
+    });
+  });
+
+  test("removes a folder and everything under it at exactly that URL", async () => {
+    const folder = accept(await fileSystem.makeScratchFolder({ parent: below("work") }));
+    const generated = new URL("generated", folder);
+    await fileSystem.writeFile({ file: new URL("generated/deep/a.md", folder), content: { kind: "text", text: "a" } });
+
+    const removed = await fileSystem.removeEntry({ entry: generated });
+    const after = await fileSystem.listFolder({ folder: generated });
+    await fileSystem.removeFolder({ folder });
+
+    expect({ removed, after }).toEqual({
+      removed: { ok: true, value: generated },
+      after: { ok: false, refusal: { kind: "unreadable", code: "not-found" } },
+    });
+  });
+
+  test("refuses an absent entry as not found", async () => {
+    expect(await fileSystem.removeEntry({ entry: below("work", "never-made") }))
+      .toEqual({ ok: false, refusal: { kind: "unwritable", code: "not-found" } });
+  });
+
+});
+
+describe("createNodeFileSystem on a real folder, continued", () => {
   test("returns a missing folder as not found", async () => {
     expect(await fileSystem.readTree({ folder: below("scopes"), select: readEveryEntry }))
       .toEqual({ ok: false, refusal: { kind: "unreadable", code: "not-found" } });

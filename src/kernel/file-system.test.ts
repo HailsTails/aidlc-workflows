@@ -9,6 +9,7 @@ const unusedWrites = {
   makeFolder: async () => Promise.reject(errno("EIO")),
   writeFile: async () => Promise.reject(errno("EIO")),
   removeFolder: async () => Promise.reject(errno("EIO")),
+  removeEntry: async () => Promise.reject(errno("EIO")),
 };
 
 const failingWith = (code: string): NodeFileLib => ({
@@ -66,9 +67,26 @@ const writingLib: NodeFileLib = {
   makeFolder: async () => undefined,
   writeFile: async () => undefined,
   removeFolder: async () => undefined,
+  removeEntry: async () => undefined,
 };
 
 describe("createNodeFileSystem writes over its file library seam", () => {
+  test("returns the entry it removed at exactly the URL it was given", async () => {
+    const removeEntry = mock(async () => undefined);
+    const fileSystem = createNodeFileSystem({ fileLib: { ...writingLib, removeEntry } });
+    const entry = new URL("file:///tmp/dist/aidlc");
+
+    expect(await fileSystem.removeEntry({ entry })).toEqual({ ok: true, value: entry });
+    expect(removeEntry).toHaveBeenCalledWith(entry);
+  });
+
+  test("returns an absent entry as not found", async () => {
+    const fileSystem = createNodeFileSystem({ fileLib: { ...writingLib, removeEntry: async () => Promise.reject(errno("ENOENT")) } });
+
+    expect(await fileSystem.removeEntry({ entry: new URL("file:///tmp/absent") }))
+      .toEqual({ ok: false, refusal: { kind: "unwritable", code: "not-found" } });
+  });
+
   test("returns the scratch folder it made as a folder URL", async () => {
     const fileSystem = createNodeFileSystem({ fileLib: writingLib });
 

@@ -22,6 +22,7 @@ export type NodeFileLib = {
   readonly makeFolder: (folder: URL) => Promise<void>;
   readonly writeFile: (nodeWriteFileArgs: NodeWriteFileArgs) => Promise<void>;
   readonly removeFolder: (folder: URL) => Promise<void>;
+  readonly removeEntry: (entry: URL) => Promise<void>;
 };
 
 export type CreateNodeFileSystemArgs = { readonly fileLib?: NodeFileLib };
@@ -77,6 +78,7 @@ const nodeFileLib: NodeFileLib = {
     if (mode === "executable") await chmod(file, EXECUTABLE_PERMISSIONS);
   },
   removeFolder: (folder) => rm(folder, { recursive: true, force: true }),
+  removeEntry: (entry) => rm(entry, { recursive: true }),
 };
 
 const bytesOf = (content: Parameters<FileSystem["writeFile"]>[0]["content"]): Uint8Array =>
@@ -105,6 +107,10 @@ export const createNodeFileSystem = (
     removeFolder: ({ folder }) => attemptWrite(async () => {
       await fileLib.removeFolder(folder);
       return asFolder(folder);
+    }),
+    removeEntry: ({ entry }) => attemptWrite(async () => {
+      await fileLib.removeEntry(entry);
+      return entry;
     }),
   };
 };

@@ -61,7 +61,7 @@ const readsOf = (store: Store): Pick<FileSystem, "readFile" | "listFolder"> => (
 });
 
 const writesOf = (store: Store): Pick<FileSystem,
-  "makeScratchFolder" | "makeFolder" | "writeFile" | "removeFolder"> => ({
+  "makeScratchFolder" | "makeFolder" | "writeFile" | "removeFolder" | "removeEntry"> => ({
   makeScratchFolder: async ({ parent }) => {
     const scratch = new URL(`scratch-${store.folders.size + 1}/`, asFolder(parent));
     store.folders.add(scratch.href);
@@ -87,6 +87,23 @@ const writesOf = (store: Store): Pick<FileSystem,
       store.folders.delete(href);
     });
     return accepted(asFolder(folder));
+  },
+  removeEntry: async ({ entry }) => {
+    const fault = store.faults[entry.href];
+    if (fault !== undefined) return refused({ kind: "unwritable", code: fault });
+    const prefix = asFolder(entry).href;
+    const isFile = store.files.has(entry.href);
+    const below = [...store.files.keys()].filter((href) => href.startsWith(prefix));
+    const isFolder = below.length > 0 || store.folders.has(prefix);
+    if (!isFile && !isFolder) return refused({ kind: "unwritable", code: "not-found" });
+    store.files.delete(entry.href);
+    below.forEach((href) => {
+      store.files.delete(href);
+    });
+    [...store.folders].filter((href) => href.startsWith(prefix)).forEach((href) => {
+      store.folders.delete(href);
+    });
+    return accepted(entry);
   },
 });
 

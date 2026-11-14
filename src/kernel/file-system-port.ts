@@ -50,6 +50,7 @@ export type FileSystem = {
   makeFolder(makeFolderArgs: MakeFolderArgs): Promise<Result<URL, FileWriteError>>;
   writeFile(writeFileArgs: WriteFileArgs): Promise<Result<URL, FileWriteError>>;
   removeFolder(removeFolderArgs: RemoveFolderArgs): Promise<Result<URL, FileWriteError>>;
+  removeEntry(removeEntryArgs: { readonly entry: URL }): Promise<Result<URL, FileWriteError>>;
 };
 
 export const asFolder = (folder: URL): URL =>

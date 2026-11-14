@@ -82,6 +82,43 @@ describe("createInMemoryFileSystem writes", () => {
   });
 });
 
+describe("removeEntry on the in-memory file system", () => {
+  const filesystem = () => createInMemoryFileSystem({
+    files: { "file:///tmp/a/one.md": "1", "file:///tmp/a/deep/two.md": "2", "file:///tmp/b.md": "3" },
+  });
+
+  test("removes a file at exactly its URL and keeps its neighbours", async () => {
+    const scratch = filesystem();
+
+    expect(await scratch.removeEntry({ entry: new URL("file:///tmp/b.md") }))
+      .toEqual({ ok: true, value: new URL("file:///tmp/b.md") });
+    expect(scratch.snapshot()).toEqual({
+      "file:///tmp/a/one.md": { kind: "bytes", bytes: new TextEncoder().encode("1") },
+      "file:///tmp/a/deep/two.md": { kind: "bytes", bytes: new TextEncoder().encode("2") },
+    });
+  });
+
+  test("removes a folder with everything below it, with or without the trailing slash", async () => {
+    const withSlash = filesystem();
+    const withoutSlash = filesystem();
+    await withSlash.removeEntry({ entry: new URL("file:///tmp/a/") });
+    await withoutSlash.removeEntry({ entry: new URL("file:///tmp/a") });
+
+    const kept = { "file:///tmp/b.md": { kind: "bytes" as const, bytes: new TextEncoder().encode("3") } };
+
+    expect([withSlash.snapshot(), withoutSlash.snapshot()]).toEqual([kept, kept]);
+  });
+
+  test("refuses an absent entry as not found and a faulted one with its fault", async () => {
+    const scratch = createInMemoryFileSystem({ files: {}, faults: { "file:///tmp/locked": "permission-denied" } });
+
+    expect(await scratch.removeEntry({ entry: new URL("file:///tmp/absent") }))
+      .toEqual({ ok: false, refusal: { kind: "unwritable", code: "not-found" } });
+    expect(await scratch.removeEntry({ entry: new URL("file:///tmp/locked") }))
+      .toEqual({ ok: false, refusal: { kind: "unwritable", code: "permission-denied" } });
+  });
+});
+
 describe("selectFoldersAndFiles", () => {
   const select = selectFoldersAndFiles({ files: ["stages/a.md"] });
 
