@@ -1,4 +1,4 @@
-// covers: file:harness/codex/emit.ts
+// covers: file:src/hosts/codex/projection/settings-renderer.ts
 //
 // A project copied from 2.11.0 refreshes from a newer release with its own
 // tool. That tool's merge of .codex/config.toml can change a setting's value

@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "implementers": [
+    {
+      "capability": "file-system",
+      "file": "src/kernel/file-system.ts",
+      "port": "src/kernel/file-system-port.ts",
+      "modules": ["node:fs", "node:fs/promises", "node:url"],
+      "globals": [],
+      "factory": "createNodeFileSystem",
+      "fakeSeam": "src/kernel/fixtures/file-system.fake.ts",
+      "hermeticTest": "src/kernel/file-system.hermetic.test.ts"
+    },
+    {
+      "capability": "process-runner",
+      "file": "src/kernel/process-runner.ts",
+      "port": "src/kernel/process-runner-port.ts",
+      "modules": [],
+      "globals": ["Bun.spawn", "Bun.fileURLToPath", "Bun.pathToFileURL", "process.execPath"],
+      "factory": "createNodeProcessRunner",
+      "fakeSeam": "src/kernel/fixtures/process-runner.fake.ts",
+      "hermeticTest": "src/kernel/process-runner.hermetic.test.ts"
+    },
+    {
+      "capability": "yaml-parser",
+      "file": "src/kernel/yaml-parser.ts",
+      "port": "src/kernel/yaml-parser-port.ts",
+      "modules": [],
+      "globals": ["Bun.YAML"],
+      "factory": "createBunYamlParser",
+      "fakeSeam": "src/kernel/fixtures/yaml-parser.fake.ts",
+      "hermeticTest": "src/kernel/yaml-parser.hermetic.test.ts"
+    },
+    {
+      "capability": "content-digester",
+      "file": "src/kernel/content-digester.ts",
+      "port": "src/kernel/content-digester-port.ts",
+      "modules": [],
+      "globals": ["Bun.CryptoHasher"],
+      "factory": "createBunContentDigester",
+      "fakeSeam": "src/kernel/fixtures/content-digester.fake.ts",
+      "hermeticTest": "src/kernel/content-digester.hermetic.test.ts"
+    },
+    {
+      "capability": "plugin-emitter",
+      "file": "src/projection/adapters/legacy-plugin-emit.ts",
+      "port": "src/projection/application/ports/plugins.ts",
+      "modules": [],
+      "globals": ["Bun.fileURLToPath"],
+      "factory": "createLegacyPluginProjector",
+      "fakeSeam": "src/projection/fixtures/plugin-projector.fake.ts",
+      "hermeticTest": "src/projection/adapters/legacy-plugin-emit.hermetic.test.ts"
+    },
+    {
+      "capability": "terminal",
+      "file": "src/kernel/terminal.ts",
+      "port": "src/kernel/terminal-port.ts",
+      "modules": [],
+      "globals": ["process.stdout", "process.stderr"],
+      "factory": "createProcessTerminal",
+      "fakeSeam": "src/kernel/fixtures/terminal.fake.ts",
+      "hermeticTest": "src/kernel/terminal.hermetic.test.ts"
+    },
+    {
+      "capability": "tool-bundler",
+      "file": "src/packaging/adapters/bun-tool-bundler.ts",
+      "port": "src/packaging/application/ports.ts",
+      "modules": [],
+      "globals": ["Bun.build", "Bun.fileURLToPath"],
+      "factory": "createBunToolBundler",
+      "fakeSeam": "src/packaging/fixtures/tool-bundler.fake.ts",
+      "hermeticTest": "src/packaging/adapters/bun-tool-bundler.hermetic.test.ts"
+    }
+  ]
+}

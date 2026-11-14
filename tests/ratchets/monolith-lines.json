@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "lines": {
+    "core/tools/aidlc-init.ts": 14964,
+    "core/tools/aidlc-lib.ts": 42322,
+    "core/tools/aidlc-orchestrate.ts": 23490,
+    "harness/copilot/emit.ts": 207,
+    "harness/copilot/manifest.ts": 270
+  }
+}

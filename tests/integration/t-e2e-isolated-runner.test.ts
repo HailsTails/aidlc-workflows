@@ -3,10 +3,16 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
 import {
-  copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync,
+  copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync,
+  readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createPackagedSourcesFile } from "../../src/packaging/adapters/packaged-sources-file.ts";
+import { createNodeFileSystem } from "../../src/kernel/file-system.ts";
+import { createBunContentDigester } from "../../src/kernel/content-digester.ts";
+import { distributionId } from "../../src/kernel/values.ts";
 import { createE2eTemporaryRoot, prepareE2eWorkers } from "../lib/e2e-workers.ts";
 import { captureTestSource } from "../lib/test-source.ts";
 import { selectedTuiBackend } from "../harness/tui-runtime.ts";
@@ -18,6 +24,66 @@ import {
 } from "../harness/test-budget.ts";
 
 const SOURCE = resolve(import.meta.dir, "../..");
+
+test("copied coverage refuses stale sources without changing its registry", async () => {
+  const root = fixture({});
+  cpSync(join(SOURCE, "node_modules", "zod"), join(root, "node_modules", "zod"),
+    { recursive: true });
+  mkdirSync(join(root, "core", "tools"), { recursive: true });
+  const input = join(root, "core", "tools", "example.ts");
+  writeFileSync(input, "export const x = 1;\n");
+  const sources = createPackagedSourcesFile({ repository: pathToFileURL(`${root}/`),
+    record: pathToFileURL(join(root, "dist", ".package-sources.json")),
+    fileSystem: createNodeFileSystem(), hasher: createBunContentDigester() });
+  const host = distributionId("claude");
+  const builtFrom = await sources.fingerprint();
+  expect(host.ok).toBe(true);
+  expect(builtFrom.ok).toBe(true);
+  if (!host.ok || !builtFrom.ok) throw new Error("Fixture admission failed");
+  expect(await sources.record({ hosts: [host.value], builtFrom: builtFrom.value }))
+    .toEqual({ ok: true, value: "recorded" });
+  writeFileSync(input, "export const x = 2;\n");
+  const registry = join(root, "registry.json");
+  const generator = join(root, "tests", "gen-coverage-registry.ts");
+  writeFileSync(registry, "committed\n");
+  for (const args of [["--check"], []]) {
+    const run = spawnSync(process.execPath, [generator, ...args], {
+      encoding: "utf8", timeout: NATIVE_STARTUP_TIMEOUT_MS,
+      env: { ...process.env, AIDLC_COVERAGE_SRC_ROOT: root,
+        AIDLC_COVERAGE_TESTS_DIR: join(root, "tests"), AIDLC_COVERAGE_REGISTRY: registry },
+    });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toBe("");
+    expect(run.stderr.trim().split("\n")).toEqual([
+      "coverage registry: dist/claude was packaged from other sources than this checkout: " +
+        "run `bun scripts/package.ts` first.",
+    ]);
+    expect(readFileSync(registry, "utf8")).toBe("committed\n");
+  }
+});
+
+test("copied coverage prints a source refusal before changing its registry", () => {
+  const root = fixture({});
+  cpSync(join(SOURCE, "node_modules", "zod"), join(root, "node_modules", "zod"),
+    { recursive: true });
+  mkdirSync(join(root, "core"));
+  mkdirSync(join(root, "scripts", "package.ts"), { recursive: true });
+  const registry = join(root, "registry.json");
+  writeFileSync(registry, "committed\n");
+  const run = spawnSync(process.execPath,
+    [join(root, "tests", "gen-coverage-registry.ts"), "--check"], {
+      encoding: "utf8", timeout: NATIVE_STARTUP_TIMEOUT_MS,
+      env: { ...process.env, AIDLC_COVERAGE_SRC_ROOT: root,
+        AIDLC_COVERAGE_TESTS_DIR: join(root, "tests"), AIDLC_COVERAGE_REGISTRY: registry },
+    });
+  expect(run.status).toBe(1);
+  expect(run.stdout).toBe("");
+  expect(run.stderr.trim().split("\n")).toEqual([
+    'coverage registry: {"kind":"packaged-sources-failed","operation":"read-inputs",' +
+      '"path":"scripts/package.ts","reason":"not-a-file"}',
+  ]);
+  expect(readFileSync(registry, "utf8")).toBe("committed\n");
+});
 const roots: string[] = [];
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -46,7 +112,17 @@ function git(root: string, args: string[]): string {
 function fixture(files: Record<string, string>): string {
   const root = scratch();
   for (const path of [
-    "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts", "scripts/package-sources.ts",
+    "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts",
+    "lint/gate/adapters/runner-progress.ts",
+    "lint/gate/adapters/package-lock.ts",
+    "tests/lib/test-matrix.ts", "tests/lib/test-source.ts",
+    "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
+    "tests/harness/tui-process-identity.ts",
+    "tests/harness/tui-screen.ts", "tests/harness/tui-time-budget.ts",
+    "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts",
+    "src/kernel/file-system-port.ts",
+    "src/kernel/content-digester.ts", "src/kernel/values.ts",
+    "src/kernel/brand.ts", "src/kernel/result.ts",
     "tests/harness/claude-gate.ts", "tests/harness/tui-runtime.ts", "tests/harness/tui-record-file.ts",
     "tests/harness/tui-windows-private-file.ts",
     "tests/harness/runner-profile.ts",
@@ -59,6 +135,8 @@ function fixture(files: Record<string, string>): string {
     copyFileSync(join(SOURCE, path), join(root, path));
   }
   assertRunnerFixtureImports(root);
+  assertRunnerFixtureImports(root, ["tests/gen-coverage-registry.ts"]);
+  assertRunnerFixtureImports(root, ["tests/run-tests.ts"]);
   mkdirSync(join(root, "tests", "e2e"), { recursive: true });
   for (const [name, body] of Object.entries(files)) writeFileSync(join(root, "tests", "e2e", name), body);
   writeFileSync(join(root, ".gitignore"), "tests/logs/\nnode_modules/\ndist/\ndist-release/\n");
@@ -565,6 +643,7 @@ test("hang",async()=>{console.log("BEFORE_TIMEOUT"); await new Promise(()=>{});}
     // Windows runner; one second left 250 ms and was reported as ERROR.
     const result = run(root, ["--isolated-e2e", "--e2e-file-timeout", "20"]);
     expect(result.code, result.output).toBe(1);
+    expect(result.log, result.output).toBeDefined();
     const report = json<{ state: string; files: Array<{ state: string; timedOut: boolean }> }>(
       join(result.log!, "e2e-results.json"),
     );

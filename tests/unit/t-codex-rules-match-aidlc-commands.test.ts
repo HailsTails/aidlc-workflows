@@ -1,4 +1,4 @@
-// covers: harness/codex/emit.ts
+// covers: file:src/hosts/codex/projection/settings-renderer.ts
 //
 // Codex pre-allows a command only when a prefix rule in .codex/rules/default.rules
 // matches it word for word, and an allowed command also runs outside Codex's

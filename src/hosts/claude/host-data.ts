@@ -1,0 +1,113 @@
+import type { HostIdentity } from "../../kernel/host.ts";
+import { accepted, type Result } from "../../kernel/result.ts";
+import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
+import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
+import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
+
+export const CLAUDE_BINDING_HEADING = "Claude Code";
+
+export const CLAUDE_HOST_DATA = {
+  "productName": "Claude Code",
+  "configNextStep": "open Claude Code in this project (if it is already open in " +
+    "this folder, exit it and start it again) and run `/aidlc " +
+    "--doctor`",
+  "rulesFolder": null,
+  "runnerFrontmatterAdditions": [
+    "disable-model-invocation: true"
+  ],
+  "hookActivation": {
+    "recovery": "Set \"disableAllHooks\": false in this project's " +
+      ".claude/settings.local.json; it works in the same chat. If " +
+      "you started Claude Code with a setting that turns hooks " +
+      "off, start it again without that setting. If your " +
+      "organization's Claude Code settings block this project, " +
+      "ask your Claude Code administrator to allow project hooks. " +
+      "If AI-DLC was set up while Claude Code was open, exit " +
+      "Claude Code and start it again in this folder, then type " +
+      "<entry>.",
+    "agentStepEdits": ".claude/settings.local.json",
+    "registration": {
+      "file": ".claude/settings.json",
+      "missing": ".claude/settings.json is missing from this project, so " +
+        "Claude Code runs none of AI-DLC's hooks here. In a " +
+        "terminal in this folder, <repair>, then exit Claude Code " +
+        "and start it again in this folder, and type <entry>.",
+      "invalid": "Claude Code cannot read this project's " +
+        ".claude/settings.json because it is not valid JSON, so it " +
+        "runs none of AI-DLC's hooks here. Correct the file, then " +
+        "exit Claude Code and start it again in this folder, and " +
+        "type <entry>.",
+      "unwired": ".claude/settings.json in this project does not register " +
+        "AI-DLC's hooks, so Claude Code runs none of them here. In " +
+        "a terminal in this folder, <repair>, then exit Claude Code " +
+        "and start it again in this folder, and type <entry>."
+    },
+    "notRunYet": "This is expected before your first Claude Code chat in " +
+      "this folder. If you already started one, set " +
+      "\"disableAllHooks\": false in this project's " +
+      ".claude/settings.local.json (it works in the same chat). " +
+      "If you started Claude Code with a setting that turns hooks " +
+      "off, start it again without that setting; if AI-DLC was " +
+      "set up while Claude Code was open, exit Claude Code and " +
+      "start it again in this folder. Then run doctor again.",
+    "agentStep": "Claude Code is not running AI-DLC's hooks in this project. " +
+      "First show the person this line: \"Choose Yes when Claude " +
+      "Code asks to change this project's settings, then answer " +
+      "the question below.\" Then set `\"disableAllHooks\": false` " +
+      "in this project's `.claude/settings.local.json`, keep " +
+      "every other key as it is, and create the file if it does " +
+      "not exist; Claude Code asks the person before it changes " +
+      "its settings. It works in this chat: do not ask for a " +
+      "restart and do not mention /hooks. Then run <next> and act " +
+      "on what it returns, so the waiting question shows again. " +
+      "If it brings back this same message, the hooks are still " +
+      "off from outside this project: show this line instead and " +
+      "end your turn: \"Claude Code is still starting with its " +
+      "hooks off. If AI-DLC was set up while Claude Code was " +
+      "open, exit Claude Code and start it again in this folder, " +
+      "then type <entry>. If you started it with a setting that " +
+      "turns hooks off, start it again without that setting; " +
+      "otherwise ask your Claude Code administrator to allow " +
+      "project hooks.\"",
+    "startedInsideProject": "Claude Code runs this project's hooks only when it is " +
+      "started in the project folder. Exit Claude Code, start it " +
+      "again in <folder>, then type <entry>."
+  },
+  "newChatStep": {
+    "text": "type /clear, then <entry>"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bun \"$CLAUDE_PROJECT_DIR/.claude/tools/aidlc.ts\" engine statusline"
+  },
+  "agentFinishRecorded": {
+    "env": [
+      "CLAUDE_CODE_SESSION_ID"
+    ]
+  },
+  "hostShell": {
+    "env": [
+      "CLAUDECODE",
+      "CLAUDE_CODE_SESSION_ID"
+    ]
+  }
+} as const satisfies HostData;
+
+export const CLAUDE_TOKENS = {
+  ["SKILL_INVOKE"]: null,
+  ["OPTION_LETTERS"]: "A-D",
+} as const satisfies HostTokenChoices;
+
+export const CLAUDE_AUTHORED_PLACEMENTS = [
+  { source: "settings.local.json.example", destination: ".claude/settings.local.json.example" },
+  { source: ".mcp.json", destination: ".mcp.json" },
+  { source: "dot-gitignore", destination: ".gitignore" },
+  { source: "rules-aidlc.md", destination: ".claude/rules/aidlc.md" },
+] as const satisfies readonly AuthoredPlacement[];
+
+export const claudeHostIdentity = (): Result<HostIdentity, KernelRefusal> => {
+  const distribution = distributionId("claude");
+  if (!distribution.ok) return distribution;
+  const directory = projectPath(".claude");
+  return directory.ok ? accepted({ distribution: distribution.value, directory: directory.value }) : directory;
+};

@@ -1,5 +1,4 @@
 // covers: file:scripts/package.ts
-// covers: file:scripts/harness-bindings.ts
 // covers: file:aidlc-common/protocols/stage-protocol-construction.md
 // covers: file:aidlc-common/protocols/stage-protocol-ensemble.md
 // covers: file:aidlc-common/protocols/stage-protocol-reviewer.md
@@ -14,7 +13,16 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { BINDING_HEADINGS } from "../../src/cli/host-table.ts";
+import { keepOwnHarnessBindings as keepOwn } from "../../src/projection/domain/harness-bindings.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
+
+function keepOwnHarnessBindings(content: string, harness: string, file: string): string {
+  const kept = keepOwn({ content, file, ownHeading: BINDING_HEADINGS[harness],
+    expectedHeadings: Object.values(BINDING_HEADINGS) });
+  if (!kept.ok) throw new Error(kept.refusal);
+  return kept.value;
+}
 
 const TREES: ReadonlyArray<readonly [string, string, string]> = [
   ["claude", ".claude", "Claude Code"],
@@ -116,8 +124,7 @@ describe("t-own-harness-bindings", () => {
     expect(differ).toEqual([]);
   });
 
-  test("the filter keeps fenced text, nested headings and the text after the run", async () => {
-    const { keepOwnHarnessBindings } = await import("../../scripts/harness-bindings.ts");
+  test("the filter keeps fenced text, nested headings and the text after the run", () => {
     const run = TOOLS.map((tool) => `### ${tool}\n\n${tool} body.\n\n#### ${tool} detail\n\nmore ${tool}.\n`).join("\n");
     const source = [
       "# Module",
@@ -143,8 +150,7 @@ describe("t-own-harness-bindings", () => {
     expect(keepOwnHarnessBindings("# No bindings\n\ntext\n", "codex", "plain.md")).toBe("# No bindings\n\ntext\n");
   });
 
-  test("a CRLF checkout cuts the same subsections and keeps its line endings", async () => {
-    const { keepOwnHarnessBindings } = await import("../../scripts/harness-bindings.ts");
+  test("a CRLF checkout cuts the same subsections and keeps its line endings", () => {
     const run = TOOLS.map((tool) => `### ${tool}\n\n${tool} body.\n`).join("\n");
     const lf = `# Module\n\n\`\`\`bash\n### Cursor\n\`\`\`\n\n## Bindings\n\n${run}\n### After\n\nShared.\n`;
     const crlf = lf.replaceAll("\n", "\r\n");
@@ -159,8 +165,7 @@ describe("t-own-harness-bindings", () => {
       .toBe(keepOwnHarnessBindings(module, "codex", "swarm.md").replaceAll("\n", "\r\n"));
   });
 
-  test("a binding run that is missing a tool fails the build", async () => {
-    const { keepOwnHarnessBindings } = await import("../../scripts/harness-bindings.ts");
+  test("a binding run that is missing a tool fails the build", () => {
     const partial = TOOLS.slice(0, 6).map((tool) => `### ${tool}\n\n${tool} body.\n`).join("\n");
     expect(() => keepOwnHarnessBindings(`## Bindings\n\n${partial}`, "claude", "partial.md"))
       .toThrow("missing GitHub Copilot");

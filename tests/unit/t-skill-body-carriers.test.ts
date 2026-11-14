@@ -14,7 +14,7 @@ import {
   unitStepNote,
   unresolvedGateNote,
 } from "../../core/tools/aidlc-directive.ts";
-import { EARLIER_RELEASE_REGIONS } from "../../scripts/earlier-release-regions.ts";
+import { EARLIER_RELEASE_REGIONS } from "../../src/projection/domain/skill-regions.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 

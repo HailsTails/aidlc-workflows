@@ -767,7 +767,7 @@ The generator reads the units from the packaged `dist/claude` tree. If that
 tree was packaged from other sources (`core/`, `harness/`, `plugins/` or the
 packager's own scripts) than the checkout, both commands refuse with one line:
 run `bun scripts/package.ts` first. `package.ts` records a content fingerprint of its inputs per harness in
-`dist/.package-sources.json` (`scripts/package-sources.ts`), so undoing an edit
+`dist/.package-sources.json` (`src/packaging/adapters/packaged-sources-file.ts`), so undoing an edit
 needs no rebuild. A build during which an input changed is not recorded and
 fails, saying to run it again. Temp trees from the generator's `AIDLC_COVERAGE_*` seams have
 no `core/` and are not checked.
@@ -2448,3 +2448,26 @@ annotation and a row in the job summary naming the refresh command. The step
 always succeeds, so a stale weight slows CI but never fails a job or drops a
 PR from the merge queue. `t-ci-test-weights.test.ts` covers the refresh, the
 report, and the checked-in weight files.
+
+## Progress during desktop runs
+
+The runner writes `AIDLC_PROGRESS` observations to stderr when it knows the
+selected inventory, every 30 seconds while its event loop is available, and
+when execution returns. It reports recorded file outcomes against that exact
+inventory, separates PASS/FAIL/SKIP, names active file attempts and their age,
+and reports elapsed execution time and the last observed file advancement.
+These counts are not a percentage of work or time: files differ in cost,
+retries can revise outcomes, and worker cleanup may still remain. They never
+determine coverage, success, admission, retries or deadlines.
+
+Use `--verbose` to retain the per-file logs named by the observation. After
+five minutes without observed file advancement, inspect the active file's
+log tail and existing process/deadline metadata once. A silent long-running
+file is not proof of a hang; no job is automatically cancelled by this report.
+
+Projection lock waiting and generation announce their stage before blocking;
+the file total is unknown then. Synchronous setup, builds and gate checks
+cannot emit intermediate timer observations. Async gate capture forwards
+complete bounded progress lines while retaining the original captured output;
+`--locked` already inherits output. These are diagnostic lines, not trusted
+coverage receipts (nested child output can contain marker-shaped text).

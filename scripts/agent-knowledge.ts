@@ -1,165 +1,32 @@
-// scripts/agent-knowledge.ts - build-time knowledge delivery for delegated
-// agent definitions.
-//
-// The two review-only agents (product-lead, architecture-reviewer) are always
-// DISPATCHED (§12a), never inline, so their context is whatever the harness
-// builds from the agent definition: the .md body everywhere, plus a
-// `resources` preload on Kiro CLI only. Their `knowledge/<agent>/reviewing.md`
-// checklist used to reach them only if they chose to read it at runtime - the
-// same prose-only, non-deterministically-skipped delivery as the
-// rules_in_context defect (the sibling surface in the same report). The
-// deterministic channel for a dispatched agent is its definition body, so the
-// packager absorbs each reviewer's knowledge files into its .md body at build
-// time. The knowledge file stays the single hand-authored source of truth;
-// the absorbed copy is generated, like everything else in dist/.
-//
-// The reviewer set is DERIVED from stage frontmatter (`reviewer:` lines), not
-// hardcoded: a future stage naming a new reviewer agent automatically gets
-// that agent's knowledge absorbed.
-//
-// Used by scripts/package.ts (the declarative projection: Claude, Kiro,
-// Kiro IDE, and the opencode .aidlc copies) AND by the codex/opencode emit.ts
-// plugins (which read core/agents/*.md directly, bypassing the packager's
-// transform).
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join, sep } from "node:path";
+import { delegatedSharedKnowledge } from "../src/projection/adapters/legacy-format-docs.ts";
+import { absorbReviewerKnowledge as absorbCapturedKnowledge,
+  injectDelegatedKnowledgePreflight as injectPreflight,
+} from "../src/projection/domain/agent-knowledge.ts";
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, sep } from "node:path";
-import { sharedKnowledgeWithoutFormatDocs } from "../core/tools/aidlc-inline-context.ts";
-
-// Walk core and owned-plugin stages and collect every frontmatter `reviewer:`
-// value. Cached per coreRoot - the packager calls this once per projected
-// agent file.
-const reviewerSetCache = new Map<string, Set<string>>();
-
-export function reviewerAgentSet(coreRoot: string): Set<string> {
-  const cached = reviewerSetCache.get(coreRoot);
-  if (cached) return cached;
-  const set = new Set<string>();
-  const walk = (dir: string): void => {
-    if (!existsSync(dir)) return;
-    for (const entry of readdirSync(dir).sort()) {
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) {
-        walk(full);
-      } else if (entry.endsWith(".md")) {
-        const m = readFileSync(full, "utf-8").match(/^reviewer:\s*(\S+)\s*$/m);
-        if (m) set.add(m[1]);
-      }
-    }
-  };
-  walk(join(coreRoot, "aidlc-common", "stages"));
-  const pluginsRoot = join(dirname(coreRoot), "plugins");
-  if (existsSync(pluginsRoot)) {
-    for (const plugin of readdirSync(pluginsRoot).sort()) {
-      walk(join(pluginsRoot, plugin, "stages"));
-    }
-  }
-  reviewerSetCache.set(coreRoot, set);
-  return set;
-}
-
-// Every agent a core stage reads in the lead's own chat: the lead of an inline
-// or mob stage and the supports of an inline one, as inlineAgentsFor
-// (core/tools/aidlc-inline-context.ts) picks them at run time. A plugin stage's
-// lead that is missing here reads its full agent file instead.
-const inlineSetCache = new Map<string, Set<string>>();
-
-export function inlineAgentSet(coreRoot: string): Set<string> {
-  const cached = inlineSetCache.get(coreRoot);
-  if (cached) return cached;
-  const set = new Set<string>();
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir).sort()) {
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) {
-        walk(full);
-        continue;
-      }
-      if (!entry.endsWith(".md")) continue;
-      const fm = readFileSync(full, "utf-8").replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
-      const mode = fm.match(/^mode:\s*(\S+)/m)?.[1];
-      const lead = fm.match(/^lead_agent:\s*(\S+)/m)?.[1];
-      const supports = [...(fm.match(/^support_agents:\n((?:[ \t]+-[ \t]+\S+\n?)*)/m)?.[1] ?? "").matchAll(/-[ \t]+(\S+)/g)]
-        .map((m) => m[1]);
-      const agents = mode === "inline" ? [lead, ...supports] : mode === "mob" ? [lead] : [];
-      for (const agent of agents) if (agent && agent !== "orchestrator") set.add(agent);
-    }
-  };
-  walk(join(coreRoot, "aidlc-common", "stages"));
-  inlineSetCache.set(coreRoot, set);
-  return set;
-}
-
-// Append the agent's knowledge/<agent>/*.md files (sorted) to an agent .md
-// body. Returns the input unchanged for non-reviewer agents and when the
-// knowledge dir is absent/empty. The header names the authored source so a
-// reader of the generated file knows where to edit. The absorbed text is
-// token-free by construction (the knowledge files carry no {{HARNESS_DIR}}
-// token today; if one appears, the caller's ordering - absorb BEFORE token
-// substitution - resolves it like any core prose).
-export function absorbReviewerKnowledge(
-  content: string,
-  agentName: string,
-  coreRoot: string,
-  sourceRoot: string = coreRoot,
-): string {
-  if (!reviewerAgentSet(coreRoot).has(agentName)) return content;
+export function absorbReviewerKnowledge(request: {
+  content: string; agentName: string; sourceRoot: string; reviewerAgents: ReadonlySet<string>;
+}): string {
+  const { content, agentName, sourceRoot, reviewerAgents } = request;
+  if (!reviewerAgents.has(agentName)) return content;
   const knowledgeDir = join(sourceRoot, "knowledge", agentName);
-  if (!existsSync(knowledgeDir)) return content;
-  const files = readdirSync(knowledgeDir)
-    .filter((f) => f.endsWith(".md"))
-    .sort();
-  if (files.length === 0) return content;
-  const sections = files.map((f) => {
-    const text = readFileSync(join(knowledgeDir, f), "utf-8").trim();
-    return (
-      `<!-- Absorbed at build time from knowledge/${agentName}/${f} - ` +
-      `edit that file, not this generated copy. -->\n\n${text}`
-    );
-  });
-  return `${content.trimEnd()}\n\n---\n\n${sections.join("\n\n---\n\n")}\n`;
+  const sources = existsSync(knowledgeDir)
+    ? readdirSync(knowledgeDir).filter((file) => file.endsWith(".md")).sort()
+    .map((file) => ({ path: `knowledge/${agentName}/${file}`,
+      content: { kind: "text" as const,
+        text: readFileSync(join(knowledgeDir, file), "utf-8") } })) : [];
+  return absorbCapturedKnowledge({ content, agentName, reviewerAgents, sources });
 }
 
-const DELEGATED_KNOWLEDGE_PREFLIGHT =
-  "<!-- aidlc-delegated-knowledge-preflight -->";
-
-// Inject a compact, projection-owned preflight into every delegated agent
-// definition. Authored core/plugin personas stay focused on unique role
-// content, while each harness-native dispatch surface still carries the
-// mandatory methodology + team knowledge load that a dispatched worker cannot
-// inherit from the conductor's inline_context_paths.
 export function injectDelegatedKnowledgePreflight(
-  content: string,
-  agentName: string,
-  harnessDir: string,
+  content: string, agentName: string, harnessDir: string,
 ): string {
-  if (content.includes(DELEGATED_KNOWLEDGE_PREFLIGHT)) return content;
-  const block =
-    `${DELEGATED_KNOWLEDGE_PREFLIGHT}\n` +
-    `**Delegated knowledge preflight (mandatory):** Before substantive work, ` +
-    `ensure every readable Markdown file under these directories is loaded, in order: ` +
-    `${sharedKnowledgeWithoutFormatDocs(harnessDir)}, ` +
-    `\`${harnessDir}/knowledge/${agentName}/\`, ` +
-    `\`aidlc/spaces/<active-space>/knowledge/aidlc-shared/\`, then ` +
-    `\`aidlc/spaces/<active-space>/knowledge/${agentName}/\`. ` +
-    `A native resource preload satisfies this requirement; otherwise read the files now. ` +
-    (harnessDir === ".kiro"
-      ? `Kiro shows only part of a long file: read each one with your file tool in parts of at most 200 lines ` +
-        `(offset and limit), from the first line to the last; a read that comes back cut short is not all of it. `
-      : "") +
-    `The dispatch brief supplies rules and artifact paths separately.`;
-  const frontmatter = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
-  if (!frontmatter) return `${block}\n\n${content.trimStart()}`;
-  return (
-    content.slice(0, frontmatter[0].length) +
-    `${block}\n\n` +
-    content.slice(frontmatter[0].length)
-  );
+  return injectPreflight({ content, agentName, directory: harnessDir,
+    reading: harnessDir === ".kiro" ? "in-parts" : "whole-files",
+    sharedKnowledge: delegatedSharedKnowledge(harnessDir) });
 }
 
-// The agent slug for a projected agents/*.md path, or null when the path is
-// not an agent persona file. Shared so the packager transform and the emit
-// plugins gate absorption identically.
 export function agentNameFromPath(srcPath: string): string | null {
   const posixPath = srcPath.split(sep).join("/");
   if (!posixPath.includes("/agents/") || !posixPath.endsWith("-agent.md")) {

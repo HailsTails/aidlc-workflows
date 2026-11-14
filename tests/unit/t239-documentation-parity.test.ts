@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import codexOnboardingFills from "../../harness/codex/onboarding.fills.ts";
-import { renderOnboarding } from "../../scripts/onboarding.ts";
+import {
+  CODEX_ONBOARDING_FILLS as codexOnboardingFills,
+} from "../../src/hosts/codex/onboarding-fills.ts";
+import { renderOnboarding } from "../../src/projection/domain/onboarding.ts";
 import { type Tier, TIER_PROJECTIONS, TIERS } from "../../core/tools/aidlc-tiers.ts";
 import { parseStageFrontmatter } from "../../core/tools/aidlc-lib.ts";
 import { compareVersions } from "../../core/tools/aidlc-channel.ts";
@@ -140,15 +142,9 @@ const auditSetBlock = sliceBetween(
 const eventTypes = quotedTokens(auditSetBlock);
 
 const harnessRoot = at("harness");
-const harnessNames = readdirSync(harnessRoot)
-  .filter((name) => existsSync(join(harnessRoot, name, "manifest.ts")))
-  .map((dir) => {
-    const manifest = read("harness", dir, "manifest.ts");
-    const match = manifest.match(/\bname:\s*"([^"]+)"/);
-    if (!match) throw new Error(`manifest has no name: harness/${dir}/manifest.ts`);
-    expect(match[1]).toBe(dir);
-    return match[1];
-  })
+const harnessNames = readdirSync(harnessRoot, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
   .sort();
 
 const harnessLabels: Record<string, string> = {
@@ -234,7 +230,7 @@ describe("documentation parity derives current behavior from authored implementa
       ["docs", "guide", "agents", "architect-agent.md"],
       ["docs", "harness-engineering", "03-adding-an-agent.md"],
       ["docs", "reference", "agents", "README.md"],
-      ["harness", "codex", "emit.ts"],
+      ["src", "hosts", "codex", "projection", "agent-renderer.ts"],
     ]) {
       const text = normalized(read(...path));
       expect(text, path.join("/")).not.toContain(
@@ -778,10 +774,12 @@ describe("documentation parity derives current behavior from authored implementa
   });
 
   test("Codex onboarding fills and rendered output name the emitted agent TOML directory", () => {
-    const rendered = renderOnboarding(
+    const onboarding = renderOnboarding(
       read("core", "templates", "onboarding-harness.md"),
       codexOnboardingFills,
     );
+    if (!onboarding.ok) throw new Error(onboarding.refusal);
+    const rendered = onboarding.value;
     for (const body of [rendered, read("dist", "codex", ".codex", "onboarding.md")]) {
       expect(body).toContain("`.codex/agents/` TOMLs");
       expect(body).not.toContain("transposed into `.agents/` TOMLs");
@@ -904,7 +902,7 @@ describe("documentation parity derives current behavior from authored implementa
         ["docs", "reference", "05-agent-system.md"],
         ["docs", "reference", "14-claude-features.md"],
         ["docs", "reference", "agents", "README.md"],
-        ["harness", "codex", "emit.ts"],
+        ["src", "hosts", "codex", "projection", "agent-renderer.ts"],
         ["scripts", "package.ts"],
         ["tests", "unit", "t216-agent-tier-projection.test.ts"],
       ];

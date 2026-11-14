@@ -1,7 +1,7 @@
 // covers: function:parseStageFrontmatter, function:emitStageFrontmatter, function:validateStageFrontmatter
 //
 // t64 — stage-frontmatter parse/emit round-trip + schema integration.
-// Mechanism: none (pure functions, zero I/O, zero LLM, zero tokens).
+// Mechanism: pure parsers, plus a fresh frozen compiler subprocess for Definition parity.
 // Technique: example-based.
 //
 // Sources:
@@ -25,6 +25,27 @@
 // pins return values, thrown-error substrings, and round-trip JSON-equality.
 
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { markdownBlocks, parseStageFrontmatter as frozenStageFrontmatter }
+  from "../../core/tools/aidlc-lib.ts";
+import { accept } from "../../src/kernel/fixtures/accept.ts";
+import { distributionId, projectPath } from "../../src/kernel/values.ts";
+import { serializeCompiledMethod }
+  from "../../src/projection/adapters/compiled-method-file.ts";
+import { loadCoreMethod as loadAuthoredCoreMethod }
+  from "../../src/workflow-definition/application/load-authored-method.ts";
+import { createMethodContentDecoder }
+  from "../../src/workflow-definition/adapters/method-content-decoder.ts";
+import { createNodeFileSystem } from "../../src/kernel/file-system.ts";
+import { createBunYamlParser } from "../../src/kernel/yaml-parser.ts";
+import { pathToFileURL } from "node:url";
+import { createMarkdownOutliner }
+  from "../../src/workflow-definition/adapters/markdown-outliner.ts";
+import { readStage } from "../../src/workflow-definition/adapters/read-stage.ts";
+import { methodSource } from "../../src/workflow-definition/fixtures/method-source.fixture.ts";
+import { REPO_ROOT } from "../harness/fixtures.ts";
 import {
   emitStageFrontmatter,
   parseStageFrontmatter,
@@ -1060,4 +1081,65 @@ describe("ars block layout (blank lines, comments)", () => {
       "ERR:Malformed ars entry in frontmatter: not a key"
     );
   });
+});
+
+const stageParitySource = { owner: { kind: "core" } as const,
+  path: methodSource({ kind: "stage", within: "ideation/scope-definition.md" }) };
+const stageParityOutliner = createMarkdownOutliner(markdownBlocks);
+const stageParityParser = createBunYamlParser({ yamlLib: Bun.YAML });
+
+test("absent non-graph declarations preserve the frozen parser's absence", () => {
+  const frozen = frozenStageFrontmatter(WORKED);
+  const reading = accept(readStage({ source: stageParitySource, raw: WORKED,
+    outliner: stageParityOutliner, parser: stageParityParser }));
+  expect(frozen).not.toHaveProperty("when");
+  expect(frozen).not.toHaveProperty("required_sections");
+  expect(reading.stage.activation).toEqual({ kind: "always" });
+  expect(reading.stage.requiredSections).toEqual([]);
+  expect(reading.stage.briefing.instructions.text).toBe("\n# body\n");
+});
+
+test("activation and required sections retain the frozen parser's authored values", () => {
+  const raw = WORKED.replace("\n---\n", `
+when:
+  producer-in-plan: design
+required_sections:
+  - Decisions
+  - Evidence
+---
+`);
+  const frozen = frozenStageFrontmatter(raw);
+  const reading = accept(readStage({ source: stageParitySource, raw,
+    outliner: stageParityOutliner, parser: stageParityParser }));
+  expect(frozen.when).toEqual({ "producer-in-plan": "design" });
+  expect(reading.stage.activation).toMatchObject({ kind: "producer-in-plan", artifact: "design" });
+  expect(frozen.required_sections).toEqual(reading.stage.requiredSections);
+  expect(reading.stage.requiredSections).toEqual(["Decisions", "Evidence"]);
+  expect(reading.stage.briefing.instructions.text).toBe("\n# body\n");
+});
+
+test("a fresh unpinned frozen compile matches the new Method graph and grid", async () => {
+  const coreRoot = join(REPO_ROOT, "core");
+  const graphPath = join(REPO_ROOT, ".cache", `t64-fresh-graph-${process.pid}.json`);
+  const gridPath = join(REPO_ROOT, ".cache", `t64-fresh-grid-${process.pid}.json`);
+  expect(existsSync(graphPath)).toBe(false);
+  expect(existsSync(gridPath)).toBe(false);
+  const authored = accept(await loadAuthoredCoreMethod({ coreRoot: pathToFileURL(coreRoot),
+    reader: createNodeFileSystem(), decoder: createMethodContentDecoder({ parser: stageParityParser,
+      outliner: stageParityOutliner }) }));
+  const rendered = serializeCompiledMethod({ method: authored.method,
+    host: { distribution: accept(distributionId("claude")),
+      directory: accept(projectPath(".claude")) },
+    memoryRoot: accept(projectPath("aidlc/spaces/default/memory")) });
+  const script = `import { compileStageGraph } from ${JSON.stringify(
+    join(coreRoot, "tools/aidlc-graph.ts"))}; console.log(JSON.stringify(compileStageGraph()));`;
+  const compiled = spawnSync(process.execPath, ["--eval", script], {
+    cwd: coreRoot, encoding: "utf8", env: { ...process.env, AIDLC_SRC: coreRoot,
+      AIDLC_HARNESS_DIR: ".claude", AIDLC_HARNESS_NAME: "claude",
+      AIDLC_STAGE_GRAPH: graphPath, AIDLC_SCOPE_GRID: gridPath,
+      AIDLC_RULES_DIR: join(coreRoot, "memory") },
+  });
+  expect(compiled.status, compiled.stdout + compiled.stderr).toBe(0);
+  expect(JSON.parse(compiled.stdout)).toMatchObject({
+    json: rendered.graph, gridJson: rendered.grid });
 });

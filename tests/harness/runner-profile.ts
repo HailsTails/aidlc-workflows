@@ -13,6 +13,8 @@ export interface ParsedArgs {
   verbose: boolean;
   debug: boolean;
   filter: string;
+  testNamePattern: string;
+  allowEmptyShard: boolean;
   /** Files to leave out of every tier, matched like `filter`; empty leaves none out. */
   exclude: string;
   parallel: number;
@@ -60,6 +62,8 @@ export function parseRunnerArgs(
     verbose: false,
     debug: false,
     filter: "",
+    testNamePattern: "",
+    allowEmptyShard: false,
     exclude: "",
     parallel: 1,
     shard: null,
@@ -143,6 +147,15 @@ export function parseRunnerArgs(
         if (!out.filter) {
           throw new RunnerArgsError("ERROR: --filter requires a non-empty filename regex");
         }
+        break;
+      case "--test-name-pattern":
+        out.testNamePattern = argv[++i] ?? "";
+        if (!out.testNamePattern) {
+          throw new RunnerArgsError("ERROR: --test-name-pattern requires a non-empty regex");
+        }
+        break;
+      case "--allow-empty-shard":
+        out.allowEmptyShard = true;
         break;
       case "--exclude":
         out.exclude = argv[++i] ?? "";

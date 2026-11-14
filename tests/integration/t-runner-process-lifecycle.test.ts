@@ -36,20 +36,32 @@ function git(cwd: string, args: string[]): void {
   if (result.status !== 0) throw new Error(result.stderr || String(result.error));
 }
 
-async function fixture(files: Record<string, string>, preparing = false): Promise<string> {
-  const dir = await root();
-  cpSync(join(SOURCE, "tests", "lib"), join(dir, "tests", "lib"), { recursive: true });
-  for (const path of [
-    "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts", "scripts/package-sources.ts",
+const RUNNER_SOURCE_FILES = [
+    "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts",
+    "lint/gate/adapters/runner-progress.ts",
+    "lint/gate/adapters/package-lock.ts",
+    "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
+    "tests/harness/tui-process-identity.ts",
+    "tests/harness/tui-screen.ts", "tests/harness/tui-time-budget.ts",
+    "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts",
+    "src/kernel/file-system-port.ts",
+    "src/kernel/content-digester.ts", "src/kernel/values.ts", "src/kernel/brand.ts", "src/kernel/result.ts",
     "tests/harness/claude-gate.ts", "tests/harness/tui-runtime.ts", "tests/harness/tui-record-file.ts",
     "tests/harness/tui-windows-private-file.ts",
     "tests/harness/runner-profile.ts",
     "tests/harness/test-budget.ts",
-  ]) {
+];
+
+async function fixture(files: Record<string, string>, preparing = false): Promise<string> {
+  const dir = await root();
+  cpSync(join(SOURCE, "tests", "lib"), join(dir, "tests", "lib"), { recursive: true });
+  for (const path of RUNNER_SOURCE_FILES) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     cpSync(join(SOURCE, path), join(dir, path));
   }
   assertRunnerFixtureImports(dir);
+  assertRunnerFixtureImports(dir, ["tests/gen-coverage-registry.ts"]);
+  assertRunnerFixtureImports(dir, ["tests/run-tests.ts"]);
   for (const [path, body] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, "tests", path)), { recursive: true });
     writeFileSync(join(dir, "tests", path), body);
