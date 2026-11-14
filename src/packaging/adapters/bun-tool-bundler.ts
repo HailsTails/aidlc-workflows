@@ -12,7 +12,7 @@ export type ToolBuildLib = {
     readonly outputs: readonly Pick<Blob, "text">[];
   }>;
 };
-const BUN_BUILD_LIB: ToolBuildLib = { build: Bun.build };
+export const BUN_BUILD_LIB: ToolBuildLib = { build: Bun.build };
 type BundlerInputs = { readonly sourceRoot: URL; readonly digester: ContentDigester;
   readonly buildLib: ToolBuildLib };
 
@@ -53,8 +53,8 @@ const bundleEntry = async (request: BundlerInputs & {
     origin: { kind: "bundled-runtime", entry: request.entry } });
 };
 
-export const createBunToolBundler = ({ sourceRoot, digester, buildLib = BUN_BUILD_LIB }: {
-  readonly sourceRoot: URL; readonly digester: ContentDigester; readonly buildLib?: ToolBuildLib;
+export const createBunToolBundler = ({ sourceRoot, digester, buildLib }: {
+  readonly sourceRoot: URL; readonly digester: ContentDigester; readonly buildLib: ToolBuildLib;
 }): ToolBundler => ({
   bundle: async ({ entries, host }) => {
     const readings = await Promise.all(entries.map((entry) => bundleEntry({ sourceRoot, digester, buildLib, host, entry })));

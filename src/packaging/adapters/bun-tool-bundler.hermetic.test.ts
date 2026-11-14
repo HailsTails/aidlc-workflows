@@ -5,7 +5,7 @@ import { createBunContentDigester } from "../../kernel/content-digester.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { createRuntimeRootFixture, writeRuntimeBundleFixture } from "../fixtures/runtime-root.fixture.ts";
-import { createBunToolBundler } from "./bun-tool-bundler.ts";
+import { BUN_BUILD_LIB, createBunToolBundler } from "./bun-tool-bundler.ts";
 
 const fileSystem = createNodeFileSystem();
 const processRunner = createNodeProcessRunner();
@@ -23,7 +23,7 @@ afterAll(async () => {
   accept(await fileSystem.removeFolder({ folder: outputRoot }));
 });
 
-const fixtureBundle = () => createBunToolBundler({ sourceRoot, digester })
+const fixtureBundle = () => createBunToolBundler({ sourceRoot, digester, buildLib: BUN_BUILD_LIB })
   .bundle({ entries: [ENTRY], host: HOST, channel: "copy" });
 
 test("two fixture builds have the same bytes and hash in the requested host directory", async () => {

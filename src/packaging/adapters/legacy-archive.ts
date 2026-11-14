@@ -8,6 +8,7 @@ import type { ArchiveFile, PackagingRefusal } from "../domain/artifact.ts";
 
 const REGULAR_MODE = 0o644;
 const EXECUTABLE_MODE = 0o755;
+export const legacyArchiveEncoder = createTarGz;
 const legacyBytes = (content: FileContent): Buffer =>
   content.kind === "text" ? Buffer.from(content.text) : Buffer.from(content.bytes);
 
@@ -25,7 +26,7 @@ export const createLegacyArtifactWriter = (binding: {
   readonly folder: URL;
   readonly fileSystem: Pick<FileSystem, "makeFolder" | "writeFile">;
   readonly hasher: ContentHasher;
-}, encode: typeof createTarGz = createTarGz): ArtifactWriter => ({ write: async (request) => {
+}, encode: typeof createTarGz): ArtifactWriter => ({ write: async (request) => {
   const name = projectPath(request.name);
   if (!name.ok) return refused({ kind: "archive-not-written", name: request.name,
     reason: "The archive name must be a portable project-relative path." });

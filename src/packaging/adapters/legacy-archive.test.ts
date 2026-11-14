@@ -5,7 +5,7 @@ import { accept } from "../../kernel/fixtures/accept.ts";
 import { createInMemoryFileSystem } from "../../kernel/fixtures/file-system.fake.ts";
 import { hash } from "../../kernel/fixtures/values.fixture.ts";
 import type { ArchiveEntry } from "../domain/artifact.ts";
-import { createLegacyArtifactWriter } from "./legacy-archive.ts";
+import { createLegacyArtifactWriter, legacyArchiveEncoder } from "./legacy-archive.ts";
 
 const digest = hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 const folder = new URL("file:///archives/");
@@ -32,10 +32,11 @@ test("the registered formatter receives exact regular/executable modes and binar
   expect(fileSystem.modes()).toEqual({ "file:///archives/runtime%20%23.tar.gz": "regular" });
 });
 
-test("the default formatter builds archive bytes without another filesystem owner", async () => {
+test("the explicitly bound formatter builds archive bytes without another filesystem owner", async () => {
   const fileSystem = createInMemoryFileSystem({ files: {} });
   const hashContent = mock(hasher.hash);
-  expect(await createLegacyArtifactWriter({ folder, fileSystem, hasher: { hash: hashContent } }).write({
+  const writer = createLegacyArtifactWriter({ folder, fileSystem, hasher: { hash: hashContent } }, legacyArchiveEncoder);
+  expect(await writer.write({
     name: "empty.tar.gz", format: "tar.gz", files: [],
   })).toEqual(accepted(digest));
   expect(hashContent).toHaveBeenCalledWith({ kind: "bytes", bytes: expect.any(Uint8Array) });
@@ -68,7 +69,7 @@ test("hash failures return data before any archive is written", async () => {
   const fileSystem = createInMemoryFileSystem({ files: {} });
   const writeFile = mock(fileSystem.writeFile);
   expect(await createLegacyArtifactWriter({ folder, fileSystem: { ...fileSystem, writeFile },
-    hasher: { hash: () => refused({ kind: "invalid-content-hash", raw: "bad" }) } })
+    hasher: { hash: () => refused({ kind: "invalid-content-hash", raw: "bad" }) } }, legacyArchiveEncoder)
     .write({ name: "runtime.tar.gz", format: "tar.gz", files: [] })).toEqual(refused({
     kind: "archive-not-written", name: "runtime.tar.gz", reason: '{"kind":"invalid-content-hash","raw":"bad"}',
   }));
@@ -79,8 +80,8 @@ test("folder creation failures are not successful archives", async () => {
   const fileSystem = createInMemoryFileSystem({ files: {} });
   const makeFolder = mock(async () => refused({ kind: "unwritable" as const, code: "permission-denied" as const }));
   const writeFile = mock(fileSystem.writeFile);
-  expect(await createLegacyArtifactWriter({ folder, fileSystem: { makeFolder, writeFile }, hasher })
-    .write({ name: "runtime.tar.gz", format: "tar.gz", files: [] })).toEqual(refused({
+  const writer = createLegacyArtifactWriter({ folder, fileSystem: { makeFolder, writeFile }, hasher }, legacyArchiveEncoder);
+  expect(await writer.write({ name: "runtime.tar.gz", format: "tar.gz", files: [] })).toEqual(refused({
     kind: "archive-not-written", name: "runtime.tar.gz", reason: "permission-denied",
   }));
   expect(writeFile).not.toHaveBeenCalled();
@@ -88,7 +89,7 @@ test("folder creation failures are not successful archives", async () => {
 
 test("archive write failures do not return a digest as success", async () => {
   const fileSystem = createInMemoryFileSystem({ files: {}, faults: { "file:///archives/runtime.tar.gz": "failed" } });
-  expect(await createLegacyArtifactWriter({ folder, fileSystem, hasher })
+  expect(await createLegacyArtifactWriter({ folder, fileSystem, hasher }, legacyArchiveEncoder)
     .write({ name: "runtime.tar.gz", format: "tar.gz", files: [] })).toEqual(refused({
     kind: "archive-not-written", name: "runtime.tar.gz", reason: "failed",
   }));
