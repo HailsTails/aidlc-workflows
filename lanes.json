@@ -115,8 +115,6 @@
         "src/cli/adapters/routes/{packaging,installation}/**",
         "src/cli/adapters/routes/build/**",
         "src/cli/core-build-root{,.test}.ts",
-        "src/cli/main.ts",
-        "src/cli/host-table{,.test}.ts",
         "src/cli/main.test.ts",
         "src/cli/package-build-root{,.test}.ts",
         "scripts/package.ts",
