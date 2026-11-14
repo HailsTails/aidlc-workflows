@@ -75,7 +75,7 @@ describe("debtFigureOf", () => {
   test("counts only debt-zone files", () => {
     const figure = debtFigureOf({
       "core/tools/aidlc-lib.ts": { "max-len": 3, complexity: 2 },
-      "scripts/package.ts": { "max-len": 1 },
+      "scripts/package-release.ts": { "max-len": 1 },
       "src/kernel/values.ts": { "no-control-regex": 1 },
     });
 

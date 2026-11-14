@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { auditExcludes, moduleKindOf, zoneOf } from "./zones.ts";
 
 describe("zoneOf", () => {
-  test("src and lint are clean", () => {
+  test("src and lint are clean, and so is the package build entry", () => {
     expect(zoneOf("src/kernel/values.ts")).toBe("clean");
     expect(zoneOf("lint/zones.ts")).toBe("clean");
+    expect(zoneOf("scripts/package.ts")).toBe("clean");
   });
 
   test("the gate is scaffolding inside the clean lint folder", () => {
@@ -13,7 +14,7 @@ describe("zoneOf", () => {
   });
 
   test("everything else is debt", () => {
-    expect(zoneOf("scripts/package.ts")).toBe("debt");
+    expect(zoneOf("scripts/package-release.ts")).toBe("debt");
     expect(zoneOf("core/tools/aidlc-lib.ts")).toBe("debt");
   });
 });
@@ -43,7 +44,7 @@ describe("auditExcludes", () => {
     expect(auditExcludes(tracked)).toEqual([
       "core",
       "lint/gate",
-      "scripts",
+      "scripts/gate.ts",
       "tsconfig.json",
     ]);
   });

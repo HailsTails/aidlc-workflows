@@ -21,6 +21,7 @@ describe("cleanZoneConfig", () => {
           "eslint.config.ts",
           "eslint.config.test.ts",
           "disciplines.eslint.d.mts",
+          "scripts/package.ts",
         ],
         ignores: ["lint/gate/**/*.{ts,tsx,mts,cts}", "scripts/gate.ts"],
       },
@@ -53,6 +54,7 @@ describe("interimReadabilityConfig", () => {
           "eslint.config.ts",
           "eslint.config.test.ts",
           "disciplines.eslint.d.mts",
+          "scripts/package.ts",
         ],
       }),
       expect.objectContaining({
@@ -74,6 +76,7 @@ describe("cleanZoneCommentsConfig", () => {
           "eslint.config.ts",
           "eslint.config.test.ts",
           "disciplines.eslint.d.mts",
+          "scripts/package.ts",
         ],
         plugins: { aidlc: aidlcPlugin },
         rules: { "aidlc/no-comments": "error" },

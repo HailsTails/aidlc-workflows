@@ -14,6 +14,7 @@ export const CLEAN_ZONE: ZoneRoots = {
     "discipline-exceptions.json",
     "disciplines.eslint.mjs",
     "disciplines.eslint.d.mts",
+    "scripts/package.ts",
   ],
 };
 
