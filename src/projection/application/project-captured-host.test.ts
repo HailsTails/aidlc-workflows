@@ -1,4 +1,5 @@
-import { onboardingSourceFixture } from "../fixtures/onboarding-source.fixture.ts";
+import { accept } from "../../kernel/fixtures/accept.ts";
+import { admitOnboardingSource } from "../domain/onboarding-source.ts";
 import type { HostFileDeriver } from "./ports/harness.ts";
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
@@ -33,7 +34,7 @@ const member: HostProjectionMember = { host: SCRATCH_HOST, projection: {
 const other: HostProjectionMember = { host: host({ name: "other", directory: ".other" }),
   projection: { ...member.projection, bindingHeading: "Other" } };
 const compiled = { graph: "captured graph", grid: "captured grid" };
-const captured: FullHostCapture = { surface: { documents: [], skills: [], onboarding: onboardingSourceFixture({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "Neutral", harnessSkeleton: "Host" }) },
+const captured: FullHostCapture = { surface: { documents: [], skills: [], onboarding: accept(admitOnboardingSource({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "Neutral", harnessSkeleton: "Host" })) },
   runtime: { files: [], version: { kind: "text", text: "Version" }, agentTiers: { kind: "text", text: "Tiers" },
     settingsSchema: { kind: "text", text: "Schema" } }, companions: [] };
 const requiredFile = { source: source("required.md"), content: { kind: "text" as const, text: "Required\r\n" } };
@@ -60,7 +61,7 @@ const fixture = (members: readonly HostProjectionMember[] = [member, other]) => 
 test("the real first caller binds declared native guidance before assembly using the captured declaration", async () => {
   const current = fixture();
   current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface,
-    onboarding: onboardingSourceFixture({ neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_hook_runtime}}", hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" as const }) } }));
+    onboarding: accept(admitOnboardingSource({ neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_hook_runtime}}", hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" as const })) } }));
   await current.projectHost({ ...current.request, channel: "native" });
   expect(current.assemble.mock.calls[0]?.[0].fills).toEqual({ invoke: "/aidlc", slots: {} });
   expect(current.project.mock.calls[0]?.[0].surface.onboarding.harnessSkeleton)
@@ -69,21 +70,21 @@ test("the real first caller binds declared native guidance before assembly using
 });
 
 test("the first caller binds Tools independently while Hook keeps custom legacy meaning", async () => {
-  const fills = { invoke: "/custom", slots: { framework_hook_runtime: "Custom Hook", framework_tools_runtime: "Custom Tools" } };
+  const fills = { invoke: "/custom", slots: { ["framework_hook_runtime"]: "Custom Hook", ["framework_tools_runtime"]: "Custom Tools" } };
   const current = fixture([{ ...member, projection: { ...member.projection, fills: () => fills } }]);
-  current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, onboarding: onboardingSourceFixture({
-    neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_tools_runtime}}", hookGuidance: "legacy-authored", toolsGuidance: "framework-tools" }) } }));
+  current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, onboarding: accept(admitOnboardingSource({
+    neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_tools_runtime}}", hookGuidance: "legacy-authored", toolsGuidance: "framework-tools" })) } }));
   await current.projectHost({ ...current.request, channel: "native" });
   expect(current.assemble.mock.calls[0]?.[0].fills).toBe(fills);
   expect(current.project.mock.calls[0]?.[0].surface.onboarding).toEqual({ neutral: "Neutral",
     harnessSkeleton: "TypeScript sources invoked through the self-contained `aidlc` runtime" });
-  expect(fills).toEqual({ invoke: "/custom", slots: { framework_hook_runtime: "Custom Hook", framework_tools_runtime: "Custom Tools" } });
+  expect(fills).toEqual({ invoke: "/custom", slots: { ["framework_hook_runtime"]: "Custom Hook", ["framework_tools_runtime"]: "Custom Tools" } });
 });
 test("the first caller composes both declared meanings without changing their owned positions", async () => {
   const current = fixture();
-  current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, onboarding: onboardingSourceFixture({
+  current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, onboarding: accept(admitOnboardingSource({
     neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_hook_runtime}}{{SLOT:framework_tools_runtime}}",
-    hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" }) } }));
+    hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" })) } }));
   await current.projectHost({ ...current.request, channel: "native" });
   expect(current.assemble.mock.calls[0]?.[0].fills).toEqual({ invoke: "/aidlc", slots: {} });
   expect(current.project.mock.calls[0]?.[0].surface.onboarding.harnessSkeleton)
@@ -92,9 +93,9 @@ test("the first caller composes both declared meanings without changing their ow
 
 test("copy and native callers bind separately from the same immutable captured Tools source", async () => {
   const current = fixture();
-  const snapshot = { ...captured, surface: { ...captured.surface, onboarding: onboardingSourceFixture({
+  const snapshot = { ...captured, surface: { ...captured.surface, onboarding: accept(admitOnboardingSource({
     neutral: "Neutral", harnessSkeleton: "({{SLOT:framework_tools_runtime}})\r\n",
-    hookGuidance: "legacy-authored" as const, toolsGuidance: "framework-tools" as const }) } };
+    hookGuidance: "legacy-authored" as const, toolsGuidance: "framework-tools" as const })) } };
   current.capture.mockResolvedValue(accepted(snapshot));
   await current.projectHost({ ...current.request, channel: "copy" });
   await current.projectHost({ ...current.request, channel: "native" });

@@ -1,4 +1,4 @@
-import { onboardingSourceFixture } from "../fixtures/onboarding-source.fixture.ts";
+import { admitOnboardingSource } from "../domain/onboarding-source.ts";
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { host, source } from "../../kernel/fixtures/values.fixture.ts";
@@ -10,8 +10,6 @@ import type { MemoryCompanion, CapturedNeutralSurface, SessionSkill, SharedRunti
 import type { ProjectionRefusal } from "../domain/projection.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import { captureBuildSources } from "./capture-build-sources.ts";
-import { createInMemoryFileSystem } from "../../kernel/fixtures/file-system.fake.ts";
-import { createNeutralReading } from "../adapters/neutral-surface-files.ts";
 
 const identity = host({ name: "fixture-host", directory: ".fixture" });
 const member: HostSourceMember = { host: identity, projection: {
@@ -21,7 +19,7 @@ const member: HostSourceMember = { host: identity, projection: {
 } };
 const core: BuildCore = { method: methodSliceFixture, sources: [] };
 const neutral: CapturedNeutralSurface = { documents: [], skills: [],
-  onboarding: onboardingSourceFixture({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "neutral", harnessSkeleton: "host" }) };
+  onboarding: accept(admitOnboardingSource({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "neutral", harnessSkeleton: "host" })) };
 const sessions: readonly SessionSkill[] = [{ name: "aidlc-session-cost", files: [{ source: source("SKILL.md"),
   content: { kind: "bytes", bytes: new Uint8Array([0, 255, 10]) } }] }];
 const runtime: SharedRuntime = { files: [{ source: source("tools/a.ts"),
@@ -55,20 +53,15 @@ const fixture = (hosts: readonly HostSourceMember[] = [member]) => {
 };
 
 test("declared admission failure is cached with neutral capture until a new build root", async () => {
-  const fileSystem = createInMemoryFileSystem({ files: {
-    "file:///core/aidlc-common/conductor.md": "Conductor",
-    "file:///core/aidlc-common/protocols/one.md": "Protocol",
-    "file:///core/templates/onboarding.md": "Neutral",
-    "file:///core/templates/onboarding-harness.md": "No declared slot",
-  } });
   const current = fixture();
-  current.readNeutral.mockImplementation(createNeutralReading({ files: fileSystem, tree: fileSystem }));
+  current.readNeutral.mockResolvedValue(refused([{ kind: "render-failed", concept: "onboarding", name: "onboarding-harness.md",
+    reason: "Declared framework Hook guidance requires exactly one {{SLOT:framework_hook_runtime}} marker." }]));
   const captured = captureBuildSources({ ...current.binding, hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" as const });
   const first = await captured.captureFullHost(core);
   expect(first).toEqual(refused([{ kind: "render-failed", concept: "onboarding", name: "onboarding-harness.md",
     reason: "Declared framework Hook guidance requires exactly one {{SLOT:framework_hook_runtime}} marker." }]));
-  await fileSystem.writeFile({ file: new URL("file:///core/templates/onboarding-harness.md"),
-    content: { kind: "text", text: "{{SLOT:framework_hook_runtime}}" } });
+  current.readNeutral.mockResolvedValue(accepted({ ...neutral, onboarding: accept(admitOnboardingSource({ neutral: "Neutral",
+    harnessSkeleton: "{{SLOT:framework_hook_runtime}}", hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" })) }));
   expect(await captured.captureFullHost(core)).toBe(first);
   expect(current.readNeutral).toHaveBeenCalledTimes(1);
   expect(await captureBuildSources({ ...current.binding, hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" as const }).captureFullHost(core))
@@ -78,20 +71,15 @@ test("declared admission failure is cached with neutral capture until a new buil
 });
 
 test("Tools admission failure shares the same neutral cache and only a fresh root reads recovery", async () => {
-  const fileSystem = createInMemoryFileSystem({ files: {
-    "file:///core/aidlc-common/conductor.md": "Conductor",
-    "file:///core/aidlc-common/protocols/one.md": "Protocol",
-    "file:///core/templates/onboarding.md": "Neutral",
-    "file:///core/templates/onboarding-harness.md": "{{SLOT:framework_hook_runtime}}",
-  } });
   const current = fixture();
-  current.readNeutral.mockImplementation(createNeutralReading({ files: fileSystem, tree: fileSystem }));
+  current.readNeutral.mockResolvedValue(refused([{ kind: "render-failed", concept: "onboarding", name: "onboarding-harness.md",
+    reason: "Declared framework Tools guidance requires exactly one {{SLOT:framework_tools_runtime}} marker." }]));
   const captured = captureBuildSources({ ...current.binding, hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" });
   const first = await captured.captureFullHost(core);
   expect(first).toEqual(refused([{ kind: "render-failed", concept: "onboarding", name: "onboarding-harness.md",
     reason: "Declared framework Tools guidance requires exactly one {{SLOT:framework_tools_runtime}} marker." }]));
-  await fileSystem.writeFile({ file: new URL("file:///core/templates/onboarding-harness.md"), content: { kind: "text",
-    text: "{{SLOT:framework_hook_runtime}}{{SLOT:framework_tools_runtime}}" } });
+  current.readNeutral.mockResolvedValue(accepted({ ...neutral, onboarding: accept(admitOnboardingSource({ neutral: "Neutral",
+    harnessSkeleton: "{{SLOT:framework_hook_runtime}}{{SLOT:framework_tools_runtime}}", hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" })) }));
   expect(await captured.captureFullHost(core)).toBe(first);
   expect(current.readNeutral).toHaveBeenCalledTimes(1);
   expect(await captureBuildSources({ ...current.binding, hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" }).captureFullHost(core))

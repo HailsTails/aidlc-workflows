@@ -4,7 +4,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   declaredSlots,
   renderNeutralOnboarding as renderNeutral,
@@ -14,7 +13,9 @@ import type { OnboardingFills } from "../../src/projection/domain/neutral-surfac
 import { admitOnboardingSource, bindOnboardingSource } from "../../src/projection/domain/onboarding-source.ts";
 import type { DistributionChannel } from "../../src/projection/domain/projected-file.ts";
 import { accept } from "../../src/kernel/fixtures/accept.ts";
-const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+import { bindTemplateTokens } from "../../src/projection/domain/token-binding.ts";
+import { tokenBindingsFixture } from "../../src/projection/fixtures/token-bindings.fixture.ts";
+const REPO_ROOT = join(import.meta.dir, "..", "..");
 
 function renderOnboarding(skeleton: string, fills: OnboardingFills): string {
   const rendered = renderForHost(skeleton, fills);
@@ -31,13 +32,16 @@ function renderNeutralOnboarding(skeleton: string): string {
 const NEUTRAL = readFileSync(join(REPO_ROOT, "core", "templates", "onboarding.md"), "utf-8");
 const HARNESS = readFileSync(join(REPO_ROOT, "core", "templates", "onboarding-harness.md"), "utf-8");
 
-function renderDeclaredOnboarding(skeleton: string, fills: OnboardingFills, channel: DistributionChannel, neutral = NEUTRAL): string {
-  const admitted = admitOnboardingSource({ neutral, harnessSkeleton: skeleton,
-    hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" });
-  if (!admitted.ok) throw new Error(admitted.refusal);
-  const bound = bindOnboardingSource(admitted.value, channel);
+function renderDeclaredOnboarding({ skeleton, fills, channel, neutral = NEUTRAL, invoke = "aidlc" }: {
+  readonly skeleton: string; readonly fills: OnboardingFills; readonly channel: DistributionChannel;
+  readonly neutral?: string; readonly invoke?: string;
+}): string {
+  const admitted = accept(admitOnboardingSource({ neutral, harnessSkeleton: skeleton,
+    hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" }));
+  const bound = bindOnboardingSource(admitted, channel);
   renderNeutralOnboarding(bound.neutral);
-  return renderOnboarding(bound.harnessSkeleton, fills);
+  return bindTemplateTokens({ text: renderOnboarding(bound.harnessSkeleton, fills),
+    tokens: { ...tokenBindingsFixture({ harnessDir: ".foo" }), ["INVOKE"]: invoke }, selected: ["HARNESS_DIR", "INVOKE"] });
 }
 const NEUTRAL_SECTIONS = [
   "## What AI-DLC does for you",
@@ -58,8 +62,7 @@ function releasePath(path: string): string {
   return path.replace(join(REPO_ROOT, "dist"), join(REPO_ROOT, "dist-release"));
 }
 
-describe("t151 source onboarding contract", () => {
-  test("neutral onboarding is marker-free and rejects harness-specific tokens", () => {
+  test("t151 source onboarding contract > neutral onboarding is marker-free and rejects harness-specific tokens", () => {
     expect(noLeftoverMarkers(NEUTRAL)).toBeNull();
     expect(NEUTRAL).not.toMatch(/^# /m);
     for (const marker of ["{{HARNESS_DIR}}", "{{INVOKE}}", "{{SKILL_INVOKE}}", "{{SLOT:title_block}}"] ) {
@@ -68,9 +71,11 @@ describe("t151 source onboarding contract", () => {
     expect(renderNeutralOnboarding(NEUTRAL)).toBe(NEUTRAL);
   });
 
-  test("the native skeleton exposes nine host fills and two independently admitted guidance positions", () => {
-    expect(HARNESS.startsWith("{{SLOT:frontmatter}}\n{{SLOT:title_block}}\n")).toBe(true);
-    expect(declaredSlots(HARNESS).sort()).toEqual([
+  test("t151 source onboarding contract > the native skeleton exposes nine host fills and two independently admitted guidance positions", () => {
+    expect(HARNESS).toStartWith("{{SLOT:frontmatter}}\n{{SLOT:title_block}}\n");
+    const slots = declaredSlots(HARNESS);
+    expect(slots).toHaveLength(11);
+    expect(slots).toEqual(expect.arrayContaining([
       "agents_note",
       "framework_hook_runtime",
       "framework_tools_runtime",
@@ -82,29 +87,29 @@ describe("t151 source onboarding contract", () => {
       "sections_before_resumption",
       "structure_extra",
       "title_block",
-    ]);
+    ]));
   });
 
-  test("user-typed skill names carry the harness's skill prefix, not the shell invocation", () => {
+  test.each([
+    { invoke: "/aidlc", sessionCost: "/aidlc-session-cost", replay: "/aidlc-replay", outcomesPack: "/aidlc-outcomes-pack", knowledge: "/aidlc-knowledge", init: "/aidlc-init" },
+    { invoke: "$aidlc", sessionCost: "$aidlc-session-cost", replay: "$aidlc-replay", outcomesPack: "$aidlc-outcomes-pack", knowledge: "$aidlc-knowledge", init: "$aidlc-init" },
+  ])("t151 source onboarding contract > user-typed skill names carry the harness's skill prefix, not the shell invocation: %j", (skillNames) => {
     // `{{INVOKE}}` is a shell command (`bun <dir>/tools/aidlc.ts`, or `aidlc` on
     // a native install). Gluing a skill suffix onto it renders a command that
     // does not exist; the skill prefix each harness declares is what a person
     // types. Any `{{INVOKE}}-<suffix>` is that mistake.
     expect(HARNESS).not.toMatch(/\{\{INVOKE\}\}-/);
 
-    const skills = ["session-cost", "replay", "outcomes-pack", "knowledge", "init"];
-    for (const invoke of ["/aidlc", "$aidlc"]) {
-      const rendered = renderDeclaredOnboarding(HARNESS, { invoke, slots: {} }, "copy")
-        .replaceAll("{{HARNESS_DIR}}", ".foo")
-        .replaceAll("{{INVOKE}}", "bun .foo/tools/aidlc.ts");
-      for (const skill of skills) {
-        expect(rendered, `${invoke}-${skill}`).toContain(`${invoke}-${skill}`);
-      }
-      expect(rendered).not.toContain("aidlc.ts-");
-    }
+    const rendered = renderDeclaredOnboarding({ skeleton: HARNESS, fills: { invoke: skillNames.invoke, slots: {} }, channel: "copy", invoke: "bun .foo/tools/aidlc.ts" });
+    expect(rendered).toContain(skillNames.sessionCost);
+    expect(rendered).toContain(skillNames.replay);
+    expect(rendered).toContain(skillNames.outcomesPack);
+    expect(rendered).toContain(skillNames.knowledge);
+    expect(rendered).toContain(skillNames.init);
+    expect(rendered).not.toContain("aidlc.ts-");
   });
 
-  test("runtime examples on {{INVOKE}} name commands the CLI routes", () => {
+  test("t151 source onboarding contract > runtime examples on {{INVOKE}} name commands the CLI routes", () => {
     // `--stage <slug> --single` is an orchestrator-skill flag the CLI rejects
     // as an unknown command, and `knowledge` is an engine noun, so neither is
     // reachable as a top-level `{{INVOKE}}` command. The shipped forms are pinned
@@ -114,52 +119,57 @@ describe("t151 source onboarding contract", () => {
   });
 
   test.each([
-    ["copy", "- **Hook permissions**: All 17 hooks are TypeScript (`.ts`) and run via `bun`. No executable bits required — works identically on macOS, Linux, and native Windows PowerShell.", "TypeScript, run via bun"],
-    ["native", "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.", "TypeScript sources invoked through the self-contained `aidlc` runtime"],
-  ] as const)("a new harness gets complete %s onboarding through admitted channel binding", (channel, hook, tools) => {
+    ["copy", { hook: "- **Hook permissions**: All 17 hooks are TypeScript (`.ts`) and run via `bun`. No executable bits required — works identically on macOS, Linux, and native Windows PowerShell.", tools: "TypeScript, run via bun" }],
+    ["native", { hook: "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.", tools: "TypeScript sources invoked through the self-contained `aidlc` runtime" }],
+  ] as const)("t151 source onboarding contract > a new harness gets complete %s onboarding through admitted channel binding", (channel, guidance) => {
     const fills: OnboardingFills = {
       invoke: "@aidlc",
       slots: {
-        title_block: "# AI-DLC on Foo CLI\n\nRun `@aidlc` to begin.",
-        prereq_bullets: "- **Foo CLI**: install per its docs.",
+        ["title_block"]: "# AI-DLC on Foo CLI\n\nRun `@aidlc` to begin.",
+        ["prereq_bullets"]: "- **Foo CLI**: install per its docs.",
       },
     };
-    const rendered = renderDeclaredOnboarding(HARNESS + "\n" + NEUTRAL, fills, channel)
-      .replaceAll("{{HARNESS_DIR}}", ".foo")
-      .replaceAll("{{INVOKE}}", "aidlc");
-    for (const section of [...NEUTRAL_SECTIONS, ...HARNESS_SECTIONS]) {
-      expect(rendered).toContain(section);
-    }
+    const rendered = renderDeclaredOnboarding({ skeleton: HARNESS + "\n" + NEUTRAL, fills, channel });
+    expect(rendered).toContain("## What AI-DLC does for you");
+    expect(rendered).toContain("## Where things live");
+    expect(rendered).toContain("## Harness onboarding");
+    expect(rendered).toContain("## Conventions");
+    expect(rendered).toContain("## Documentation");
+    expect(rendered).toContain("## Session Resumption");
+    expect(rendered).toContain("## Git Integration");
+    expect(rendered).toContain("## Prerequisites");
+    expect(rendered).toContain("## AI-DLC Structure");
+    expect(rendered).toContain("## Plugins");
     expect(rendered).toContain("@aidlc");
-    expect(rendered).toContain(hook);
-    expect(rendered).toContain(`small command-line programs (${tools})`);
+    expect(rendered).toContain(guidance.hook);
+    expect(rendered).toContain(`small command-line programs (${guidance.tools})`);
     expect(noLeftoverMarkers(rendered)).toBeNull();
     expect(rendered).not.toMatch(/\n{3,}/);
   });
 
-  test("alternate source positions bind their admitted meaning in authored order", () => {
-    expect(renderDeclaredOnboarding("Tools: {{SLOT:framework_tools_runtime}}\n{{SLOT:framework_hook_runtime}}\n", { invoke: "@aidlc", slots: {} }, "native"))
+  test("t151 source onboarding contract > alternate source positions bind their admitted meaning in authored order", () => {
+    expect(renderDeclaredOnboarding({ skeleton: "Tools: {{SLOT:framework_tools_runtime}}\n{{SLOT:framework_hook_runtime}}\n", fills: { invoke: "@aidlc", slots: {} }, channel: "native" }))
       .toBe("Tools: TypeScript sources invoked through the self-contained `aidlc` runtime\n- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.\n");
   });
-  test("combined malformed declarations precede neutral-render refusal with deliberate Hook then Tools order", () => {
-    expect(() => renderDeclaredOnboarding("Missing", { invoke: "@aidlc", slots: {} }, "copy", "{{UNKNOWN}}"))
+  test("t151 source onboarding contract > combined malformed declarations precede neutral-render refusal with deliberate Hook then Tools order", () => {
+    expect(() => renderDeclaredOnboarding({ skeleton: "Missing", fills: { invoke: "@aidlc", slots: {} }, channel: "copy", neutral: "{{UNKNOWN}}" }))
       .toThrow("Declared framework Hook guidance requires exactly one {{SLOT:framework_hook_runtime}} marker.");
-    expect(() => renderDeclaredOnboarding("{{SLOT:framework_hook_runtime}}", { invoke: "@aidlc", slots: {} }, "copy", "{{UNKNOWN}}"))
+    expect(() => renderDeclaredOnboarding({ skeleton: "{{SLOT:framework_hook_runtime}}", fills: { invoke: "@aidlc", slots: {} }, channel: "copy", neutral: "{{UNKNOWN}}" }))
       .toThrow("Declared framework Tools guidance requires exactly one {{SLOT:framework_tools_runtime}} marker.");
-    expect(() => renderDeclaredOnboarding("{{SLOT:framework_hook_runtime}}{{SLOT:framework_tools_runtime}}", { invoke: "@aidlc", slots: {} }, "copy", "{{UNKNOWN}}"))
+    expect(() => renderDeclaredOnboarding({ skeleton: "{{SLOT:framework_hook_runtime}}{{SLOT:framework_tools_runtime}}", fills: { invoke: "@aidlc", slots: {} }, channel: "copy", neutral: "{{UNKNOWN}}" }))
       .toThrow("neutral onboarding must not contain template markers");
   });
-  test.each(["copy", "native"] as const)("legacy %s source retains empty and custom guidance-slot behavior", (channel) => {
+  test.each(["copy", "native"] as const)("t151 source onboarding contract > legacy %s source retains empty and custom guidance-slot behavior", (channel) => {
     const admitted = accept(admitOnboardingSource({ neutral: NEUTRAL,
       harnessSkeleton: "Hook={{SLOT:framework_hook_runtime}}|Tools={{SLOT:framework_tools_runtime}}\n",
       hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" }));
     const bound = bindOnboardingSource(admitted, channel);
     expect(renderOnboarding(bound.harnessSkeleton, { invoke: "@aidlc", slots: {} })).toBe("Hook=|Tools=\n");
-    expect(renderOnboarding(bound.harnessSkeleton, { invoke: "@aidlc", slots: { framework_hook_runtime: "Custom Hook", framework_tools_runtime: "Custom Tools" } }))
+    expect(renderOnboarding(bound.harnessSkeleton, { invoke: "@aidlc", slots: { ["framework_hook_runtime"]: "Custom Hook", ["framework_tools_runtime"]: "Custom Tools" } }))
       .toBe("Hook=Custom Hook|Tools=Custom Tools\n");
   });
 
-  test("omitted slots disappear, and malformed fills cannot leak template markers", () => {
+  test("t151 source onboarding contract > omitted slots disappear, and malformed fills cannot leak template markers", () => {
     const out = renderOnboarding(
       "# T {{SLOT:inline}} x\n\n{{SLOT:lone}}\nbody {{SKILL_INVOKE}} runs {{INVOKE}}\n",
       { invoke: "/aidlc", slots: {} },
@@ -170,8 +180,6 @@ describe("t151 source onboarding contract", () => {
       slots: {},
     })).toThrow(/render incomplete/);
   });
-
-});
 
 describe("t151 shipped onboarding artifacts", () => {
   test("every harness ships complete onboarding in both invocation channels", async () => {

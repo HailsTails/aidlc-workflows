@@ -44,7 +44,7 @@ test.each(["copy", "native"] as const)("legacy %s empty and custom slots keep or
   expect(renderOnboarding(bindOnboardingSource(admitted, channel).harnessSkeleton, { invoke: "/custom", slots: {} }))
     .toEqual({ ok: true, value: "Hook=|Tools=\n" });
   expect(renderOnboarding(bindOnboardingSource(admitted, channel).harnessSkeleton, { invoke: "/custom",
-    slots: { framework_hook_runtime: "Custom Hook", framework_tools_runtime: "Custom Tools" } }))
+    slots: { ["framework_hook_runtime"]: "Custom Hook", ["framework_tools_runtime"]: "Custom Tools" } }))
     .toEqual({ ok: true, value: "Hook=Custom Hook|Tools=Custom Tools\n" });
 });
 test.each([
@@ -54,7 +54,7 @@ test.each([
   const admitted = accept(admitOnboardingSource({ neutral: "N", harnessSkeleton: "{{SLOT:title_block}}\n{{SLOT:framework_hook_runtime}}\n{{SLOT:framework_tools_runtime}}\n",
     hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" }));
   const bound = bindOnboardingSource(admitted, "native");
-  expect(renderOnboarding(bound.harnessSkeleton, { invoke: "/custom", slots: { title_block: `{{SLOT:${marker}}}` } })).toEqual(refused(message));
+  expect(renderOnboarding(bound.harnessSkeleton, { invoke: "/custom", slots: { ["title_block"]: `{{SLOT:${marker}}}` } })).toEqual(refused(message));
 });
 test("native binding respects reversed authored positions without mutating the shared capture", () => {
   const admitted = accept(admitOnboardingSource({ neutral: "N", harnessSkeleton: "({{SLOT:framework_tools_runtime}})\r\n{{SLOT:framework_hook_runtime}}\r\n",
