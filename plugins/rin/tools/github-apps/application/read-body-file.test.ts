@@ -74,6 +74,17 @@ describe("createBodyFileReader", () => {
     );
   });
 
+  it("refuses a file holding a user token", async () => {
+    const { readBodyFile } = readerFor({
+      paths: { "notes.md": "H:/shop/notes.md" },
+      fileText: `Token ghr_${"d".repeat(36)} here`,
+    });
+
+    expect(await readBodyFile("notes.md")).toEqual(
+      fail({ kind: "body-file-refused", location: "notes.md", reason: "contains-user-token" }),
+    );
+  });
+
   it("reports a body file that does not exist", async () => {
     const { readBodyFile } = readerFor({ paths: {}, fileText: "" });
 

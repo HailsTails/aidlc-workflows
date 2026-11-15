@@ -141,7 +141,11 @@ const stampTexts = async (
   }
   const session = await resolveSession(stamping);
   if (session.kind === "failure") return session;
-  const provenance = { role: stamping.invocation.route.role, session: session.outcome };
+  const provenance = {
+    role: stamping.invocation.route.role,
+    session: session.outcome,
+    via: "installation",
+  } as const;
   const stamp = (text: string | undefined): string | undefined =>
     text === undefined ? undefined : withProvenance({ provenance, authoredBody: text });
   return succeed({ body: stamp(body) ?? verbatimBody, closingComment: stamp(closingComment) });
@@ -156,6 +160,7 @@ const runStamped = ({ invocation, gh, body, closingComment }: StampedWrite) =>
   gh.run({
     ghArguments: [
       ...invocation.passThrough,
+      ...invocation.attachments.flatMap((attachment) => ["--attach", attachment]),
       ...(body === undefined ? [] : ["--body-file", "-"]),
       ...(closingComment === undefined ? [] : ["--comment", closingComment]),
     ],

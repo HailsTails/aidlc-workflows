@@ -1,23 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { containsPrivateKey, isInsideDirectory } from "./publishable-text.ts";
+import { assessPublishability, isInsideDirectory } from "./publishable-text.ts";
 
-describe("containsPrivateKey", () => {
+const USER_ACCESS_TOKEN = `ghu_${"a".repeat(36)}`;
+
+const REFRESH_TOKEN = `ghr_${"b".repeat(36)}`;
+
+describe("assessPublishability", () => {
   it.each([
     "-----BEGIN RSA PRIVATE KEY-----",
     "-----BEGIN PRIVATE KEY-----",
     "-----BEGIN ENCRYPTED PRIVATE KEY-----",
     "-----BEGIN OPENSSH PRIVATE KEY-----",
     "Notes\n\n-----BEGIN EC PRIVATE KEY-----\nMHcC",
-  ])("recognises %s anywhere in the text", (text) => {
-    expect(containsPrivateKey(text)).toBe(true);
+  ])("finds a private key in %s anywhere in the text", (text) => {
+    expect(assessPublishability(text)).toBe("contains-private-key");
   });
 
-  it.each(["## Summary\n\nRotates the private key.", "-----BEGIN PUBLIC KEY-----"])(
-    "lets %s through",
-    (text) => {
-      expect(containsPrivateKey(text)).toBe(false);
-    },
-  );
+  it.each([
+    USER_ACCESS_TOKEN,
+    REFRESH_TOKEN,
+    `Token: ${USER_ACCESS_TOKEN} was pasted`,
+    `ghu_${"A1".repeat(10)}`,
+    `ghr_${"c".repeat(20)}`,
+  ])("finds a user token in %s", (text) => {
+    expect(assessPublishability(text)).toBe("contains-user-token");
+  });
+
+  it("reports the private key when a user token is present too", () => {
+    expect(assessPublishability(`${USER_ACCESS_TOKEN}\n-----BEGIN PRIVATE KEY-----`)).toBe(
+      "contains-private-key",
+    );
+  });
+
+  it.each([
+    "## Summary\n\nRotates the private key.",
+    "-----BEGIN PUBLIC KEY-----",
+    "Uses a `ghu_` token for uploads.",
+    "ghu_ and ghr_ are the prefixes",
+    `ghu_${"a".repeat(19)}`,
+    `ghr_${"a".repeat(19)}-tail`,
+  ])("lets %s through", (text) => {
+    expect(assessPublishability(text)).toBe("publishable");
+  });
 });
 
 describe("isInsideDirectory", () => {

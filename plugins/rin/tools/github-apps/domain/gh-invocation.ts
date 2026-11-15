@@ -7,12 +7,15 @@ type BodyStamping = "required" | "stamped" | "when-given" | "verbatim";
 
 type VerbCheck = "none" | "close-guard" | "review-binding";
 
+type AttachmentCarriage = "follow-up-edit" | "same-write" | "unsupported";
+
 type GhRoute = {
   readonly role: AgentRole;
   readonly permissions: InstallationPermissions | undefined;
   readonly body: BodyStamping;
   readonly closingComment: boolean;
   readonly check: VerbCheck;
+  readonly attachments: AttachmentCarriage;
 };
 
 const ISSUES_ONLY = { issues: "write" } as const;
@@ -25,20 +28,37 @@ const authorRoute = (route: Partial<GhRoute>): GhRoute => ({
   body: "verbatim",
   closingComment: false,
   check: "none",
+  attachments: "unsupported",
   ...route,
 });
 
 const GH_ROUTES = {
-  "pr create": authorRoute({ body: "required" }),
-  "pr edit": authorRoute({ body: "when-given" }),
-  "pr comment": authorRoute({ permissions: CONVERSATION, body: "required" }),
+  "pr create": authorRoute({ body: "required", attachments: "follow-up-edit" }),
+  "pr edit": authorRoute({ body: "when-given", attachments: "same-write" }),
+  "pr comment": authorRoute({
+    permissions: CONVERSATION,
+    body: "required",
+    attachments: "same-write",
+  }),
   "pr ready": authorRoute({}),
   "pr merge": authorRoute({}),
   "pr close": authorRoute({ closingComment: true, check: "close-guard" }),
   "pr review": { ...authorRoute({ body: "stamped", check: "review-binding" }), role: "reviewer" },
-  "issue create": authorRoute({ permissions: ISSUES_ONLY, body: "required" }),
-  "issue edit": authorRoute({ permissions: ISSUES_ONLY, body: "when-given" }),
-  "issue comment": authorRoute({ permissions: CONVERSATION, body: "required" }),
+  "issue create": authorRoute({
+    permissions: ISSUES_ONLY,
+    body: "required",
+    attachments: "follow-up-edit",
+  }),
+  "issue edit": authorRoute({
+    permissions: ISSUES_ONLY,
+    body: "when-given",
+    attachments: "same-write",
+  }),
+  "issue comment": authorRoute({
+    permissions: CONVERSATION,
+    body: "required",
+    attachments: "same-write",
+  }),
   "issue close": authorRoute({ permissions: ISSUES_ONLY, closingComment: true }),
   "issue reopen": authorRoute({ permissions: ISSUES_ONLY }),
 } as const satisfies Readonly<Record<string, GhRoute>>;
@@ -72,6 +92,7 @@ type GhInvocationRefusal =
   | { readonly kind: "gh-verb-unsupported"; readonly verb: string }
   | { readonly kind: "gh-flag-refused"; readonly flag: string }
   | { readonly kind: "gh-flag-value-missing"; readonly flag: string }
+  | { readonly kind: "gh-attach-unsupported"; readonly verb: string }
   | { readonly kind: "gh-body-given-twice" }
   | { readonly kind: "gh-review-event-ambiguous" }
   | { readonly kind: "gh-review-flag-unsupported"; readonly token: string };
@@ -92,6 +113,10 @@ const REFUSED_FLAGS: ReadonlySet<string> = new Set([
   "-T",
   "--recover",
 ]);
+
+const ATTACH_FLAG = "--attach";
+
+const HEAD_FLAGS: ReadonlySet<string> = new Set(["--head", "-H"]);
 
 const BODY_FLAGS: ReadonlySet<string> = new Set(["--body", "-b"]);
 
@@ -122,9 +147,9 @@ type ScannedFlags = {
   readonly reviewEvents: readonly ReviewEvent[];
 };
 
-type OwnedField = "inlineBody" | "bodyFile" | "session" | "commitSha" | "closingComment";
+type SingleValuedField = "inlineBody" | "bodyFile" | "session" | "commitSha" | "closingComment";
 
-type ObservedField = "attachments" | "head";
+type OwnedField = SingleValuedField | "attachments";
 
 type FlagToken = {
   readonly token: string;
@@ -168,17 +193,12 @@ const flagTokenOf = (token: string): FlagToken => {
 const isReviewRoute = (route: GhRoute): boolean => route.check === "review-binding";
 
 const ownedFieldOf = (route: GhRoute, flag: string): OwnedField | undefined => {
+  if (flag === ATTACH_FLAG) return "attachments";
   if (BODY_FLAGS.has(flag)) return "inlineBody";
   if (BODY_FILE_FLAGS.has(flag)) return "bodyFile";
   if (flag === "--session") return "session";
   if (isReviewRoute(route) && flag === "--commit-sha") return "commitSha";
   if (route.closingComment && CLOSING_COMMENT_FLAGS.has(flag)) return "closingComment";
-  return undefined;
-};
-
-const observedFieldOf = (flag: string): ObservedField | undefined => {
-  if (flag === "--attach") return "attachments";
-  if (flag === "--head" || flag === "-H") return "head";
   return undefined;
 };
 
@@ -201,21 +221,18 @@ const recordOwned = (
   field: OwnedField,
   flagValue: string,
 ): Result<ScannedFlags, GhInvocationRefusal> => {
+  if (field === "attachments") {
+    return succeed({ ...scanned, attachments: [...scanned.attachments, flagValue] });
+  }
   const bodyAlreadyGiven = scanned.inlineBody !== undefined || scanned.bodyFile !== undefined;
   if (givesBody(field) && bodyAlreadyGiven) return fail({ kind: "gh-body-given-twice" });
   return succeed({ ...scanned, [field]: flagValue });
 };
 
-const recordObserved = (
-  scanned: ScannedFlags,
-  field: ObservedField,
-  { flagValue, passed }: FlagWithValue,
-): ScannedFlags => ({
+const recordHead = (scanned: ScannedFlags, { flagValue, passed }: FlagWithValue): ScannedFlags => ({
   ...scanned,
   passThrough: [...scanned.passThrough, ...passed],
-  ...(field === "attachments"
-    ? { attachments: [...scanned.attachments, flagValue] }
-    : { head: flagValue }),
+  head: flagValue,
 });
 
 const scanFlags = ({ tokens, scanned, route }: ScanStep): Result<ScannedFlags, GhInvocationRefusal> => {
@@ -236,11 +253,10 @@ const scanFlags = ({ tokens, scanned, route }: ScanStep): Result<ScannedFlags, G
     if (recorded.kind === "failure") return recorded;
     return scanFlags({ tokens: valued.outcome.rest, scanned: recorded.outcome, route });
   }
-  const observed = observedFieldOf(flagToken.flag);
-  if (observed !== undefined) {
+  if (HEAD_FLAGS.has(flagToken.flag)) {
     const valued = takeValue(flagToken, remaining);
     if (valued.kind === "failure") return valued;
-    const recorded = recordObserved(scanned, observed, valued.outcome);
+    const recorded = recordHead(scanned, valued.outcome);
     return scanFlags({ tokens: valued.outcome.rest, scanned: recorded, route });
   }
   const passThrough = [...scanned.passThrough, token];
@@ -280,6 +296,9 @@ const parseGhInvocation = (
   const route: GhRoute = GH_ROUTES[verb];
   const scanned = scanFlags({ tokens, scanned: NOTHING_SCANNED, route });
   if (scanned.kind === "failure") return scanned;
+  if (route.attachments === "unsupported" && scanned.outcome.attachments.length > 0) {
+    return fail({ kind: "gh-attach-unsupported", verb });
+  }
   const review = reviewRequestOf(route, scanned.outcome);
   if (review.kind === "failure") return review;
   return succeed({
@@ -301,6 +320,7 @@ const supportedGhVerbs = (): readonly GhVerb[] => Object.keys(GH_ROUTES).filter(
 export {
   parseGhInvocation,
   supportedGhVerbs,
+  type AttachmentCarriage,
   type BodySource,
   type GhInvocation,
   type GhInvocationRefusal,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { UserAuthoriser } from "../../application/authorise-user.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
 import { fail, succeed } from "../../domain/result.ts";
@@ -47,6 +48,14 @@ const contextWith = (flags: CommandFlags) => ({
     readBodyFile: vi.fn(),
     placeInStore: vi.fn(),
     credentialHelperCommand,
+    userAuthoriser: {
+      authoriseUser: vi.fn<UserAuthoriser["authoriseUser"]>().mockResolvedValue(
+        succeed({
+          accessTokenExpiresAtEpochSeconds: 1_700_028_800,
+          refreshTokenExpiresAtEpochSeconds: 1_715_897_600,
+        }),
+      ),
+    },
   },
 });
 
@@ -127,6 +136,63 @@ describe("adopt-git", () => {
         standardError: "",
       }),
     );
+  });
+});
+
+describe("login", () => {
+  it("authorises the author app and says how long the grant renews itself", async () => {
+    const context = contextWith({});
+
+    expect(await localCommands.login.execute(context)).toEqual(
+      succeed({
+        standardOutput:
+          "rin-author may now upload attachments as you on this machine. The grant renews itself until 2024-05-16; run login again after that.\n",
+        standardError: "",
+      }),
+    );
+    expect(context.dependencies.userAuthoriser.authoriseUser).toHaveBeenCalledExactlyOnceWith({
+      role: "author",
+      appSlug: "rin-author",
+      announce: expect.any(Function),
+    });
+  });
+
+  it("writes the device code and where to enter it to standard error while it waits", async () => {
+    const context = contextWith({});
+    context.dependencies.userAuthoriser.authoriseUser.mockImplementation(({ announce }) => {
+      announce({
+        userCode: "WDJB-MJHT",
+        verificationUri: "https://github.com/login/device",
+        expiresInSeconds: 900,
+      });
+      return Promise.resolve(fail({ kind: "device-authorisation-denied" }));
+    });
+
+    await localCommands.login.execute(context);
+
+    expect(context.dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(
+      "Open https://github.com/login/device and enter the code WDJB-MJHT within 15 minutes. Waiting for your approval.\n",
+    );
+  });
+
+  it("reports a login the operator declined", async () => {
+    const context = contextWith({});
+    context.dependencies.userAuthoriser.authoriseUser.mockResolvedValue(
+      fail({ kind: "device-authorisation-denied" }),
+    );
+
+    expect(await localCommands.login.execute(context)).toEqual(
+      fail({ kind: "device-authorisation-denied" }),
+    );
+  });
+
+  it("takes no flags", async () => {
+    const context = contextWith({ role: "reviewer" });
+
+    expect(await localCommands.login.execute(context)).toEqual(
+      fail({ kind: "flags-invalid", issues: expect.any(String) }),
+    );
+    expect(context.dependencies.userAuthoriser.authoriseUser).not.toHaveBeenCalled();
   });
 });
 

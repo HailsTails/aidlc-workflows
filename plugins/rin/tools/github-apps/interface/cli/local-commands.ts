@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { adoptWorktreeGitIdentity } from "../../application/adopt-worktree-git-identity.ts";
+import type { DevicePrompt } from "../../application/authorise-user.ts";
 import { issueGitCredential } from "../../application/issue-git-credential.ts";
 import type { TokenFailure } from "../../application/mint-installation-token.ts";
 import { provenanceMarker } from "../../domain/provenance.ts";
@@ -27,6 +28,12 @@ const markerFlagsSchema = z.strictObject({ role: roleFlag, session: sessionFlag 
 const noFlagsSchema = z.strictObject({});
 
 const credentialFlagsSchema = z.strictObject({ operation: z.enum(["get", "store", "erase"]) });
+
+const SECONDS_PER_MINUTE = 60;
+
+const MILLISECONDS_PER_SECOND = 1000;
+
+const CALENDAR_DATE_LENGTH = 10;
 
 const SILENT_REPORT: CommandReport = { standardOutput: "", standardError: "" };
 
@@ -56,7 +63,9 @@ const markerCommand: StandaloneCommand = {
   execute: ({ flags }) => {
     const markerFlags = validateFlags({ flags, schema: markerFlagsSchema });
     if (markerFlags.kind === "failure") return Promise.resolve(markerFlags);
-    return Promise.resolve(succeed(reportLine(provenanceMarker(markerFlags.outcome))));
+    return Promise.resolve(
+      succeed(reportLine(provenanceMarker({ ...markerFlags.outcome, via: "installation" }))),
+    );
   },
 };
 
@@ -123,11 +132,39 @@ const gitCredentialCommand: LocalCommand = {
   },
 };
 
+const devicePromptText = ({ userCode, verificationUri, expiresInSeconds }: DevicePrompt): string =>
+  `Open ${verificationUri} and enter the code ${userCode} within ${String(Math.floor(expiresInSeconds / SECONDS_PER_MINUTE))} minutes. Waiting for your approval.\n`;
+
+const calendarDateOf = (epochSeconds: number): string =>
+  new Date(epochSeconds * MILLISECONDS_PER_SECOND).toISOString().slice(0, CALENDAR_DATE_LENGTH);
+
+const loginCommand: LocalCommand = {
+  access: "local",
+  outputOnFailure: "",
+  execute: async ({ flags, configuration, dependencies }) => {
+    const loginFlags = validateFlags({ flags, schema: noFlagsSchema });
+    if (loginFlags.kind === "failure") return loginFlags;
+    const { appSlug } = configuration.roles.author;
+    const authorised = await dependencies.userAuthoriser.authoriseUser({
+      role: "author",
+      appSlug,
+      announce: (prompt) => dependencies.terminal.writeError(devicePromptText(prompt)),
+    });
+    if (authorised.kind === "failure") return authorised;
+    return succeed(
+      reportLine(
+        `${appSlug} may now upload attachments as you on this machine. The grant renews itself until ${calendarDateOf(authorised.outcome.refreshTokenExpiresAtEpochSeconds)}; run login again after that.`,
+      ),
+    );
+  },
+};
+
 const localCommands = {
   token: tokenCommand,
   marker: markerCommand,
   "adopt-git": adoptGitCommand,
   "git-credential": gitCredentialCommand,
+  login: loginCommand,
 };
 
 export { localCommands };

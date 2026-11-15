@@ -15,6 +15,7 @@ describe("parseGhInvocation routing", () => {
         body: "required",
         closingComment: false,
         check: "none",
+        attachments: "follow-up-edit",
       },
       target: undefined,
       passThrough: ["pr", "create", "--title", "Basket"],
@@ -30,15 +31,22 @@ describe("parseGhInvocation routing", () => {
   it.each([
     [
       ["pr", "review", "4", "--approve"],
-      { role: "reviewer", permissions: undefined, body: "stamped", closingComment: false, check: "review-binding" },
+      { role: "reviewer", permissions: undefined, body: "stamped", closingComment: false, check: "review-binding", attachments: "unsupported" },
     ],
     [
       ["pr", "close", "4"],
-      { role: "author", permissions: undefined, body: "verbatim", closingComment: true, check: "close-guard" },
+      { role: "author", permissions: undefined, body: "verbatim", closingComment: true, check: "close-guard", attachments: "unsupported" },
     ],
     [
       ["issue", "create", "-t", "Bug", "-b", "Steps."],
-      { role: "author", permissions: { issues: "write" }, body: "required", closingComment: false, check: "none" },
+      {
+        role: "author",
+        permissions: { issues: "write" },
+        body: "required",
+        closingComment: false,
+        check: "none",
+        attachments: "follow-up-edit",
+      },
     ],
     [
       ["issue", "comment", "9", "-b", "Hi."],
@@ -48,6 +56,7 @@ describe("parseGhInvocation routing", () => {
         body: "required",
         closingComment: false,
         check: "none",
+        attachments: "same-write",
       },
     ],
   ])("routes %j to its role, permissions, body stamping and check", (commandArguments, route) => {
@@ -62,6 +71,28 @@ describe("parseGhInvocation routing", () => {
     [[], ""],
   ])("refuses %j, a verb the wrapper does not run", (commandArguments, verb) => {
     expect(parseGhInvocation(commandArguments)).toEqual(fail({ kind: "gh-verb-unsupported", verb }));
+  });
+});
+
+describe("parseGhInvocation attachment carriage", () => {
+  it.each([
+    ["pr create", "follow-up-edit"],
+    ["issue create", "follow-up-edit"],
+    ["pr edit", "same-write"],
+    ["issue edit", "same-write"],
+    ["pr comment", "same-write"],
+    ["issue comment", "same-write"],
+    ["pr ready", "unsupported"],
+    ["pr merge", "unsupported"],
+    ["pr close", "unsupported"],
+    ["pr review", "unsupported"],
+    ["issue close", "unsupported"],
+    ["issue reopen", "unsupported"],
+  ])("carries attachments of %s as %s", (verb, carriage) => {
+    const invocation = parseGhInvocation([...verb.split(" "), "4", "--approve"]);
+
+    assert(invocation.kind === "success");
+    expect(invocation.outcome.route.attachments).toBe(carriage);
   });
 });
 
@@ -112,36 +143,43 @@ describe("parseGhInvocation flags", () => {
     );
   });
 
-  it("observes every attachment and the head while passing them to gh", () => {
-    const invocation = parseGhInvocation([
-      "pr",
-      "create",
-      "--head",
-      "feature/basket",
-      "--attach",
-      "a.png#Before",
-      "--attach=b.png",
-    ]);
+  it.each([
+    [["pr", "create", "--attach", "a.png#Before", "--attach=b.png"], ["a.png#Before", "b.png"]],
+    [["pr", "comment", "4", "--attach=a.png", "--attach", "b.png", "--attach", "c.png"], ["a.png", "b.png", "c.png"]],
+  ])("collects the attachments of %j without passing them to gh", (commandArguments, attachments) => {
+    const invocation = parseGhInvocation(commandArguments);
 
     assert(invocation.kind === "success");
-    expect(invocation.outcome).toEqual({
-      verb: "pr create",
-      route: {
-        role: "author",
-        permissions: undefined,
-        body: "required",
-        closingComment: false,
-        check: "none",
-      },
-      target: undefined,
-      passThrough: ["pr", "create", "--head", "feature/basket", "--attach", "a.png#Before", "--attach=b.png"],
-      body: undefined,
-      closingComment: undefined,
-      attachments: ["a.png#Before", "b.png"],
-      head: "feature/basket",
-      session: undefined,
-      review: { event: undefined, commitSha: undefined },
-    });
+    expect(invocation.outcome.attachments).toEqual(attachments);
+    expect(invocation.outcome.passThrough).not.toContain("--attach");
+    expect(invocation.outcome.passThrough.some((token) => token.startsWith("--attach="))).toBe(false);
+    expect(invocation.outcome.passThrough.some((token) => attachments.includes(token))).toBe(false);
+  });
+
+  it("names an attachment flag left without a value", () => {
+    expect(parseGhInvocation(["pr", "create", "--attach"])).toEqual(
+      fail({ kind: "gh-flag-value-missing", flag: "--attach" }),
+    );
+  });
+
+  it("observes the head while passing it to gh", () => {
+    const invocation = parseGhInvocation(["pr", "create", "--head", "feature/basket", "-H", "other"]);
+
+    assert(invocation.kind === "success");
+    expect(invocation.outcome.passThrough).toEqual(["pr", "create", "--head", "feature/basket", "-H", "other"]);
+    expect(invocation.outcome.head).toBe("other");
+  });
+
+  it.each([
+    ["pr merge", ["pr", "merge", "5", "--attach", "a.png"]],
+    ["pr review", ["pr", "review", "5", "--approve", "--attach=a.png"]],
+    ["issue close", ["issue", "close", "5", "--attach", "a.png"]],
+  ])("refuses attachments on %s, which cannot carry them", (verb, commandArguments) => {
+    expect(parseGhInvocation(commandArguments)).toEqual(fail({ kind: "gh-attach-unsupported", verb }));
+  });
+
+  it("runs an unsupported verb that is given no attachment", () => {
+    expect(parseGhInvocation(["pr", "merge", "5"]).kind).toBe("success");
   });
 
   it("takes --session out of what reaches gh", () => {
@@ -156,6 +194,7 @@ describe("parseGhInvocation flags", () => {
         body: "verbatim",
         closingComment: false,
         check: "none",
+        attachments: "unsupported",
       },
       target: "9",
       passThrough: ["issue", "reopen", "9"],
@@ -180,6 +219,7 @@ describe("parseGhInvocation flags", () => {
         body: "verbatim",
         closingComment: true,
         check: "close-guard",
+        attachments: "unsupported",
       },
       target: "4",
       passThrough: ["pr", "close", "4", "--delete-branch"],
@@ -206,6 +246,7 @@ describe("parseGhInvocation review", () => {
         body: "stamped",
         closingComment: false,
         check: "review-binding",
+        attachments: "unsupported",
       },
       target: "4",
       passThrough: ["pr", "review", "4"],

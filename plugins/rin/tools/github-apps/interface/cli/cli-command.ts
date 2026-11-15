@@ -1,3 +1,4 @@
+import type { UserAuthoriser } from "../../application/authorise-user.ts";
 import type { StorePlacementCheck } from "../../application/credential-store-boundary.ts";
 import type { GhRun, GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
@@ -22,6 +23,7 @@ type CliDependencies = {
   readonly readBodyFile: BodyFileReader;
   readonly placeInStore: StorePlacementCheck;
   readonly credentialHelperCommand: string;
+  readonly userAuthoriser: UserAuthoriser;
 };
 
 type CommandReport = { readonly standardOutput: string; readonly standardError: string };

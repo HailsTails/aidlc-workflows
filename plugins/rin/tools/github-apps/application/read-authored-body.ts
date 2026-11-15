@@ -1,10 +1,12 @@
 import type { BodySource } from "../domain/gh-invocation.ts";
-import { containsPrivateKey } from "../domain/publishable-text.ts";
+import { assessPublishability, type Publishability } from "../domain/publishable-text.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
 import type { BodyFileFailure, BodyFileReader } from "./read-body-file.ts";
 
+type UnpublishableReason = Exclude<Publishability, "publishable">;
+
 type AuthoredBodyFailure =
-  | { readonly kind: "inline-body-refused"; readonly reason: "contains-private-key" }
+  | { readonly kind: "inline-body-refused"; readonly reason: UnpublishableReason }
   | BodyFileFailure;
 
 type AuthoredBodySources = {
@@ -14,10 +16,12 @@ type AuthoredBodySources = {
 
 type AuthoredBodyRead = AuthoredBodySources & { readonly source: BodySource | undefined };
 
-const refuseUnpublishable = (text: string): Result<string, AuthoredBodyFailure> =>
-  containsPrivateKey(text)
-    ? fail({ kind: "inline-body-refused", reason: "contains-private-key" })
-    : succeed(text);
+const refuseUnpublishable = (text: string): Result<string, AuthoredBodyFailure> => {
+  const publishability = assessPublishability(text);
+  return publishability === "publishable"
+    ? succeed(text)
+    : fail({ kind: "inline-body-refused", reason: publishability });
+};
 
 const readAuthoredBody = async ({
   source,

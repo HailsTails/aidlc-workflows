@@ -39,6 +39,30 @@ describe("describeCliFailure", () => {
       "Refusing to post that text: it contains a private key.",
     ],
     [
+      { kind: "inline-body-refused", reason: "contains-user-token" },
+      "Refusing to post that text: it contains a GitHub user token.",
+    ],
+    [
+      { kind: "body-file-refused", location: "notes.md", reason: "contains-user-token" },
+      "Refusing to post notes.md: it contains a GitHub user token.",
+    ],
+    [
+      { kind: "gh-attach-unsupported", verb: "pr merge" },
+      "gh pr merge takes no --attach. Attach files with gh pr create, gh pr edit, gh pr comment, gh issue create, gh issue edit or gh issue comment.",
+    ],
+    [
+      { kind: "user-grant-missing", path: "store/rin-author.user-grant.json" },
+      'No user grant at store/rin-author.user-grant.json, and attachments are never uploaded as another identity. Run the "login" command of the bot CLI, then retry.',
+    ],
+    [
+      { kind: "refresh-token-rejected" },
+      `GitHub no longer accepts this machine's user grant; it was revoked or replaced. Run the "login" command of the bot CLI, then retry.`,
+    ],
+    [
+      { kind: "user-authorisation-unconfigured", role: "author", path: "store/credentials.json" },
+      "The author entry in store/credentials.json has no userAuthorisation.clientId, so the author app cannot act as a person. Add the app's OAuth client ID there; see the Rin GitHub bot identity guide.",
+    ],
+    [
       { kind: "app-not-installed", repository },
       "The GitHub App is not installed on HailsTails/minutesarah-shop; install it there first.",
     ],

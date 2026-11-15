@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { UserAuthoriser } from "../../application/authorise-user.ts";
 import type { StorePlacementCheck } from "../../application/credential-store-boundary.ts";
 import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
@@ -50,6 +51,7 @@ describe("ghCommand", () => {
       readBodyFile: vi.fn<BodyFileReader>(),
       placeInStore: vi.fn<StorePlacementCheck>(),
       credentialHelperCommand: '!bun "cli-main.ts" git-credential --operation',
+      userAuthoriser: { authoriseUser: vi.fn<UserAuthoriser["authoriseUser"]>() },
     };
 
     await ghCommand.execute({

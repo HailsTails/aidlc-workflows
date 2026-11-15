@@ -1,0 +1,115 @@
+import { z } from "zod";
+import type { StoreLocator } from "../application/credential-store-port.ts";
+import type { ExclusiveLockPort } from "../application/exclusive-lock-port.ts";
+import type { PrivateFileReplacer } from "../application/private-file-port.ts";
+import type { TextFileReader } from "../application/text-file-port.ts";
+import type {
+  GrantStoreUnlocatable,
+  UserGrantStorePort,
+} from "../application/user-grant-store-port.ts";
+import { fail, succeed, type Result } from "../domain/result.ts";
+import { secret } from "../domain/secret.ts";
+import type { UserGrant } from "../domain/user-grant.ts";
+import { parseJsonText } from "./json-text.ts";
+
+const GRANT_FILE_SUFFIX = ".user-grant.json";
+
+const LOCK_FILE_SUFFIX = ".user-grant.lock";
+
+const JSON_INDENTATION = 2;
+
+const storedGrantSchema = z.strictObject({
+  accessToken: z.string().min(1),
+  accessTokenExpiresAtEpochSeconds: z.number().int().positive(),
+  refreshToken: z.string().min(1),
+  refreshTokenExpiresAtEpochSeconds: z.number().int().positive(),
+});
+
+type StoredGrant = z.infer<typeof storedGrantSchema>;
+
+type FileUserGrantStoreDependencies = {
+  readonly locateStoreDirectory: StoreLocator;
+  readonly readTextFile: TextFileReader;
+  readonly replacePrivateFile: PrivateFileReplacer;
+  readonly lock: ExclusiveLockPort;
+};
+
+type StoreFile = {
+  readonly locateStoreDirectory: StoreLocator;
+  readonly appSlug: string;
+  readonly suffix: string;
+};
+
+const locateStoreFile = ({
+  locateStoreDirectory,
+  appSlug,
+  suffix,
+}: StoreFile): Result<string, GrantStoreUnlocatable> => {
+  const storeDirectory = locateStoreDirectory();
+  if (storeDirectory.kind === "failure") {
+    return fail({ kind: "credential-store-unlocatable", detail: storeDirectory.reason.detail });
+  }
+  return succeed(`${storeDirectory.outcome}/${appSlug}${suffix}`);
+};
+
+const grantFromStored = (stored: StoredGrant): UserGrant => ({
+  accessToken: secret(stored.accessToken),
+  accessTokenExpiresAtEpochSeconds: stored.accessTokenExpiresAtEpochSeconds,
+  refreshToken: secret(stored.refreshToken),
+  refreshTokenExpiresAtEpochSeconds: stored.refreshTokenExpiresAtEpochSeconds,
+});
+
+const storedFromGrant = (grant: UserGrant): StoredGrant => ({
+  accessToken: grant.accessToken.reveal(),
+  accessTokenExpiresAtEpochSeconds: grant.accessTokenExpiresAtEpochSeconds,
+  refreshToken: grant.refreshToken.reveal(),
+  refreshTokenExpiresAtEpochSeconds: grant.refreshTokenExpiresAtEpochSeconds,
+});
+
+const grantFileText = (grant: UserGrant): string =>
+  `${JSON.stringify(storedFromGrant(grant), null, JSON_INDENTATION)}\n`;
+
+const createFileUserGrantStore = ({
+  locateStoreDirectory,
+  readTextFile,
+  replacePrivateFile,
+  lock,
+}: FileUserGrantStoreDependencies): UserGrantStorePort => ({
+  load: async ({ appSlug }) => {
+    const grantPath = locateStoreFile({ locateStoreDirectory, appSlug, suffix: GRANT_FILE_SUFFIX });
+    if (grantPath.kind === "failure") return grantPath;
+    const path = grantPath.outcome;
+    const grantText = await readTextFile(path);
+    if (grantText.kind === "failure") return fail({ kind: "user-grant-missing", path });
+    const grantJson = parseJsonText(grantText.outcome);
+    if (grantJson.kind === "failure") {
+      return fail({ kind: "user-grant-invalid", path, issues: "not JSON" });
+    }
+    const parsed = storedGrantSchema.safeParse(grantJson.outcome);
+    if (!parsed.success) {
+      return fail({ kind: "user-grant-invalid", path, issues: parsed.error.message });
+    }
+    return succeed(grantFromStored(parsed.data));
+  },
+  save: async ({ appSlug, grant }) => {
+    const grantPath = locateStoreFile({ locateStoreDirectory, appSlug, suffix: GRANT_FILE_SUFFIX });
+    if (grantPath.kind === "failure") return grantPath;
+    const path = grantPath.outcome;
+    const replaced = await replacePrivateFile({ location: path, text: grantFileText(grant) });
+    if (replaced.kind === "failure") {
+      return fail({ kind: "user-grant-unwritable", path, detail: replaced.reason.detail });
+    }
+    return succeed(undefined);
+  },
+  holdExclusively: async ({ appSlug, work }) => {
+    const lockPath = locateStoreFile({ locateStoreDirectory, appSlug, suffix: LOCK_FILE_SUFFIX });
+    if (lockPath.kind === "failure") return lockPath;
+    const held = await lock.holdExclusively({ lockLocation: lockPath.outcome, work });
+    if (held.kind === "failure") {
+      return fail({ kind: "user-grant-lock-unavailable", path: held.reason.lockLocation });
+    }
+    return held;
+  },
+});
+
+export { createFileUserGrantStore };

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { UserAuthoriser } from "../../application/authorise-user.ts";
 import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
 import { fail, succeed } from "../../domain/result.ts";
@@ -56,6 +57,7 @@ const fakeDependencies = (githubCli: GitHubCliPort = fakeGitHubCli()) => ({
     .fn<CliDependencies["placeInStore"]>()
     .mockResolvedValue({ kind: "outside-store", canonicalPath: "H:/shop/b.png" }),
   credentialHelperCommand: '!bun "cli-main.ts" git-credential --operation',
+  userAuthoriser: { authoriseUser: vi.fn<UserAuthoriser["authoriseUser"]>() },
 });
 
 describe("runCli gh", () => {

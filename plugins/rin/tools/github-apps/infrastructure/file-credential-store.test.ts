@@ -183,3 +183,85 @@ describe("createFileCredentialStore refusals", () => {
     );
   });
 });
+
+describe("createFileCredentialStore loadUserAuthorisationSettings", () => {
+  it("loads the role's OAuth client id without reading its private key", async () => {
+    const readTextFile = readingFiles(
+      '{"author":{"appId":"101","privateKeyPath":"a.pem","userAuthorisation":{"clientId":"Iv23liAuthor"}}}',
+    );
+
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile,
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    expect(settings).toEqual(succeed({ clientId: "Iv23liAuthor" }));
+    expect(readTextFile).toHaveBeenCalledOnce();
+    expect(readTextFile).toHaveBeenCalledWith(`${storeDirectory}/credentials.json`);
+  });
+
+  it("reports a role with no user authorisation configured", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile: readingFiles('{"author":{"appId":"101","privateKeyPath":"a.pem"}}'),
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    expect(settings).toEqual(
+      fail({
+        kind: "user-authorisation-unconfigured",
+        role: "author",
+        path: `${storeDirectory}/credentials.json`,
+      }),
+    );
+  });
+
+  it("reports a role the store has no entry for", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile: readingFiles('{"author":{"appId":"101","privateKeyPath":"a.pem"}}'),
+    }).loadUserAuthorisationSettings({ role: "reviewer" });
+
+    expect(settings).toEqual(
+      fail({ kind: "role-credentials-missing", role: "reviewer", path: storeDirectory }),
+    );
+  });
+
+  it("reports an empty client id", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile: readingFiles(
+        '{"author":{"appId":"101","privateKeyPath":"a.pem","userAuthorisation":{"clientId":""}}}',
+      ),
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    assert(settings.kind === "failure" && settings.reason.kind === "credentials-invalid");
+    expect(settings.reason.path).toBe(`${storeDirectory}/credentials.json`);
+    expect(settings.reason.issues).toContain("clientId");
+  });
+
+  it("reports a missing credentials file", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile: vi
+        .fn<TextFileReader>()
+        .mockResolvedValue(fail({ kind: "file-unreadable", location: "credentials.json" })),
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    expect(settings).toEqual(
+      fail({ kind: "credentials-unreadable", path: `${storeDirectory}/credentials.json` }),
+    );
+  });
+
+  it("reports a store it cannot locate", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: vi
+        .fn<StoreLocator>()
+        .mockReturnValue(fail({ detail: "no home directory" })),
+      readTextFile: vi.fn<TextFileReader>(),
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    expect(settings).toEqual(
+      fail({ kind: "credential-store-unlocatable", detail: "no home directory" }),
+    );
+  });
+});
