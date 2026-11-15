@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { refused } from "../../kernel/result.ts";
-import { admitOnboardingSource, bindOnboardingSource } from "./onboarding-source.ts";
+import { admitOnboardingSource, bindOnboardingSource, type AuthoredOnboardingSource } from "./onboarding-source.ts";
 import { renderOnboarding } from "./onboarding.ts";
 
 test.each(["Custom", "{{SLOT:framework_hook_runtime}}", "{{SLOT:framework_tools_runtime}}{{SLOT:framework_tools_runtime}}"])(
   "legacy source admits exact raw text without promoting markers: %s", (harnessSkeleton) => {
     expect(accept(admitOnboardingSource({ neutral: "Neutral", harnessSkeleton, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" })))
-      .toEqual({ neutral: "Neutral", harnessSkeleton, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" });
+      .toEqual<AuthoredOnboardingSource>({ neutral: "Neutral", harnessSkeleton, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" });
   });
 test.each(["Missing", "{{SLOT:framework_hook_runtime}", "{{SLOT:framework_hook_runtime}}{{SLOT:framework_hook_runtime}}"])(
   "invalid declared Hook position refuses before any Tools decision: %s", (harnessSkeleton) => {
@@ -29,7 +29,7 @@ test("admission snapshots the exact text and declarations into one frozen value"
     hookGuidance: "framework-hooks" as const, toolsGuidance: "framework-tools" as const };
   const admitted = accept(admitOnboardingSource(source));
   source.harnessSkeleton = "Changed";
-  expect(admitted).toEqual({ neutral: "Neutral\r\n", harnessSkeleton: "{{SLOT:framework_hook_runtime}}\r\n{{SLOT:framework_tools_runtime}}\r\n",
+  expect(admitted).toEqual<AuthoredOnboardingSource>({ neutral: "Neutral\r\n", harnessSkeleton: "{{SLOT:framework_hook_runtime}}\r\n{{SLOT:framework_tools_runtime}}\r\n",
     hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" });
   expect(Object.isFrozen(admitted)).toBe(true);
 });

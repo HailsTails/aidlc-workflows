@@ -6,6 +6,13 @@ import { methodSource } from "../../workflow-definition/fixtures/method-source.f
 import { createNeutralReading } from "./neutral-surface-files.ts";
 import { refused } from "../../kernel/result.ts";
 import { bindCwdDocuments } from "../domain/cwd-guidance.ts";
+import type { AuthoredOnboardingSource } from "../domain/onboarding-source.ts";
+import type { CapturedNeutralSurface } from "../domain/neutral-surface.ts";
+
+type ObservableCapture = Omit<CapturedNeutralSurface, "onboarding" | "documents"> & {
+  readonly onboarding: AuthoredOnboardingSource;
+  readonly documents: Pick<CapturedNeutralSurface["documents"], "documents" | "guidance">;
+};
 
 const core = new URL("file:///core/");
 const files = {
@@ -29,7 +36,7 @@ test("neutral capture reads only neutral inputs and wraps admitted stage and kno
   const readFile = mock(fileSystem.readFile);
   const readTree = mock(fileSystem.readTree);
   const surface = accept(await createNeutralReading({ files: { readFile }, tree: { readTree } })({ cwdGuidance: { kind: "legacy-authored" }, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const, core, sources }));
-  expect(surface).toEqual({ documents: { guidance: { kind: "legacy-authored" }, documents: [
+  expect(surface).toEqual<ObservableCapture>({ documents: { guidance: { kind: "legacy-authored" }, documents: [
     { source: source("aidlc-common/conductor.md"), role: "conductor", content: { kind: "text", text: "Conductor" } },
     { source: source("aidlc-common/protocols/one.md"), role: "protocol",
       content: { kind: "bytes", bytes: new Uint8Array([80, 114, 111, 116, 111, 99, 111, 108]) } },
@@ -111,14 +118,14 @@ test.each(["copy-looking text", "{{SLOT:framework_hook_runtime}}", "{{SLOT:frame
       "file:///core/templates/onboarding-harness.md": skeleton } });
     const surface = accept(await createNeutralReading({ files: fileSystem, tree: fileSystem })({ cwdGuidance: { kind: "legacy-authored" },
       hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const, core, sources: [] }));
-    expect(surface.onboarding).toEqual({ neutral: "Neutral", harnessSkeleton: skeleton, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const });
+    expect(surface.onboarding).toEqual<AuthoredOnboardingSource>({ neutral: "Neutral", harnessSkeleton: skeleton, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const });
   });
 test("declared capture retains exact CRLF bytes alongside explicit guidance", async () => {
   const fileSystem = createInMemoryFileSystem({ files: { ...files,
     "file:///core/templates/onboarding-harness.md": "Before\r\n{{SLOT:framework_hook_runtime}}\r\nAfter\r\n" } });
   const surface = accept(await createNeutralReading({ files: fileSystem, tree: fileSystem })({ cwdGuidance: { kind: "legacy-authored" },
     hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" as const, core, sources: [] }));
-  expect(surface.onboarding).toEqual({ neutral: "Neutral", hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" as const,
+  expect(surface.onboarding).toEqual<AuthoredOnboardingSource>({ neutral: "Neutral", hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" as const,
     harnessSkeleton: "Before\r\n{{SLOT:framework_hook_runtime}}\r\nAfter\r\n" });
 });
 test.each(["Missing", "{{SLOT:framework_hook_runtime}", "{{SLOT:framework_hook_runtime}}{{SLOT:framework_hook_runtime}}"])(
@@ -142,7 +149,7 @@ test("Tools may be declared while Hook remains legacy and raw CRLF remains intac
     "file:///core/templates/onboarding-harness.md": "{{SLOT:framework_tools_runtime}}\r\nHook prose\r\n" } });
   const surface = accept(await createNeutralReading({ files: fileSystem, tree: fileSystem })({ cwdGuidance: { kind: "legacy-authored" },
     core, sources: [], hookGuidance: "legacy-authored", toolsGuidance: "framework-tools" }));
-  expect(surface.onboarding).toEqual({ neutral: "Neutral", hookGuidance: "legacy-authored", toolsGuidance: "framework-tools",
+  expect(surface.onboarding).toEqual<AuthoredOnboardingSource>({ neutral: "Neutral", hookGuidance: "legacy-authored", toolsGuidance: "framework-tools",
     harnessSkeleton: "{{SLOT:framework_tools_runtime}}\r\nHook prose\r\n" });
 });
 test("both explicit meanings retain their independent declarations and slot order", async () => {
@@ -150,7 +157,7 @@ test("both explicit meanings retain their independent declarations and slot orde
     "file:///core/templates/onboarding-harness.md": "{{SLOT:framework_tools_runtime}}\n{{SLOT:framework_hook_runtime}}" } });
   const surface = accept(await createNeutralReading({ files: fileSystem, tree: fileSystem })({ cwdGuidance: { kind: "legacy-authored" },
     core, sources: [], hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" }));
-  expect(surface.onboarding).toEqual({ neutral: "Neutral", hookGuidance: "framework-hooks", toolsGuidance: "framework-tools",
+  expect(surface.onboarding).toEqual<AuthoredOnboardingSource>({ neutral: "Neutral", hookGuidance: "framework-hooks", toolsGuidance: "framework-tools",
     harnessSkeleton: "{{SLOT:framework_tools_runtime}}\n{{SLOT:framework_hook_runtime}}" });
 });
 test("the existing Hook refusal precedes new Tools refusal when both declarations are invalid", async () => {
@@ -194,6 +201,6 @@ test.each(["{{SLOT:framework_tools_runtime}}", "{{SLOT:framework_tools_runtime}}
       "file:///core/templates/onboarding-harness.md": skeleton } });
     const surface = accept(await createNeutralReading({ files: fileSystem, tree: fileSystem })({ cwdGuidance: { kind: "legacy-authored" }, core, sources: [],
       hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" }));
-    expect(surface.onboarding).toEqual({ neutral: "Neutral", harnessSkeleton: skeleton,
+    expect(surface.onboarding).toEqual<AuthoredOnboardingSource>({ neutral: "Neutral", harnessSkeleton: skeleton,
       hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" });
   });
