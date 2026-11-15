@@ -1,4 +1,4 @@
-import type { DistributionChannel } from "./projected-file.ts";
+import type { PromptLines } from "./native-policy.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { sourcePath, type KernelRefusal, type SourcePath } from "../../kernel/values.ts";
@@ -32,7 +32,7 @@ export type HostData = {
   readonly statusLine?: StatusLine;
   readonly agentFinishRecorded?: { readonly env: readonly string[] };
   readonly hostShell?: { readonly env: readonly string[] };
-  readonly pluginAgentFrontmatter?: Readonly<Record<DistributionChannel, readonly string[]>>;
+  readonly pluginAgentFrontmatter?: Readonly<{ readonly copy: readonly string[]; readonly native: PromptLines }>;
 };
 
 export type AuthoredPlacement = {

@@ -146,7 +146,7 @@ test("shell deny lines serialize the split rules without broadening their exclus
 test("the native host policy composes its supplied copy directory and risky forms", () => {
   const policy = kiroIdeDelegateShellPolicy({ facts, directory: ".renamed" });
   expect(policy.riskyForms).toEqual(["$", "`", ">", "<", "&", "@(", "@{", "\\n"]);
-  expect(policy.shellDeny("worker")).toEqual([
+  expect(policy.shellDeny("worker", "copy")).toEqual([
     "    - capability: shell", "      effect: deny", "      match:",
     '        - "bun .renamed/tools/aidlc-*"', '        - "bun .renamed/tools/aidlc.ts engine *"',
     "      exclude:",

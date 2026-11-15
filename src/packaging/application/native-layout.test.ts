@@ -3,6 +3,8 @@ import type { NativeCommandRoutes } from "../../projection/domain/native-command
 import { host, path } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { nativeLayoutFiles } from "./native-layout.ts";
+import { brand } from "../../kernel/brand.ts";
+import { nativePolicyFile, type NativePolicyPrompt } from "../../projection/domain/native-policy.ts";
 
 const routes = (): NativeCommandRoutes => ({ prefix: "aidlc engine", namespace: "engine",
   delegates: ["doctor", "utility"], adapterHooks: new Set(["known-adapter"]),
@@ -11,6 +13,45 @@ const identity = host({ name: "fixture", directory: ".fixture" });
 const release = { copyOnly: [], replacements: [], permissions: { kind: "authored" as const } };
 const file = (relative: string, text: string) => ({ path: path(relative), content: { kind: "text" as const, text },
   mode: "regular" as const, origin: { kind: "rendered" as const, concept: "settings" as const, name: "fixture" } });
+
+const admitted = nativePolicyFile({ file: file(".fixture/a.md", "generated\npermissions"),
+  prompt: brand<NativePolicyPrompt>({ kind: "native-policy", lines: ["generated", "permissions"], obligation: "copy block" }) });
+const policyRelease = { ...release, replacements: [{ from: "copy block", to: "generated\npermissions" }] };
+
+test("completed producer output discharges only its own obligation and leaves no admission metadata", () => {
+  expect(nativeLayoutFiles({ host: identity, routes: routes(), release: policyRelease, files: [admitted] }))
+    .toEqual(accepted([file(".fixture/a.md", "generated\npermissions")]));
+});
+
+test("native-looking custom output without owner evidence retains mandatory legacy refusal", () => {
+  expect(nativeLayoutFiles({ host: identity, routes: routes(), release: policyRelease,
+    files: [file(".fixture/a.md", "generated\npermissions")] })).toEqual(refused([
+    { kind: "native-text-not-found", distribution: identity.distribution, text: "copy block" },
+  ]));
+});
+
+test("an admitted class cannot discharge the next missing class", () => {
+  expect(nativeLayoutFiles({ host: identity, routes: routes(), release: { ...policyRelease,
+    replacements: [...policyRelease.replacements, { from: "second copy", to: "second native" }] }, files: [admitted] }))
+    .toEqual(refused([{ kind: "native-text-not-found", distribution: identity.distribution, text: "second copy" }]));
+});
+
+test("copy-only filtering and legacy non-text eligibility precede admission", () => {
+  expect(nativeLayoutFiles({ host: identity, routes: routes(), release: { ...policyRelease,
+    copyOnly: [path(".fixture/a.md")] }, files: [admitted] }))
+    .toEqual(refused([{ kind: "native-text-not-found", distribution: identity.distribution, text: "copy block" }]));
+  expect(nativeLayoutFiles({ host: identity, routes: routes(), release: policyRelease,
+    files: [nativePolicyFile({ file: file("payload.bin", "generated\npermissions"),
+      prompt: brand<NativePolicyPrompt>({ kind: "native-policy", lines: [], obligation: "copy block" }) })] }))
+    .toEqual(refused([{ kind: "native-text-not-found", distribution: identity.distribution, text: "copy block" }]));
+});
+
+test("completed and legacy replacement outputs keep identical masking with line positions", () => {
+  const unresolvable = mock(() => []);
+  expect(nativeLayoutFiles({ host: identity, routes: { ...routes(), unresolvable }, release: policyRelease, files: [admitted] }))
+    .toEqual(accepted([file(".fixture/a.md", "generated\npermissions")]));
+  expect(unresolvable).toHaveBeenCalledWith({ file: ".fixture/a.md", text: "\n" });
+});
 
 test("copy-only files leave before rewriting while non-text bytes and executable mode remain intact", () => {
   const binary = { path: path(".fixture/payload.bin"), content: { kind: "bytes" as const,

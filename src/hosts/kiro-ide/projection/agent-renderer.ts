@@ -11,11 +11,13 @@ import type { CopyChannelAllows } from "../../../projection/application/ports/co
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import { kiroIdeDelegateShellPolicy, type DelegateShellPolicy } from "./delegate-shell-deny.ts";
 import { kiroIdeKnowledgeReading } from "./knowledge-reading.ts";
+import { brand } from "../../../kernel/brand.ts";
+import type { NativePolicyPrompt, PromptLines } from "../../../projection/domain/native-policy.ts";
 
 export type KiroIdePersonaProfile = {
   readonly modelSurface: (request: { readonly agent: AgentDocumentRequest["agent"] }) =>
     Result<string, ProjectionRefusal>;
-  readonly promptLines: (agent: AgentDocumentRequest["agent"]) => readonly string[];
+  readonly promptLines: (agent: AgentDocumentRequest["agent"]) => PromptLines;
   readonly inlineReading: (agent: AgentDocumentRequest["agent"]) => "reads-inline" | "dispatched-only";
 };
 
@@ -42,7 +44,7 @@ export const kiroIdePermissionLines = ({ policy, channel }: {
     "  rules:",
     ...shell.allow,
     ...shell.ask,
-    ...policy.shellDeny(agent),
+    ...policy.shellDeny(agent, channel),
     "    - capability: fs_read",
     "      effect: allow",
     "      match:",
@@ -58,6 +60,14 @@ export const kiroIdePermissionLines = ({ policy, channel }: {
     `        - "aidlc/.aidlc-sessions/**"`,
     `        - "aidlc/spaces/*/intents/*/.aidlc-engine/gate-words/**"`,
   ];
+};
+
+export const kiroIdePermissionPrompt = (request: {
+  readonly policy: DelegateShellPolicy; readonly channel: DistributionChannel; readonly agent: string;
+}): PromptLines => {
+  const lines = kiroIdePermissionLines(request)(request.agent);
+  return request.channel === "copy" ? lines : brand<NativePolicyPrompt>(Object.freeze({ kind: "native-policy",
+    lines: Object.freeze(lines), obligation: request.policy.shellDeny(request.agent, "copy").join("\n") }));
 };
 
 export const expandKiroIdeConductorAllows = (request: {
@@ -85,9 +95,9 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
         model: "projected", render: renderKiroIdeMarkdown,
       }),
       promptLines: (agent) => {
-        return kiroIdePermissionLines({ policy: kiroIdeDelegateShellPolicy({
+        return kiroIdePermissionPrompt({ policy: kiroIdeDelegateShellPolicy({
           facts: inputs.delegateShellFacts, directory: inputs.host.directory,
-        }), channel: inputs.channel })(agent.slug);
+        }), channel: inputs.channel, agent: agent.slug });
       },
       inlineReading: (agent) => inlineAgents.has(agent.slug) ? "reads-inline" : "dispatched-only",
     }),

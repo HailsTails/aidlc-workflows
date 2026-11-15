@@ -8,6 +8,7 @@ import type { PackagingRefusal } from "../domain/artifact.ts";
 import type { NativeRelease } from "../domain/payload.ts";
 import { nativeBareToolPattern, nativeInvocationText } from "../domain/native-invocations.ts";
 import { nativeOnboardingText } from "../domain/native-onboarding.ts";
+import { nativePolicyObligation } from "../../projection/domain/native-policy.ts";
 
 type NativeLayoutRequest = {
   readonly files: readonly ProjectedFile[];
@@ -24,21 +25,29 @@ const textOf = (content: FileContent): string => content.kind === "text" ? conte
 const replaceNativeBlock = (request: {
   readonly files: readonly ProjectedFile[]; readonly host: HostIdentity;
   readonly replacement: NativeRelease["replacements"][number];
+  readonly completed: ReadonlySet<string>;
 }): Result<readonly ProjectedFile[], readonly PackagingRefusal[]> => {
   const found = request.files.some((file) => nativeFileTreatment(file) === "rewrite-text"
     && textOf(file.content).includes(request.replacement.from));
-  if (!found) return refused([{ kind: "native-text-not-found", distribution: request.host.distribution,
+  if (!found && !request.completed.has(request.replacement.from)) return refused([{ kind: "native-text-not-found", distribution: request.host.distribution,
     text: request.replacement.from }]);
   return accepted(request.files.map((file): ProjectedFile => nativeFileTreatment(file) === "rewrite-text"
     ? { ...file, content: { kind: "text", text: textOf(file.content)
       .replaceAll(request.replacement.from, request.replacement.to) } } : file));
 };
 
-const replaceNativeText = (request: NativeLayoutRequest): Result<readonly ProjectedFile[], readonly PackagingRefusal[]> =>
-  request.release.replacements.reduce<Result<readonly ProjectedFile[], readonly PackagingRefusal[]>>(
-    (reading, replacement) => reading.ok ? replaceNativeBlock({ files: reading.value, host: request.host, replacement }) : reading,
-    accepted(request.files.filter((file) => !request.release.copyOnly.includes(file.path))),
+const replaceNativeText = (request: NativeLayoutRequest): Result<readonly ProjectedFile[], readonly PackagingRefusal[]> => {
+  const files = request.files.filter((file) => !request.release.copyOnly.includes(file.path));
+  const completed = new Set(files.flatMap((file) => {
+    if (nativeFileTreatment(file) !== "rewrite-text") return [];
+    const obligation = nativePolicyObligation(file);
+    return obligation === undefined ? [] : [obligation];
+  }));
+  return request.release.replacements.reduce<Result<readonly ProjectedFile[], readonly PackagingRefusal[]>>(
+    (reading, replacement) => reading.ok ? replaceNativeBlock({ files: reading.value, host: request.host, replacement, completed }) : reading,
+    accepted(files.map((file) => file.origin.kind === "native-policy" ? { ...file, origin: file.origin.source } : file)),
   );
+};
 
 const nativeFailures = (file: ProjectedFile, request: NativeLayoutRequest): readonly PackagingRefusal[] => {
   if (nativeFileTreatment(file) === "preserve-content") return [];

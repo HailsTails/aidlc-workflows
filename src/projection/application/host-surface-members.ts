@@ -10,6 +10,7 @@ import type { Harness, Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 import type { HarnessRecordConstructor } from "./ports/host-surface.ts";
 import { harnessRecordConflicts, type HarnessRecord, type HarnessRecordFacts } from "../domain/harness-record.ts";
+import { nativePolicyFile, promptLines, type PromptLines } from "../domain/native-policy.ts";
 
 const hookStrings = (hookValue: unknown, tokens: TokenBindings): unknown => {
   if (typeof hookValue === "string") return bindTemplateTokens({ text: hookValue, tokens,
@@ -47,12 +48,12 @@ const descriptorText = (record: HarnessRecord, tokens: TokenBindings): string =>
 }, null, 2)}\n`;
 
 const hostDataFile = (request: { readonly host: HostIdentity; readonly within: string;
-  readonly text: string }): Rendering => {
+  readonly text: string; readonly prompt: PromptLines }): Rendering => {
   const { host, within, text } = request;
   const path = projectPath(`${host.directory}/${within}`);
-  return path.ok ? accepted([{ path: path.value, content: { kind: "text", text },
+  return path.ok ? accepted([nativePolicyFile({ prompt: request.prompt, file: { path: path.value, content: { kind: "text", text },
     mode: "regular",
-    origin: { kind: "rendered", concept: "host-data", name: host.distribution } }])
+    origin: { kind: "rendered", concept: "host-data", name: host.distribution } } })])
     : refused({ kind: "render-failed", concept: "host-data", name: host.distribution,
       reason: "The host data destination must be project-relative." });
 };
@@ -91,12 +92,13 @@ export const createHostSurfaceMembers = (request: {
     if (conflicts.length > 0) return refused({ kind: "render-failed", concept: "host-data",
       name: request.host.distribution,
       reason: `The host record changed common facts: ${conflicts.join(", ")}.` });
-    const frontmatter = request.data.pluginAgentFrontmatter?.[request.channel];
+    const prompt = request.data.pluginAgentFrontmatter?.[request.channel] ?? [];
+    const frontmatter = promptLines(prompt);
     return collectCommandRenderings([
       hostDataFile({ host: request.host, within: "tools/data/harness.json",
-        text: descriptorText(record.value, request.tokens) }),
-      frontmatter?.length ? hostDataFile({ host: request.host, within: "tools/data/plugin-agent.md",
-        text: `---\n${frontmatter.join("\n")}\n---\n` }) : accepted([]),
+        text: descriptorText(record.value, request.tokens), prompt: [] }),
+      frontmatter.length ? hostDataFile({ host: request.host, within: "tools/data/plugin-agent.md",
+        text: `---\n${frontmatter.join("\n")}\n---\n`, prompt }) : accepted([]),
     ]);
   },
   placeAuthoredFile: ({ file }) => placeFile({ file, placements: request.placements,

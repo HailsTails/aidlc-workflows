@@ -6,6 +6,7 @@ import type { ProjectedFile } from "../../../projection/domain/projected-file.ts
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import { withFrontmatterLines, type FrontmatterLinesRefusal } from "./frontmatter-lines.ts";
+import { nativePolicyFile, promptLines, type PromptLines } from "../../../projection/domain/native-policy.ts";
 
 export type KiroModelSurface = (request: {
   readonly agent: Agent;
@@ -15,7 +16,7 @@ export type InlineReading = "reads-inline" | "dispatched-only";
 
 export type KiroAgentProfile = {
   readonly modelSurface: KiroModelSurface;
-  readonly promptLines: (agent: Agent) => readonly string[];
+  readonly promptLines: (agent: Agent) => PromptLines;
   readonly inlineReading: (agent: Agent) => InlineReading;
 };
 
@@ -46,16 +47,16 @@ const linesReason = (refusal: FrontmatterLinesRefusal): string => {
 
 const fileAt = (
   agent: Agent,
-  placing: { readonly path: string; readonly text: string },
+  placing: { readonly path: string; readonly text: string; readonly prompt: PromptLines },
 ): Result<ProjectedFile, ProjectionRefusal> => {
   const path = projectPath(placing.path);
   return path.ok
-    ? accepted({
+    ? accepted(nativePolicyFile({ prompt: placing.prompt, file: {
         path: path.value,
         content: { kind: "text", text: placing.text },
         mode: "regular",
         origin: { kind: "method-source", path: agent.source },
-      })
+      } }))
     : refused(renderFailed(agent, `${placing.path} must be a project-relative path.`));
 };
 
@@ -72,6 +73,7 @@ const inlineCopy = (
         fileAt(persona.agent, {
           path: `.kiro/aidlc-common/personas/${persona.agent.slug}.md`,
           text: persona.text,
+          prompt: [],
         }),
       ]
     : [];
@@ -91,11 +93,12 @@ const prompted = (
   surfaced: { readonly agent: Agent; readonly text: string },
 ): Rendering => {
   const { agent, text } = surfaced;
-  const lines = profile.promptLines(agent);
+  const prompt = profile.promptLines(agent);
+  const lines = promptLines(prompt);
   const withLines = withFrontmatterLines(text, lines);
   return withLines.ok
     ? collected([
-        fileAt(agent, { path: `.kiro/agents/${agent.slug}.md`, text: withLines.value }),
+        fileAt(agent, { path: `.kiro/agents/${agent.slug}.md`, text: withLines.value, prompt }),
         ...inlineCopy(profile, { agent, lines, text }),
       ])
     : refused(renderFailed(agent, linesReason(withLines.refusal)));

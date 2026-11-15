@@ -1,3 +1,4 @@
+import { promptLines } from "../../../projection/domain/native-policy.ts";
 import { renderKiroIdeMarkdown } from "./markdown-surface.ts";
 import { describe, expect, mock, test } from "bun:test";
 import { createKiroIdeAgents, kiroIdePermissionLines, type KiroIdePersonaRendering } from "./agent-renderer.ts";
@@ -37,7 +38,7 @@ test("Kiro IDE gives its persona port the exact in-parts model and native policy
     text: "authored-file", knowledge: "absorbed", reading: kiroIdeKnowledgeReading(".kiro"),
     model: "projected", render: renderKiroIdeMarkdown,
   });
-  expect(profile?.promptLines(architect)).toContain('        - "bun .kiro/tools/aidlc.ts --fixture"');
+  expect(promptLines(profile?.promptLines(architect) ?? [])).toContain('        - "bun .kiro/tools/aidlc.ts --fixture"');
   expect(admittedVerbs).toHaveBeenCalledWith("aidlc-architect-agent");
   expect(profile?.inlineReading(architect)).toBe("reads-inline");
 });
@@ -122,26 +123,69 @@ describe("Kiro IDE persona permissions", () => {
   test("uses the same owner for plugin personas and asks its shell policy for their name", () => {
     const shellDeny = mock(policy.shellDeny);
     expect(kiroIdePermissionLines({ policy: { ...policy, shellDeny }, channel: "copy" })("plugin-agent")).toEqual(expectedLines);
-    expect(shellDeny).toHaveBeenCalledWith("plugin-agent");
+    expect(shellDeny).toHaveBeenCalledWith("plugin-agent", "copy");
   });
 });
 
-test("the native persona factory uses legacy allow and ask bytes while retaining the DS deny owner", () => {
+const expectedNativePromptLines = [
+  "tools: [\"read\", \"write\", \"shell\"]",
+  "includeMcpJson: true",
+  "permissions:",
+  "  rules:",
+  "    - capability: shell",
+  "      effect: allow",
+  "      match:",
+  "        - \"aidlc engine *\"",
+  "        - \"bun --version\"",
+  "    - capability: shell",
+  "      effect: ask",
+  "      match:",
+  "        - \"aidlc engine config set *\"",
+  "        - \"aidlc engine adapter *\"",
+  "        - \"aidlc*$*\"",
+  "        - \"aidlc*`*\"",
+  "        - \"aidlc*>*\"",
+  "        - \"aidlc*<*\"",
+  "        - \"aidlc*&*\"",
+  "        - \"aidlc*@(*\"",
+  "        - \"aidlc*@{*\"",
+  "        - \"aidlc*\\n*\"",
+  "    - capability: shell",
+  "      effect: deny",
+  "      match:",
+  "        - \"aidlc engine *\"",
+  "      exclude:",
+  "    - capability: shell",
+  "      effect: deny",
+  "      match:",
+  "        - \"aidlc*$*\"",
+  "        - \"aidlc*`*\"",
+  "        - \"aidlc*>*\"",
+  "        - \"aidlc*<*\"",
+  "        - \"aidlc*&*\"",
+  "        - \"aidlc*@(*\"",
+  "        - \"aidlc*@{*\"",
+  "        - \"aidlc*\\n*\"",
+  "    - capability: fs_read",
+  "      effect: allow",
+  "      match:",
+  "        - \"**\"",
+  "    - capability: filesystem",
+  "      effect: allow",
+  "      match:",
+  "        - \"aidlc/spaces/**\"",
+  "        - \".aidlc/worktrees/*/aidlc/spaces/**\"",
+  "    - capability: fs_write",
+  "      effect: deny",
+  "      match:",
+  "        - \".kiro/**\"",
+  "        - \"aidlc/.aidlc-sessions/**\"",
+  "        - \"aidlc/spaces/*/intents/*/.aidlc-engine/gate-words/**\""
+];
+
+test("the native persona factory emits channel-correct deny bytes with explicit owner admission", () => {
   const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
   createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, channel: "native",
     host: host({ name: "kiro-ide", directory: ".kiro" }), delegateShellFacts: DELEGATE_SHELL_FACTS });
-  expect(personas.mock.calls[0]?.[0].promptLines(architect)).toEqual(["tools: [\"read\", \"write\", \"shell\"]","includeMcpJson: true","permissions:","  rules:","    - capability: shell","      effect: allow","      match:","        - \"aidlc engine *\"","        - \"bun --version\"","    - capability: shell","      effect: ask","      match:","        - \"aidlc engine config set *\"","        - \"aidlc engine adapter *\"","        - \"aidlc*$*\"","        - \"aidlc*`*\"","        - \"aidlc*>*\"","        - \"aidlc*<*\"","        - \"aidlc*&*\"","        - \"aidlc*@(*\"","        - \"aidlc*@{*\"","        - \"aidlc*\\n*\"",   "    - capability: shell", "      effect: deny", "      match:",
-  '        - "bun .kiro/tools/aidlc-*"', '        - "bun .kiro/tools/aidlc.ts engine *"', "      exclude:",
-  "    - capability: shell", "      effect: deny", "      match:",
-  '        - "bun .kiro/tools/aidlc*$*"', '        - "bun .kiro/tools/aidlc*`*"',
-  '        - "bun .kiro/tools/aidlc*>*"', '        - "bun .kiro/tools/aidlc*<*"',
-  '        - "bun .kiro/tools/aidlc*&*"', '        - "bun .kiro/tools/aidlc*@(*"',
-  '        - "bun .kiro/tools/aidlc*@{*"', '        - "bun .kiro/tools/aidlc*\\n*"',
-  "    - capability: fs_read", "      effect: allow", "      match:", '        - "**"',
-  "    - capability: filesystem", "      effect: allow", "      match:",
-  '        - "aidlc/spaces/**"', '        - ".aidlc/worktrees/*/aidlc/spaces/**"',
-  "    - capability: fs_write", "      effect: deny", "      match:",
-  '        - ".kiro/**"', '        - "aidlc/.aidlc-sessions/**"',
-  '        - "aidlc/spaces/*/intents/*/.aidlc-engine/gate-words/**"',
-]);
+  expect(promptLines(personas.mock.calls[0]?.[0].promptLines(architect) ?? [])).toEqual(expectedNativePromptLines);
 });

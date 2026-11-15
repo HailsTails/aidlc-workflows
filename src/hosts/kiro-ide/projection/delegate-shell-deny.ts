@@ -4,7 +4,7 @@ import type {
 import type { DistributionChannel } from "../../../projection/domain/projected-file.ts";
 
 export type DelegateShellPolicy = {
-  readonly shellDeny: (agent: string) => readonly string[];
+  readonly shellDeny: (agent: string, channel: DistributionChannel) => readonly string[];
   readonly riskyForms: readonly string[];
   readonly shellCommands: (channel: DistributionChannel) => {
     readonly allow: readonly string[];
@@ -154,9 +154,10 @@ export const kiroIdeDelegateShellPolicy = ({ facts, directory }: {
         ...RISKY_SHELL_FORMS.map((form) => `${channel === "native" ? "aidlc" : tools}*${form}*`)],
     };
   },
-  shellDeny: (agent) => [
-    ...shellDenyLines(copyChannelDelegateShellDeny({ facts, harnessDir: directory, agent })),
-    ...riskyFormDenyLines([`bun ${directory}/tools/aidlc`]),
+  shellDeny: (agent, channel) => [
+    ...shellDenyLines(channel === "native" ? nativeDelegateShellDeny({ facts, agent })
+      : copyChannelDelegateShellDeny({ facts, harnessDir: directory, agent })),
+    ...riskyFormDenyLines([channel === "native" ? "aidlc" : `bun ${directory}/tools/aidlc`]),
   ],
   riskyForms: RISKY_SHELL_FORMS,
 });

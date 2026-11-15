@@ -1,6 +1,7 @@
 import type { FileContent, FileMode } from "../../kernel/file-content.ts";
 import type { ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { MethodSourcePath } from "../../workflow-definition/domain/method-source.ts";
+import type { NativePolicyAdmission } from "./native-policy.ts";
 
 export const RENDERED_CONCEPTS = [
   "agent",
@@ -28,7 +29,7 @@ export type RuntimeDataName =
 
 export type MemoryCopy = "space" | "seed";
 
-export type ProjectionOrigin =
+export type ProjectionSourceOrigin =
   | { readonly kind: "method-source"; readonly path: MethodSourcePath }
   | { readonly kind: "neutral"; readonly source: SourcePath }
   | { readonly kind: "harness-authored"; readonly source: SourcePath }
@@ -37,6 +38,12 @@ export type ProjectionOrigin =
   | { readonly kind: "workspace-memory"; readonly copy: MemoryCopy; readonly path: MethodSourcePath }
   | { readonly kind: "memory-companion"; readonly copy: MemoryCopy; readonly source: SourcePath }
   | { readonly kind: "active-space" };
+
+export type ProjectionOrigin = ProjectionSourceOrigin | {
+  readonly kind: "native-policy";
+  readonly source: ProjectionSourceOrigin;
+  readonly admission: NativePolicyAdmission;
+};
 
 export type DistributionChannel = "copy" | "native";
 
