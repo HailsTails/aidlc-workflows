@@ -4,7 +4,7 @@ import { host, path } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { nativeLayoutFiles } from "./native-layout.ts";
 import { brand } from "../../kernel/brand.ts";
-import { nativePolicyFile, type NativePolicyPrompt } from "../../projection/domain/native-policy.ts";
+import type { NativePolicyAdmission } from "../../projection/domain/native-policy.ts";
 
 const routes = (): NativeCommandRoutes => ({ prefix: "aidlc engine", namespace: "engine",
   delegates: ["doctor", "utility"], adapterHooks: new Set(["known-adapter"]),
@@ -14,8 +14,18 @@ const release = { copyOnly: [], replacements: [], permissions: { kind: "authored
 const file = (relative: string, text: string) => ({ path: path(relative), content: { kind: "text" as const, text },
   mode: "regular" as const, origin: { kind: "rendered" as const, concept: "settings" as const, name: "fixture" } });
 
-const admitted = nativePolicyFile({ file: file(".fixture/a.md", "generated\npermissions"),
-  prompt: brand<NativePolicyPrompt>({ kind: "native-policy", lines: ["generated", "permissions"], obligation: "copy block" }) });
+const admitted = { ...file(".fixture/a.md", "generated\npermissions"), origin: {
+  kind: "native-policy" as const,
+  source: { kind: "rendered" as const, concept: "settings" as const, name: "fixture" },
+  admission: brand<NativePolicyAdmission>({ path: path(".fixture/a.md"), mode: "regular",
+    text: "generated\npermissions", obligation: "copy block" }),
+} };
+const admittedBinary = { ...file("payload.bin", "generated\npermissions"), origin: {
+  kind: "native-policy" as const,
+  source: { kind: "rendered" as const, concept: "settings" as const, name: "fixture" },
+  admission: brand<NativePolicyAdmission>({ path: path("payload.bin"), mode: "regular",
+    text: "generated\npermissions", obligation: "copy block" }),
+} };
 const policyRelease = { ...release, replacements: [{ from: "copy block", to: "generated\npermissions" }] };
 
 test("completed producer output discharges only its own obligation and leaves no admission metadata", () => {
@@ -41,8 +51,7 @@ test("copy-only filtering and legacy non-text eligibility precede admission", ()
     copyOnly: [path(".fixture/a.md")] }, files: [admitted] }))
     .toEqual(refused([{ kind: "native-text-not-found", distribution: identity.distribution, text: "copy block" }]));
   expect(nativeLayoutFiles({ host: identity, routes: routes(), release: policyRelease,
-    files: [nativePolicyFile({ file: file("payload.bin", "generated\npermissions"),
-      prompt: brand<NativePolicyPrompt>({ kind: "native-policy", lines: [], obligation: "copy block" }) })] }))
+    files: [admittedBinary] }))
     .toEqual(refused([{ kind: "native-text-not-found", distribution: identity.distribution, text: "copy block" }]));
 });
 

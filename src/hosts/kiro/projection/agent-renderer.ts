@@ -2,11 +2,11 @@ import { KIRO_PROMPT_LINES } from "../host-data.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { Harness, Rendering } from "../../../projection/application/ports/harness.ts";
-import type { ProjectedFile } from "../../../projection/domain/projected-file.ts";
+import type { ProjectedFile, ProjectionSourceOrigin } from "../../../projection/domain/projected-file.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import { withFrontmatterLines, type FrontmatterLinesRefusal } from "./frontmatter-lines.ts";
-import { nativePolicyFile, promptLines, type PromptLines } from "../../../projection/domain/native-policy.ts";
+import { serializeNativePolicy, promptLines, type PromptLines } from "../../../projection/domain/native-policy.ts";
 
 export type KiroModelSurface = (request: {
   readonly agent: Agent;
@@ -47,16 +47,16 @@ const linesReason = (refusal: FrontmatterLinesRefusal): string => {
 
 const fileAt = (
   agent: Agent,
-  placing: { readonly path: string; readonly text: string; readonly prompt: PromptLines },
-): Result<ProjectedFile, ProjectionRefusal> => {
+  placing: { readonly path: string; readonly text: string },
+): Result<Omit<ProjectedFile, "origin"> & { readonly origin: ProjectionSourceOrigin }, ProjectionRefusal> => {
   const path = projectPath(placing.path);
   return path.ok
-    ? accepted(nativePolicyFile({ prompt: placing.prompt, file: {
+    ? accepted({
         path: path.value,
         content: { kind: "text", text: placing.text },
         mode: "regular",
         origin: { kind: "method-source", path: agent.source },
-      } }))
+      })
     : refused(renderFailed(agent, `${placing.path} must be a project-relative path.`));
 };
 
@@ -73,7 +73,6 @@ const inlineCopy = (
         fileAt(persona.agent, {
           path: `.kiro/aidlc-common/personas/${persona.agent.slug}.md`,
           text: persona.text,
-          prompt: [],
         }),
       ]
     : [];
@@ -95,13 +94,18 @@ const prompted = (
   const { agent, text } = surfaced;
   const prompt = profile.promptLines(agent);
   const lines = promptLines(prompt);
-  const withLines = withFrontmatterLines(text, lines);
-  return withLines.ok
+  const serialized = serializeNativePolicy<ProjectionRefusal>({ prompt, serialize: (suppliedLines) => {
+    const withLines = withFrontmatterLines(text, suppliedLines);
+    return withLines.ok
+      ? fileAt(agent, { path: `.kiro/agents/${agent.slug}.md`, text: withLines.value })
+      : refused(renderFailed(agent, linesReason(withLines.refusal)));
+  } });
+  return serialized.ok
     ? collected([
-        fileAt(agent, { path: `.kiro/agents/${agent.slug}.md`, text: withLines.value, prompt }),
+        serialized,
         ...inlineCopy(profile, { agent, lines, text }),
       ])
-    : refused(renderFailed(agent, linesReason(withLines.refusal)));
+    : serialized;
 };
 
 export const kiroAgentRenderer =

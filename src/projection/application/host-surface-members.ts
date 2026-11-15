@@ -10,7 +10,8 @@ import type { Harness, Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
 import type { HarnessRecordConstructor } from "./ports/host-surface.ts";
 import { harnessRecordConflicts, type HarnessRecord, type HarnessRecordFacts } from "../domain/harness-record.ts";
-import { nativePolicyFile, promptLines, type PromptLines } from "../domain/native-policy.ts";
+import { serializeNativePolicy, promptLines, type PromptLines } from "../domain/native-policy.ts";
+import type { ProjectionRefusal } from "../domain/projection.ts";
 
 const hookStrings = (hookValue: unknown, tokens: TokenBindings): unknown => {
   if (typeof hookValue === "string") return bindTemplateTokens({ text: hookValue, tokens,
@@ -48,14 +49,19 @@ const descriptorText = (record: HarnessRecord, tokens: TokenBindings): string =>
 }, null, 2)}\n`;
 
 const hostDataFile = (request: { readonly host: HostIdentity; readonly within: string;
-  readonly text: string; readonly prompt: PromptLines }): Rendering => {
-  const { host, within, text } = request;
-  const path = projectPath(`${host.directory}/${within}`);
-  return path.ok ? accepted([nativePolicyFile({ prompt: request.prompt, file: { path: path.value, content: { kind: "text", text },
-    mode: "regular",
-    origin: { kind: "rendered", concept: "host-data", name: host.distribution } } })])
-    : refused({ kind: "render-failed", concept: "host-data", name: host.distribution,
-      reason: "The host data destination must be project-relative." });
+  readonly text: (lines: readonly string[]) => string; readonly prompt: PromptLines }): Rendering => {
+  const { host, within } = request;
+  const serialized = serializeNativePolicy<ProjectionRefusal>({ prompt: request.prompt,
+    serialize: (lines) => {
+      const text = request.text(lines);
+      const path = projectPath(`${host.directory}/${within}`);
+      return path.ok ? accepted({ path: path.value, content: { kind: "text", text },
+        mode: "regular", origin: { kind: "rendered", concept: "host-data", name: host.distribution } })
+        : refused({ kind: "render-failed", concept: "host-data", name: host.distribution,
+          reason: "The host data destination must be project-relative." });
+    },
+  });
+  return serialized.ok ? accepted([serialized.value]) : serialized;
 };
 
 const placeFile = (request: {
@@ -96,9 +102,9 @@ export const createHostSurfaceMembers = (request: {
     const frontmatter = promptLines(prompt);
     return collectCommandRenderings([
       hostDataFile({ host: request.host, within: "tools/data/harness.json",
-        text: descriptorText(record.value, request.tokens), prompt: [] }),
+        text: () => descriptorText(record.value, request.tokens), prompt: [] }),
       frontmatter.length ? hostDataFile({ host: request.host, within: "tools/data/plugin-agent.md",
-        text: `---\n${frontmatter.join("\n")}\n---\n`, prompt }) : accepted([]),
+        text: (lines) => `---\n${lines.join("\n")}\n---\n`, prompt }) : accepted([]),
     ]);
   },
   placeAuthoredFile: ({ file }) => placeFile({ file, placements: request.placements,
