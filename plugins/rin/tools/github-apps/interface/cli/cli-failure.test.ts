@@ -56,11 +56,15 @@ describe("describeCliFailure", () => {
     ],
     [
       { kind: "gh-attach-target-not-number", verb: "pr comment" },
-      'gh pr comment with --attach needs the number right after the verb, as in "gh pr comment 12 --attach shot.png". A URL or a branch is refused: the write runs under the operator\'s grant, which GitHub does not limit to this repository.',
+      'gh pr comment with --attach needs the number right after the verb, as in "gh pr comment 12 --attach shot.png". A URL, a branch or a flag in that place is refused: the write runs under the operator\'s grant, which GitHub does not limit to this repository.',
     ],
     [
-      { kind: "gh-attach-reference-refused", token: "https://github.com/other/repo/issues/3" },
-      'Refusing "https://github.com/other/repo/issues/3" on a write with --attach: gh takes a repository from a URL, and the operator\'s grant is not limited to this repository. Give numbers in place of URLs, and put a URL that belongs in the text into the body.',
+      { kind: "gh-attach-argument-refused", verb: "issue comment", token: "--delete-last" },
+      'Refusing "--delete-last" on gh issue comment with --attach. That write runs under the operator\'s grant, which GitHub does not limit to this repository, so it accepts only the number, --body or --body-file, --attach and these flags: --edit-last, --create-if-none. Make any other change in a separate write without --attach.',
+    ],
+    [
+      { kind: "gh-attach-not-local-file", attachment: "https://github.com/other/repo/issues/3" },
+      '--attach takes a local file, and "https://github.com/other/repo/issues/3" contains a URL.',
     ],
     [
       { kind: "gh-attach-dry-run-refused" },

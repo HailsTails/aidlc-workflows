@@ -6,6 +6,7 @@ import {
   type GhInvocation,
   type GhInvocationRefusal,
 } from "../domain/gh-invocation.ts";
+import { grantWriteArguments, type GrantWrite } from "../domain/grant-write.ts";
 import { withProvenance, type WriteCredential } from "../domain/provenance.ts";
 import type { RepositorySlug } from "../domain/repository-slug.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
@@ -94,8 +95,13 @@ type WrittenRun = { readonly run: GhRunOutcome; readonly via: WriteCredential };
 
 type StampedWrite = StampedTexts & {
   readonly invocation: GhInvocation;
-  readonly attachments: readonly string[];
   readonly gh: GitHubCliPort;
+};
+
+type GrantRun = {
+  readonly gh: GitHubCliPort;
+  readonly write: GrantWrite;
+  readonly body: string | undefined;
 };
 
 type RoutedWrite = StampedTexts & {
@@ -103,6 +109,8 @@ type RoutedWrite = StampedTexts & {
   readonly configuration: IdentityConfiguration;
   readonly dependencies: GhAsBotDependencies;
 };
+
+type GrantRoutedWrite = { readonly routed: RoutedWrite; readonly write: GrantWrite };
 
 type AttachmentFollowUp = {
   readonly invocation: GhInvocation;
@@ -199,17 +207,16 @@ const pullNumberOf = (invocation: GhInvocation): Result<number, GhTargetRequired
     ? succeed(Number(invocation.target))
     : fail({ kind: "gh-target-required", verb: invocation.verb });
 
-const attachFlags = (attachments: readonly string[]): readonly string[] =>
-  attachments.flatMap((attachment) => ["--attach", attachment]);
-
 const bodyFlags = (body: string | undefined): readonly string[] =>
   body === undefined ? [] : ["--body-file", "-"];
 
-const runStamped = ({ invocation, attachments, gh, body, closingComment }: StampedWrite) =>
+const runUnderGrant = ({ gh, write, body }: GrantRun) =>
+  gh.run({ ghArguments: grantWriteArguments({ write, body }), standardInput: body });
+
+const runStamped = ({ invocation, gh, body, closingComment }: StampedWrite) =>
   gh.run({
     ghArguments: [
       ...invocation.passThrough,
-      ...attachFlags(attachments),
       ...bodyFlags(body),
       ...(closingComment === undefined ? [] : ["--comment", closingComment]),
     ],
@@ -291,17 +298,16 @@ const writeAsBot = async (write: RoutedWrite): GhAsBotOutcome => {
   const gh = await connectAsBot(write);
   if (gh.kind === "failure") return gh;
   return singleWrite({
-    run: writeChecked({ ...write, attachments: [], gh: gh.outcome }),
+    run: writeChecked({ ...write, gh: gh.outcome }),
     via: "installation",
   });
 };
 
-const writeAsUser = async (write: RoutedWrite): GhAsBotOutcome => {
-  const gh = await connectAsUser(write);
+const writeAsUser = async ({ routed, write }: GrantRoutedWrite): GhAsBotOutcome => {
+  const gh = await connectAsUser(routed);
   if (gh.kind === "failure") return gh;
-  const attachments = attachedFilesOf(write.invocation.attachments);
   return singleWrite({
-    run: writeChecked({ ...write, attachments, gh: gh.outcome }),
+    run: runUnderGrant({ gh: gh.outcome, write, body: routed.body }),
     via: "user-grant",
   });
 };
@@ -317,15 +323,15 @@ const attachToCreated = async ({
 }: AttachmentFollowUp): Promise<Result<GhRun, AttachmentFollowUpFailure>> => {
   const createdNumber = createdNumberOf(created.standardOutput);
   if (createdNumber.kind === "failure") return createdNumber;
-  return userGh.run({
-    ghArguments: [
-      editedNounOf(invocation),
-      "edit",
-      String(createdNumber.outcome),
-      ...attachFlags(attachedFilesOf(invocation.attachments)),
-      ...bodyFlags(followUpBody),
-    ],
-    standardInput: followUpBody,
+  return runUnderGrant({
+    gh: userGh,
+    write: {
+      verb: `${editedNounOf(invocation)} edit`,
+      target: String(createdNumber.outcome),
+      flags: [],
+      files: attachedFilesOf(invocation.attachments),
+    },
+    body: followUpBody,
   });
 };
 
@@ -335,7 +341,7 @@ const createThenAttach = async (write: RoutedWrite): GhAsBotOutcome => {
   if (userGh.kind === "failure") return userGh;
   const botGh = await connectAsBot(write);
   if (botGh.kind === "failure") return botGh;
-  const created = await writeChecked({ ...write, attachments: [], gh: botGh.outcome });
+  const created = await writeChecked({ ...write, gh: botGh.outcome });
   if (created.kind === "failure") return created;
   if (created.outcome.exitCode !== 0) {
     return succeed({ kind: "single-write", run: created.outcome, via: "installation" });
@@ -350,11 +356,12 @@ const createThenAttach = async (write: RoutedWrite): GhAsBotOutcome => {
 };
 
 const writeRouted = (write: RoutedWrite): GhAsBotOutcome => {
-  switch (write.invocation.attachments.kind) {
+  const { attachments } = write.invocation;
+  switch (attachments.kind) {
     case "none":
       return writeAsBot(write);
     case "same-write":
-      return writeAsUser(write);
+      return writeAsUser({ routed: write, write: attachments.write });
     case "follow-up-edit":
       return createThenAttach(write);
   }

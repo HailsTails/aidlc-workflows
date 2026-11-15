@@ -118,8 +118,19 @@ describe("parseGhInvocation flags", () => {
     [["pr", "merge", "4", "--repo=other/repo"], "--repo"],
     [["pr", "comment", "4", "-Rother/repo"], "-R"],
     [["pr", "comment", "4", "-dR", "other/repo"], "-R"],
+    [["pr", "merge", "4", "--subject=Squash", "-Rother/repo"], "-R"],
   ])("refuses %j", (commandArguments, flag) => {
     expect(parseGhInvocation(commandArguments)).toEqual(fail({ kind: "gh-flag-refused", flag }));
+  });
+
+  it.each([
+    [["pr", "edit", "4", "--title", "-Rework the parser"], "-Rework the parser"],
+    [["pr", "merge", "4", "--squash", "--subject", "-Revert the parser"], "-Revert the parser"],
+  ])("keeps %j, where %s is the value of the flag before it and not a flag", (commandArguments, flagValue) => {
+    const invocation = parseGhInvocation(commandArguments);
+
+    assert(invocation.kind === "success");
+    expect(invocation.outcome.passThrough).toContain(flagValue);
   });
 
   it.each([
@@ -141,7 +152,13 @@ describe("parseGhInvocation flags", () => {
 
   it.each([
     [["pr", "create", "--attach", "a.png"], { kind: "follow-up-edit", files: ["a.png"] }],
-    [["issue", "comment", "9", "--attach", "a.png"], { kind: "same-write", files: ["a.png"] }],
+    [
+      ["issue", "comment", "9", "--attach", "a.png"],
+      {
+        kind: "same-write",
+        write: { verb: "issue comment", target: "9", flags: [], files: ["a.png"] },
+      },
+    ],
     [["pr", "create", "--title", "T"], { kind: "none" }],
   ])("delivers the attachments of %j as %j", (commandArguments, delivery) => {
     const invocation = parseGhInvocation(commandArguments);
@@ -188,53 +205,82 @@ describe("parseGhInvocation flags", () => {
   });
 
   it.each([
-    [
-      ["issue", "edit", "9", "https://github.com/other/repo/issues/3", "--attach", "a.png"],
-      "https://github.com/other/repo/issues/3",
-    ],
-    [
-      ["issue", "edit", "9", "--attach", "a.png", "http://github.com/other/repo/issues/3"],
-      "http://github.com/other/repo/issues/3",
-    ],
-    [
-      ["issue", "edit", "9", "--parent", "https://github.com/other/repo/issues/3", "--attach", "a.png"],
-      "https://github.com/other/repo/issues/3",
-    ],
-    [
-      ["issue", "edit", "9", "--add-sub-issue=7,https://github.com/other/repo/issues/3", "--attach", "a.png"],
-      "--add-sub-issue=7,https://github.com/other/repo/issues/3",
-    ],
-    [
-      ["issue", "edit", "9", "--add-blocked-by", "https://github.com/other/repo/issues/3", "--attach", "a.png"],
-      "https://github.com/other/repo/issues/3",
-    ],
-    [
-      ["pr", "edit", "4", "https://github.com/other/repo/pull/3", "--attach", "a.png"],
-      "https://github.com/other/repo/pull/3",
-    ],
-    [
-      ["pr", "comment", "4", "--attach", "a.png", "https://github.com/other/repo/pull/3"],
-      "https://github.com/other/repo/pull/3",
-    ],
-    [
-      ["issue", "comment", "9", "https://github.com/other/repo/issues/3", "--attach", "a.png"],
-      "https://github.com/other/repo/issues/3",
-    ],
-  ])("refuses %j with attachments, since gh would take a repository from %s", (commandArguments, token) => {
+    ["pr edit", "https://github.com/other/repo/pull/3"],
+    ["pr comment", "https://github.com/other/repo/pull/3"],
+    ["issue edit", "https://github.com/other/repo/issues/3"],
+    ["issue comment", "https://github.com/other/repo/issues/3"],
+  ])("refuses gh %s 9 --body x --attach <url> --title, whose attachment is %s", (verb, url) => {
+    expect(
+      parseGhInvocation([...verb.split(" "), "9", "--body", "x", "--attach", url, "--title"]),
+    ).toEqual(fail({ kind: "gh-attach-not-local-file", attachment: url }));
+  });
+
+  it.each([
+    [["pr", "create", "--attach", "https://github.com/other/repo/issues/3"], "https://github.com/other/repo/issues/3"],
+    [["issue", "create", "--attach=a.png", "--attach", "file://host/a.png"], "file://host/a.png"],
+    [["pr", "comment", "4", "--attach", "a.png#see https://example.test"], "a.png#see https://example.test"],
+  ])("refuses %j, whose attachment %s is not a local file", (commandArguments, attachment) => {
     expect(parseGhInvocation(commandArguments)).toEqual(
-      fail({ kind: "gh-attach-reference-refused", token }),
+      fail({ kind: "gh-attach-not-local-file", attachment }),
     );
   });
 
   it.each([
-    [["pr", "comment", "4", "-b", "See https://example.test/trace.", "--attach", "a.png"]],
-    [["issue", "edit", "9", "--parent", "12", "--add-label", "bug", "--attach", "a.png"]],
-    [["pr", "edit", "4", "--body-file", "notes.md", "--attach", "a.png"]],
-  ])("keeps %j, whose only URL is in the body or which names everything by number", (commandArguments) => {
-    const invocation = parseGhInvocation(commandArguments);
+    [["pr", "edit", "9", "--body", "x", "--attach", "a.png", "--title"]],
+    [["issue", "edit", "9", "--body", "x", "--attach", "a.png", "--title"]],
+  ])("refuses %j, whose trailing --title would swallow the next argument", (commandArguments) => {
+    expect(parseGhInvocation(commandArguments)).toEqual(
+      fail({ kind: "gh-flag-value-missing", flag: "--title" }),
+    );
+  });
+
+  it.each([
+    ["pr comment", ["pr", "comment", "9", "--body", "x", "--attach", "a.png", "--title"], "--title"],
+    ["issue comment", ["issue", "comment", "9", "--body", "x", "--attach", "a.png", "--title"], "--title"],
+    [
+      "issue edit",
+      ["issue", "edit", "9", "https://github.com/other/repo/issues/3", "--attach", "a.png"],
+      "https://github.com/other/repo/issues/3",
+    ],
+    [
+      "issue edit",
+      ["issue", "edit", "9", "--parent", "https://github.com/other/repo/issues/3", "--attach", "a.png"],
+      "--parent",
+    ],
+    [
+      "pr comment",
+      ["pr", "comment", "4", "--attach", "a.png", "https://github.com/other/repo/pull/3"],
+      "https://github.com/other/repo/pull/3",
+    ],
+  ] as const)("refuses on %s the arguments %j, since %s is not in the verb's list", (verb, commandArguments, token) => {
+    expect(parseGhInvocation(commandArguments)).toEqual(
+      fail({ kind: "gh-attach-argument-refused", verb, token }),
+    );
+  });
+
+  it("keeps a URL in the body and in a listed flag's value, joined to that flag when it runs", () => {
+    const invocation = parseGhInvocation([
+      "pr",
+      "edit",
+      "4",
+      "-b",
+      "See https://example.test/trace.",
+      "--title",
+      "https://example.test/trace",
+      "--attach",
+      "a.png",
+    ]);
 
     assert(invocation.kind === "success");
-    expect(invocation.outcome.attachments).toEqual({ kind: "same-write", files: ["a.png"] });
+    expect(invocation.outcome.attachments).toEqual({
+      kind: "same-write",
+      write: {
+        verb: "pr edit",
+        target: "4",
+        flags: [{ kind: "valued", name: "--title", value: "https://example.test/trace" }],
+        files: ["a.png"],
+      },
+    });
   });
 
   it("leaves a URL target on a write as the bot, whose token reaches one repository only", () => {

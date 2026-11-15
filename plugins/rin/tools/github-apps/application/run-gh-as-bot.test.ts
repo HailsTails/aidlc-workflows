@@ -195,7 +195,7 @@ describe("runGhAsBot attachments on an edit or comment", () => {
       }),
     );
     expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
-      ghArguments: ["pr", "comment", "4", "--attach", "a.png", "--body-file", "-"],
+      ghArguments: ["pr", "comment", "4", "--attach=a.png", "--body-file=-"],
       standardInput: "<!-- rin-bot: role=author session=4 via=user-grant -->\n\nSee.",
     });
     expect(gh.run).not.toHaveBeenCalled();
@@ -222,9 +222,50 @@ describe("runGhAsBot attachments on an edit or comment", () => {
     await run(["pr", "comment", "4", "--attach", "a.png"], dependencies);
 
     expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
-      ghArguments: ["pr", "comment", "4", "--attach", "a.png", "--body-file", "-"],
+      ghArguments: ["pr", "comment", "4", "--attach=a.png", "--body-file=-"],
       standardInput: "<!-- rin-bot: role=author session=4 via=user-grant -->\n\n",
     });
+  });
+
+  it("hands gh the number, the listed flags joined to their values, the files and the body, in that order", async () => {
+    const { userGh, dependencies } = fakeDependencies();
+
+    await run(
+      ["issue", "edit", "9", "--attach", "a.png", "-t", "New title", "-b", "Text.", "--add-label", "bug"],
+      dependencies,
+    );
+
+    expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
+      ghArguments: [
+        "issue",
+        "edit",
+        "9",
+        "--title=New title",
+        "--add-label=bug",
+        "--attach=a.png",
+        "--body-file=-",
+      ],
+      standardInput: "<!-- rin-bot: role=author session=9 via=user-grant -->\n\nText.",
+    });
+  });
+
+  it.each([
+    [["pr", "edit", "9", "--body", "x", "--attach", "https://github.com/other/repo/pull/9", "--title"]],
+    [["pr", "comment", "9", "--body", "x", "--attach", "https://github.com/other/repo/pull/9", "--title"]],
+    [["issue", "edit", "9", "--body", "x", "--attach", "https://github.com/other/repo/issues/9", "--title"]],
+    [["issue", "comment", "9", "--body", "x", "--attach", "https://github.com/other/repo/issues/9", "--title"]],
+    [["issue", "edit", "9", "--body", "x", "--attach", "a.png", "--title"]],
+    [["issue", "edit", "9", "--body", "x", "--attach", "a.png", "https://github.com/other/repo/issues/9"]],
+  ])("mints no token and runs nothing for %j", async (commandArguments) => {
+    const { gh, userGh, dependencies } = fakeDependencies();
+
+    const report = await run(commandArguments, dependencies);
+
+    expect(report.kind).toBe("failure");
+    expect(dependencies.userTokenMinter.mintUserToken).not.toHaveBeenCalled();
+    expect(dependencies.tokenMinter.mintInstallationToken).not.toHaveBeenCalled();
+    expect(userGh.run).not.toHaveBeenCalled();
+    expect(gh.run).not.toHaveBeenCalled();
   });
 
   it("never falls back to the bot when the user grant is missing", async () => {
@@ -277,7 +318,7 @@ describe("runGhAsBot attachments on a create", () => {
     await run(createWithAttachment, dependencies);
 
     expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
-      ghArguments: ["pr", "edit", "4", "--attach", "a.png#Before", "--body-file", "-"],
+      ghArguments: ["pr", "edit", "4", "--attach=a.png#Before", "--body-file=-"],
       standardInput: attachedBody,
     });
   });
@@ -291,7 +332,7 @@ describe("runGhAsBot attachments on a create", () => {
     );
 
     expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
-      ghArguments: ["pr", "edit", "4", "--attach", "a.png", "--body-file", "-"],
+      ghArguments: ["pr", "edit", "4", "--attach=a.png", "--body-file=-"],
       standardInput: attachedBody,
     });
   });
@@ -309,7 +350,7 @@ describe("runGhAsBot attachments on a create", () => {
     await run(["issue", "create", "-t", "T", "-b", "Body.", "--attach", "a.png"], dependencies);
 
     expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
-      ghArguments: ["issue", "edit", "429", "--attach", "a.png", "--body-file", "-"],
+      ghArguments: ["issue", "edit", "429", "--attach=a.png", "--body-file=-"],
       standardInput: "<!-- rin-bot: role=author session=new-issue via=user-grant -->\n\nBody.",
     });
   });

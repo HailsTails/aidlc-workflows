@@ -10,6 +10,7 @@ import type {
   GhAsBotFailure,
 } from "../../application/run-gh-as-bot.ts";
 import { supportedGhVerbs } from "../../domain/gh-invocation.ts";
+import { acceptedGrantFlags } from "../../domain/grant-write.ts";
 import { formatRepositorySlug } from "../../domain/repository-slug.ts";
 import type { FlagFailure } from "./command-flags.ts";
 
@@ -81,9 +82,11 @@ const describers: FailureDescribers = {
   "gh-attach-unsupported": ({ verb }) =>
     `gh ${verb} takes no --attach. Attach files with gh pr create, gh pr edit, gh pr comment, gh issue create, gh issue edit or gh issue comment.`,
   "gh-attach-target-not-number": ({ verb }) =>
-    `gh ${verb} with --attach needs the number right after the verb, as in "gh ${verb} 12 --attach shot.png". A URL or a branch is refused: the write runs under the operator's grant, which GitHub does not limit to this repository.`,
-  "gh-attach-reference-refused": ({ token }) =>
-    `Refusing "${token}" on a write with --attach: gh takes a repository from a URL, and the operator's grant is not limited to this repository. Give numbers in place of URLs, and put a URL that belongs in the text into the body.`,
+    `gh ${verb} with --attach needs the number right after the verb, as in "gh ${verb} 12 --attach shot.png". A URL, a branch or a flag in that place is refused: the write runs under the operator's grant, which GitHub does not limit to this repository.`,
+  "gh-attach-argument-refused": ({ verb, token }) =>
+    `Refusing "${token}" on gh ${verb} with --attach. That write runs under the operator's grant, which GitHub does not limit to this repository, so it accepts only the number, --body or --body-file, --attach and these flags: ${acceptedGrantFlags(verb).join(", ")}. Make any other change in a separate write without --attach.`,
+  "gh-attach-not-local-file": ({ attachment }) =>
+    `--attach takes a local file, and "${attachment}" contains a URL.`,
   "gh-attach-dry-run-refused": () =>
     "--dry-run creates nothing, so there is nothing to attach files to. Drop --attach or --dry-run.",
   "gh-flag-value-missing": ({ flag }) => `${flag} needs a value.`,

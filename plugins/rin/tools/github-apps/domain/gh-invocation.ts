@@ -1,4 +1,11 @@
 import type { AgentRole } from "./agent-role.ts";
+import { flagTokenOf, type FlagToken } from "./flag-token.ts";
+import {
+  isGrantWriteVerb,
+  parseGrantWrite,
+  type GrantWrite,
+  type GrantWriteRefusal,
+} from "./grant-write.ts";
 import type { InstallationPermissions } from "./installation-permissions.ts";
 import type { ReviewEvent } from "./pull-request.ts";
 import { fail, succeed, type Result } from "./result.ts";
@@ -77,10 +84,8 @@ type ReviewRequest = {
 
 type AttachmentDelivery =
   | { readonly kind: "none" }
-  | {
-      readonly kind: Exclude<AttachmentCarriage, "unsupported">;
-      readonly files: readonly string[];
-    };
+  | { readonly kind: "same-write"; readonly write: GrantWrite }
+  | { readonly kind: "follow-up-edit"; readonly files: readonly string[] };
 
 type GhInvocation = {
   readonly verb: GhVerb;
@@ -99,17 +104,15 @@ type AttachedFiles = {
   readonly verb: GhVerb;
   readonly route: GhRoute;
   readonly files: readonly string[];
-  readonly target: string | undefined;
   readonly passThrough: readonly string[];
 };
 
 type GhInvocationRefusal =
+  | GrantWriteRefusal
   | { readonly kind: "gh-verb-unsupported"; readonly verb: string }
   | { readonly kind: "gh-flag-refused"; readonly flag: string }
-  | { readonly kind: "gh-flag-value-missing"; readonly flag: string }
   | { readonly kind: "gh-attach-unsupported"; readonly verb: string }
-  | { readonly kind: "gh-attach-target-not-number"; readonly verb: string }
-  | { readonly kind: "gh-attach-reference-refused"; readonly token: string }
+  | { readonly kind: "gh-attach-not-local-file"; readonly attachment: string }
   | { readonly kind: "gh-attach-dry-run-refused" }
   | { readonly kind: "gh-body-given-twice" }
   | { readonly kind: "gh-review-event-ambiguous" }
@@ -155,8 +158,6 @@ const STANDARD_INPUT = "-";
 
 const REPOSITORY_SHORT_FLAG = /^-[A-Za-z]*R/;
 
-const PLAIN_NUMBER = /^[1-9]\d*$/;
-
 const URL_REFERENCE = /:\/\//;
 
 const DRY_RUN_FLAG = "--dry-run";
@@ -177,12 +178,6 @@ type SingleValuedField = "inlineBody" | "bodyFile" | "session" | "commitSha" | "
 
 type OwnedField = SingleValuedField | "attachments";
 
-type FlagToken = {
-  readonly token: string;
-  readonly flag: string;
-  readonly attachedValue: string | undefined;
-};
-
 type FlagWithValue = {
   readonly flagValue: string;
   readonly passed: readonly string[];
@@ -193,6 +188,7 @@ type ScanStep = {
   readonly tokens: readonly string[];
   readonly scanned: ScannedFlags;
   readonly route: GhRoute;
+  readonly mayBeFlagValue: boolean;
 };
 
 const NOTHING_SCANNED: ScannedFlags = {
@@ -208,13 +204,6 @@ const NOTHING_SCANNED: ScannedFlags = {
 };
 
 const isGhVerb = (verb: string): verb is GhVerb => Object.hasOwn(GH_ROUTES, verb);
-
-const flagTokenOf = (token: string): FlagToken => {
-  const separator = token.indexOf("=");
-  return token.startsWith("--") && separator > 0
-    ? { token, flag: token.slice(0, separator), attachedValue: token.slice(separator + 1) }
-    : { token, flag: token, attachedValue: undefined };
-};
 
 const isReviewRoute = (route: GhRoute): boolean => route.check === "review-binding";
 
@@ -261,16 +250,31 @@ const recordHead = (scanned: ScannedFlags, { flagValue, passed }: FlagWithValue)
   head: flagValue,
 });
 
-const scanFlags = ({ tokens, scanned, route }: ScanStep): Result<ScannedFlags, GhInvocationRefusal> => {
+const isBareFlag = ({ token, attachedValue }: FlagToken): boolean =>
+  token.startsWith("-") && attachedValue === undefined;
+
+const scanFlags = ({
+  tokens,
+  scanned,
+  route,
+  mayBeFlagValue,
+}: ScanStep): Result<ScannedFlags, GhInvocationRefusal> => {
   const [token, ...remaining] = tokens;
   if (token === undefined) return succeed(scanned);
   const flagToken = flagTokenOf(token);
   if (REFUSED_FLAGS.has(flagToken.flag)) return fail({ kind: "gh-flag-refused", flag: flagToken.flag });
-  if (REPOSITORY_SHORT_FLAG.test(token)) return fail({ kind: "gh-flag-refused", flag: "-R" });
+  if (!mayBeFlagValue && REPOSITORY_SHORT_FLAG.test(token)) {
+    return fail({ kind: "gh-flag-refused", flag: "-R" });
+  }
   const reviewEvent = isReviewRoute(route) ? REVIEW_EVENT_FLAGS[flagToken.flag] : undefined;
   if (reviewEvent !== undefined) {
     const reviewEvents = [...scanned.reviewEvents, reviewEvent];
-    return scanFlags({ tokens: remaining, scanned: { ...scanned, reviewEvents }, route });
+    return scanFlags({
+      tokens: remaining,
+      scanned: { ...scanned, reviewEvents },
+      route,
+      mayBeFlagValue: false,
+    });
   }
   const owned = ownedFieldOf(route, flagToken.flag);
   if (owned !== undefined) {
@@ -278,16 +282,31 @@ const scanFlags = ({ tokens, scanned, route }: ScanStep): Result<ScannedFlags, G
     if (valued.kind === "failure") return valued;
     const recorded = recordOwned(scanned, owned, valued.outcome.flagValue);
     if (recorded.kind === "failure") return recorded;
-    return scanFlags({ tokens: valued.outcome.rest, scanned: recorded.outcome, route });
+    return scanFlags({
+      tokens: valued.outcome.rest,
+      scanned: recorded.outcome,
+      route,
+      mayBeFlagValue: false,
+    });
   }
   if (HEAD_FLAGS.has(flagToken.flag)) {
     const valued = takeValue(flagToken, remaining);
     if (valued.kind === "failure") return valued;
     const recorded = recordHead(scanned, valued.outcome);
-    return scanFlags({ tokens: valued.outcome.rest, scanned: recorded, route });
+    return scanFlags({
+      tokens: valued.outcome.rest,
+      scanned: recorded,
+      route,
+      mayBeFlagValue: false,
+    });
   }
   const passThrough = [...scanned.passThrough, token];
-  return scanFlags({ tokens: remaining, scanned: { ...scanned, passThrough }, route });
+  return scanFlags({
+    tokens: remaining,
+    scanned: { ...scanned, passThrough },
+    route,
+    mayBeFlagValue: isBareFlag(flagToken),
+  });
 };
 
 const bodySourceOf = ({ inlineBody, bodyFile }: ScannedFlags): BodySource | undefined => {
@@ -314,20 +333,14 @@ const reviewRequestOf = (
   return succeed({ event: scanned.reviewEvents[0], commitSha: scanned.commitSha });
 };
 
-const confineToPinnedRepository = ({
+const writtenUnderGrant = ({
   verb,
   files,
-  target,
   passThrough,
 }: AttachedFiles): Result<AttachmentDelivery, GhInvocationRefusal> => {
-  if (target === undefined || !PLAIN_NUMBER.test(target)) {
-    return fail({ kind: "gh-attach-target-not-number", verb });
-  }
-  const reference = passThrough.find((token) => URL_REFERENCE.test(token));
-  if (reference !== undefined) {
-    return fail({ kind: "gh-attach-reference-refused", token: reference });
-  }
-  return succeed({ kind: "same-write", files });
+  if (!isGrantWriteVerb(verb)) return fail({ kind: "gh-attach-unsupported", verb });
+  const write = parseGrantWrite({ verb, tokens: passThrough, files });
+  return write.kind === "failure" ? write : succeed({ kind: "same-write", write: write.outcome });
 };
 
 const createsForReal = ({
@@ -342,18 +355,28 @@ const attachmentDeliveryOf = (
   attached: AttachedFiles,
 ): Result<AttachmentDelivery, GhInvocationRefusal> => {
   if (attached.files.length === 0) return succeed({ kind: "none" });
+  const remote = attached.files.find((file) => URL_REFERENCE.test(file));
+  if (remote !== undefined) return fail({ kind: "gh-attach-not-local-file", attachment: remote });
   switch (attached.route.attachments) {
     case "unsupported":
       return fail({ kind: "gh-attach-unsupported", verb: attached.verb });
     case "same-write":
-      return confineToPinnedRepository(attached);
+      return writtenUnderGrant(attached);
     case "follow-up-edit":
       return createsForReal(attached);
   }
 };
 
-const attachedFilesOf = (delivery: AttachmentDelivery): readonly string[] =>
-  delivery.kind === "none" ? [] : delivery.files;
+const attachedFilesOf = (delivery: AttachmentDelivery): readonly string[] => {
+  switch (delivery.kind) {
+    case "none":
+      return [];
+    case "same-write":
+      return delivery.write.files;
+    case "follow-up-edit":
+      return delivery.files;
+  }
+};
 
 const parseGhInvocation = (
   commandArguments: readonly string[],
@@ -362,13 +385,17 @@ const parseGhInvocation = (
   const verb = `${noun} ${action}`;
   if (!isGhVerb(verb)) return fail({ kind: "gh-verb-unsupported", verb: verb.trim() });
   const route: GhRoute = GH_ROUTES[verb];
-  const scanned = scanFlags({ tokens, scanned: NOTHING_SCANNED, route });
+  const scanned = scanFlags({
+    tokens,
+    scanned: NOTHING_SCANNED,
+    route,
+    mayBeFlagValue: false,
+  });
   if (scanned.kind === "failure") return scanned;
   const attachments = attachmentDeliveryOf({
     verb,
     route,
     files: scanned.outcome.attachments,
-    target: targetOf(tokens),
     passThrough: scanned.outcome.passThrough,
   });
   if (attachments.kind === "failure") return attachments;
