@@ -4,6 +4,7 @@ import type { StorePlacementCheck } from "../../application/credential-store-bou
 import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
+import type { UserTokenMinter } from "../../application/mint-user-token.ts";
 import type { BodyFileReader } from "../../application/read-body-file.ts";
 import { succeed } from "../../domain/result.ts";
 import { secret } from "../../domain/secret.ts";
@@ -41,6 +42,7 @@ describe("ghCommand", () => {
           .fn<TokenMinter["mintInstallationToken"]>()
           .mockResolvedValue(succeed(secret("ghs_bot"))),
       },
+      userTokenMinter: { mintUserToken: vi.fn<UserTokenMinter["mintUserToken"]>() },
       connectGitHubCli: vi.fn<CliDependencies["connectGitHubCli"]>().mockReturnValue(githubCli),
       worktree: {
         readCurrentBranch: vi.fn<GitWorktreePort["readCurrentBranch"]>(),

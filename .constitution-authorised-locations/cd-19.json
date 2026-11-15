@@ -365,7 +365,7 @@
         },
         {
           "why": "Why must the bot tooling read and write files at all?",
-          "because": "The identity configuration, the credential store, the app private keys and --body-file bodies live on disk, and the GitHub App user grant is persisted per machine in the credential store and refreshed under an exclusive lock file there, because GitHub invalidates the old tokens on every refresh and parallel sessions share the grant",
+          "because": "The identity configuration, the credential store, the app private keys and --body-file bodies live on disk, and the operator's OAuth grant for attachment uploads is persisted per machine in the credential store and refreshed under an exclusive lock file there, because GitHub invalidates the old tokens on every refresh and parallel sessions share the grant",
           "evidence": "identity-configuration.ts, file-credential-store.ts and application/read-body-file.ts take readTextFile; file-user-grant-store.ts takes readTextFile and replacePrivateFile; exclusive-file-lock.ts takes createPrivateFile, readTextFile and removeFile"
         },
         {

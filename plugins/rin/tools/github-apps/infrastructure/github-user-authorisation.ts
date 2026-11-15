@@ -266,12 +266,12 @@ const toGrantedPoll = (reply: z.infer<typeof grantSchema>): DeviceCodePoll => ({
 
 const requestDeviceCode =
   ({ fetchResource }: GitHubUserAuthorisationDependencies) =>
-  ({ clientId }: DeviceCodeRequest) =>
+  ({ clientId, scope }: DeviceCodeRequest) =>
     runExchange({
       fetchResource,
       operation: REQUEST_DEVICE_CODE,
       url: DEVICE_CODE_URL,
-      requestBody: { client_id: clientId },
+      requestBody: { client_id: clientId, scope },
       successSchema: deviceCodeSchema,
       acceptSuccess: toDeviceAuthorisation,
       specificRefusals: NO_SPECIFIC_REFUSALS,

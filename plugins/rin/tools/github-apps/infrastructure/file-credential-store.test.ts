@@ -187,7 +187,7 @@ describe("createFileCredentialStore refusals", () => {
 describe("createFileCredentialStore loadUserAuthorisationSettings", () => {
   it("loads the role's OAuth client id without reading its private key", async () => {
     const readTextFile = readingFiles(
-      '{"author":{"appId":"101","privateKeyPath":"a.pem","userAuthorisation":{"clientId":"Iv23liAuthor"}}}',
+      '{"author":{"appId":"101","privateKeyPath":"a.pem","userAuthorisation":{"clientId":"Ov23liOperator","scope":"repo"}}}',
     );
 
     const settings = await createFileCredentialStore({
@@ -195,7 +195,7 @@ describe("createFileCredentialStore loadUserAuthorisationSettings", () => {
       readTextFile,
     }).loadUserAuthorisationSettings({ role: "author" });
 
-    expect(settings).toEqual(succeed({ clientId: "Iv23liAuthor" }));
+    expect(settings).toEqual(succeed({ clientId: "Ov23liOperator", scope: "repo" }));
     expect(readTextFile).toHaveBeenCalledOnce();
     expect(readTextFile).toHaveBeenCalledWith(`${storeDirectory}/credentials.json`);
   });
@@ -230,7 +230,7 @@ describe("createFileCredentialStore loadUserAuthorisationSettings", () => {
     const settings = await createFileCredentialStore({
       locateStoreDirectory: locatedStore(),
       readTextFile: readingFiles(
-        '{"author":{"appId":"101","privateKeyPath":"a.pem","userAuthorisation":{"clientId":""}}}',
+        '{"author":{"appId":"101","privateKeyPath":"a.pem","userAuthorisation":{"clientId":"","scope":"repo"}}}',
       ),
     }).loadUserAuthorisationSettings({ role: "author" });
 

@@ -38,7 +38,6 @@ type DevicePrompt = {
 
 type UserAuthorisationRequest = {
   readonly role: AgentRole;
-  readonly appSlug: string;
   readonly announce: (prompt: DevicePrompt) => void;
 };
 
@@ -70,7 +69,7 @@ type ApprovalWait = Pick<UserAuthorisingDependencies, "userAuthorisation" | "clo
 };
 
 type GrantKeeping = Pick<UserAuthorisingDependencies, "userGrantStore"> & {
-  readonly appSlug: string;
+  readonly role: AgentRole;
   readonly grant: UserGrant;
 };
 
@@ -94,23 +93,23 @@ const awaitApproval = async (wait: ApprovalWait): Promise<Result<IssuedUserGrant
 
 const keepGrant = async ({
   userGrantStore,
-  appSlug,
+  role,
   grant,
 }: GrantKeeping): Promise<Result<void, UserGrantLockFailure | UserGrantSaveFailure>> => {
-  const held = await userGrantStore.holdExclusively({
-    appSlug,
-    work: () => userGrantStore.save({ appSlug, grant }),
-  });
-  return held.kind === "failure" ? held : held.outcome;
+  const lock = await userGrantStore.lock({ role });
+  if (lock.kind === "failure") return lock;
+  const saved = await userGrantStore.save({ role, grant });
+  await lock.outcome();
+  return saved;
 };
 
 const createUserAuthoriser = (dependencies: UserAuthorisingDependencies): UserAuthoriser => ({
-  authoriseUser: async ({ role, appSlug, announce }) => {
+  authoriseUser: async ({ role, announce }) => {
     const { authorisationSettings, userAuthorisation, clock } = dependencies;
     const settings = await authorisationSettings.loadUserAuthorisationSettings({ role });
     if (settings.kind === "failure") return settings;
-    const { clientId } = settings.outcome;
-    const device = await userAuthorisation.requestDeviceCode({ clientId });
+    const { clientId, scope } = settings.outcome;
+    const device = await userAuthorisation.requestDeviceCode({ clientId, scope });
     if (device.kind === "failure") return device;
     const { deviceCode, userCode, verificationUri, expiresInSeconds } = device.outcome;
     announce({ userCode, verificationUri, expiresInSeconds });
@@ -123,7 +122,7 @@ const createUserAuthoriser = (dependencies: UserAuthorisingDependencies): UserAu
     });
     if (issued.kind === "failure") return issued;
     const grant = grantIssuedAt({ issued: issued.outcome, nowEpochSeconds: clock.nowEpochSeconds() });
-    const kept = await keepGrant({ ...dependencies, appSlug, grant });
+    const kept = await keepGrant({ ...dependencies, role, grant });
     if (kept.kind === "failure") return kept;
     return succeed({
       accessTokenExpiresAtEpochSeconds: grant.accessTokenExpiresAtEpochSeconds,

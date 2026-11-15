@@ -141,19 +141,17 @@ const calendarDateOf = (epochSeconds: number): string =>
 const loginCommand: LocalCommand = {
   access: "local",
   outputOnFailure: "",
-  execute: async ({ flags, configuration, dependencies }) => {
+  execute: async ({ flags, dependencies }) => {
     const loginFlags = validateFlags({ flags, schema: noFlagsSchema });
     if (loginFlags.kind === "failure") return loginFlags;
-    const { appSlug } = configuration.roles.author;
     const authorised = await dependencies.userAuthoriser.authoriseUser({
       role: "author",
-      appSlug,
       announce: (prompt) => dependencies.terminal.writeError(devicePromptText(prompt)),
     });
     if (authorised.kind === "failure") return authorised;
     return succeed(
       reportLine(
-        `${appSlug} may now upload attachments as you on this machine. The grant renews itself until ${calendarDateOf(authorised.outcome.refreshTokenExpiresAtEpochSeconds)}; run login again after that.`,
+        `The author role may now upload attachments as you from this machine. The grant renews itself until ${calendarDateOf(authorised.outcome.refreshTokenExpiresAtEpochSeconds)}; run login again after that.`,
       ),
     );
   },

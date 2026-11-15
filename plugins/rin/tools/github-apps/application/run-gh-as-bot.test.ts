@@ -6,6 +6,7 @@ import type { StorePlacementCheck } from "./credential-store-boundary.ts";
 import type { GitHubCliPort } from "./github-cli-port.ts";
 import type { GitWorktreePort } from "./git-worktree-port.ts";
 import type { TokenMinter } from "./mint-installation-token.ts";
+import type { UserTokenMinter } from "./mint-user-token.ts";
 import type { BodyFileReader } from "./read-body-file.ts";
 import { runGhAsBot, type GhAsBotDependencies } from "./run-gh-as-bot.ts";
 
@@ -18,6 +19,8 @@ const configuration = {
 };
 
 const token = secret("ghs_bot");
+
+const userToken = secret("gho_operator");
 
 const ghPrinted = succeed({ standardOutput: "https://github.com/pull/4\n", standardError: "", exitCode: 0 });
 
@@ -40,15 +43,24 @@ const fakeGh = () => ({
 
 const fakeDependencies = () => {
   const gh = fakeGh();
+  const userGh = fakeGh();
   return {
     gh,
+    userGh,
     dependencies: {
+      userTokenMinter: {
+        mintUserToken: vi
+          .fn<UserTokenMinter["mintUserToken"]>()
+          .mockResolvedValue(succeed(userToken)),
+      },
       tokenMinter: {
         mintInstallationToken: vi
           .fn<TokenMinter["mintInstallationToken"]>()
           .mockResolvedValue(succeed(token)),
       },
-      connectGitHubCli: vi.fn<GhAsBotDependencies["connectGitHubCli"]>().mockReturnValue(gh),
+      connectGitHubCli: vi
+        .fn<GhAsBotDependencies["connectGitHubCli"]>()
+        .mockImplementation((access) => (access.token === userToken ? userGh : gh)),
       worktree: {
         readCurrentBranch: vi
           .fn<GitWorktreePort["readCurrentBranch"]>()
@@ -167,15 +179,197 @@ describe("runGhAsBot stamping", () => {
     });
   });
 
+});
+
+describe("runGhAsBot attachments on an edit or comment", () => {
+  it("runs the whole write under the user grant, marked as such", async () => {
+    const { gh, userGh, dependencies } = fakeDependencies();
+
+    const report = await run(["pr", "comment", "4", "-b", "See.", "--attach", "a.png"], dependencies);
+
+    expect(report).toEqual(
+      succeed({
+        kind: "single-write",
+        run: { standardOutput: "https://github.com/pull/4\n", standardError: "", exitCode: 0 },
+      }),
+    );
+    expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
+      ghArguments: ["pr", "comment", "4", "--attach", "a.png", "--body-file", "-"],
+      standardInput: "<!-- rin-bot: role=author session=4 via=user-grant -->\n\nSee.",
+    });
+    expect(gh.run).not.toHaveBeenCalled();
+    expect(dependencies.tokenMinter.mintInstallationToken).not.toHaveBeenCalled();
+  });
+
+  it("pins the user grant to the configured repository", async () => {
+    const { dependencies } = fakeDependencies();
+
+    await run(["issue", "edit", "9", "--attach", "a.png"], dependencies);
+
+    expect(dependencies.userTokenMinter.mintUserToken).toHaveBeenCalledExactlyOnceWith({
+      role: "author",
+    });
+    expect(dependencies.connectGitHubCli).toHaveBeenCalledExactlyOnceWith({
+      token: userToken,
+      repository,
+    });
+  });
+
   it("lets an attachment stand in for the text, still stamped", async () => {
-    const { gh, dependencies } = fakeDependencies();
+    const { userGh, dependencies } = fakeDependencies();
 
     await run(["pr", "comment", "4", "--attach", "a.png"], dependencies);
 
-    expect(gh.run).toHaveBeenCalledExactlyOnceWith({
+    expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
       ghArguments: ["pr", "comment", "4", "--attach", "a.png", "--body-file", "-"],
-      standardInput: "<!-- rin-bot: role=author session=4 -->\n\n",
+      standardInput: "<!-- rin-bot: role=author session=4 via=user-grant -->\n\n",
     });
+  });
+
+  it("never falls back to the bot when the user grant is missing", async () => {
+    const { gh, dependencies } = fakeDependencies();
+    dependencies.userTokenMinter.mintUserToken.mockResolvedValue(
+      fail({ kind: "user-grant-missing", path: "store/author.user-grant.json" }),
+    );
+
+    const report = await run(["pr", "comment", "4", "-b", "See.", "--attach", "a.png"], dependencies);
+
+    expect(report).toEqual(
+      fail({ kind: "user-grant-missing", path: "store/author.user-grant.json" }),
+    );
+    expect(gh.run).not.toHaveBeenCalled();
+    expect(dependencies.tokenMinter.mintInstallationToken).not.toHaveBeenCalled();
+  });
+
+  it("leaves a write without attachments on the bot", async () => {
+    const { userGh, dependencies } = fakeDependencies();
+
+    await run(["pr", "comment", "4", "-b", "See."], dependencies);
+
+    expect(userGh.run).not.toHaveBeenCalled();
+    expect(dependencies.userTokenMinter.mintUserToken).not.toHaveBeenCalled();
+  });
+});
+
+describe("runGhAsBot attachments on a create", () => {
+  const createWithAttachment = ["pr", "create", "-t", "T", "-b", "Body.", "--attach", "a.png#Before"];
+
+  const stampedBody = "<!-- rin-bot: role=author session=feature/basket via=user-grant -->\n\nBody.";
+
+  it("creates as the bot without the attachments", async () => {
+    const { gh, dependencies } = fakeDependencies();
+
+    await run(createWithAttachment, dependencies);
+
+    expect(gh.run).toHaveBeenCalledExactlyOnceWith({
+      ghArguments: ["pr", "create", "-t", "T", "--body-file", "-"],
+      standardInput: stampedBody,
+    });
+  });
+
+  it("then attaches under the user grant by editing what it created with the same body", async () => {
+    const { userGh, dependencies } = fakeDependencies();
+
+    await run(createWithAttachment, dependencies);
+
+    expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
+      ghArguments: ["pr", "edit", "4", "--attach", "a.png#Before", "--body-file", "-"],
+      standardInput: stampedBody,
+    });
+  });
+
+  it("edits the issue it created for an issue create", async () => {
+    const { gh, userGh, dependencies } = fakeDependencies();
+    gh.run.mockResolvedValue(
+      succeed({
+        standardOutput: "https://github.com/HailsTails/minutesarah-shop/issues/429\n",
+        standardError: "",
+        exitCode: 0,
+      }),
+    );
+
+    await run(["issue", "create", "-t", "T", "-b", "Body.", "--attach", "a.png"], dependencies);
+
+    expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
+      ghArguments: ["issue", "edit", "429", "--attach", "a.png", "--body-file", "-"],
+      standardInput: "<!-- rin-bot: role=author session=new-issue via=user-grant -->\n\nBody.",
+    });
+  });
+
+  it("reports both runs", async () => {
+    const { userGh, dependencies } = fakeDependencies();
+    userGh.run.mockResolvedValue(
+      succeed({ standardOutput: "", standardError: "failed to upload a.png\n", exitCode: 1 }),
+    );
+
+    const report = await run(createWithAttachment, dependencies);
+
+    expect(report).toEqual(
+      succeed({
+        kind: "created-then-attached",
+        created: { standardOutput: "https://github.com/pull/4\n", standardError: "", exitCode: 0 },
+        attached: succeed({
+          standardOutput: "",
+          standardError: "failed to upload a.png\n",
+          exitCode: 1,
+        }),
+      }),
+    );
+  });
+
+  it("creates nothing when the user grant is missing", async () => {
+    const { gh, dependencies } = fakeDependencies();
+    dependencies.userTokenMinter.mintUserToken.mockResolvedValue(
+      fail({ kind: "user-grant-expired" }),
+    );
+
+    const report = await run(createWithAttachment, dependencies);
+
+    expect(report).toEqual(fail({ kind: "user-grant-expired" }));
+    expect(gh.run).not.toHaveBeenCalled();
+  });
+
+  it("attaches nothing when the create itself failed", async () => {
+    const { gh, userGh, dependencies } = fakeDependencies();
+    const refusedCreate = { standardOutput: "", standardError: "no commits\n", exitCode: 1 };
+    gh.run.mockResolvedValue(succeed(refusedCreate));
+
+    const report = await run(createWithAttachment, dependencies);
+
+    expect(report).toEqual(succeed({ kind: "single-write", run: refusedCreate }));
+    expect(userGh.run).not.toHaveBeenCalled();
+  });
+
+  it("reports a create whose URL it cannot read as created but not attached", async () => {
+    const { gh, userGh, dependencies } = fakeDependencies();
+    const urlless = { standardOutput: "", standardError: "", exitCode: 0 };
+    gh.run.mockResolvedValue(succeed(urlless));
+
+    const report = await run(createWithAttachment, dependencies);
+
+    expect(report).toEqual(
+      succeed({
+        kind: "created-then-attached",
+        created: urlless,
+        attached: fail({ kind: "created-number-unreadable" }),
+      }),
+    );
+    expect(userGh.run).not.toHaveBeenCalled();
+  });
+
+  it("reports a follow-up gh could not run alongside what was created", async () => {
+    const { userGh, dependencies } = fakeDependencies();
+    userGh.run.mockResolvedValue(fail({ kind: "gh-unavailable", detail: "spawn gh ENOENT" }));
+
+    const report = await run(createWithAttachment, dependencies);
+
+    expect(report).toEqual(
+      succeed({
+        kind: "created-then-attached",
+        created: { standardOutput: "https://github.com/pull/4\n", standardError: "", exitCode: 0 },
+        attached: fail({ kind: "gh-unavailable", detail: "spawn gh ENOENT" }),
+      }),
+    );
   });
 });
 
@@ -204,6 +398,7 @@ describe("runGhAsBot refusals", () => {
     await run(["issue", "comment", "9", "-b", "x", "--attach", "keys/a.pem"], dependencies);
 
     expect(dependencies.tokenMinter.mintInstallationToken).not.toHaveBeenCalled();
+    expect(dependencies.userTokenMinter.mintUserToken).not.toHaveBeenCalled();
   });
 
   it("refuses inline text carrying a private key", async () => {

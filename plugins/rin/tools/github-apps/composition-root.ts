@@ -1,6 +1,7 @@
 import { createUserAuthoriser } from "./application/authorise-user.ts";
 import { createStorePlacementCheck } from "./application/credential-store-boundary.ts";
 import { createTokenMinter } from "./application/mint-installation-token.ts";
+import { createUserTokenMinter } from "./application/mint-user-token.ts";
 import { createBodyFileReader } from "./application/read-body-file.ts";
 import { createCommandRunner } from "./infrastructure/command-runner.ts";
 import { createExclusiveFileLock } from "./infrastructure/exclusive-file-lock.ts";
@@ -49,7 +50,17 @@ const createCliDependencies = (): CliDependencies => {
   });
   const clock = createSystemClock();
   const pause = createSystemPause();
-  const lock = createExclusiveFileLock({ createPrivateFile, readTextFile, removeFile, clock, pause });
+  const userGrantAccess = {
+    authorisationSettings: credentialStore,
+    userAuthorisation: createDefaultGitHubUserAuthorisation(),
+    userGrantStore: createFileUserGrantStore({
+      locateStoreDirectory: locateCredentialStore,
+      readTextFile,
+      replacePrivateFile,
+      lock: createExclusiveFileLock({ createPrivateFile, readTextFile, removeFile, clock, pause }),
+    }),
+    clock,
+  };
   return {
     terminal: createProcessTerminal(),
     loadConfiguration: () =>
@@ -66,18 +77,8 @@ const createCliDependencies = (): CliDependencies => {
     readBodyFile: createBodyFileReader({ readTextFile, placeInStore }),
     placeInStore,
     credentialHelperCommand: credentialHelperCommandFor({ cliEntryPath: CLI_ENTRY_PATH }),
-    userAuthoriser: createUserAuthoriser({
-      authorisationSettings: credentialStore,
-      userAuthorisation: createDefaultGitHubUserAuthorisation(),
-      userGrantStore: createFileUserGrantStore({
-        locateStoreDirectory: locateCredentialStore,
-        readTextFile,
-        replacePrivateFile,
-        lock,
-      }),
-      clock,
-      pause,
-    }),
+    userTokenMinter: createUserTokenMinter(userGrantAccess),
+    userAuthoriser: createUserAuthoriser({ ...userGrantAccess, pause }),
   };
 };
 

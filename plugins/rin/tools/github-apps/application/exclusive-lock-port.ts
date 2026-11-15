@@ -1,16 +1,11 @@
 import type { Result } from "../domain/result.ts";
 
-type ExclusiveWork<Outcome> = {
-  readonly lockLocation: string;
-  readonly work: () => Promise<Outcome>;
-};
+type LockRelease = () => Promise<void>;
 
 type LockUnavailable = { readonly kind: "lock-unavailable"; readonly lockLocation: string };
 
 type ExclusiveLockPort = {
-  readonly holdExclusively: <Outcome>(
-    exclusive: ExclusiveWork<Outcome>,
-  ) => Promise<Result<Outcome, LockUnavailable>>;
+  readonly acquire: (lockLocation: string) => Promise<Result<LockRelease, LockUnavailable>>;
 };
 
-export type { ExclusiveLockPort, ExclusiveWork, LockUnavailable };
+export type { ExclusiveLockPort, LockRelease, LockUnavailable };

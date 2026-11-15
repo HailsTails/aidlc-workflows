@@ -1,10 +1,11 @@
 import { assessClose, type CloseRefusal } from "../domain/close-guard.ts";
+import { createdNumberOf, type CreatedNumberUnreadable } from "../domain/created-write.ts";
 import {
   parseGhInvocation,
   type GhInvocation,
   type GhInvocationRefusal,
 } from "../domain/gh-invocation.ts";
-import { withProvenance } from "../domain/provenance.ts";
+import { withProvenance, type WriteCredential } from "../domain/provenance.ts";
 import type { RepositorySlug } from "../domain/repository-slug.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
 import { assessReviewTarget, type ReviewRefusal } from "../domain/review-guard.ts";
@@ -15,6 +16,7 @@ import type { GitFailure, GitWorktreePort } from "./git-worktree-port.ts";
 import { guardAttachments, type AttachmentRefused } from "./guard-attachments.ts";
 import type { IdentityConfiguration } from "./identity-configuration-port.ts";
 import type { TokenFailure, TokenMinter } from "./mint-installation-token.ts";
+import type { UserTokenFailure, UserTokenMinter } from "./mint-user-token.ts";
 import {
   readAuthoredBody,
   refuseUnpublishable,
@@ -30,6 +32,7 @@ type GitHubCliAccess = { readonly token: Secret; readonly repository: Repository
 
 type GhAsBotDependencies = {
   readonly tokenMinter: TokenMinter;
+  readonly userTokenMinter: UserTokenMinter;
   readonly connectGitHubCli: (access: GitHubCliAccess) => GitHubCliPort;
   readonly worktree: GitWorktreePort;
   readonly readBodyFile: BodyFileReader;
@@ -55,12 +58,27 @@ type GhAsBotFailure =
   | AuthoredBodyFailure
   | GitFailure
   | TokenFailure
+  | UserTokenFailure
   | GhUnavailable
   | GhReadFailed
   | CloseRefusal
   | ReviewRefusal;
 
-type GhAsBotOutcome = Promise<Result<GhRun, GhAsBotFailure>>;
+type AttachmentFollowUpFailure = GhUnavailable | CreatedNumberUnreadable;
+
+type GhAsBotReport =
+  | { readonly kind: "single-write"; readonly run: GhRun }
+  | {
+      readonly kind: "created-then-attached";
+      readonly created: GhRun;
+      readonly attached: Result<GhRun, AttachmentFollowUpFailure>;
+    };
+
+type GhRunOutcome = Promise<Result<GhRun, GhAsBotFailure>>;
+
+type GhAsBotOutcome = Promise<Result<GhAsBotReport, GhAsBotFailure>>;
+
+type AttachmentRouting = "no-attachments" | "same-write" | "follow-up-edit";
 
 type PreparedText = {
   readonly authoredBody: string | undefined;
@@ -74,7 +92,21 @@ type StampedTexts = {
 
 type StampedWrite = StampedTexts & {
   readonly invocation: GhInvocation;
+  readonly attachments: readonly string[];
   readonly gh: GitHubCliPort;
+};
+
+type RoutedWrite = StampedTexts & {
+  readonly invocation: GhInvocation;
+  readonly configuration: IdentityConfiguration;
+  readonly dependencies: GhAsBotDependencies;
+};
+
+type AttachmentFollowUp = {
+  readonly invocation: GhInvocation;
+  readonly created: GhRun;
+  readonly body: string | undefined;
+  readonly userGh: GitHubCliPort;
 };
 
 type Stamping = {
@@ -120,6 +152,14 @@ const bodyToStamp = (invocation: GhInvocation, authoredBody: string | undefined)
 const passedVerbatim = (invocation: GhInvocation, authoredBody: string | undefined) =>
   invocation.route.body === "verbatim" ? authoredBody : undefined;
 
+const attachmentRoutingOf = ({ attachments, route }: GhInvocation): AttachmentRouting =>
+  attachments.length === 0 || route.attachments === "unsupported"
+    ? "no-attachments"
+    : route.attachments;
+
+const writeCredentialOf = (invocation: GhInvocation): WriteCredential =>
+  attachmentRoutingOf(invocation) === "no-attachments" ? "installation" : "user-grant";
+
 const resolveSession = async ({
   invocation,
   worktree,
@@ -144,8 +184,8 @@ const stampTexts = async (
   const provenance = {
     role: stamping.invocation.route.role,
     session: session.outcome,
-    via: "installation",
-  } as const;
+    via: writeCredentialOf(stamping.invocation),
+  };
   const stamp = (text: string | undefined): string | undefined =>
     text === undefined ? undefined : withProvenance({ provenance, authoredBody: text });
   return succeed({ body: stamp(body) ?? verbatimBody, closingComment: stamp(closingComment) });
@@ -156,18 +196,24 @@ const pullNumberOf = (invocation: GhInvocation): Result<number, GhTargetRequired
     ? succeed(Number(invocation.target))
     : fail({ kind: "gh-target-required", verb: invocation.verb });
 
-const runStamped = ({ invocation, gh, body, closingComment }: StampedWrite) =>
+const attachFlags = (attachments: readonly string[]): readonly string[] =>
+  attachments.flatMap((attachment) => ["--attach", attachment]);
+
+const bodyFlags = (body: string | undefined): readonly string[] =>
+  body === undefined ? [] : ["--body-file", "-"];
+
+const runStamped = ({ invocation, attachments, gh, body, closingComment }: StampedWrite) =>
   gh.run({
     ghArguments: [
       ...invocation.passThrough,
-      ...invocation.attachments.flatMap((attachment) => ["--attach", attachment]),
-      ...(body === undefined ? [] : ["--body-file", "-"]),
+      ...attachFlags(attachments),
+      ...bodyFlags(body),
       ...(closingComment === undefined ? [] : ["--comment", closingComment]),
     ],
     standardInput: body,
   });
 
-const closeUnlessApproved = async (write: StampedWrite): GhAsBotOutcome => {
+const closeUnlessApproved = async (write: StampedWrite): GhRunOutcome => {
   const pullNumber = pullNumberOf(write.invocation);
   if (pullNumber.kind === "failure") return pullNumber;
   const pullRequest = await write.gh.readPullRequest(pullNumber.outcome);
@@ -177,7 +223,7 @@ const closeUnlessApproved = async (write: StampedWrite): GhAsBotOutcome => {
   return runStamped(write);
 };
 
-const reviewBoundToHead = async ({ invocation, gh, body }: StampedWrite): GhAsBotOutcome => {
+const reviewBoundToHead = async ({ invocation, gh, body }: StampedWrite): GhRunOutcome => {
   const { event, commitSha } = invocation.review;
   if (event === undefined) return fail({ kind: "gh-review-event-ambiguous" });
   const pullNumber = pullNumberOf(invocation);
@@ -194,7 +240,7 @@ const reviewBoundToHead = async ({ invocation, gh, body }: StampedWrite): GhAsBo
   });
 };
 
-const writeChecked = (write: StampedWrite): GhAsBotOutcome => {
+const writeChecked = (write: StampedWrite): GhRunOutcome => {
   switch (write.invocation.route.check) {
     case "close-guard":
       return closeUnlessApproved(write);
@@ -202,6 +248,106 @@ const writeChecked = (write: StampedWrite): GhAsBotOutcome => {
       return reviewBoundToHead(write);
     case "none":
       return runStamped(write);
+  }
+};
+
+const singleWrite = async (run: GhRunOutcome): GhAsBotOutcome => {
+  const ran = await run;
+  return ran.kind === "failure" ? ran : succeed({ kind: "single-write", run: ran.outcome });
+};
+
+const connectAsBot = async ({
+  invocation,
+  configuration,
+  dependencies,
+}: RoutedWrite): Promise<Result<GitHubCliPort, TokenFailure>> => {
+  const { role, permissions } = invocation.route;
+  const { repository } = configuration;
+  const token = await dependencies.tokenMinter.mintInstallationToken({
+    role,
+    appSlug: configuration.roles[role].appSlug,
+    repository,
+    permissions,
+  });
+  if (token.kind === "failure") return token;
+  return succeed(dependencies.connectGitHubCli({ token: token.outcome, repository }));
+};
+
+const connectAsUser = async ({
+  invocation,
+  configuration,
+  dependencies,
+}: RoutedWrite): Promise<Result<GitHubCliPort, UserTokenFailure>> => {
+  const { repository } = configuration;
+  const token = await dependencies.userTokenMinter.mintUserToken({ role: invocation.route.role });
+  if (token.kind === "failure") return token;
+  return succeed(dependencies.connectGitHubCli({ token: token.outcome, repository }));
+};
+
+const writeAsBot = async (write: RoutedWrite): GhAsBotOutcome => {
+  const gh = await connectAsBot(write);
+  if (gh.kind === "failure") return gh;
+  return singleWrite(writeChecked({ ...write, attachments: [], gh: gh.outcome }));
+};
+
+const writeAsUser = async (write: RoutedWrite): GhAsBotOutcome => {
+  const gh = await connectAsUser(write);
+  if (gh.kind === "failure") return gh;
+  const { attachments } = write.invocation;
+  return singleWrite(writeChecked({ ...write, attachments, gh: gh.outcome }));
+};
+
+const editedNounOf = ({ verb }: GhInvocation): "pr" | "issue" =>
+  verb.startsWith("pr ") ? "pr" : "issue";
+
+const attachToCreated = async ({
+  invocation,
+  created,
+  body,
+  userGh,
+}: AttachmentFollowUp): Promise<Result<GhRun, AttachmentFollowUpFailure>> => {
+  const createdNumber = createdNumberOf(created.standardOutput);
+  if (createdNumber.kind === "failure") return createdNumber;
+  return userGh.run({
+    ghArguments: [
+      editedNounOf(invocation),
+      "edit",
+      String(createdNumber.outcome),
+      ...attachFlags(invocation.attachments),
+      ...bodyFlags(body),
+    ],
+    standardInput: body,
+  });
+};
+
+const createThenAttach = async (write: RoutedWrite): GhAsBotOutcome => {
+  const { invocation, body } = write;
+  const userGh = await connectAsUser(write);
+  if (userGh.kind === "failure") return userGh;
+  const botGh = await connectAsBot(write);
+  if (botGh.kind === "failure") return botGh;
+  const created = await writeChecked({ ...write, attachments: [], gh: botGh.outcome });
+  if (created.kind === "failure") return created;
+  if (created.outcome.exitCode !== 0) {
+    return succeed({ kind: "single-write", run: created.outcome });
+  }
+  const attached = await attachToCreated({
+    invocation,
+    created: created.outcome,
+    body,
+    userGh: userGh.outcome,
+  });
+  return succeed({ kind: "created-then-attached", created: created.outcome, attached });
+};
+
+const writeRouted = (write: RoutedWrite): GhAsBotOutcome => {
+  switch (attachmentRoutingOf(write.invocation)) {
+    case "no-attachments":
+      return writeAsBot(write);
+    case "same-write":
+      return writeAsUser(write);
+    case "follow-up-edit":
+      return createThenAttach(write);
   }
 };
 
@@ -219,19 +365,19 @@ const runGhAsBot = async ({
     texts.outcome,
   );
   if (stamped.kind === "failure") return stamped;
-  const { role, permissions } = invocation.outcome.route;
-  const token = await dependencies.tokenMinter.mintInstallationToken({
-    role,
-    appSlug: configuration.roles[role].appSlug,
-    repository: configuration.repository,
-    permissions,
-  });
-  if (token.kind === "failure") return token;
-  return writeChecked({
+  return writeRouted({
     ...stamped.outcome,
     invocation: invocation.outcome,
-    gh: dependencies.connectGitHubCli({ token: token.outcome, repository: configuration.repository }),
+    configuration,
+    dependencies,
   });
 };
 
-export { runGhAsBot, type GhAsBotDependencies, type GhAsBotFailure, type GitHubCliAccess };
+export {
+  runGhAsBot,
+  type AttachmentFollowUpFailure,
+  type GhAsBotDependencies,
+  type GhAsBotFailure,
+  type GhAsBotReport,
+  type GitHubCliAccess,
+};

@@ -4,11 +4,12 @@ import { secret } from "../domain/secret.ts";
 import type { UserAuthorisationSettingsPort } from "./credential-store-port.ts";
 import { createUserTokenMinter } from "./mint-user-token.ts";
 import type { UserAuthorisationPort } from "./user-authorisation-port.ts";
-import type { ExclusiveGrantWork, UserGrantStorePort } from "./user-grant-store-port.ts";
+import type { LockRelease } from "./exclusive-lock-port.ts";
+import type { UserGrantStorePort } from "./user-grant-store-port.ts";
 
 const NOW = 1_700_000_000;
 
-const request = { role: "author", appSlug: "rin-author" } as const;
+const request = { role: "author" } as const;
 
 const storedAccessToken = secret("stored-access-token");
 
@@ -40,14 +41,13 @@ const renewedGrant = {
   refreshTokenExpiresAtEpochSeconds: NOW + 15_897_600,
 };
 
-const runWorkUnderLock = <Outcome>({ work }: ExclusiveGrantWork<Outcome>) =>
-  work().then((outcome) => succeed(outcome));
+const release = vi.fn<LockRelease>();
 
 const fakeDependencies = () => ({
   authorisationSettings: {
     loadUserAuthorisationSettings: vi
       .fn<UserAuthorisationSettingsPort["loadUserAuthorisationSettings"]>()
-      .mockResolvedValue(succeed({ clientId: "Iv23client" })),
+      .mockResolvedValue(succeed({ clientId: "Ov23client", scope: "repo" })),
   },
   userAuthorisation: {
     requestDeviceCode: vi.fn<UserAuthorisationPort["requestDeviceCode"]>(),
@@ -64,7 +64,7 @@ const fakeDependencies = () => ({
   userGrantStore: {
     load: vi.fn<UserGrantStorePort["load"]>().mockResolvedValue(succeed(staleGrant)),
     save: vi.fn<UserGrantStorePort["save"]>().mockResolvedValue(succeed(undefined)),
-    holdExclusively: vi.fn(runWorkUnderLock),
+    lock: vi.fn<UserGrantStorePort["lock"]>().mockResolvedValue(succeed(release)),
   },
   clock: { nowEpochSeconds: () => NOW },
 });
@@ -78,9 +78,9 @@ describe("mintUserToken with a usable grant", () => {
 
     expect(minted).toEqual(succeed(storedAccessToken));
     expect(dependencies.userGrantStore.load).toHaveBeenCalledExactlyOnceWith({
-      appSlug: "rin-author",
+      role: "author",
     });
-    expect(dependencies.userGrantStore.holdExclusively).not.toHaveBeenCalled();
+    expect(dependencies.userGrantStore.lock).not.toHaveBeenCalled();
     expect(dependencies.userAuthorisation.refreshGrant).not.toHaveBeenCalled();
   });
 });
@@ -92,15 +92,16 @@ describe("mintUserToken with a stale access token", () => {
     const minted = await createUserTokenMinter(dependencies).mintUserToken(request);
 
     expect(minted).toEqual(succeed(renewedAccessToken));
-    expect(dependencies.userGrantStore.holdExclusively).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ appSlug: "rin-author" }),
+    expect(dependencies.userGrantStore.lock).toHaveBeenCalledExactlyOnceWith({ role: "author" });
+    expect(release.mock.invocationCallOrder.at(-1)).toBeGreaterThan(
+      dependencies.userGrantStore.save.mock.invocationCallOrder.at(-1) ?? Number.POSITIVE_INFINITY,
     );
     expect(dependencies.userAuthorisation.refreshGrant).toHaveBeenCalledExactlyOnceWith({
-      clientId: "Iv23client",
+      clientId: "Ov23client",
       refreshToken: storedRefreshToken,
     });
     expect(dependencies.userGrantStore.save).toHaveBeenCalledExactlyOnceWith({
-      appSlug: "rin-author",
+      role: "author",
       grant: renewedGrant,
     });
   });
@@ -131,13 +132,13 @@ describe("mintUserToken refusals", () => {
   it("reports a missing grant without falling back to another identity", async () => {
     const dependencies = fakeDependencies();
     dependencies.userGrantStore.load.mockResolvedValue(
-      fail({ kind: "user-grant-missing", path: "store/rin-author.user-grant.json" }),
+      fail({ kind: "user-grant-missing", path: "store/author.user-grant.json" }),
     );
 
     const minted = await createUserTokenMinter(dependencies).mintUserToken(request);
 
     expect(minted).toEqual(
-      fail({ kind: "user-grant-missing", path: "store/rin-author.user-grant.json" }),
+      fail({ kind: "user-grant-missing", path: "store/author.user-grant.json" }),
     );
   });
 
@@ -170,19 +171,19 @@ describe("mintUserToken refusals", () => {
         path: "store/credentials.json",
       }),
     );
-    expect(dependencies.userGrantStore.holdExclusively).not.toHaveBeenCalled();
+    expect(dependencies.userGrantStore.lock).not.toHaveBeenCalled();
   });
 
   it("reports a lock it could not take", async () => {
     const dependencies = fakeDependencies();
-    dependencies.userGrantStore.holdExclusively.mockResolvedValue(
-      fail({ kind: "user-grant-lock-unavailable", path: "store/rin-author.user-grant.lock" }),
+    dependencies.userGrantStore.lock.mockResolvedValue(
+      fail({ kind: "user-grant-lock-unavailable", path: "store/author.user-grant.lock" }),
     );
 
     const minted = await createUserTokenMinter(dependencies).mintUserToken(request);
 
     expect(minted).toEqual(
-      fail({ kind: "user-grant-lock-unavailable", path: "store/rin-author.user-grant.lock" }),
+      fail({ kind: "user-grant-lock-unavailable", path: "store/author.user-grant.lock" }),
     );
   });
 
@@ -203,7 +204,7 @@ describe("mintUserToken refusals", () => {
     dependencies.userGrantStore.save.mockResolvedValue(
       fail({
         kind: "user-grant-unwritable",
-        path: "store/rin-author.user-grant.json",
+        path: "store/author.user-grant.json",
         detail: "EACCES",
       }),
     );
@@ -213,7 +214,7 @@ describe("mintUserToken refusals", () => {
     expect(minted).toEqual(
       fail({
         kind: "user-grant-unwritable",
-        path: "store/rin-author.user-grant.json",
+        path: "store/author.user-grant.json",
         detail: "EACCES",
       }),
     );

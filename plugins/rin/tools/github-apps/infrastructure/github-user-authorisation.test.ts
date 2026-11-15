@@ -48,13 +48,13 @@ describe("requestDeviceCode", () => {
   it("posts the client id to the device code endpoint and maps the reply", async () => {
     const { fetchResource, port } = adapterReplying(jsonReply(deviceCodeReply));
 
-    const result = await port.requestDeviceCode({ clientId: "Iv1.client" });
+    const result = await port.requestDeviceCode({ clientId: "Iv1.client", scope: "repo" });
 
     expect(fetchResource).toHaveBeenCalledExactlyOnceWith("https://github.com/login/device/code", {
       method: "POST",
       headers,
       signal: expect.any(AbortSignal),
-      body: '{"client_id":"Iv1.client"}',
+      body: '{"client_id":"Iv1.client","scope":"repo"}',
     });
     expect(result.kind === "success" && result.outcome.deviceCode.reveal()).toBe("device-secret-1");
     expect(result.kind === "success" && result.outcome).toMatchObject({
@@ -68,7 +68,7 @@ describe("requestDeviceCode", () => {
   it("does not leak the device code when serialised", async () => {
     const { port } = adapterReplying(jsonReply(deviceCodeReply));
 
-    const result = await port.requestDeviceCode({ clientId: "Iv1.client" });
+    const result = await port.requestDeviceCode({ clientId: "Iv1.client", scope: "repo" });
 
     expect(JSON.stringify(result)).not.toContain("device-secret-1");
   });
@@ -82,7 +82,7 @@ describe("requestDeviceCode", () => {
   ])("maps the %s reply", async (error, reason) => {
     const { port } = adapterReplying(jsonReply({ error, error_description: "nope" }));
 
-    expect(await port.requestDeviceCode({ clientId: "Iv1.client" })).toEqual({
+    expect(await port.requestDeviceCode({ clientId: "Iv1.client", scope: "repo" })).toEqual({
       kind: "failure",
       reason,
     });
@@ -91,7 +91,7 @@ describe("requestDeviceCode", () => {
   it("reports a reply of the wrong shape", async () => {
     const { port } = adapterReplying(jsonReply({ device_code: "" }));
 
-    expect(await port.requestDeviceCode({ clientId: "Iv1.client" })).toMatchObject({
+    expect(await port.requestDeviceCode({ clientId: "Iv1.client", scope: "repo" })).toMatchObject({
       kind: "failure",
       reason: { kind: "github-response-invalid", operation: "request a device code" },
     });
@@ -261,7 +261,7 @@ describe("transport failures", () => {
     const fetchResource = vi.fn<FetchResource>().mockRejectedValue(new TypeError("fetch failed"));
     const port = createGitHubUserAuthorisation({ fetchResource });
 
-    expect(await port.requestDeviceCode({ clientId: "Iv1.client" })).toEqual({
+    expect(await port.requestDeviceCode({ clientId: "Iv1.client", scope: "repo" })).toEqual({
       kind: "failure",
       reason: { kind: "github-unreachable", operation: "request a device code" },
     });
@@ -303,7 +303,7 @@ describe("transport failures", () => {
   it("reports a reply that is not JSON", async () => {
     const { port } = adapterReplying(new Response("<html>"));
 
-    expect(await port.requestDeviceCode({ clientId: "Iv1.client" })).toEqual({
+    expect(await port.requestDeviceCode({ clientId: "Iv1.client", scope: "repo" })).toEqual({
       kind: "failure",
       reason: {
         kind: "github-response-invalid",

@@ -1,6 +1,6 @@
 const PRIVATE_KEY_ARMOUR = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
 
-const USER_TOKEN = /gh[ur]_[A-Za-z0-9]{20,}/;
+const USER_TOKEN = /gh[oru]_[A-Za-z0-9]{20,}/;
 
 type Publishability = "publishable" | "contains-private-key" | "contains-user-token";
 

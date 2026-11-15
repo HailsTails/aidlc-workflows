@@ -1,6 +1,6 @@
 import { assert, describe, expect, it, vi } from "vitest";
 import type { StoreLocator } from "../application/credential-store-port.ts";
-import type { ExclusiveLockPort } from "../application/exclusive-lock-port.ts";
+import type { ExclusiveLockPort, LockRelease } from "../application/exclusive-lock-port.ts";
 import type { PrivateFileReplacer } from "../application/private-file-port.ts";
 import type { TextFileReader } from "../application/text-file-port.ts";
 import { fail, succeed } from "../domain/result.ts";
@@ -9,9 +9,9 @@ import { createFileUserGrantStore } from "./file-user-grant-store.ts";
 
 const storeDirectory = "C:/Users/helen/.config/rin-github-apps";
 
-const grantPath = `${storeDirectory}/rin-author.user-grant.json`;
+const grantPath = `${storeDirectory}/author.user-grant.json`;
 
-const lockPath = `${storeDirectory}/rin-author.user-grant.lock`;
+const lockPath = `${storeDirectory}/author.user-grant.lock`;
 
 const grantJson = `{
   "accessToken": "ghu_access",
@@ -21,21 +21,23 @@ const grantJson = `{
 }
 `;
 
+const release = vi.fn<LockRelease>();
+
 const storeDependencies = () => ({
   locateStoreDirectory: vi.fn<StoreLocator>().mockReturnValue(succeed(storeDirectory)),
   readTextFile: vi.fn<TextFileReader>().mockResolvedValue(succeed(grantJson)),
   replacePrivateFile: vi.fn<PrivateFileReplacer>().mockResolvedValue(succeed(undefined)),
-  lock: { holdExclusively: vi.fn<ExclusiveLockPort["holdExclusively"]>() },
+  lock: { acquire: vi.fn<ExclusiveLockPort["acquire"]>().mockResolvedValue(succeed(release)) },
 });
 
 const unlocatable = () =>
   vi.fn<StoreLocator>().mockReturnValue(fail({ detail: "no home directory" }));
 
 describe("createFileUserGrantStore load", () => {
-  it("loads the app's grant from the store, keeping both tokens secret", async () => {
+  it("loads the role's grant from the store, keeping both tokens secret", async () => {
     const dependencies = storeDependencies();
 
-    const loaded = await createFileUserGrantStore(dependencies).load({ appSlug: "rin-author" });
+    const loaded = await createFileUserGrantStore(dependencies).load({ role: "author" });
 
     assert(loaded.kind === "success");
     expect(loaded.outcome.accessToken.reveal()).toBe("ghu_access");
@@ -47,7 +49,7 @@ describe("createFileUserGrantStore load", () => {
 
   it("never reveals either token when the grant is serialised", async () => {
     const loaded = await createFileUserGrantStore(storeDependencies()).load({
-      appSlug: "rin-author",
+      role: "author",
     });
 
     const serialised = JSON.stringify(loaded);
@@ -60,7 +62,7 @@ describe("createFileUserGrantStore load", () => {
     const loaded = await createFileUserGrantStore({
       ...storeDependencies(),
       locateStoreDirectory: unlocatable(),
-    }).load({ appSlug: "rin-author" });
+    }).load({ role: "author" });
 
     expect(loaded).toEqual(
       fail({ kind: "credential-store-unlocatable", detail: "no home directory" }),
@@ -73,7 +75,7 @@ describe("createFileUserGrantStore load", () => {
       fail({ kind: "file-unreadable", location: grantPath }),
     );
 
-    const loaded = await createFileUserGrantStore(dependencies).load({ appSlug: "rin-author" });
+    const loaded = await createFileUserGrantStore(dependencies).load({ role: "author" });
 
     expect(loaded).toEqual(fail({ kind: "user-grant-missing", path: grantPath }));
   });
@@ -82,7 +84,7 @@ describe("createFileUserGrantStore load", () => {
     const dependencies = storeDependencies();
     dependencies.readTextFile.mockResolvedValue(succeed("ghu_access"));
 
-    const loaded = await createFileUserGrantStore(dependencies).load({ appSlug: "rin-author" });
+    const loaded = await createFileUserGrantStore(dependencies).load({ role: "author" });
 
     expect(loaded).toEqual(
       fail({ kind: "user-grant-invalid", path: grantPath, issues: "not JSON" }),
@@ -95,7 +97,7 @@ describe("createFileUserGrantStore load", () => {
       succeed('{"accessToken":"ghu_access","accessTokenExpiresAtEpochSeconds":-1}'),
     );
 
-    const loaded = await createFileUserGrantStore(dependencies).load({ appSlug: "rin-author" });
+    const loaded = await createFileUserGrantStore(dependencies).load({ role: "author" });
 
     assert(loaded.kind === "failure" && loaded.reason.kind === "user-grant-invalid");
     expect(loaded.reason.path).toBe(grantPath);
@@ -111,7 +113,7 @@ describe("createFileUserGrantStore load", () => {
       ),
     );
 
-    const loaded = await createFileUserGrantStore(dependencies).load({ appSlug: "rin-author" });
+    const loaded = await createFileUserGrantStore(dependencies).load({ role: "author" });
 
     assert(loaded.kind === "failure" && loaded.reason.kind === "user-grant-invalid");
     expect(loaded.reason.issues).toContain("scope");
@@ -119,11 +121,11 @@ describe("createFileUserGrantStore load", () => {
 });
 
 describe("createFileUserGrantStore save", () => {
-  it("replaces the app's grant file with the revealed grant, pretty-printed", async () => {
+  it("replaces the role's grant file with the revealed grant, pretty-printed", async () => {
     const dependencies = storeDependencies();
 
     const saved = await createFileUserGrantStore(dependencies).save({
-      appSlug: "rin-author",
+      role: "author",
       grant: {
         accessToken: secret("ghu_access"),
         accessTokenExpiresAtEpochSeconds: 1_700_028_800,
@@ -146,7 +148,7 @@ describe("createFileUserGrantStore save", () => {
     );
 
     const saved = await createFileUserGrantStore(dependencies).save({
-      appSlug: "rin-author",
+      role: "author",
       grant: {
         accessToken: secret("ghu_access"),
         accessTokenExpiresAtEpochSeconds: 1,
@@ -165,7 +167,7 @@ describe("createFileUserGrantStore save", () => {
       ...storeDependencies(),
       locateStoreDirectory: unlocatable(),
     }).save({
-      appSlug: "rin-author",
+      role: "author",
       grant: {
         accessToken: secret("ghu_access"),
         accessTokenExpiresAtEpochSeconds: 1,
@@ -180,46 +182,35 @@ describe("createFileUserGrantStore save", () => {
   });
 });
 
-describe("createFileUserGrantStore holdExclusively", () => {
-  it("runs the work under the app's grant lock", async () => {
+describe("createFileUserGrantStore lock", () => {
+  it("takes the role's grant lock and hands back its release", async () => {
     const dependencies = storeDependencies();
-    dependencies.lock.holdExclusively.mockResolvedValue(succeed("refreshed"));
-    const work = async () => "refreshed";
 
-    const held = await createFileUserGrantStore(dependencies).holdExclusively({
-      appSlug: "rin-author",
-      work,
-    });
+    const locked = await createFileUserGrantStore(dependencies).lock({ role: "author" });
 
-    expect(held).toEqual(succeed("refreshed"));
-    expect(dependencies.lock.holdExclusively).toHaveBeenCalledWith({ lockLocation: lockPath, work });
+    expect(locked).toEqual(succeed(release));
+    expect(dependencies.lock.acquire).toHaveBeenCalledExactlyOnceWith(lockPath);
   });
 
   it("reports a lock it could not take", async () => {
     const dependencies = storeDependencies();
-    dependencies.lock.holdExclusively.mockResolvedValue(
+    dependencies.lock.acquire.mockResolvedValue(
       fail({ kind: "lock-unavailable", lockLocation: lockPath }),
     );
 
-    const held = await createFileUserGrantStore(dependencies).holdExclusively({
-      appSlug: "rin-author",
-      work: async () => "refreshed",
-    });
+    const locked = await createFileUserGrantStore(dependencies).lock({ role: "author" });
 
-    expect(held).toEqual(fail({ kind: "user-grant-lock-unavailable", path: lockPath }));
+    expect(locked).toEqual(fail({ kind: "user-grant-lock-unavailable", path: lockPath }));
   });
 
   it("reports a store it cannot locate, without taking the lock", async () => {
     const dependencies = { ...storeDependencies(), locateStoreDirectory: unlocatable() };
 
-    const held = await createFileUserGrantStore(dependencies).holdExclusively({
-      appSlug: "rin-author",
-      work: async () => "refreshed",
-    });
+    const locked = await createFileUserGrantStore(dependencies).lock({ role: "author" });
 
-    expect(held).toEqual(
+    expect(locked).toEqual(
       fail({ kind: "credential-store-unlocatable", detail: "no home directory" }),
     );
-    expect(dependencies.lock.holdExclusively).not.toHaveBeenCalled();
+    expect(dependencies.lock.acquire).not.toHaveBeenCalled();
   });
 });

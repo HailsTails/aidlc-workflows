@@ -22,7 +22,9 @@ const STORE_PATH_IN_HOME = ".config/rin-github-apps";
 const roleEntrySchema = z.object({
   appId: z.union([z.string().regex(/^\d+$/), z.number().int().positive().transform(String)]),
   privateKeyPath: z.string().min(1),
-  userAuthorisation: z.object({ clientId: z.string().min(1) }).optional(),
+  userAuthorisation: z
+    .object({ clientId: z.string().min(1), scope: z.string().min(1) })
+    .optional(),
 });
 
 const credentialsFileSchema = z.object({
@@ -154,7 +156,8 @@ const createFileCredentialStore = (
         path: credentialsPathIn(storeDirectory),
       });
     }
-    return succeed({ clientId: roleEntry.userAuthorisation.clientId });
+    const { clientId, scope } = roleEntry.userAuthorisation;
+    return succeed({ clientId, scope });
   },
 });
 

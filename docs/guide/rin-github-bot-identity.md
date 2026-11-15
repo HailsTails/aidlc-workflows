@@ -19,7 +19,7 @@ Writes are the real `gh` command, prefixed with the CLI and `gh`:
 bun .claude/tools/github-apps/cli-main.ts gh pr create --title "T" --body-file body.md --label bug --attach shot.png#Before
 ```
 
-The wrapper mints the role's bot token, sets `GH_TOKEN` and `GH_PROMPT_DISABLED=1`, pins `--repo` to the configured repository, stamps the provenance marker onto the body, and runs `gh` (2.103.2 or later; earlier releases cannot use an app installation token). Every other argument, including `--attach`, `--label`, `--add-label`, `--squash` and `--auto`, goes to `gh` unchanged. The wrapper prints what `gh` printed and exits with `gh`'s exit code, so a write that publishes and then fails an upload still prints the URL it published. Reads (`gh pr view`, `gh pr list`, `gh pr checks`, `gh api` GETs) stay plain `gh`.
+The wrapper mints the role's bot token, sets `GH_TOKEN` and `GH_PROMPT_DISABLED=1`, pins `--repo` to the configured repository, stamps the provenance marker onto the body, and runs `gh` (2.103.2 or later; earlier releases cannot use an app installation token). Every other argument, including `--label`, `--add-label`, `--squash` and `--auto`, goes to `gh` unchanged. `--attach` is the one exception: GitHub refuses file uploads from an app, so a write that carries `--attach` uses the operator's grant instead, as [Attachments](#attachments) describes. The wrapper prints what `gh` printed and exits with `gh`'s exit code, so a write that publishes and then fails an upload still prints the URL it published. Reads (`gh pr view`, `gh pr list`, `gh pr checks`, `gh api` GETs) stay plain `gh`.
 
 | Wrapped write                                                                 | Notes                                                                                                   |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -31,14 +31,35 @@ The wrapper mints the role's bot token, sets `GH_TOKEN` and `GH_PROMPT_DISABLED=
 | `... adopt-git`                                                               | makes this linked worktree commit and push as the author bot                                            |
 | `... token --role author\|reviewer`                                           | prints a one-hour installation token, for `GH_TOKEN=` use outside the wrapped writes                    |
 | `... marker --role author\|reviewer --session <id>`                           | prints the provenance marker                                                                            |
+| `... login`                                                                   | stores the operator's grant for attachment uploads on this machine; see [Attachments](#attachments)     |
 
 `gh pr close` and `gh pr review` take the pull request number right after the verb, because the wrapper reads that pull request before it acts. `gh pr review` through the wrapper takes only the number, one event flag, a body and `--commit-sha`.
 
 The wrapper refuses `--repo`/`-R` (the repository is pinned), `--admin` (it never bypasses rulesets), `--web`, `--editor`, `--fill`, `--fill-first`, `--fill-verbose`, `--template` and `--recover` (the body would not be one it stamped). `--body` and `--body-file` cannot both be given.
 
-Every body an agent posts starts with a hidden marker, `<!-- rin-bot: role=<role> session=<id> -->`, so authorship can be audited and filtered. The session is `--session <id>` when given (the wrapper takes it out before calling `gh`), otherwise the issue or pull request number after the verb, otherwise the `--head` branch, otherwise `new-issue` for `gh issue create`, otherwise the current branch. Text that contains a private key is refused, whether given with `--body`, on standard input or in a `--body-file`. A `--body-file` or `--attach` file inside the credential store is refused; for `--attach`, every reading of a `#` in the value as the end of the path is checked, so alt text cannot hide one.
+Every body an agent posts starts with a hidden marker, `<!-- rin-bot: role=<role> session=<id> -->`, so authorship can be audited and filtered. The session is `--session <id>` when given (the wrapper takes it out before calling `gh`), otherwise the issue or pull request number after the verb, otherwise the `--head` branch, otherwise `new-issue` for `gh issue create`, otherwise the current branch. Text that contains a private key or a GitHub OAuth token (`gho_`, `ghu_` or `ghr_` followed by the token itself) is refused, whether given with `--body`, on standard input or in a `--body-file`. A `--body-file` or `--attach` file inside the credential store is refused; for `--attach`, every reading of a `#` in the value as the end of the path is checked, so alt text cannot hide one.
 
 A consumer that prefers short names can add its own `package.json` scripts that call the CLI, for example `"gh:bot": "bun .claude/tools/github-apps/cli-main.ts gh"`. The hook's hints always name the CLI itself, so they never point at a script the consumer lacks.
+
+## Attachments
+
+GitHub accepts file uploads only from a person signed in through an OAuth app. It refuses them from a GitHub App, whether the app acts as itself or on a person's behalf. So `--attach` cannot ride the bot token. The wrapper uses a second credential for it and for nothing else: a grant from the operator to a small OAuth app of their own, obtained once per machine with `login`.
+
+| Write with `--attach`                                              | What runs                                                                                                                      | Who GitHub shows                                   |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| `gh pr create`, `gh issue create`                                  | the bot creates it without the files, then the operator's grant runs `gh pr edit <n>` or `gh issue edit <n>` with the same body and the files | the bot as author; the operator as the last editor |
+| `gh pr edit`, `gh issue edit`, `gh pr comment`, `gh issue comment` | the whole write runs under the operator's grant                                                                                | the operator, through the OAuth app                |
+| any other wrapped write                                            | refused: it takes no `--attach`                                                                                                | nobody                                             |
+
+Every other write, and every `git push`, `gh pr merge` and `gh pr review`, stays on the bot. No command prints the operator's token. A body posted with attachments carries `via=user-grant` in its marker: `<!-- rin-bot: role=author session=<id> via=user-grant -->`.
+
+A create with `--attach` prints the created URL once. If the files then fail to upload, the pull request or issue still exists as the bot's, the wrapper says the attachments are incomplete, and it exits with the failing step's exit code. If the grant is missing, malformed, expired or revoked, nothing is created or posted and the message says to run `login`. The wrapper never falls back to the bot token or to the operator's own `gh` login.
+
+To switch attachments on:
+
+1. Create an OAuth app under your own account (*Settings*, *Developer settings*, *OAuth Apps*), and tick *Enable Device Flow*. Copy its **Client ID**; it is not a secret. No client secret is needed. The app must issue expiring access tokens with a refresh token: `login` rejects a reply without both expiries as malformed.
+2. Add the client ID and the scope to the author entry of `credentials.json`, as [Credentials](#credentials) shows.
+3. Run `bun .claude/tools/github-apps/cli-main.ts login` from a consumer's project root. It prints a short code and `https://github.com/login/device`. Enter the code there and approve within 15 minutes; the command waits, then stores the grant.
 
 ## Configuration
 
@@ -69,6 +90,24 @@ Nothing secret lives in any repository. The CLI reads one per-user credential st
 ```
 
 A relative `privateKeyPath` is read from the store directory; an absolute one is read where it points. Each private key therefore exists once per machine, and one rotation covers every consumer.
+
+The author entry may also name the OAuth app that carries attachment uploads:
+
+```json
+{
+  "author": {
+    "appId": "<id>",
+    "privateKeyPath": "rin-author.private-key.pem",
+    "userAuthorisation": { "clientId": "<oauth app client id>", "scope": "repo" }
+  }
+}
+```
+
+A role without `userAuthorisation` cannot upload attachments, and only the author role uses one. `login` writes the grant to `author.user-grant.json` in the store directory, owner-only where the file system enforces it; on Windows that protection is the user profile's own access control.
+
+**This grant is broader than the bot tokens.** A bot token reaches one repository with the app's permissions. The `repo` scope reaches every repository the operator can reach, with the operator's own rights. Three things contain it: the wrapper pins `--repo` to the configured repository on every run that uses it, it is used only for a write that carries `--attach`, and the file never leaves the credential store. Treat `author.user-grant.json` like a password. To cut it off, revoke the OAuth app's access under *Settings*, *Applications*, *Authorized OAuth Apps*.
+
+The grant holds an access token that lasts eight hours and a refresh token that lasts about six months. The CLI reuses the access token until five minutes before it expires, then refreshes it. GitHub cancels the old pair on every refresh, so sessions running in parallel take a lock file, `author.user-grant.lock`, beside the grant, and read the grant again once they hold it; only one of them refreshes. A lock left behind by a session that died is taken over after two minutes. After six months without a refresh, or after a revocation, run `login` again.
 
 ## Worktree git identity
 

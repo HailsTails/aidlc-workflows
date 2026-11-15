@@ -13,7 +13,7 @@ type CredentialFailure =
 
 type CredentialRequest = { readonly role: AgentRole };
 
-type UserAuthorisationSettings = { readonly clientId: string };
+type UserAuthorisationSettings = { readonly clientId: string; readonly scope: string };
 
 type UserAuthorisationUnconfigured = {
   readonly kind: "user-authorisation-unconfigured";

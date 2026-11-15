@@ -1,12 +1,12 @@
+import type { AgentRole } from "../domain/agent-role.ts";
 import type { Result } from "../domain/result.ts";
 import type { UserGrant } from "../domain/user-grant.ts";
 import type { CredentialFailure } from "./credential-store-port.ts";
+import type { LockRelease } from "./exclusive-lock-port.ts";
 
-type GrantLocation = { readonly appSlug: string };
+type GrantLocation = { readonly role: AgentRole };
 
 type GrantSaving = GrantLocation & { readonly grant: UserGrant };
-
-type ExclusiveGrantWork<Outcome> = GrantLocation & { readonly work: () => Promise<Outcome> };
 
 type GrantStoreUnlocatable = Extract<
   CredentialFailure,
@@ -41,13 +41,10 @@ type UserGrantLockFailure = GrantStoreUnlocatable | UserGrantLockUnavailable;
 type UserGrantStorePort = {
   readonly load: (location: GrantLocation) => Promise<Result<UserGrant, UserGrantLoadFailure>>;
   readonly save: (saving: GrantSaving) => Promise<Result<void, UserGrantSaveFailure>>;
-  readonly holdExclusively: <Outcome>(
-    exclusive: ExclusiveGrantWork<Outcome>,
-  ) => Promise<Result<Outcome, UserGrantLockFailure>>;
+  readonly lock: (location: GrantLocation) => Promise<Result<LockRelease, UserGrantLockFailure>>;
 };
 
 export type {
-  ExclusiveGrantWork,
   GrantLocation,
   GrantSaving,
   GrantStoreUnlocatable,

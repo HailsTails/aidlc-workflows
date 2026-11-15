@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { UserAuthoriser } from "../../application/authorise-user.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
+import type { UserTokenMinter } from "../../application/mint-user-token.ts";
 import { fail, succeed } from "../../domain/result.ts";
 import { secret } from "../../domain/secret.ts";
 import type { CommandFlags } from "./command-flags.ts";
@@ -32,6 +33,7 @@ const contextWith = (flags: CommandFlags) => ({
         .fn<TokenMinter["mintInstallationToken"]>()
         .mockResolvedValue(succeed(secret("ghs_reviewer"))),
     },
+    userTokenMinter: { mintUserToken: vi.fn<UserTokenMinter["mintUserToken"]>() },
     connectGitHubCli: vi.fn(),
     worktree: {
       readCurrentBranch: vi.fn(),
@@ -146,13 +148,12 @@ describe("login", () => {
     expect(await localCommands.login.execute(context)).toEqual(
       succeed({
         standardOutput:
-          "rin-author may now upload attachments as you on this machine. The grant renews itself until 2024-05-16; run login again after that.\n",
+          "The author role may now upload attachments as you from this machine. The grant renews itself until 2024-05-16; run login again after that.\n",
         standardError: "",
       }),
     );
     expect(context.dependencies.userAuthoriser.authoriseUser).toHaveBeenCalledExactlyOnceWith({
       role: "author",
-      appSlug: "rin-author",
       announce: expect.any(Function),
     });
   });

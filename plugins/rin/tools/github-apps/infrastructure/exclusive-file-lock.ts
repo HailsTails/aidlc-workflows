@@ -1,7 +1,7 @@
 import type { ClockPort } from "../application/clock-port.ts";
 import type {
   ExclusiveLockPort,
-  ExclusiveWork,
+  LockRelease,
   LockUnavailable,
 } from "../application/exclusive-lock-port.ts";
 import type { PausePort } from "../application/pause-port.ts";
@@ -15,6 +15,8 @@ const LOCK_RETRY_MILLISECONDS = 250;
 
 const LOCK_ATTEMPTS = 480;
 
+const EPOCH_SECONDS_PATTERN = /^\d+$/;
+
 type ExclusiveFileLockDependencies = {
   readonly createPrivateFile: PrivateFileCreator;
   readonly readTextFile: TextFileReader;
@@ -23,31 +25,23 @@ type ExclusiveFileLockDependencies = {
   readonly pause: PausePort;
 };
 
-type LockAttempt<Outcome> = ExclusiveFileLockDependencies &
-  ExclusiveWork<Outcome> & { readonly attemptsLeft: number };
-
-type HeldLock = { readonly lockText: string; readonly nowEpochSeconds: number };
-
-const EPOCH_SECONDS_PATTERN = /^\d+$/;
-
-const isBreakable = ({ lockText, nowEpochSeconds }: HeldLock): boolean =>
-  !EPOCH_SECONDS_PATTERN.test(lockText) || Number(lockText) <= nowEpochSeconds;
-
-const runHolding = async <Outcome>({
-  lockLocation,
-  work,
-  removeFile,
-}: LockAttempt<Outcome>): Promise<Result<Outcome, LockUnavailable>> => {
-  try {
-    return succeed(await work());
-  } finally {
-    await removeFile(lockLocation);
-  }
+type LockAttempt = ExclusiveFileLockDependencies & {
+  readonly lockLocation: string;
+  readonly attemptsLeft: number;
 };
 
-const attemptLock = async <Outcome>(
-  attempt: LockAttempt<Outcome>,
-): Promise<Result<Outcome, LockUnavailable>> => {
+type FoundLock = { readonly lockText: string; readonly nowEpochSeconds: number };
+
+const isBreakable = ({ lockText, nowEpochSeconds }: FoundLock): boolean =>
+  !EPOCH_SECONDS_PATTERN.test(lockText) || Number(lockText) <= nowEpochSeconds;
+
+const releaseOf =
+  ({ removeFile, lockLocation }: LockAttempt): LockRelease =>
+  async () => {
+    await removeFile(lockLocation);
+  };
+
+const attemptLock = async (attempt: LockAttempt): Promise<Result<LockRelease, LockUnavailable>> => {
   const { lockLocation, attemptsLeft, clock, createPrivateFile, readTextFile } = attempt;
   if (attemptsLeft === 0) return fail({ kind: "lock-unavailable", lockLocation });
   const nowEpochSeconds = clock.nowEpochSeconds();
@@ -55,7 +49,7 @@ const attemptLock = async <Outcome>(
     location: lockLocation,
     text: String(nowEpochSeconds + LOCK_LIFETIME_SECONDS),
   });
-  if (created.kind === "success") return runHolding(attempt);
+  if (created.kind === "success") return succeed(releaseOf(attempt));
   if (created.reason.kind === "file-unwritable") {
     return fail({ kind: "lock-unavailable", lockLocation });
   }
@@ -73,8 +67,8 @@ const attemptLock = async <Outcome>(
 const createExclusiveFileLock = (
   dependencies: ExclusiveFileLockDependencies,
 ): ExclusiveLockPort => ({
-  holdExclusively: (exclusive) =>
-    attemptLock({ ...dependencies, ...exclusive, attemptsLeft: LOCK_ATTEMPTS }),
+  acquire: (lockLocation) =>
+    attemptLock({ ...dependencies, lockLocation, attemptsLeft: LOCK_ATTEMPTS }),
 });
 
 export { createExclusiveFileLock };

@@ -5,8 +5,10 @@ import type {
 import type { AuthoriseUserFailure } from "../../application/authorise-user.ts";
 import type { ConfigurationFailure } from "../../application/identity-configuration-port.ts";
 import type { CredentialDestinationRefused } from "../../application/issue-git-credential.ts";
-import type { UserTokenFailure } from "../../application/mint-user-token.ts";
-import type { GhAsBotFailure } from "../../application/run-gh-as-bot.ts";
+import type {
+  AttachmentFollowUpFailure,
+  GhAsBotFailure,
+} from "../../application/run-gh-as-bot.ts";
 import { supportedGhVerbs } from "../../domain/gh-invocation.ts";
 import { formatRepositorySlug } from "../../domain/repository-slug.ts";
 import type { FlagFailure } from "./command-flags.ts";
@@ -22,7 +24,7 @@ type CommandLineFailure =
 type CliFailure =
   | GhAsBotFailure
   | AuthoriseUserFailure
-  | UserTokenFailure
+  | AttachmentFollowUpFailure
   | PushRemoteElsewhere
   | PushRemoteNotHttps
   | CredentialDestinationRefused
@@ -91,6 +93,8 @@ const describers: FailureDescribers = {
   "gh-unavailable": ({ detail }) =>
     `gh could not be run: ${detail}. Install GitHub CLI 2.103.2 or later and put it on PATH.`,
   "gh-read-failed": ({ operation, detail }) => `gh could not ${operation}: ${detail}`,
+  "created-number-unreadable": () =>
+    "gh did not print the URL of what it created, so there was nothing to attach the files to.",
   "attachment-refused": ({ attachment }) =>
     `Refusing to attach ${attachment}: it is inside the bot credential store.`,
   "git-command-failed": ({ command, detail }) => `${command} failed: ${detail}`,
@@ -124,11 +128,11 @@ const describers: FailureDescribers = {
       ? `Refusing to post ${location}: it is inside the bot credential store.`
       : `Refusing to post ${location}: it contains ${UNPUBLISHABLE_CONTENT[reason]}.`,
   "user-authorisation-unconfigured": ({ role, path }) =>
-    `The ${role} entry in ${path} has no userAuthorisation.clientId, so the ${role} app cannot act as a person. Add the app's OAuth client ID there; see the Rin GitHub bot identity guide.`,
+    `The ${role} entry in ${path} has no userAuthorisation.clientId, so the ${role} role cannot upload attachments. Add the OAuth app's client ID and scope there; see the Rin GitHub bot identity guide.`,
   "device-flow-disabled": () =>
-    "The GitHub App has device flow switched off. Enable device flow in the app's settings, then log in again.",
+    "The OAuth app has device flow switched off. Enable device flow in its settings, then log in again.",
   "oauth-client-rejected": () =>
-    "GitHub does not recognise the userAuthorisation.clientId in the credential store; copy the client ID from the app's settings page.",
+    "GitHub does not recognise the userAuthorisation.clientId in the credential store; copy the client ID from the OAuth app's settings page.",
   "oauth-request-refused": ({ operation, error, description }) =>
     `GitHub refused to ${operation} (${error}): ${description}`,
   "device-code-expired": () => `The login code expired before it was approved. ${LOGIN_HINT}`,
@@ -136,7 +140,7 @@ const describers: FailureDescribers = {
   "refresh-token-rejected": () =>
     `GitHub no longer accepts this machine's user grant; it was revoked or replaced. ${LOGIN_HINT}`,
   "user-grant-missing": ({ path }) =>
-    `No user grant at ${path}, and attachments are never uploaded as another identity. ${LOGIN_HINT}`,
+    `No user grant at ${path}, and attachments are never uploaded under another identity. ${LOGIN_HINT}`,
   "user-grant-invalid": ({ path, issues }) =>
     `The user grant at ${path} is malformed: ${issues}. ${LOGIN_HINT}`,
   "user-grant-expired": () => `This machine's user grant has expired. ${LOGIN_HINT}`,

@@ -6,7 +6,8 @@ import type { ClockPort } from "./clock-port.ts";
 import type { UserAuthorisationSettingsPort } from "./credential-store-port.ts";
 import type { PausePort } from "./pause-port.ts";
 import type { UserAuthorisationPort } from "./user-authorisation-port.ts";
-import type { ExclusiveGrantWork, UserGrantStorePort } from "./user-grant-store-port.ts";
+import type { LockRelease } from "./exclusive-lock-port.ts";
+import type { UserGrantStorePort } from "./user-grant-store-port.ts";
 
 const NOW = 1_700_000_000;
 
@@ -23,14 +24,13 @@ const issued = {
   refreshTokenLifetimeSeconds: 15_897_600,
 };
 
-const runWorkUnderLock = <Outcome>({ work }: ExclusiveGrantWork<Outcome>) =>
-  work().then((outcome) => succeed(outcome));
+const release = vi.fn<LockRelease>();
 
 const fakeDependencies = () => ({
   authorisationSettings: {
     loadUserAuthorisationSettings: vi
       .fn<UserAuthorisationSettingsPort["loadUserAuthorisationSettings"]>()
-      .mockResolvedValue(succeed({ clientId: "Iv23client" })),
+      .mockResolvedValue(succeed({ clientId: "Ov23client", scope: "repo" })),
   },
   userAuthorisation: {
     requestDeviceCode: vi.fn<UserAuthorisationPort["requestDeviceCode"]>().mockResolvedValue(
@@ -50,7 +50,7 @@ const fakeDependencies = () => ({
   userGrantStore: {
     load: vi.fn<UserGrantStorePort["load"]>(),
     save: vi.fn<UserGrantStorePort["save"]>().mockResolvedValue(succeed(undefined)),
-    holdExclusively: vi.fn(runWorkUnderLock),
+    lock: vi.fn<UserGrantStorePort["lock"]>().mockResolvedValue(succeed(release)),
   },
   clock: { nowEpochSeconds: vi.fn<ClockPort["nowEpochSeconds"]>().mockReturnValue(NOW) },
   pause: {
@@ -60,7 +60,6 @@ const fakeDependencies = () => ({
 
 const fakeRequest = () => ({
   role: "author" as const,
-  appSlug: "rin-author",
   announce: vi.fn<(prompt: DevicePrompt) => void>(),
 });
 
@@ -78,7 +77,8 @@ describe("authoriseUser", () => {
       }),
     );
     expect(dependencies.userAuthorisation.requestDeviceCode).toHaveBeenCalledExactlyOnceWith({
-      clientId: "Iv23client",
+      clientId: "Ov23client",
+      scope: "repo",
     });
     expect(authorisation.announce).toHaveBeenCalledExactlyOnceWith({
       userCode: "WDJB-MJHT",
@@ -86,14 +86,15 @@ describe("authoriseUser", () => {
       expiresInSeconds: 900,
     });
     expect(dependencies.userAuthorisation.redeemDeviceCode).toHaveBeenCalledExactlyOnceWith({
-      clientId: "Iv23client",
+      clientId: "Ov23client",
       deviceCode,
     });
-    expect(dependencies.userGrantStore.holdExclusively).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ appSlug: "rin-author" }),
+    expect(dependencies.userGrantStore.lock).toHaveBeenCalledExactlyOnceWith({ role: "author" });
+    expect(release.mock.invocationCallOrder.at(-1)).toBeGreaterThan(
+      dependencies.userGrantStore.save.mock.invocationCallOrder.at(-1) ?? Number.POSITIVE_INFINITY,
     );
     expect(dependencies.userGrantStore.save).toHaveBeenCalledExactlyOnceWith({
-      appSlug: "rin-author",
+      role: "author",
       grant: {
         accessToken,
         accessTokenExpiresAtEpochSeconds: NOW + 28_800,
@@ -201,7 +202,7 @@ describe("authoriseUser refusals", () => {
     dependencies.userGrantStore.save.mockResolvedValue(
       fail({
         kind: "user-grant-unwritable",
-        path: "store/rin-author.user-grant.json",
+        path: "store/author.user-grant.json",
         detail: "EACCES",
       }),
     );
@@ -211,7 +212,7 @@ describe("authoriseUser refusals", () => {
     expect(authorised).toEqual(
       fail({
         kind: "user-grant-unwritable",
-        path: "store/rin-author.user-grant.json",
+        path: "store/author.user-grant.json",
         detail: "EACCES",
       }),
     );

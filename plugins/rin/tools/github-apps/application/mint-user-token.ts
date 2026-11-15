@@ -27,7 +27,7 @@ type UserTokenMintingDependencies = {
   readonly clock: ClockPort;
 };
 
-type UserTokenRequest = { readonly role: AgentRole; readonly appSlug: string };
+type UserTokenRequest = { readonly role: AgentRole };
 
 type UserGrantExpired = { readonly kind: "user-grant-expired" };
 
@@ -48,14 +48,14 @@ type UserTokenMinter = {
 };
 
 type GrantRenewal = UserTokenMintingDependencies & {
-  readonly appSlug: string;
+  readonly role: AgentRole;
   readonly clientId: string;
 };
 
 type StaleGrant = GrantRenewal & { readonly grant: UserGrant };
 
 type StoredGrantReading = Pick<UserTokenMintingDependencies, "userGrantStore" | "clock"> & {
-  readonly appSlug: string;
+  readonly role: AgentRole;
   readonly renew: (grant: UserGrant) => UserTokenOutcome;
 };
 
@@ -67,10 +67,10 @@ type ExclusiveRenewal = {
 const tokenFromStoredGrant = async ({
   userGrantStore,
   clock,
-  appSlug,
+  role,
   renew,
 }: StoredGrantReading): UserTokenOutcome => {
-  const grant = await userGrantStore.load({ appSlug });
+  const grant = await userGrantStore.load({ role });
   if (grant.kind === "failure") return grant;
   const freshness = assessGrantFreshness({
     grant: grant.outcome,
@@ -90,7 +90,7 @@ const renewGrant = async ({
   userAuthorisation,
   userGrantStore,
   clock,
-  appSlug,
+  role,
   clientId,
   grant,
 }: StaleGrant): UserTokenOutcome => {
@@ -103,29 +103,31 @@ const renewGrant = async ({
     issued: issued.outcome,
     nowEpochSeconds: clock.nowEpochSeconds(),
   });
-  const saved = await userGrantStore.save({ appSlug, grant: renewed });
+  const saved = await userGrantStore.save({ role, grant: renewed });
   if (saved.kind === "failure") return saved;
   return succeed(renewed.accessToken);
 };
 
 const renewExclusively = async ({ dependencies, request }: ExclusiveRenewal): UserTokenOutcome => {
-  const { role, appSlug } = request;
+  const { role } = request;
   const settings = await dependencies.authorisationSettings.loadUserAuthorisationSettings({ role });
   if (settings.kind === "failure") return settings;
-  const renewal = { ...dependencies, appSlug, clientId: settings.outcome.clientId };
-  const held = await dependencies.userGrantStore.holdExclusively({
-    appSlug,
-    work: () =>
-      tokenFromStoredGrant({ ...renewal, renew: (grant) => renewGrant({ ...renewal, grant }) }),
+  const renewal = { ...dependencies, role, clientId: settings.outcome.clientId };
+  const lock = await dependencies.userGrantStore.lock({ role });
+  if (lock.kind === "failure") return lock;
+  const token = await tokenFromStoredGrant({
+    ...renewal,
+    renew: (grant) => renewGrant({ ...renewal, grant }),
   });
-  return held.kind === "failure" ? held : held.outcome;
+  await lock.outcome();
+  return token;
 };
 
 const createUserTokenMinter = (dependencies: UserTokenMintingDependencies): UserTokenMinter => ({
   mintUserToken: (request) =>
     tokenFromStoredGrant({
       ...dependencies,
-      appSlug: request.appSlug,
+      role: request.role,
       renew: () => renewExclusively({ dependencies, request }),
     }),
 });

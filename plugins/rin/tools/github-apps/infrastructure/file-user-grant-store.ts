@@ -7,6 +7,7 @@ import type {
   GrantStoreUnlocatable,
   UserGrantStorePort,
 } from "../application/user-grant-store-port.ts";
+import type { AgentRole } from "../domain/agent-role.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
 import { secret } from "../domain/secret.ts";
 import type { UserGrant } from "../domain/user-grant.ts";
@@ -36,20 +37,20 @@ type FileUserGrantStoreDependencies = {
 
 type StoreFile = {
   readonly locateStoreDirectory: StoreLocator;
-  readonly appSlug: string;
+  readonly role: AgentRole;
   readonly suffix: string;
 };
 
 const locateStoreFile = ({
   locateStoreDirectory,
-  appSlug,
+  role,
   suffix,
 }: StoreFile): Result<string, GrantStoreUnlocatable> => {
   const storeDirectory = locateStoreDirectory();
   if (storeDirectory.kind === "failure") {
     return fail({ kind: "credential-store-unlocatable", detail: storeDirectory.reason.detail });
   }
-  return succeed(`${storeDirectory.outcome}/${appSlug}${suffix}`);
+  return succeed(`${storeDirectory.outcome}/${role}${suffix}`);
 };
 
 const grantFromStored = (stored: StoredGrant): UserGrant => ({
@@ -75,8 +76,8 @@ const createFileUserGrantStore = ({
   replacePrivateFile,
   lock,
 }: FileUserGrantStoreDependencies): UserGrantStorePort => ({
-  load: async ({ appSlug }) => {
-    const grantPath = locateStoreFile({ locateStoreDirectory, appSlug, suffix: GRANT_FILE_SUFFIX });
+  load: async ({ role }) => {
+    const grantPath = locateStoreFile({ locateStoreDirectory, role, suffix: GRANT_FILE_SUFFIX });
     if (grantPath.kind === "failure") return grantPath;
     const path = grantPath.outcome;
     const grantText = await readTextFile(path);
@@ -91,8 +92,8 @@ const createFileUserGrantStore = ({
     }
     return succeed(grantFromStored(parsed.data));
   },
-  save: async ({ appSlug, grant }) => {
-    const grantPath = locateStoreFile({ locateStoreDirectory, appSlug, suffix: GRANT_FILE_SUFFIX });
+  save: async ({ role, grant }) => {
+    const grantPath = locateStoreFile({ locateStoreDirectory, role, suffix: GRANT_FILE_SUFFIX });
     if (grantPath.kind === "failure") return grantPath;
     const path = grantPath.outcome;
     const replaced = await replacePrivateFile({ location: path, text: grantFileText(grant) });
@@ -101,14 +102,14 @@ const createFileUserGrantStore = ({
     }
     return succeed(undefined);
   },
-  holdExclusively: async ({ appSlug, work }) => {
-    const lockPath = locateStoreFile({ locateStoreDirectory, appSlug, suffix: LOCK_FILE_SUFFIX });
+  lock: async ({ role }) => {
+    const lockPath = locateStoreFile({ locateStoreDirectory, role, suffix: LOCK_FILE_SUFFIX });
     if (lockPath.kind === "failure") return lockPath;
-    const held = await lock.holdExclusively({ lockLocation: lockPath.outcome, work });
-    if (held.kind === "failure") {
-      return fail({ kind: "user-grant-lock-unavailable", path: held.reason.lockLocation });
+    const acquired = await lock.acquire(lockPath.outcome);
+    if (acquired.kind === "failure") {
+      return fail({ kind: "user-grant-lock-unavailable", path: acquired.reason.lockLocation });
     }
-    return held;
+    return acquired;
   },
 });
 

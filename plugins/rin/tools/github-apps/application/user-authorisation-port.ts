@@ -3,7 +3,7 @@ import type { Secret } from "../domain/secret.ts";
 import type { IssuedUserGrant } from "../domain/user-grant.ts";
 import type { GitHubFailure } from "./github-failure.ts";
 
-type DeviceCodeRequest = { readonly clientId: string };
+type DeviceCodeRequest = { readonly clientId: string; readonly scope: string };
 
 type DeviceAuthorisation = {
   readonly deviceCode: Secret;
