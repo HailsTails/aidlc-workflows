@@ -1,19 +1,25 @@
 import { afterEach, assert, describe, expect, it } from "vitest";
 import {
   createPrivateFile,
+  createPrivateFileReplacer,
   moveFile,
   readTextFile,
   removeFile,
-  replacePrivateFile,
   resolveCanonicalPath,
 } from "./local-file-system.ts";
+
+const replacePrivateFile = createPrivateFileReplacer({
+  createTemporaryName: () => globalThis.crypto.randomUUID(),
+});
 
 const ownSource = new URL("./local-file-system.ts", import.meta.url);
 
 const absentFile = new URL("./absent-file.json", import.meta.url);
 
+const ignoredDirectory = `${import.meta.dirname}/../../../../../node_modules`;
+
 const scratchLocation = () =>
-  `${import.meta.dirname}/local-file-system.scratch-${globalThis.crypto.randomUUID()}.json`;
+  `${ignoredDirectory}/rin-github-apps-local-file-system-${globalThis.crypto.randomUUID()}.json`;
 
 const absentDirectoryLocation = `${import.meta.dirname}/absent-directory/private.json`;
 

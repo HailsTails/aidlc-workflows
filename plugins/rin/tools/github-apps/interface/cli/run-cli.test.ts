@@ -166,7 +166,52 @@ describe("runCli gh", () => {
       commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
     });
 
-    expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith("failed to upload b.png\n");
+    expect(dependencies.terminal.writeError).toHaveBeenNthCalledWith(1, "failed to upload b.png\n");
+  });
+
+  it("says a failed write under the operator's grant may mean the grant was revoked", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run.mockResolvedValue(
+      succeed({ standardOutput: "", standardError: "HTTP 401: Bad credentials\n", exitCode: 1 }),
+    );
+    const dependencies = fakeDependencies(githubCli);
+
+    await runCli({
+      dependencies,
+      commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
+    });
+
+    expect(dependencies.terminal.writeError).toHaveBeenLastCalledWith(
+      "This step ran under the operator's grant. If gh reported bad credentials, the grant was revoked: run the \"login\" command of the bot CLI, then retry.\n",
+    );
+  });
+
+  it("says nothing about the grant when a write as the bot fails", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run.mockResolvedValue(
+      succeed({ standardOutput: "", standardError: "HTTP 401: Bad credentials\n", exitCode: 1 }),
+    );
+    const dependencies = fakeDependencies(githubCli);
+
+    await runCli({
+      dependencies,
+      commandArguments: ["gh", "issue", "comment", "429", "-b", "x"],
+    });
+
+    expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(
+      "HTTP 401: Bad credentials\n",
+    );
+  });
+
+  it("says nothing about the grant when the write under it succeeded", async () => {
+    const dependencies = fakeDependencies();
+
+    await runCli({
+      dependencies,
+      commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
+    });
+
+    expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith("");
   });
 
   it("prints the created URL once and exits 0 when the attachments followed", async () => {
@@ -197,7 +242,7 @@ describe("runCli gh", () => {
       [""],
       ["failed to upload b.png\n"],
       [
-        "It was created as the bot, but its attachments were not all uploaded. Add them with gh pr edit <number> --attach or gh issue edit <number> --attach.\n",
+        "It was created as the bot, but its attachments were not all uploaded. Add them with gh pr edit <number> --attach or gh issue edit <number> --attach.\nThis step ran under the operator's grant. If gh reported bad credentials, the grant was revoked: run the \"login\" command of the bot CLI, then retry.\n",
       ],
     ]);
   });

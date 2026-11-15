@@ -33,7 +33,7 @@ describe("readAuthoredBody", () => {
   it("refuses inline text carrying a user token", async () => {
     expect(
       await readAuthoredBody({ ...sources(), source: { kind: "inline", text: USER_TOKEN_BODY } }),
-    ).toEqual(fail({ kind: "inline-body-refused", reason: "contains-user-token" }));
+    ).toEqual(fail({ kind: "inline-body-refused", reason: "contains-github-token" }));
   });
 
   it("takes inline text that only names the token prefixes", async () => {
@@ -68,7 +68,7 @@ describe("readAuthoredBody", () => {
         readStandardInput: vi.fn<() => Promise<string>>().mockResolvedValue(USER_TOKEN_BODY),
         source: { kind: "standard-input" },
       }),
-    ).toEqual(fail({ kind: "inline-body-refused", reason: "contains-user-token" }));
+    ).toEqual(fail({ kind: "inline-body-refused", reason: "contains-github-token" }));
   });
 
   it("reads a body file through the guarded reader", async () => {

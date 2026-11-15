@@ -47,7 +47,7 @@ const LOGIN_HINT = 'Run the "login" command of the bot CLI, then retry.';
 
 const UNPUBLISHABLE_CONTENT = {
   "contains-private-key": "a private key",
-  "contains-user-token": "a GitHub user token",
+  "contains-github-token": "a GitHub token",
 } as const;
 
 const shortSha = (sha: string | null): string => sha?.slice(0, SHORT_SHA_LENGTH) ?? "no commit";
@@ -80,6 +80,12 @@ const describers: FailureDescribers = {
     `${flag} is refused: the wrapper pins the repository, never bypasses rulesets, never opens a browser or editor, and never posts a body it did not stamp. Drop ${flag} and give the text with --body or --body-file.`,
   "gh-attach-unsupported": ({ verb }) =>
     `gh ${verb} takes no --attach. Attach files with gh pr create, gh pr edit, gh pr comment, gh issue create, gh issue edit or gh issue comment.`,
+  "gh-attach-target-not-number": ({ verb }) =>
+    `gh ${verb} with --attach needs the number right after the verb, as in "gh ${verb} 12 --attach shot.png". A URL or a branch is refused: the write runs under the operator's grant, which GitHub does not limit to this repository.`,
+  "gh-attach-reference-refused": ({ token }) =>
+    `Refusing "${token}" on a write with --attach: gh takes a repository from a URL, and the operator's grant is not limited to this repository. Give numbers in place of URLs, and put a URL that belongs in the text into the body.`,
+  "gh-attach-dry-run-refused": () =>
+    "--dry-run creates nothing, so there is nothing to attach files to. Drop --attach or --dry-run.",
   "gh-flag-value-missing": ({ flag }) => `${flag} needs a value.`,
   "gh-body-given-twice": () => "Pass --body or --body-file, not both.",
   "gh-body-missing": ({ verb }) =>
@@ -144,7 +150,10 @@ const describers: FailureDescribers = {
   "user-grant-invalid": ({ path, issues }) =>
     `The user grant at ${path} is malformed: ${issues}. ${LOGIN_HINT}`,
   "user-grant-expired": () => `This machine's user grant has expired. ${LOGIN_HINT}`,
-  "user-grant-unwritable": ({ path, detail }) => `Cannot write the user grant to ${path}: ${detail}`,
+  "user-grant-unwritable": ({ path, detail }) =>
+    `Cannot write the user grant to ${path}: ${detail}. If a refresh had just succeeded, the grant on disk is now out of date. ${LOGIN_HINT}`,
+  "user-grant-lock-unwritable": ({ path, detail }) =>
+    `Cannot create the user grant lock at ${path}: ${detail}. Check that the credential store directory exists and can be written.`,
   "user-grant-lock-unavailable": ({ path }) =>
     `Another session has held the user grant lock at ${path} for too long. Retry; if it persists, delete that file.`,
   "unknown-command": ({ commandName }) => `Unknown command "${commandName}".`,

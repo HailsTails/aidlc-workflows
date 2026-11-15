@@ -99,6 +99,8 @@ type AttachedFiles = {
   readonly verb: GhVerb;
   readonly route: GhRoute;
   readonly files: readonly string[];
+  readonly target: string | undefined;
+  readonly passThrough: readonly string[];
 };
 
 type GhInvocationRefusal =
@@ -106,6 +108,9 @@ type GhInvocationRefusal =
   | { readonly kind: "gh-flag-refused"; readonly flag: string }
   | { readonly kind: "gh-flag-value-missing"; readonly flag: string }
   | { readonly kind: "gh-attach-unsupported"; readonly verb: string }
+  | { readonly kind: "gh-attach-target-not-number"; readonly verb: string }
+  | { readonly kind: "gh-attach-reference-refused"; readonly token: string }
+  | { readonly kind: "gh-attach-dry-run-refused" }
   | { readonly kind: "gh-body-given-twice" }
   | { readonly kind: "gh-review-event-ambiguous" }
   | { readonly kind: "gh-review-flag-unsupported"; readonly token: string };
@@ -147,6 +152,14 @@ const REVIEW_EVENT_FLAGS: Readonly<Record<string, ReviewEvent>> = {
 };
 
 const STANDARD_INPUT = "-";
+
+const REPOSITORY_SHORT_FLAG = /^-[A-Za-z]*R/;
+
+const PLAIN_NUMBER = /^[1-9]\d*$/;
+
+const URL_REFERENCE = /:\/\//;
+
+const DRY_RUN_FLAG = "--dry-run";
 
 type ScannedFlags = {
   readonly passThrough: readonly string[];
@@ -253,6 +266,7 @@ const scanFlags = ({ tokens, scanned, route }: ScanStep): Result<ScannedFlags, G
   if (token === undefined) return succeed(scanned);
   const flagToken = flagTokenOf(token);
   if (REFUSED_FLAGS.has(flagToken.flag)) return fail({ kind: "gh-flag-refused", flag: flagToken.flag });
+  if (REPOSITORY_SHORT_FLAG.test(token)) return fail({ kind: "gh-flag-refused", flag: "-R" });
   const reviewEvent = isReviewRoute(route) ? REVIEW_EVENT_FLAGS[flagToken.flag] : undefined;
   if (reviewEvent !== undefined) {
     const reviewEvents = [...scanned.reviewEvents, reviewEvent];
@@ -300,14 +314,42 @@ const reviewRequestOf = (
   return succeed({ event: scanned.reviewEvents[0], commitSha: scanned.commitSha });
 };
 
-const attachmentDeliveryOf = ({
+const confineToPinnedRepository = ({
   verb,
-  route,
   files,
+  target,
+  passThrough,
 }: AttachedFiles): Result<AttachmentDelivery, GhInvocationRefusal> => {
-  if (files.length === 0) return succeed({ kind: "none" });
-  if (route.attachments === "unsupported") return fail({ kind: "gh-attach-unsupported", verb });
-  return succeed({ kind: route.attachments, files });
+  if (target === undefined || !PLAIN_NUMBER.test(target)) {
+    return fail({ kind: "gh-attach-target-not-number", verb });
+  }
+  const reference = passThrough.find((token) => URL_REFERENCE.test(token));
+  if (reference !== undefined) {
+    return fail({ kind: "gh-attach-reference-refused", token: reference });
+  }
+  return succeed({ kind: "same-write", files });
+};
+
+const createsForReal = ({
+  files,
+  passThrough,
+}: AttachedFiles): Result<AttachmentDelivery, GhInvocationRefusal> =>
+  passThrough.some((token) => flagTokenOf(token).flag === DRY_RUN_FLAG)
+    ? fail({ kind: "gh-attach-dry-run-refused" })
+    : succeed({ kind: "follow-up-edit", files });
+
+const attachmentDeliveryOf = (
+  attached: AttachedFiles,
+): Result<AttachmentDelivery, GhInvocationRefusal> => {
+  if (attached.files.length === 0) return succeed({ kind: "none" });
+  switch (attached.route.attachments) {
+    case "unsupported":
+      return fail({ kind: "gh-attach-unsupported", verb: attached.verb });
+    case "same-write":
+      return confineToPinnedRepository(attached);
+    case "follow-up-edit":
+      return createsForReal(attached);
+  }
 };
 
 const attachedFilesOf = (delivery: AttachmentDelivery): readonly string[] =>
@@ -322,7 +364,13 @@ const parseGhInvocation = (
   const route: GhRoute = GH_ROUTES[verb];
   const scanned = scanFlags({ tokens, scanned: NOTHING_SCANNED, route });
   if (scanned.kind === "failure") return scanned;
-  const attachments = attachmentDeliveryOf({ verb, route, files: scanned.outcome.attachments });
+  const attachments = attachmentDeliveryOf({
+    verb,
+    route,
+    files: scanned.outcome.attachments,
+    target: targetOf(tokens),
+    passThrough: scanned.outcome.passThrough,
+  });
   if (attachments.kind === "failure") return attachments;
   const review = reviewRequestOf(route, scanned.outcome);
   if (review.kind === "failure") return review;

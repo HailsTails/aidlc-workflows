@@ -30,8 +30,7 @@ const isErrorCoded = ({ caught, code }: { readonly caught: unknown; readonly cod
 const describeFailure = (caught: unknown): string =>
   caught instanceof Error ? caught.message : String(caught);
 
-const temporarySiblingOf = (location: string): string =>
-  `${location}.${process.pid}.${globalThis.crypto.randomUUID()}.tmp`;
+type PrivateFileReplacerDependencies = { readonly createTemporaryName: () => string };
 
 const readTextFile: TextFileReader = async (location) => {
   try {
@@ -57,17 +56,19 @@ const discardTemporary = async (temporaryLocation: string): Promise<void> => {
   }
 };
 
-const replacePrivateFile: PrivateFileReplacer = async ({ location, text }) => {
-  const temporaryLocation = temporarySiblingOf(location);
-  try {
-    await writeFile(temporaryLocation, text, ownerOnlyCreation);
-    await rename(temporaryLocation, location);
-    return succeed(undefined);
-  } catch (caught) {
-    await discardTemporary(temporaryLocation);
-    return fail({ kind: "file-unwritable", location, detail: describeFailure(caught) });
-  }
-};
+const createPrivateFileReplacer =
+  ({ createTemporaryName }: PrivateFileReplacerDependencies): PrivateFileReplacer =>
+  async ({ location, text }) => {
+    const temporaryLocation = `${location}.${createTemporaryName()}.tmp`;
+    try {
+      await writeFile(temporaryLocation, text, ownerOnlyCreation);
+      await rename(temporaryLocation, location);
+      return succeed(undefined);
+    } catch (caught) {
+      await discardTemporary(temporaryLocation);
+      return fail({ kind: "file-unwritable", location, detail: describeFailure(caught) });
+    }
+  };
 
 const createPrivateFile: PrivateFileCreator = async ({ location, text }) => {
   try {
@@ -105,9 +106,9 @@ const moveFile: FileMover = async ({ from, to }) => {
 
 export {
   createPrivateFile,
+  createPrivateFileReplacer,
   moveFile,
   readTextFile,
   removeFile,
-  replacePrivateFile,
   resolveCanonicalPath,
 };

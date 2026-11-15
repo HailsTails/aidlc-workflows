@@ -5,7 +5,7 @@ import type { TextFileReader } from "../application/text-file-port.ts";
 import { createFileCredentialStore, locateUserStore } from "./file-credential-store.ts";
 import type { UserEnvironment } from "./user-environment.ts";
 
-const storeDirectory = "C:/Users/helen/.config/rin-github-apps";
+const storeDirectory = "C:/Users/operator/.config/rin-github-apps";
 
 const locatedStore = () => vi.fn<StoreLocator>().mockReturnValue(succeed(storeDirectory));
 
@@ -29,28 +29,28 @@ describe("locateUserStore", () => {
 
   it("finds the one per-user store under the home directory, outside every repository", () => {
     const locate = locateUserStore({
-      environment: environmentWith({ variables: {}, homeDirectory: "C:\\Users\\helen" }),
+      environment: environmentWith({ variables: {}, homeDirectory: "C:\\Users\\operator" }),
     });
 
-    expect(locate()).toEqual(succeed("C:/Users/helen/.config/rin-github-apps"));
+    expect(locate()).toEqual(succeed("C:/Users/operator/.config/rin-github-apps"));
   });
 
   it("prefers the directory the environment names", () => {
     const locate = locateUserStore({
       environment: environmentWith({
         variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: "H:\\keys\\rin" },
-        homeDirectory: "/home/helen",
+        homeDirectory: "/home/operator",
       }),
     });
 
     expect(locate()).toEqual(succeed("H:/keys/rin"));
   });
 
-  it.each(["/home/helen/keys", "C:/keys/rin"])("accepts the absolute override %s", (directory) => {
+  it.each(["/home/operator/keys", "C:/keys/rin"])("accepts the absolute override %s", (directory) => {
     const locate = locateUserStore({
       environment: environmentWith({
         variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: directory },
-        homeDirectory: "/home/helen",
+        homeDirectory: "/home/operator",
       }),
     });
 
@@ -63,7 +63,7 @@ describe("locateUserStore", () => {
       const locate = locateUserStore({
         environment: environmentWith({
           variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: directory },
-          homeDirectory: "/home/helen",
+          homeDirectory: "/home/operator",
         }),
       });
 
@@ -79,11 +79,11 @@ describe("locateUserStore", () => {
     const locate = locateUserStore({
       environment: environmentWith({
         variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: "" },
-        homeDirectory: "/home/helen",
+        homeDirectory: "/home/operator",
       }),
     });
 
-    expect(locate()).toEqual(succeed("/home/helen/.config/rin-github-apps"));
+    expect(locate()).toEqual(succeed("/home/operator/.config/rin-github-apps"));
   });
 
   it("reports a user with neither an override nor a home directory", () => {

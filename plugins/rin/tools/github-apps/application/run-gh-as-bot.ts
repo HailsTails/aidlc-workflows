@@ -68,7 +68,7 @@ type GhAsBotFailure =
 type AttachmentFollowUpFailure = GhUnavailable | CreatedNumberUnreadable;
 
 type GhAsBotReport =
-  | { readonly kind: "single-write"; readonly run: GhRun }
+  | { readonly kind: "single-write"; readonly run: GhRun; readonly via: WriteCredential }
   | {
       readonly kind: "created-then-attached";
       readonly created: GhRun;
@@ -87,7 +87,10 @@ type PreparedText = {
 type StampedTexts = {
   readonly body: string | undefined;
   readonly closingComment: string | undefined;
+  readonly followUpBody: string | undefined;
 };
+
+type WrittenRun = { readonly run: GhRunOutcome; readonly via: WriteCredential };
 
 type StampedWrite = StampedTexts & {
   readonly invocation: GhInvocation;
@@ -104,7 +107,7 @@ type RoutedWrite = StampedTexts & {
 type AttachmentFollowUp = {
   readonly invocation: GhInvocation;
   readonly created: GhRun;
-  readonly body: string | undefined;
+  readonly followUpBody: string | undefined;
   readonly userGh: GitHubCliPort;
 };
 
@@ -151,9 +154,6 @@ const bodyToStamp = (invocation: GhInvocation, authoredBody: string | undefined)
 const passedVerbatim = (invocation: GhInvocation, authoredBody: string | undefined) =>
   invocation.route.body === "verbatim" ? authoredBody : undefined;
 
-const writeCredentialOf = ({ attachments }: GhInvocation): WriteCredential =>
-  attachments.kind === "none" ? "installation" : "user-grant";
-
 const resolveSession = async ({
   invocation,
   worktree,
@@ -171,18 +171,27 @@ const stampTexts = async (
   const body = bodyToStamp(stamping.invocation, authoredBody);
   const verbatimBody = passedVerbatim(stamping.invocation, authoredBody);
   if (body === undefined && closingComment === undefined) {
-    return succeed({ body: verbatimBody, closingComment: undefined });
+    return succeed({ body: verbatimBody, closingComment: undefined, followUpBody: undefined });
   }
   const session = await resolveSession(stamping);
   if (session.kind === "failure") return session;
-  const provenance = {
-    role: stamping.invocation.route.role,
-    session: session.outcome,
-    via: writeCredentialOf(stamping.invocation),
-  };
-  const stamp = (text: string | undefined): string | undefined =>
-    text === undefined ? undefined : withProvenance({ provenance, authoredBody: text });
-  return succeed({ body: stamp(body) ?? verbatimBody, closingComment: stamp(closingComment) });
+  const { route, attachments } = stamping.invocation;
+  const stampedAs =
+    (via: WriteCredential) =>
+    (text: string | undefined): string | undefined =>
+      text === undefined
+        ? undefined
+        : withProvenance({
+            provenance: { role: route.role, session: session.outcome, via },
+            authoredBody: text,
+          });
+  const stamp = stampedAs(attachments.kind === "same-write" ? "user-grant" : "installation");
+  return succeed({
+    body: stamp(body) ?? verbatimBody,
+    closingComment: stamp(closingComment),
+    followUpBody:
+      attachments.kind === "follow-up-edit" ? stampedAs("user-grant")(body) : undefined,
+  });
 };
 
 const pullNumberOf = (invocation: GhInvocation): Result<number, GhTargetRequired> =>
@@ -245,9 +254,9 @@ const writeChecked = (write: StampedWrite): GhRunOutcome => {
   }
 };
 
-const singleWrite = async (run: GhRunOutcome): GhAsBotOutcome => {
+const singleWrite = async ({ run, via }: WrittenRun): GhAsBotOutcome => {
   const ran = await run;
-  return ran.kind === "failure" ? ran : succeed({ kind: "single-write", run: ran.outcome });
+  return ran.kind === "failure" ? ran : succeed({ kind: "single-write", run: ran.outcome, via });
 };
 
 const connectAsBot = async ({
@@ -281,14 +290,20 @@ const connectAsUser = async ({
 const writeAsBot = async (write: RoutedWrite): GhAsBotOutcome => {
   const gh = await connectAsBot(write);
   if (gh.kind === "failure") return gh;
-  return singleWrite(writeChecked({ ...write, attachments: [], gh: gh.outcome }));
+  return singleWrite({
+    run: writeChecked({ ...write, attachments: [], gh: gh.outcome }),
+    via: "installation",
+  });
 };
 
 const writeAsUser = async (write: RoutedWrite): GhAsBotOutcome => {
   const gh = await connectAsUser(write);
   if (gh.kind === "failure") return gh;
   const attachments = attachedFilesOf(write.invocation.attachments);
-  return singleWrite(writeChecked({ ...write, attachments, gh: gh.outcome }));
+  return singleWrite({
+    run: writeChecked({ ...write, attachments, gh: gh.outcome }),
+    via: "user-grant",
+  });
 };
 
 const editedNounOf = ({ verb }: GhInvocation): "pr" | "issue" =>
@@ -297,7 +312,7 @@ const editedNounOf = ({ verb }: GhInvocation): "pr" | "issue" =>
 const attachToCreated = async ({
   invocation,
   created,
-  body,
+  followUpBody,
   userGh,
 }: AttachmentFollowUp): Promise<Result<GhRun, AttachmentFollowUpFailure>> => {
   const createdNumber = createdNumberOf(created.standardOutput);
@@ -308,14 +323,14 @@ const attachToCreated = async ({
       "edit",
       String(createdNumber.outcome),
       ...attachFlags(attachedFilesOf(invocation.attachments)),
-      ...bodyFlags(body),
+      ...bodyFlags(followUpBody),
     ],
-    standardInput: body,
+    standardInput: followUpBody,
   });
 };
 
 const createThenAttach = async (write: RoutedWrite): GhAsBotOutcome => {
-  const { invocation, body } = write;
+  const { invocation, followUpBody } = write;
   const userGh = await connectAsUser(write);
   if (userGh.kind === "failure") return userGh;
   const botGh = await connectAsBot(write);
@@ -323,12 +338,12 @@ const createThenAttach = async (write: RoutedWrite): GhAsBotOutcome => {
   const created = await writeChecked({ ...write, attachments: [], gh: botGh.outcome });
   if (created.kind === "failure") return created;
   if (created.outcome.exitCode !== 0) {
-    return succeed({ kind: "single-write", run: created.outcome });
+    return succeed({ kind: "single-write", run: created.outcome, via: "installation" });
   }
   const attached = await attachToCreated({
     invocation,
     created: created.outcome,
-    body,
+    followUpBody,
     userGh: userGh.outcome,
   });
   return succeed({ kind: "created-then-attached", created: created.outcome, attached });

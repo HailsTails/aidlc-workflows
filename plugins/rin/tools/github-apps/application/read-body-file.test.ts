@@ -5,7 +5,7 @@ import type { StoreLocator } from "./credential-store-port.ts";
 import { createBodyFileReader } from "./read-body-file.ts";
 import type { CanonicalPathResolver, TextFileReader } from "./text-file-port.ts";
 
-const storeDirectory = "C:/Users/helen/.config/rin-github-apps";
+const storeDirectory = "C:/Users/operator/.config/rin-github-apps";
 
 const canonicalPaths = (paths: Readonly<Record<string, string>>) =>
   vi
@@ -81,7 +81,7 @@ describe("createBodyFileReader", () => {
     });
 
     expect(await readBodyFile("notes.md")).toEqual(
-      fail({ kind: "body-file-refused", location: "notes.md", reason: "contains-user-token" }),
+      fail({ kind: "body-file-refused", location: "notes.md", reason: "contains-github-token" }),
     );
   });
 

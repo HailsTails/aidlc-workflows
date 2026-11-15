@@ -32,11 +32,20 @@ type UserGrantLockUnavailable = {
   readonly path: string;
 };
 
+type UserGrantLockUnwritable = {
+  readonly kind: "user-grant-lock-unwritable";
+  readonly path: string;
+  readonly detail: string;
+};
+
 type UserGrantLoadFailure = GrantStoreUnlocatable | UserGrantMissing | UserGrantInvalid;
 
 type UserGrantSaveFailure = GrantStoreUnlocatable | UserGrantUnwritable;
 
-type UserGrantLockFailure = GrantStoreUnlocatable | UserGrantLockUnavailable;
+type UserGrantLockFailure =
+  | GrantStoreUnlocatable
+  | UserGrantLockUnavailable
+  | UserGrantLockUnwritable;
 
 type UserGrantStorePort = {
   readonly load: (location: GrantLocation) => Promise<Result<UserGrant, UserGrantLoadFailure>>;
@@ -52,6 +61,7 @@ export type {
   UserGrantLoadFailure,
   UserGrantLockFailure,
   UserGrantLockUnavailable,
+  UserGrantLockUnwritable,
   UserGrantMissing,
   UserGrantSaveFailure,
   UserGrantStorePort,

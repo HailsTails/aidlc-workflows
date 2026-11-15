@@ -25,6 +25,8 @@ const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 const REJECTION_DETAIL_LIMIT = 500;
 
+const UNKNOWN_CLIENT_STATUS = 404;
+
 const REQUEST_TIMEOUT_MILLISECONDS = 30_000;
 
 const REQUEST_DEVICE_CODE = "request a device code";
@@ -135,10 +137,13 @@ const send = async ({
   }
 };
 
-const postJson = async (post: Post): Promise<Result<unknown, GitHubFailure>> => {
+const postJson = async (
+  post: Post,
+): Promise<Result<unknown, GitHubFailure | UserAuthorisationRefused>> => {
   const response = await send(post);
   if (response.kind === "failure") return response;
   const { ok, status, responseText } = response.outcome;
+  if (status === UNKNOWN_CLIENT_STATUS) return fail({ kind: "oauth-client-rejected" });
   if (!ok) {
     return fail({
       kind: "github-rejected",

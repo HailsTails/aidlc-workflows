@@ -25,10 +25,10 @@ import { createSystemClock } from "./infrastructure/system-clock.ts";
 import { createSystemPause } from "./infrastructure/system-pause.ts";
 import {
   createPrivateFile,
+  createPrivateFileReplacer,
   moveFile,
   readTextFile,
   removeFile,
-  replacePrivateFile,
   resolveCanonicalPath,
 } from "./infrastructure/local-file-system.ts";
 import { createProcessUserEnvironment } from "./infrastructure/user-environment.ts";
@@ -51,13 +51,15 @@ const createCliDependencies = (): CliDependencies => {
   });
   const clock = createSystemClock();
   const pause = createSystemPause();
+  const createUniqueName = (): string => globalThis.crypto.randomUUID();
   const userGrantAccess = {
     authorisationSettings: credentialStore,
     userAuthorisation: createDefaultGitHubUserAuthorisation(),
     userGrantStore: createFileUserGrantStore({
       locateStoreDirectory: locateCredentialStore,
       readTextFile,
-      replacePrivateFile,
+      replacePrivateFile: createPrivateFileReplacer({ createTemporaryName: createUniqueName }),
+      pause,
       lock: createExclusiveFileLock({
         createPrivateFile,
         readTextFile,
@@ -65,7 +67,7 @@ const createCliDependencies = (): CliDependencies => {
         removeFile,
         clock,
         pause,
-        createClaimName: () => globalThis.crypto.randomUUID(),
+        createClaimName: createUniqueName,
       }),
     }),
     clock,

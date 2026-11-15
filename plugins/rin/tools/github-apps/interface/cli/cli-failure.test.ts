@@ -39,12 +39,12 @@ describe("describeCliFailure", () => {
       "Refusing to post that text: it contains a private key.",
     ],
     [
-      { kind: "inline-body-refused", reason: "contains-user-token" },
-      "Refusing to post that text: it contains a GitHub user token.",
+      { kind: "inline-body-refused", reason: "contains-github-token" },
+      "Refusing to post that text: it contains a GitHub token.",
     ],
     [
-      { kind: "body-file-refused", location: "notes.md", reason: "contains-user-token" },
-      "Refusing to post notes.md: it contains a GitHub user token.",
+      { kind: "body-file-refused", location: "notes.md", reason: "contains-github-token" },
+      "Refusing to post notes.md: it contains a GitHub token.",
     ],
     [
       { kind: "created-number-unreadable" },
@@ -53,6 +53,26 @@ describe("describeCliFailure", () => {
     [
       { kind: "gh-attach-unsupported", verb: "pr merge" },
       "gh pr merge takes no --attach. Attach files with gh pr create, gh pr edit, gh pr comment, gh issue create, gh issue edit or gh issue comment.",
+    ],
+    [
+      { kind: "gh-attach-target-not-number", verb: "pr comment" },
+      'gh pr comment with --attach needs the number right after the verb, as in "gh pr comment 12 --attach shot.png". A URL or a branch is refused: the write runs under the operator\'s grant, which GitHub does not limit to this repository.',
+    ],
+    [
+      { kind: "gh-attach-reference-refused", token: "https://github.com/other/repo/issues/3" },
+      'Refusing "https://github.com/other/repo/issues/3" on a write with --attach: gh takes a repository from a URL, and the operator\'s grant is not limited to this repository. Give numbers in place of URLs, and put a URL that belongs in the text into the body.',
+    ],
+    [
+      { kind: "gh-attach-dry-run-refused" },
+      "--dry-run creates nothing, so there is nothing to attach files to. Drop --attach or --dry-run.",
+    ],
+    [
+      { kind: "user-grant-lock-unwritable", path: "store/author.user-grant.lock", detail: "ENOENT" },
+      "Cannot create the user grant lock at store/author.user-grant.lock: ENOENT. Check that the credential store directory exists and can be written.",
+    ],
+    [
+      { kind: "user-grant-unwritable", path: "store/author.user-grant.json", detail: "EPERM: rename" },
+      'Cannot write the user grant to store/author.user-grant.json: EPERM: rename. If a refresh had just succeeded, the grant on disk is now out of date. Run the "login" command of the bot CLI, then retry.',
     ],
     [
       { kind: "user-grant-missing", path: "store/author.user-grant.json" },

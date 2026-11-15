@@ -1,8 +1,8 @@
 import type { ClockPort } from "../application/clock-port.ts";
 import type {
   ExclusiveLockPort,
+  LockFailure,
   LockRelease,
-  LockUnavailable,
 } from "../application/exclusive-lock-port.ts";
 import type { PausePort } from "../application/pause-port.ts";
 import type {
@@ -17,7 +17,7 @@ const LOCK_LIFETIME_SECONDS = 120;
 
 const LOCK_RETRY_MILLISECONDS = 250;
 
-const LOCK_ATTEMPTS = 480;
+const LOCK_ATTEMPTS = 600;
 
 const EPOCH_SECONDS_PATTERN = /^\d+$/;
 
@@ -69,7 +69,7 @@ const removeKnownLock = async (known: KnownLock): Promise<void> => {
   await removeFile(claimLocation);
 };
 
-const attemptLock = async (attempt: LockAttempt): Promise<Result<LockRelease, LockUnavailable>> => {
+const attemptLock = async (attempt: LockAttempt): Promise<Result<LockRelease, LockFailure>> => {
   const { lockLocation, attemptsLeft, clock, createPrivateFile, readTextFile } = attempt;
   if (attemptsLeft === 0) return fail({ kind: "lock-unavailable", lockLocation });
   const nowEpochSeconds = clock.nowEpochSeconds();
@@ -79,7 +79,7 @@ const attemptLock = async (attempt: LockAttempt): Promise<Result<LockRelease, Lo
     return succeed(() => removeKnownLock({ ...attempt, lockText: ownLockText }));
   }
   if (created.reason.kind === "file-unwritable") {
-    return fail({ kind: "lock-unavailable", lockLocation });
+    return fail({ kind: "lock-unwritable", lockLocation, detail: created.reason.detail });
   }
   const nextAttempt = { ...attempt, attemptsLeft: attemptsLeft - 1 };
   const foundText = await readTextFile(lockLocation);

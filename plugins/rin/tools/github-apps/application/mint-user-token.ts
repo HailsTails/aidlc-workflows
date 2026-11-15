@@ -59,6 +59,11 @@ type StoredGrantReading = Pick<UserTokenMintingDependencies, "userGrantStore" | 
   readonly renew: (grant: UserGrant) => UserTokenOutcome;
 };
 
+type RejectedRefresh = Pick<UserTokenMintingDependencies, "userGrantStore" | "clock"> & {
+  readonly role: AgentRole;
+  readonly rejected: UserGrant;
+};
+
 type ExclusiveRenewal = {
   readonly dependencies: UserTokenMintingDependencies;
   readonly request: UserTokenRequest;
@@ -86,6 +91,24 @@ const tokenFromStoredGrant = async ({
   }
 };
 
+const tokenRenewedElsewhere = async ({
+  userGrantStore,
+  clock,
+  role,
+  rejected,
+}: RejectedRefresh): UserTokenOutcome => {
+  const stored = await userGrantStore.load({ role });
+  if (stored.kind === "failure") return stored;
+  const replaced = stored.outcome.refreshToken.reveal() !== rejected.refreshToken.reveal();
+  const freshness = assessGrantFreshness({
+    grant: stored.outcome,
+    nowEpochSeconds: clock.nowEpochSeconds(),
+  });
+  return replaced && freshness === "usable"
+    ? succeed(stored.outcome.accessToken)
+    : fail({ kind: "refresh-token-rejected" });
+};
+
 const renewGrant = async ({
   userAuthorisation,
   userGrantStore,
@@ -98,7 +121,11 @@ const renewGrant = async ({
     clientId,
     refreshToken: grant.refreshToken,
   });
-  if (issued.kind === "failure") return issued;
+  if (issued.kind === "failure") {
+    return issued.reason.kind === "refresh-token-rejected"
+      ? tokenRenewedElsewhere({ userGrantStore, clock, role, rejected: grant })
+      : issued;
+  }
   const renewed = grantIssuedAt({
     issued: issued.outcome,
     nowEpochSeconds: clock.nowEpochSeconds(),

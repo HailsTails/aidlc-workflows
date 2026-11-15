@@ -1,13 +1,14 @@
 import { assert, describe, expect, it, vi } from "vitest";
 import type { StoreLocator } from "../application/credential-store-port.ts";
 import type { ExclusiveLockPort, LockRelease } from "../application/exclusive-lock-port.ts";
+import type { PausePort } from "../application/pause-port.ts";
 import type { PrivateFileReplacer } from "../application/private-file-port.ts";
 import type { TextFileReader } from "../application/text-file-port.ts";
 import { fail, succeed } from "../domain/result.ts";
 import { secret } from "../domain/secret.ts";
 import { createFileUserGrantStore } from "./file-user-grant-store.ts";
 
-const storeDirectory = "C:/Users/helen/.config/rin-github-apps";
+const storeDirectory = "C:/Users/operator/.config/rin-github-apps";
 
 const grantPath = `${storeDirectory}/author.user-grant.json`;
 
@@ -28,6 +29,7 @@ const storeDependencies = () => ({
   readTextFile: vi.fn<TextFileReader>().mockResolvedValue(succeed(grantJson)),
   replacePrivateFile: vi.fn<PrivateFileReplacer>().mockResolvedValue(succeed(undefined)),
   lock: { acquire: vi.fn<ExclusiveLockPort["acquire"]>().mockResolvedValue(succeed(release)) },
+  pause: { pauseMilliseconds: vi.fn<PausePort["pauseMilliseconds"]>().mockResolvedValue() },
 });
 
 const unlocatable = () =>
@@ -141,6 +143,46 @@ describe("createFileUserGrantStore save", () => {
     });
   });
 
+  it("tries again after a pause when the first write is refused, so a refreshed grant is not lost", async () => {
+    const dependencies = storeDependencies();
+    dependencies.replacePrivateFile.mockResolvedValueOnce(
+      fail({ kind: "file-unwritable", location: grantPath, detail: "EPERM: rename" }),
+    );
+
+    const saved = await createFileUserGrantStore(dependencies).save({
+      role: "author",
+      grant: {
+        accessToken: secret("ghu_access"),
+        accessTokenExpiresAtEpochSeconds: 1,
+        refreshToken: secret("ghr_refresh"),
+        refreshTokenExpiresAtEpochSeconds: 2,
+      },
+    });
+
+    expect(saved).toEqual(succeed(undefined));
+    expect(dependencies.replacePrivateFile).toHaveBeenCalledTimes(2);
+    expect(dependencies.pause.pauseMilliseconds).toHaveBeenCalledExactlyOnceWith(50);
+  });
+
+  it("gives up after five refused writes", async () => {
+    const dependencies = storeDependencies();
+    dependencies.replacePrivateFile.mockResolvedValue(
+      fail({ kind: "file-unwritable", location: grantPath, detail: "EPERM: rename" }),
+    );
+
+    await createFileUserGrantStore(dependencies).save({
+      role: "author",
+      grant: {
+        accessToken: secret("ghu_access"),
+        accessTokenExpiresAtEpochSeconds: 1,
+        refreshToken: secret("ghr_refresh"),
+        refreshTokenExpiresAtEpochSeconds: 2,
+      },
+    });
+
+    expect(dependencies.replacePrivateFile).toHaveBeenCalledTimes(5);
+  });
+
   it("reports a grant file it cannot write", async () => {
     const dependencies = storeDependencies();
     dependencies.replacePrivateFile.mockResolvedValue(
@@ -201,6 +243,19 @@ describe("createFileUserGrantStore lock", () => {
     const locked = await createFileUserGrantStore(dependencies).lock({ role: "author" });
 
     expect(locked).toEqual(fail({ kind: "user-grant-lock-unavailable", path: lockPath }));
+  });
+
+  it("reports a lock file it cannot create as unwritable", async () => {
+    const dependencies = storeDependencies();
+    dependencies.lock.acquire.mockResolvedValue(
+      fail({ kind: "lock-unwritable", lockLocation: lockPath, detail: "ENOENT" }),
+    );
+
+    const locked = await createFileUserGrantStore(dependencies).lock({ role: "author" });
+
+    expect(locked).toEqual(
+      fail({ kind: "user-grant-lock-unwritable", path: lockPath, detail: "ENOENT" }),
+    );
   });
 
   it("reports a store it cannot locate, without taking the lock", async () => {

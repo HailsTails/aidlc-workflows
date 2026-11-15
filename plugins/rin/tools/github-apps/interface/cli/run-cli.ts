@@ -3,6 +3,7 @@ import type {
   AttachmentFollowUpFailure,
   GhAsBotReport,
 } from "../../application/run-gh-as-bot.ts";
+import type { WriteCredential } from "../../domain/provenance.ts";
 import type { Result } from "../../domain/result.ts";
 import type {
   CliCommand,
@@ -66,6 +67,8 @@ type PassedThrough = {
 
 type RelayedRun = { readonly run: GhRun; readonly terminal: Terminal };
 
+type RelayedWrite = RelayedRun & { readonly via: WriteCredential };
+
 type AttachmentFollowUpReport = {
   readonly attached: Result<GhRun, AttachmentFollowUpFailure>;
   readonly terminal: Terminal;
@@ -118,10 +121,18 @@ const reportOutcome = ({ outcome, outputOnFailure, terminal }: Reported): number
   return EXIT_SUCCESS;
 };
 
+const GRANT_MAY_BE_REVOKED = `This step ran under the operator's grant. If gh reported bad credentials, the grant was revoked: run the "login" command of the bot CLI, then retry.\n`;
+
 const relayRun = ({ run, terminal }: RelayedRun): number => {
   terminal.writeOutput(run.standardOutput);
   terminal.writeError(run.standardError);
   return run.exitCode;
+};
+
+const relayWrite = ({ run, terminal, via }: RelayedWrite): number => {
+  const exitCode = relayRun({ run, terminal });
+  if (via === "user-grant" && exitCode !== EXIT_SUCCESS) terminal.writeError(GRANT_MAY_BE_REVOKED);
+  return exitCode;
 };
 
 const reportAttachmentFollowUp = ({ attached, terminal }: AttachmentFollowUpReport): number => {
@@ -130,7 +141,9 @@ const reportAttachmentFollowUp = ({ attached, terminal }: AttachmentFollowUpRepo
     return EXIT_FAILURE;
   }
   terminal.writeError(attached.outcome.standardError);
-  if (attached.outcome.exitCode !== EXIT_SUCCESS) terminal.writeError(ATTACHMENTS_INCOMPLETE);
+  if (attached.outcome.exitCode !== EXIT_SUCCESS) {
+    terminal.writeError(`${ATTACHMENTS_INCOMPLETE}${GRANT_MAY_BE_REVOKED}`);
+  }
   return attached.outcome.exitCode;
 };
 
@@ -139,7 +152,7 @@ const reportPassThrough = ({ outcome, terminal }: PassedThrough): number => {
   const report = outcome.outcome;
   switch (report.kind) {
     case "single-write":
-      return relayRun({ run: report.run, terminal });
+      return relayWrite({ run: report.run, terminal, via: report.via });
     case "created-then-attached":
       relayRun({ run: report.created, terminal });
       return reportAttachmentFollowUp({ attached: report.attached, terminal });

@@ -10,7 +10,7 @@ import type { TextFileReader } from "../application/text-file-port.ts";
 import { fail, succeed } from "../domain/result.ts";
 import { createExclusiveFileLock } from "./exclusive-file-lock.ts";
 
-const lockLocation = "C:/Users/helen/.config/rin-github-apps/author.user-grant.lock";
+const lockLocation = "C:/Users/operator/.config/rin-github-apps/author.user-grant.lock";
 
 const claimLocation = `${lockLocation}.claim-1.claimed`;
 
@@ -83,10 +83,10 @@ describe("createExclusiveFileLock acquire", () => {
     const acquired = await createExclusiveFileLock(dependencies).acquire(lockLocation);
 
     expect(acquired).toEqual(fail({ kind: "lock-unavailable", lockLocation }));
-    expect(dependencies.createPrivateFile).toHaveBeenCalledTimes(480);
+    expect(dependencies.createPrivateFile).toHaveBeenCalledTimes(600);
   });
 
-  it("reports the lock unavailable when it cannot be written", async () => {
+  it("says the lock cannot be written, not that someone holds it, when the create fails", async () => {
     const dependencies = lockDependencies();
     dependencies.createPrivateFile.mockResolvedValue(
       fail({ kind: "file-unwritable", location: lockLocation, detail: "EACCES" }),
@@ -94,7 +94,7 @@ describe("createExclusiveFileLock acquire", () => {
 
     const acquired = await createExclusiveFileLock(dependencies).acquire(lockLocation);
 
-    expect(acquired).toEqual(fail({ kind: "lock-unavailable", lockLocation }));
+    expect(acquired).toEqual(fail({ kind: "lock-unwritable", lockLocation, detail: "EACCES" }));
   });
 });
 

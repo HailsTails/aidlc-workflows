@@ -191,6 +191,7 @@ describe("runGhAsBot attachments on an edit or comment", () => {
       succeed({
         kind: "single-write",
         run: { standardOutput: "https://github.com/pull/4\n", standardError: "", exitCode: 0 },
+        via: "user-grant",
       }),
     );
     expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
@@ -244,8 +245,9 @@ describe("runGhAsBot attachments on an edit or comment", () => {
   it("leaves a write without attachments on the bot", async () => {
     const { userGh, dependencies } = fakeDependencies();
 
-    await run(["pr", "comment", "4", "-b", "See."], dependencies);
+    const report = await run(["pr", "comment", "4", "-b", "See."], dependencies);
 
+    expect(report).toMatchObject(succeed({ kind: "single-write", via: "installation" }));
     expect(userGh.run).not.toHaveBeenCalled();
     expect(dependencies.userTokenMinter.mintUserToken).not.toHaveBeenCalled();
   });
@@ -254,27 +256,43 @@ describe("runGhAsBot attachments on an edit or comment", () => {
 describe("runGhAsBot attachments on a create", () => {
   const createWithAttachment = ["pr", "create", "-t", "T", "-b", "Body.", "--attach", "a.png#Before"];
 
-  const stampedBody = "<!-- rin-bot: role=author session=feature/basket via=user-grant -->\n\nBody.";
+  const createdBody = "<!-- rin-bot: role=author session=feature/basket -->\n\nBody.";
 
-  it("creates as the bot without the attachments", async () => {
+  const attachedBody = "<!-- rin-bot: role=author session=feature/basket via=user-grant -->\n\nBody.";
+
+  it("creates as the bot without the attachments, marked as the bot's own write", async () => {
     const { gh, dependencies } = fakeDependencies();
 
     await run(createWithAttachment, dependencies);
 
     expect(gh.run).toHaveBeenCalledExactlyOnceWith({
       ghArguments: ["pr", "create", "-t", "T", "--body-file", "-"],
-      standardInput: stampedBody,
+      standardInput: createdBody,
     });
   });
 
-  it("then attaches under the user grant by editing what it created with the same body", async () => {
+  it("then attaches under the user grant by editing what it created, marked as the grant's write", async () => {
     const { userGh, dependencies } = fakeDependencies();
 
     await run(createWithAttachment, dependencies);
 
     expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
       ghArguments: ["pr", "edit", "4", "--attach", "a.png#Before", "--body-file", "-"],
-      standardInput: stampedBody,
+      standardInput: attachedBody,
+    });
+  });
+
+  it("sends the follow-up edit only the created number, the files and the body, never what the caller typed", async () => {
+    const { userGh, dependencies } = fakeDependencies();
+
+    await run(
+      ["pr", "create", "-t", "T", "-b", "Body.", "--base", "main", "--attach", "a.png"],
+      dependencies,
+    );
+
+    expect(userGh.run).toHaveBeenCalledExactlyOnceWith({
+      ghArguments: ["pr", "edit", "4", "--attach", "a.png", "--body-file", "-"],
+      standardInput: attachedBody,
     });
   });
 
@@ -336,7 +354,9 @@ describe("runGhAsBot attachments on a create", () => {
 
     const report = await run(createWithAttachment, dependencies);
 
-    expect(report).toEqual(succeed({ kind: "single-write", run: refusedCreate }));
+    expect(report).toEqual(
+      succeed({ kind: "single-write", run: refusedCreate, via: "installation" }),
+    );
     expect(userGh.run).not.toHaveBeenCalled();
   });
 

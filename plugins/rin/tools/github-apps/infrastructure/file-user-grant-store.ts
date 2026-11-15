@@ -1,7 +1,12 @@
 import { z } from "zod";
 import type { StoreLocator } from "../application/credential-store-port.ts";
 import type { ExclusiveLockPort } from "../application/exclusive-lock-port.ts";
-import type { PrivateFileReplacer } from "../application/private-file-port.ts";
+import type { PausePort } from "../application/pause-port.ts";
+import type {
+  FileUnwritable,
+  PrivateFileReplacer,
+  PrivateFileWrite,
+} from "../application/private-file-port.ts";
 import type { TextFileReader } from "../application/text-file-port.ts";
 import type {
   GrantStoreUnlocatable,
@@ -19,6 +24,10 @@ const LOCK_FILE_SUFFIX = ".user-grant.lock";
 
 const JSON_INDENTATION = 2;
 
+const SAVE_ATTEMPTS = 5;
+
+const SAVE_RETRY_MILLISECONDS = 50;
+
 const storedGrantSchema = z.strictObject({
   accessToken: z.string().min(1),
   accessTokenExpiresAtEpochSeconds: z.number().int().positive(),
@@ -33,6 +42,12 @@ type FileUserGrantStoreDependencies = {
   readonly readTextFile: TextFileReader;
   readonly replacePrivateFile: PrivateFileReplacer;
   readonly lock: ExclusiveLockPort;
+  readonly pause: PausePort;
+};
+
+type PersistentReplace = Pick<FileUserGrantStoreDependencies, "replacePrivateFile" | "pause"> & {
+  readonly write: PrivateFileWrite;
+  readonly attemptsLeft: number;
 };
 
 type StoreFile = {
@@ -70,11 +85,22 @@ const storedFromGrant = (grant: UserGrant): StoredGrant => ({
 const grantFileText = (grant: UserGrant): string =>
   `${JSON.stringify(storedFromGrant(grant), null, JSON_INDENTATION)}\n`;
 
+const replacePersistently = async (
+  replace: PersistentReplace,
+): Promise<Result<void, FileUnwritable>> => {
+  const { replacePrivateFile, pause, write, attemptsLeft } = replace;
+  const replaced = await replacePrivateFile(write);
+  if (replaced.kind === "success" || attemptsLeft === 1) return replaced;
+  await pause.pauseMilliseconds(SAVE_RETRY_MILLISECONDS);
+  return replacePersistently({ ...replace, attemptsLeft: attemptsLeft - 1 });
+};
+
 const createFileUserGrantStore = ({
   locateStoreDirectory,
   readTextFile,
   replacePrivateFile,
   lock,
+  pause,
 }: FileUserGrantStoreDependencies): UserGrantStorePort => ({
   load: async ({ role }) => {
     const grantPath = locateStoreFile({ locateStoreDirectory, role, suffix: GRANT_FILE_SUFFIX });
@@ -96,7 +122,12 @@ const createFileUserGrantStore = ({
     const grantPath = locateStoreFile({ locateStoreDirectory, role, suffix: GRANT_FILE_SUFFIX });
     if (grantPath.kind === "failure") return grantPath;
     const path = grantPath.outcome;
-    const replaced = await replacePrivateFile({ location: path, text: grantFileText(grant) });
+    const replaced = await replacePersistently({
+      replacePrivateFile,
+      pause,
+      write: { location: path, text: grantFileText(grant) },
+      attemptsLeft: SAVE_ATTEMPTS,
+    });
     if (replaced.kind === "failure") {
       return fail({ kind: "user-grant-unwritable", path, detail: replaced.reason.detail });
     }
@@ -106,10 +137,11 @@ const createFileUserGrantStore = ({
     const lockPath = locateStoreFile({ locateStoreDirectory, role, suffix: LOCK_FILE_SUFFIX });
     if (lockPath.kind === "failure") return lockPath;
     const acquired = await lock.acquire(lockPath.outcome);
-    if (acquired.kind === "failure") {
-      return fail({ kind: "user-grant-lock-unavailable", path: acquired.reason.lockLocation });
-    }
-    return acquired;
+    if (acquired.kind === "success") return acquired;
+    const { reason } = acquired;
+    return reason.kind === "lock-unwritable"
+      ? fail({ kind: "user-grant-lock-unwritable", path: reason.lockLocation, detail: reason.detail })
+      : fail({ kind: "user-grant-lock-unavailable", path: reason.lockLocation });
   },
 });
 

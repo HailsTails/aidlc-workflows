@@ -286,6 +286,26 @@ describe("transport failures", () => {
     });
   });
 
+  it("reads the 404 GitHub gives an unregistered client id as a rejected client, for each operation", async () => {
+    const fetchResource = vi
+      .fn<FetchResource>()
+      .mockImplementation(async () => new Response('{"error":"Not Found"}', { status: 404 }));
+    const port = createGitHubUserAuthorisation({ fetchResource });
+
+    expect(await port.requestDeviceCode({ clientId: "Ov23unknown", scope: "repo" })).toEqual({
+      kind: "failure",
+      reason: { kind: "oauth-client-rejected" },
+    });
+    expect(await port.redeemDeviceCode(redemption)).toEqual({
+      kind: "failure",
+      reason: { kind: "oauth-client-rejected" },
+    });
+    expect(await port.refreshGrant(refresh)).toEqual({
+      kind: "failure",
+      reason: { kind: "oauth-client-rejected" },
+    });
+  });
+
   it("reports a non-2xx status with the first 500 characters of the body", async () => {
     const { port } = adapterReplying(new Response("x".repeat(600), { status: 503 }));
 

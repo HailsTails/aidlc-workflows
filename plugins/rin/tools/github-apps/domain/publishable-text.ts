@@ -1,8 +1,8 @@
 const PRIVATE_KEY_ARMOUR = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
 
-const USER_TOKEN = /gh[oru]_[A-Za-z0-9]{20,}/;
+const GITHUB_TOKEN = /gh[oprsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}/;
 
-type Publishability = "publishable" | "contains-private-key" | "contains-user-token";
+type Publishability = "publishable" | "contains-private-key" | "contains-github-token";
 
 type DirectoryContainment = { readonly path: string; readonly directory: string };
 
@@ -11,7 +11,7 @@ const comparablePath = (path: string): string =>
 
 const assessPublishability = (text: string): Publishability => {
   if (PRIVATE_KEY_ARMOUR.test(text)) return "contains-private-key";
-  if (USER_TOKEN.test(text)) return "contains-user-token";
+  if (GITHUB_TOKEN.test(text)) return "contains-github-token";
   return "publishable";
 };
 

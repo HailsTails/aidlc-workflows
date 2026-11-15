@@ -199,6 +199,38 @@ describe("mintUserToken refusals", () => {
     expect(dependencies.userGrantStore.save).not.toHaveBeenCalled();
   });
 
+  it("uses the grant another session saved when GitHub rejects a refresh token that session already spent", async () => {
+    const dependencies = fakeDependencies();
+    dependencies.userAuthorisation.refreshGrant.mockResolvedValue(
+      fail({ kind: "refresh-token-rejected" }),
+    );
+    dependencies.userGrantStore.load
+      .mockResolvedValueOnce(succeed(staleGrant))
+      .mockResolvedValueOnce(succeed(staleGrant))
+      .mockResolvedValueOnce(succeed(renewedGrant));
+
+    const minted = await createUserTokenMinter(dependencies).mintUserToken(request);
+
+    expect(minted).toEqual(succeed(renewedAccessToken));
+    expect(dependencies.userGrantStore.save).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalled();
+  });
+
+  it("still reports the rejection when the grant on disk changed but is not usable", async () => {
+    const dependencies = fakeDependencies();
+    dependencies.userAuthorisation.refreshGrant.mockResolvedValue(
+      fail({ kind: "refresh-token-rejected" }),
+    );
+    dependencies.userGrantStore.load
+      .mockResolvedValueOnce(succeed(staleGrant))
+      .mockResolvedValueOnce(succeed(staleGrant))
+      .mockResolvedValueOnce(succeed({ ...renewedGrant, accessTokenExpiresAtEpochSeconds: NOW }));
+
+    const minted = await createUserTokenMinter(dependencies).mintUserToken(request);
+
+    expect(minted).toEqual(fail({ kind: "refresh-token-rejected" }));
+  });
+
   it("reports a renewed grant it could not save", async () => {
     const dependencies = fakeDependencies();
     dependencies.userGrantStore.save.mockResolvedValue(
