@@ -24,12 +24,22 @@ require unused native facts.
 The captured-host port consumes this one context. Its compile, capture and
 assembly order is unchanged; the host's fills capability is still called once
 after full capture succeeds. The same context selects common Hook/Tools/CWD
-channel behavior and host fills, avoiding independent channel selectors.
+channel behavior. After those declared framework slots are bound, Projection
+prepares the fills context against the remaining captured skeleton.
 
 Each host owns where its permission prose appears. Codex uses its prerequisite
 tail; Cursor, Kiro CLI, Kiro IDE and opencode use their own prerequisite field.
-They retain their complete authored copy wording. For native they use the
-modeled policy sentence with the bound route prefix before document rendering.
+They retain their complete authored copy wording. Native permission authoring
+before serialization is admitted only when all remaining host slots occupy
+complete, unindented lines and the route prefix contains no line break. The
+immutable `PreparedOnboardingContext` records the admitted skeleton or the
+legacy-template choice; it proves placement compatibility, not permission
+authority. For admitted placement the owner uses the modeled policy sentence
+with the bound route prefix before document rendering.
+Quoted, inline, indented, mixed or absent slots and multiline prefixes retain
+copy authoring followed by the original native compatibility consumer. This
+preserves that consumer's output and refusal behavior, rather than turning a
+previously refused custom template into success. Copy context is unchanged.
 Claude and Copilot retain their existing authoring and only receive the coherent
 input. Custom fills may ignore it and retain their exact authored value.
 

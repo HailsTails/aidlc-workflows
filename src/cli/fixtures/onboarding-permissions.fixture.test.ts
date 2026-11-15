@@ -158,11 +158,37 @@ const PERMISSION_ORACLES = [
 import { permissionProseFlow } from "./onboarding-permissions.fixture.ts";
 import type { OnboardingFills } from "../../projection/domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../../projection/domain/projection.ts";
+import type { PackagingRefusal } from "../../packaging/domain/artifact.ts";
+import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
+import { path } from "../../kernel/fixtures/values.fixture.ts";
+import { createLegacyNativeCommands } from "../../projection/adapters/legacy-trusted-commands.ts";
+import { legacyDispatcherRoutes } from "../../projection/adapters/legacy-dispatcher.ts";
+
+const realCommands = createLegacyNativeCommands(legacyDispatcherRoutes());
+const quotedRefusal = refused<readonly PackagingRefusal[]>([
+  { kind: "native-leftover", path: path(".codex/config.toml"), reason: "bun invocation survived native projection" },
+  { kind: "native-leftover", path: path(".codex/config.toml"), reason: ".codex/config.toml:7: unresolvable projected namespace invocation \"aidlc engine engine\"" },
+  { kind: "native-leftover", path: path(".codex/onboarding.md"), reason: "bun invocation survived native projection" },
+  { kind: "native-leftover", path: path(".codex/onboarding.md"), reason: ".codex/onboarding.md:1: unresolvable projected namespace invocation \"aidlc engine engine\"" },
+]);
+
+test.each([
+  { name: "supported legacy template", neutral: "Neutral", harnessSkeleton: "> {{SLOT:prereq_bullets_tail}}",
+    hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const },
+  { name: "framework-admitted template", neutral: "Neutral",
+    harnessSkeleton: "> {{SLOT:prereq_bullets_tail}}\n{{SLOT:framework_hook_runtime}}\nPrograms: {{SLOT:framework_tools_runtime}}\n",
+    hookGuidance: "framework-hooks" as const, toolsGuidance: "framework-tools" as const },
+])("quoted permission prose preserves the complete original refusal: $name", async (templates) => {
+  const flow = await permissionProseFlow({ host: "codex", channel: "native", ending: "\n", prefix: realCommands.prefix,
+    nativeCommands: realCommands, templates });
+  expect(flow.after).toEqual<Result<readonly ProjectedFile[], readonly PackagingRefusal[]>>(quotedRefusal);
+});
 
 test.each([...PERMISSION_ORACLES])("$host copy keeps the complete original fills before real serialization", async (row) => {
   const flow = await permissionProseFlow({ host: row.host, channel: "copy", ending: "\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.copy);
   expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
+  expect(flow.after).toEqual(accepted(accept(flow.before).files));
 });
 
 test.each([...PERMISSION_ORACLES])("$host native authors the complete policy before real serialization", async (row) => {
@@ -170,18 +196,21 @@ test.each([...PERMISSION_ORACLES])("$host native authors the complete policy bef
   expect(flow.policy).toBe(row.policy);
   expect(flow.fills).toEqual<OnboardingFills>(row.native);
   expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
+  expect(flow.after).toEqual(accepted(accept(flow.before).files));
 });
 
 test.each([...PERMISSION_ORACLES])("$host native CRLF composition needs no permission-prose repair", async (row) => {
   const flow = await permissionProseFlow({ host: row.host, channel: "native", ending: "\r\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.native);
   expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
+  expect(flow.after).toEqual(accepted(accept(flow.before).files));
 });
 
 test.each([...PERMISSION_ORACLES])("$host copy CRLF composition keeps its full authoring", async (row) => {
   const flow = await permissionProseFlow({ host: row.host, channel: "copy", ending: "\r\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.copy);
   expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
+  expect(flow.after).toEqual(accepted(accept(flow.before).files));
 });
 
 test.each([...PERMISSION_ORACLES])("$host retains the actual neutral serializer refusal", async (row) => {

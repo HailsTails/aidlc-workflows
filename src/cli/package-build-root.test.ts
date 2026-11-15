@@ -1,5 +1,5 @@
 import { brand } from "../kernel/brand.ts";
-import type { OnboardingContext, OnboardingPermissions } from "../projection/domain/onboarding-context.ts";
+import { prepareOnboardingContext, type OnboardingPermissions } from "../projection/domain/onboarding-context.ts";
 import { commonHarnessRecord } from "../projection/domain/harness-record.ts";
 import { SCRATCH_HOST, SCRATCH_TOKENS, SCRATCH_HOST_DATA, scratchAgentRenderer, scratchCommandPlacement,
   scratchSkillRenderer, scratchSettingsRenderer, scratchDocumentRenderer }
@@ -47,9 +47,9 @@ const processRunner = createScriptedProcessRunner({ outcome: refused({
   kind: "not-started", reason: "No process expected",
 }) });
 
-const nativeContext: OnboardingContext = { channel: "native", permissions: brand<OnboardingPermissions>({
+const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
   policy: "exact-reads", prefix: "aidlc engine",
-}) };
+}) }, skeleton: "" });
 
 test("one admitted core snapshot projects to multiple hosts without another source read", async () => {
   const fileSystem = createInMemoryFileSystem({ files });

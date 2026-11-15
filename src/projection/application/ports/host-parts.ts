@@ -1,4 +1,4 @@
-import type { OnboardingContext } from "../../domain/onboarding-context.ts";
+import type { PreparedOnboardingContext } from "../../domain/onboarding-context.ts";
 import type { SourcePath } from "../../../kernel/values.ts";
 import type { AuthoredPlacement } from "../../domain/host-surface.ts";
 import type { OnboardingFills } from "../../domain/neutral-surface.ts";
@@ -28,7 +28,7 @@ export type HostProjectionParts = {
   readonly skills: ConceptMembers<HostSkillRenderer>;
   readonly settings: ConceptMembers<HostSettingsRenderer>;
   readonly documents: ConceptMembers<HostDocumentRenderer>;
-  readonly fills: (context: OnboardingContext) => OnboardingFills;
+  readonly fills: (context: PreparedOnboardingContext) => OnboardingFills;
   readonly bindingHeading: string;
   readonly derive?: HostFileDeriver;
 };

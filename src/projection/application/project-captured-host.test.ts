@@ -1,5 +1,5 @@
 import { brand } from "../../kernel/brand.ts";
-import type { OnboardingContext, OnboardingPermissions } from "../domain/onboarding-context.ts";
+import { prepareOnboardingContext, type OnboardingPermissions } from "../domain/onboarding-context.ts";
 import { admitCwdDocuments } from "../domain/cwd-guidance.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { admitOnboardingSource } from "../domain/onboarding-source.ts";
@@ -61,9 +61,9 @@ const fixture = (members: readonly HostProjectionMember[] = [member, other]) => 
     projectHost: createProjectCapturedHost({ members, capture, assemble, hosted }) };
 };
 
-const nativeContext: OnboardingContext = { channel: "native", permissions: brand<OnboardingPermissions>({
+const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
   policy: "prefix-only", prefix: "aidlc engine",
-}) };
+}) }, skeleton: "" });
 
 test("the real first caller binds declared native guidance before assembly using the captured declaration", async () => {
   const current = fixture();

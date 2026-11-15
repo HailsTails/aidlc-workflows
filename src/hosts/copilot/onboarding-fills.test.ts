@@ -1,11 +1,11 @@
 import { brand } from "../../kernel/brand.ts";
-import type { OnboardingContext, OnboardingPermissions } from "../../projection/domain/onboarding-context.ts";
+import { prepareOnboardingContext, type OnboardingPermissions } from "../../projection/domain/onboarding-context.ts";
 import { expect, test } from "bun:test";
 import { COPILOT_ONBOARDING_FILLS, copilotOnboardingFills } from "./onboarding-fills.ts";
 
-const nativeContext: OnboardingContext = { channel: "native", permissions: brand<OnboardingPermissions>({
+const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
   policy: "prefix-only", prefix: "aidlc engine",
-}) };
+}) }, skeleton: "" });
 
 test("Copilot keeps its invocation and empty optional onboarding slots", () => {
   expect(COPILOT_ONBOARDING_FILLS.invoke).toBe("/aidlc");

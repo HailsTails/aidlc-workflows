@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import { nativePermissionsLine, onboardingContext, type NativePermissionFacts } from "./onboarding-context.ts";
+import { nativePermissionsLine, onboardingContext, prepareOnboardingContext, type NativePermissionFacts, type OnboardingContext } from "./onboarding-context.ts";
+import { accept } from "../../kernel/fixtures/accept.ts";
 
 test("copy needs no unused native facts", () => {
   expect(onboardingContext({ channel: "copy", permissionsLine: undefined, prefix: undefined }))
@@ -44,4 +45,49 @@ test.each<{ readonly policy: NativePermissionFacts["policy"]; readonly expected:
   { policy: "exact-reads", expected: "- **Permissions**: the `aidlc` agent pre-approves only the native `custom worker` command prefix, the read-only `aidlc doctor`, `status`, `version` and `config <section> --show` (with or without `--json`) and `--help` forms, turning a check back on (`aidlc config flags --clear-bypass <switch> --yes`), and its listed read-only tools; everything else prompts, including any other `config` change." },
 ])("the $policy prose preserves its complete native contract", ({ policy, expected }) => {
   expect(nativePermissionsLine({ policy, prefix: "custom worker" })).toBe(expected);
+});
+
+test("copy preparation preserves the original context without native admission", () => {
+  const context: OnboardingContext = { channel: "copy" };
+  expect(prepareOnboardingContext({ context, skeleton: "> {{SLOT:prereq_bullets_tail}}" })).toBe(context);
+});
+
+test.each([
+  { skeleton: "{{SLOT:prereq_bullets}}\n{{SLOT:prereq_bullets_tail}}\n" },
+  { skeleton: "{{SLOT:prereq_bullets_tail}}\r\n" },
+  { skeleton: "{{SLOT:prereq_bullets_tail}}\n{{SLOT:prereq_bullets_tail}}" },
+])("whole-line slot occurrences can bind native prose: %j", ({ skeleton }) => {
+  const context = accept(onboardingContext({ channel: "native", permissionsLine: "prefix-only", prefix: "custom worker" }));
+  expect(prepareOnboardingContext({ context, skeleton }))
+    .toEqual<{ readonly channel: "native"; readonly permissions: NativePermissionFacts;
+      readonly permissionSource: { readonly kind: "line-slots"; readonly skeleton: string } }>({
+      channel: "native", permissions: { policy: "prefix-only", prefix: "custom worker" },
+      permissionSource: { kind: "line-slots", skeleton },
+    });
+});
+
+test.each([
+  { skeleton: "" },
+  { skeleton: "> {{SLOT:prereq_bullets_tail}}" },
+  { skeleton: " {{SLOT:prereq_bullets_tail}}\n" },
+  { skeleton: "{{SLOT:prereq_bullets_tail}} suffix" },
+  { skeleton: "{{SLOT:prereq_bullets_tail}}\n> {{SLOT:prereq_bullets_tail}}" },
+])("unbound, inline or mixed source keeps its legacy policy meaning: %j", ({ skeleton }) => {
+  const context = accept(onboardingContext({ channel: "native", permissionsLine: "exact-reads", prefix: "custom worker" }));
+  expect(prepareOnboardingContext({ context, skeleton }))
+    .toEqual<{ readonly channel: "native"; readonly permissions: NativePermissionFacts;
+      readonly permissionSource: { readonly kind: "legacy-template" } }>({
+      channel: "native", permissions: { policy: "exact-reads", prefix: "custom worker" },
+      permissionSource: { kind: "legacy-template" },
+    });
+});
+
+test("a multiline legacy prefix is preserved for one compatibility pass", () => {
+  const context = accept(onboardingContext({ channel: "native", permissionsLine: "prefix-only", prefix: "custom\nworker" }));
+  expect(prepareOnboardingContext({ context, skeleton: "{{SLOT:prereq_bullets_tail}}\n" }))
+    .toEqual<{ readonly channel: "native"; readonly permissions: NativePermissionFacts;
+      readonly permissionSource: { readonly kind: "legacy-template" } }>({
+      channel: "native", permissions: { policy: "prefix-only", prefix: "custom\nworker" },
+      permissionSource: { kind: "legacy-template" },
+    });
 });

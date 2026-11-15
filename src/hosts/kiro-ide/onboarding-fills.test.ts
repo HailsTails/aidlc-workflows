@@ -1,11 +1,11 @@
 import { brand } from "../../kernel/brand.ts";
-import type { OnboardingContext, OnboardingPermissions } from "../../projection/domain/onboarding-context.ts";
+import { prepareOnboardingContext, type OnboardingPermissions } from "../../projection/domain/onboarding-context.ts";
 import { expect, test } from "bun:test";
 import { KIRO_IDE_ONBOARDING_FILLS, kiroIdeOnboardingFills } from "./onboarding-fills.ts";
 
-const nativeContext: OnboardingContext = { channel: "native", permissions: brand<OnboardingPermissions>({
+const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
   policy: "exact-reads", prefix: "aidlc engine",
-}) };
+}) }, skeleton: "" });
 
 test("Kiro IDE retains its native always-included onboarding frontmatter and invocation", () => {
   expect(KIRO_IDE_ONBOARDING_FILLS.invoke).toBe("/aidlc");

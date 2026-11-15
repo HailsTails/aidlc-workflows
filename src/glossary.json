@@ -553,5 +553,6 @@
 {"name":"NativePermissionPolicy","context":"projection","kind":"concept","definition":"The existing native distribution permission-prose mode: exact read forms or only the command prefix. It describes prose, not an authorization grant."},
 {"name":"NativePermissionFacts","context":"projection","kind":"concept","definition":"The native distribution permission-prose mode paired with the already bound command-route prefix, without reparsing or normalizing that prefix."},
 {"name":"OnboardingPermissions","context":"projection","kind":"concept","definition":"An immutable validated snapshot of native permission-prose facts. It proves input shape, not installed rule enforcement or permission authority."},
-{"name":"OnboardingContext","context":"projection","kind":"concept","definition":"One channel-coherent input for host onboarding fills: copy alone or native with immutable described permission facts from the distribution and command-route owner."}
+{"name":"OnboardingContext","context":"projection","kind":"concept","definition":"One channel-coherent input for host onboarding fills: copy alone or native with immutable described permission facts from the distribution and command-route owner."},
+{"name":"PreparedOnboardingContext","context":"projection","kind":"concept","definition":"A channel-coherent fills input bound to the captured skeleton after framework guidance. Native permission preauthoring is admitted only for whole-line host slots and a single-line prefix; other placements retain legacy authoring and consumer behavior."}
 ]

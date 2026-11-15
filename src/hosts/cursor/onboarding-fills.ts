@@ -1,4 +1,4 @@
-import { nativePermissionsLine, type OnboardingContext } from "../../projection/domain/onboarding-context.ts";
+import { nativePermissionsLine, type PreparedOnboardingContext } from "../../projection/domain/onboarding-context.ts";
 import type { DistributionChannel } from "../../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../../projection/domain/neutral-surface.ts";
 
@@ -6,7 +6,7 @@ const runtimePrerequisite = (channel: DistributionChannel): string => channel ==
   ? "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available. If `aidlc` is not found in this tool, give the person both fixes in one line, then end your turn without installing anything or working around it: if AI-DLC was installed while this tool was open, quit the tool fully and reopen it (a new tab or reloaded window is not enough); otherwise the installer's bin folder is not on PATH (an install with `-NoModifyPath`, or a Unix install whose PATH line was not applied), so add the folder the installer printed to PATH, or rerun the installer without `-NoModifyPath`, then reopen the tool."
   : `- **bun**: Required for the CLI tools and hook scripts (tracking progress, writing the decision log, deciding what runs next). Install via \`curl -fsSL https://bun.sh/install | bash\`. \`bun\` must be on your PATH for the shells Cursor spawns.`;
 
-export const cursorOnboardingFills = (context: OnboardingContext): OnboardingFills => ({
+export const cursorOnboardingFills = (context: PreparedOnboardingContext): OnboardingFills => ({
   invoke: "/aidlc",
   slots: {
     frontmatter: "---\ndescription: AI-DLC onboarding for Cursor\nalwaysApply: true\n---",
@@ -18,7 +18,7 @@ This project uses AI-DLC (AI-Driven Development Life Cycle) for structured devel
 - **A git repository**: Cursor may skip project hooks in a folder that is not in one, and without them your approvals are never recorded. Run \`git init\` in the project first if it is not a repository yet, then fully restart Cursor if it was open.
 - **A paid Cursor plan for named models**: Free accounts can only use \`Auto\`; the tiered persona surfaces ship with no model pins so every agent inherits your session model, but headless CLI runs that pass \`--model\` need a plan that allows it.
 ${runtimePrerequisite(context.channel)}
-${context.channel === "native" ? nativePermissionsLine(context.permissions) : "- **Permissions**: the shipped `.cursor/cli.json` pre-approves only AI-DLC's own workflow commands so the forwarding loop's engine calls do not prompt; every other shell command, including one that changes the machine's AI-DLC install, follows your Cursor approval settings. In headless `agent -p` runs, pass `--force` only if you accept auto-approval of the remaining prompts. Gated workflows need an interactive session regardless: Cursor fires the human-presence hook (`beforeSubmitPrompt`) only on an interactive submission, so a print-mode run records no human turn and an approval gate refuses by design. Headless mode suits the read-only utilities (`--status`, `--doctor`, `--version`) and autonomous Construction."}`,
+${context.channel === "native" && context.permissionSource.kind === "line-slots" ? nativePermissionsLine(context.permissions) : "- **Permissions**: the shipped `.cursor/cli.json` pre-approves only AI-DLC's own workflow commands so the forwarding loop's engine calls do not prompt; every other shell command, including one that changes the machine's AI-DLC install, follows your Cursor approval settings. In headless `agent -p` runs, pass `--force` only if you accept auto-approval of the remaining prompts. Gated workflows need an interactive session regardless: Cursor fires the human-presence hook (`beforeSubmitPrompt`) only on an interactive submission, so a print-mode run records no human turn and an approval gate refuses by design. Headless mode suits the read-only utilities (`--status`, `--doctor`, `--version`) and autonomous Construction."}`,
 
     ["prereq_bullets_tail"]: "",
 

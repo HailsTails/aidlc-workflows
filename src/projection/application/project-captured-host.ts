@@ -2,6 +2,7 @@ import { refused } from "../../kernel/result.ts";
 import { DEFAULT_WORKSPACE } from "../domain/workspace.ts";
 import { bindOnboardingSource } from "../domain/onboarding-source.ts";
 import { bindCwdDocuments } from "../domain/cwd-guidance.ts";
+import { prepareOnboardingContext } from "../domain/onboarding-context.ts";
 import type { HarnessRenderers } from "./ports/harness-assembly.ts";
 import type { CapturedHostProjectionPorts, HostProjectionMember, ProjectCapturedHost } from "./ports/captured-host.ts";
 
@@ -23,13 +24,14 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
   if (!captured.ok) return captured;
   const channel = request.onboarding.channel;
   const onboarding = bindOnboardingSource(captured.value.surface.onboarding, channel);
+  const fillsContext = prepareOnboardingContext({ context: request.onboarding, skeleton: onboarding.harnessSkeleton });
   const surface = { ...captured.value.surface, onboarding,
     documents: bindCwdDocuments({ captured: captured.value.surface.documents, channel }) };
   const assembled = await ports.assemble({ method: request.core.method,
     sources: request.core.sources, host: request.host, renderers: renderersOf(members),
     files: request.files, prepare: request.prepare, tokens: request.tokens, channel,
     modelCap: request.modelCap, tierFlavor: members.projection.tierFlavor, entrypoints: request.entrypoints,
-    fills: members.projection.fills(request.onboarding),
+    fills: members.projection.fills(fillsContext),
     bindingHeadings: ports.members.map((member) => member.projection.bindingHeading), projectRoot: request.projectRoot,
     reviewerAgents: request.reviewerAgents, runtime: captured.value.runtime, compiled: compiled.value });
   if (!assembled.ok) return assembled;
