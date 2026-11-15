@@ -31,15 +31,21 @@ export type SkillTableVerb = "stage-table" | "scope-table";
 
 export type SkillTableRenderer = (verb: SkillTableVerb) => Result<string, string>;
 
-export type OnboardingTemplates = {
+export type AuthoredOnboardingTemplates = {
   readonly neutral: string;
   readonly harnessSkeleton: string;
 };
+export type OnboardingTemplates = AuthoredOnboardingTemplates | (AuthoredOnboardingTemplates & {
+  readonly copyAuthoring: Readonly<AuthoredOnboardingTemplates>;
+});
 
-export type OnboardingFills = {
+export type AuthoredOnboardingFills = {
   readonly invoke: string;
   readonly slots: Readonly<Record<string, string>>;
 };
+export type OnboardingFills = AuthoredOnboardingFills | (AuthoredOnboardingFills & {
+  readonly copyAuthoring: Readonly<AuthoredOnboardingFills>;
+});
 
 export type NeutralSurface = {
   readonly documents: readonly NeutralDocument[];

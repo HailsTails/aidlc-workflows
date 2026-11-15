@@ -84,7 +84,8 @@ test("the first caller binds Tools independently while Hook keeps custom legacy 
   await current.projectHost({ ...current.request, onboarding: nativeContext });
   expect(current.assemble.mock.calls[0]?.[0].fills).toBe(fills);
   expect(current.project.mock.calls[0]?.[0].surface.onboarding).toEqual({ neutral: "Neutral",
-    harnessSkeleton: "TypeScript sources invoked through the self-contained `aidlc` runtime" });
+    harnessSkeleton: "TypeScript sources invoked through the self-contained `aidlc` runtime",
+    copyAuthoring: { neutral: "Neutral", harnessSkeleton: "TypeScript, run via bun" } });
   expect(fills).toEqual({ invoke: "/custom", slots: { ["framework_hook_runtime"]: "Custom Hook", ["framework_tools_runtime"]: "Custom Tools" } });
 });
 test("the first caller composes both declared meanings without changing their owned positions", async () => {

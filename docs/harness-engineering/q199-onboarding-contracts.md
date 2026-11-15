@@ -31,12 +31,15 @@ Each host owns where its permission prose appears. Codex uses its prerequisite
 tail; Cursor, Kiro CLI, Kiro IDE and opencode use their own prerequisite field.
 They retain their complete authored copy wording. Native permission authoring
 before serialization is admitted only when all remaining host slots occupy
-complete, unindented lines and the route prefix contains no line break. The
+complete, unindented lines and the route prefix uses only ASCII letters,
+digits, spaces, underscores or hyphens. This conservative serialization-safety
+classification is not a command grammar or new input validation. All other
+prefixes remain accepted verbatim and use the original compatibility path. The
 immutable `PreparedOnboardingContext` records the admitted skeleton or the
 legacy-template choice; it proves placement compatibility, not permission
 authority. For admitted placement the owner uses the modeled policy sentence
 with the bound route prefix before document rendering.
-Quoted, inline, indented, mixed or absent slots and multiline prefixes retain
+Quoted, inline, indented, mixed or absent slots and opaque prefixes retain
 copy authoring followed by the original native compatibility consumer. This
 preserves that consumer's output and refusal behavior, rather than turning a
 previously refused custom template into success. Copy context is unchanged.
@@ -48,6 +51,31 @@ domain. Packaging's legacy compatibility reader reuses that meaning; it still
 recognizes unadmitted/custom prose as before. Its global fallback is retained
 while the remaining invocation/custom responsibilities are transferred. This
 contract does not claim that all native final-text rewriting has been retired.
+
+## Copy-era root signature continuity
+
+The Copilot root is a managed block whose upgrade metadata historically hashed
+copy-era authoring after channel token binding, before native compatibility
+rewrites. Its final native bytes and that historical input are distinct values.
+Moving runtime and shared Hook/Tools prose before serialization must preserve
+both. Hashing the newly native-authored root instead changes the installer
+descriptor even when the final root is byte-identical.
+
+Bound declared guidance therefore retains its copy-authoring template view.
+The Copilot owner retains its complete copy fills alongside its native fills.
+The actual Copilot serializer renders both with the same existing channel
+tokens and records an immutable `RootHistory` snapshot. Ordinary custom fills
+remain their own copy-authoring view; undeclared legacy templates retain their
+identity. No completed native prose is reverse-parsed and no command spelling
+or hash is hardcoded into production.
+
+Packaging consumes the historical text only for its existing native managed-root
+signature, and only while path, mode and current text match the receipt. Raw or
+modified files keep the original metadata path. The original rendered origin
+remains explicit in the receipt and onboarding selection unwraps it. This
+receipt grants no native policy, replacement completion or security permission.
+The serializer is trusted to serialize the two supplied authoring views; the
+receipt proves snapshot continuity, not independent semantic interpretation.
 
 ## Declared authored-file placement callback
 

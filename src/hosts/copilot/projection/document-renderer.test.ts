@@ -4,8 +4,29 @@ import { methodSliceFixture } from "../../../workflow-definition/fixtures/method
 import { ONBOARDING_TEMPLATES_FIXTURE, documentRenderingInputsFixture,
   protocolDocumentFixture } from "../../../projection/fixtures/document-rendering.fixture.ts";
 import { createCopilotDocumentRenderer } from "./document-renderer.ts";
+import { accept } from "../../../kernel/fixtures/accept.ts";
+import { admitOnboardingSource, bindOnboardingSource } from "../../../projection/domain/onboarding-source.ts";
+import type { RootSerialization, RootHistorySnapshot } from "../../../projection/domain/root-history.ts";
+import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
+import type { Result } from "../../../kernel/result.ts";
 
 const renderer = createCopilotDocumentRenderer(documentRenderingInputsFixture({ harnessDir: ".aidlc" }));
+
+test("declared channel guidance retains complete copy authoring through the real serializer", () => {
+  const templates = bindOnboardingSource(accept(admitOnboardingSource({ neutral: "Neutral",
+    harnessSkeleton: "{{SLOT:framework_hook_runtime}}\n{{SLOT:framework_tools_runtime}}\n",
+    hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" })), "native");
+  const rendered = renderer.renderOnboarding({ templates, method: methodSliceFixture });
+  expect(rendered).toEqual<Result<readonly (Omit<RootSerialization, "origin"> & { readonly origin: {
+    readonly kind: "root-history"; readonly source: RootSerialization["origin"]; readonly history: RootHistorySnapshot;
+  } })[], ProjectionRefusal>>({ ok: true, value: [{ path: path("AGENTS.md"), mode: "regular",
+    content: { kind: "text", text: "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.\nTypeScript sources invoked through the self-contained `aidlc` runtime\n\n## Shared AI-DLC onboarding\n\nNeutral\n" },
+    origin: { kind: "root-history", source: { kind: "rendered", concept: "onboarding", name: "AGENTS.md" }, history: {
+      path: path("AGENTS.md"), mode: "regular",
+      text: "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.\nTypeScript sources invoked through the self-contained `aidlc` runtime\n\n## Shared AI-DLC onboarding\n\nNeutral\n",
+      copyAuthoring: "- **Hook permissions**: All 17 hooks are TypeScript (`.ts`) and run via `bun`. No executable bits required — works identically on macOS, Linux, and native Windows PowerShell.\nTypeScript, run via bun\n\n## Shared AI-DLC onboarding\n\nNeutral\n",
+    } } }] });
+});
 
 test("Copilot combines neutral and native onboarding with one token substitution", () => {
   expect(renderer.renderOnboarding({ templates: ONBOARDING_TEMPLATES_FIXTURE, method: methodSliceFixture }))

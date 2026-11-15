@@ -60,6 +60,7 @@ test("native binding respects reversed authored positions without mutating the s
   const admitted = accept(admitOnboardingSource({ neutral: "N", harnessSkeleton: "({{SLOT:framework_tools_runtime}})\r\n{{SLOT:framework_hook_runtime}}\r\n",
     hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" }));
   expect(bindOnboardingSource(admitted, "native")).toEqual({ neutral: "N", harnessSkeleton:
-    "(TypeScript sources invoked through the self-contained `aidlc` runtime)\r\n- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.\r\n" });
+    "(TypeScript sources invoked through the self-contained `aidlc` runtime)\r\n- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.\r\n",
+    copyAuthoring: { neutral: "N", harnessSkeleton: "(TypeScript, run via bun)\r\n- **Hook permissions**: All 17 hooks are TypeScript (`.ts`) and run via `bun`. No executable bits required — works identically on macOS, Linux, and native Windows PowerShell.\r\n" } });
   expect(admitted.harnessSkeleton).toBe("({{SLOT:framework_tools_runtime}})\r\n{{SLOT:framework_hook_runtime}}\r\n");
 });

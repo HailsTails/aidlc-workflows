@@ -29,7 +29,7 @@ export const prepareOnboardingContext = (request: {
   if (request.context.channel === "copy") return request.context;
   const slots = [...request.skeleton.matchAll(/\{\{SLOT:[a-z_]+\}\}/g)];
   const source: PermissionSource = slots.length > 0
-    && !/[\r\n]/.test(request.context.permissions.prefix)
+    && /^[A-Za-z0-9_ -]*$/.test(request.context.permissions.prefix)
     && slots.every(slot => slotPlacement({ skeleton: request.skeleton, index: slot.index, marker: slot[0] }) === "whole-line")
     ? Object.freeze({ kind: "line-slots", skeleton: request.skeleton }) : Object.freeze({ kind: "legacy-template" });
   return brand<PreparedNativeContext>(Object.freeze({ ...request.context, permissionSource: source }));

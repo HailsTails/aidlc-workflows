@@ -6,8 +6,18 @@ import type { Payload } from "../domain/payload.ts";
 import { SCRATCH_HOST, SCRATCH_HOST_DATA } from "../../projection/fixtures/scratch-host.fixture.ts";
 import { scratchHostDistributionFixture } from "../fixtures/host-distribution.fixture.ts";
 import { createBuildPackagingUseCase, selectOnboardingPath } from "./build-packaging.ts";
+import { serializeRootHistory, type RootSerialization } from "../../projection/domain/root-history.ts";
+import { accept } from "../../kernel/fixtures/accept.ts";
 
 const ZERO = hash("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+test("onboarding selection preserves a serialized root's explicit rendered source", () => {
+  const current: RootSerialization = { path: path("AGENTS.md"), mode: "regular", content: { kind: "text", text: "Native\n" },
+    origin: { kind: "rendered", concept: "onboarding", name: "AGENTS.md" } };
+  const serialize = mock().mockReturnValueOnce(accepted(current))
+    .mockReturnValueOnce(accepted({ ...current, content: { kind: "text", text: "Copy authoring\n" } }));
+  const serialized = accept(serializeRootHistory({ serialize, mismatch: "Destination changed" }));
+  expect(selectOnboardingPath({ host: SCRATCH_HOST, files: [serialized] })).toBe(path("AGENTS.md"));
+});
 const request = (): HostPayloadRequest => ({ hasher: { hash: () => accepted(ZERO) }, distribution: scratchHostDistributionFixture,
   hostData: SCRATCH_HOST_DATA, channel: "native", copy: null,
   projection: { host: SCRATCH_HOST, findings: [], files: [{ path: path(".scratch/tools/aidlc-version.ts"),

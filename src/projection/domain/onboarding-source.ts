@@ -27,10 +27,15 @@ export const admitOnboardingSource = (source: AuthoredOnboardingSource): Result<
     harnessSkeleton: source.harnessSkeleton, hookGuidance: source.hookGuidance, toolsGuidance: source.toolsGuidance })));
 };
 
-export const bindOnboardingSource = (source: AdmittedOnboardingTemplates, channel: DistributionChannel): OnboardingTemplates => {
+const channelTemplates = (source: AdmittedOnboardingTemplates, channel: DistributionChannel): OnboardingTemplates => {
   if (source.hookGuidance === "legacy-authored" && source.toolsGuidance === "legacy-authored") return source;
   const hooks = source.hookGuidance === "framework-hooks" ? source.harnessSkeleton.replace(HOOK_SLOT,
     channel === "copy" ? HOOK_COPY : HOOK_NATIVE) : source.harnessSkeleton;
   return { neutral: source.neutral, harnessSkeleton: source.toolsGuidance === "framework-tools" ? hooks.replace(TOOLS_SLOT,
     channel === "copy" ? "TypeScript, run via bun" : "TypeScript sources invoked through the self-contained `aidlc` runtime") : hooks };
 };
+
+export const bindOnboardingSource = (source: AdmittedOnboardingTemplates, channel: DistributionChannel): OnboardingTemplates =>
+  channel === "copy" || (source.hookGuidance === "legacy-authored" && source.toolsGuidance === "legacy-authored")
+    ? channelTemplates(source, channel) : Object.freeze({ ...channelTemplates(source, channel),
+    copyAuthoring: Object.freeze(channelTemplates(source, "copy")) });

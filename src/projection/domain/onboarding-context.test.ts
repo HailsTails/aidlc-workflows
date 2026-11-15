@@ -82,12 +82,12 @@ test.each([
     });
 });
 
-test("a multiline legacy prefix is preserved for one compatibility pass", () => {
-  const context = accept(onboardingContext({ channel: "native", permissionsLine: "prefix-only", prefix: "custom\nworker" }));
+test.each(["custom\nworker", "custom\rworker", "custom\u2028worker", "custom\u2029worker", "custom\n", "custom\r", "custom\u2028", "custom\u2029", "$&", "'''", "$`", "$'", "$$", "{{INVOKE}}", "`", "\\", "\"", "custom—worker"])("an opaque prefix retains the legacy serialization and replacement path: %j", (prefix) => {
+  const context = accept(onboardingContext({ channel: "native", permissionsLine: "prefix-only", prefix }));
   expect(prepareOnboardingContext({ context, skeleton: "{{SLOT:prereq_bullets_tail}}\n" }))
     .toEqual<{ readonly channel: "native"; readonly permissions: NativePermissionFacts;
       readonly permissionSource: { readonly kind: "legacy-template" } }>({
-      channel: "native", permissions: { policy: "prefix-only", prefix: "custom\nworker" },
+      channel: "native", permissions: { policy: "prefix-only", prefix },
       permissionSource: { kind: "legacy-template" },
     });
 });

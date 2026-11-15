@@ -7,6 +7,7 @@ import type { PackagingRefusal } from "../domain/artifact.ts";
 import type { HostDistribution, Payload, PayloadFile } from "../domain/payload.ts";
 import type { RootIntegration, Sharing } from "../domain/root-integration.ts";
 import { duplicateRootIntegrations } from "../domain/payload-completion.ts";
+import { rootHistoryContent } from "../../projection/domain/root-history.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, writtenRootIntegration } from "./legacy-distribution.ts";
 
 export type LegacyPayloadRootIntegration = {
@@ -83,7 +84,8 @@ const rootSignature = ({ inputs, releasePayload, rootFile }: {
 }): Result<ContentHash, PackagingRefusal | KernelRefusal> => {
   if (releasePayload.channel === "copy") return accepted(rootFile.hash);
   const original = inputs.projection.files.find((candidate) => candidate.path === rootFile.path);
-  return original ? inputs.hasher.hash(original.content)
+  const history = original === undefined ? undefined : rootHistoryContent(original);
+  return original ? inputs.hasher.hash(history === undefined ? original.content : { kind: "text", text: history })
     : refused({ kind: "root-integration-missing", path: rootFile.path });
 };
 

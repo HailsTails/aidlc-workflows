@@ -2,6 +2,7 @@ import type { FileContent, FileMode } from "../../kernel/file-content.ts";
 import type { ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { MethodSourcePath } from "../../workflow-definition/domain/method-source.ts";
 import type { NativePolicyAdmission } from "./native-policy.ts";
+import type { RootHistory } from "./root-history.ts";
 
 export const RENDERED_CONCEPTS = [
   "agent",
@@ -40,6 +41,10 @@ export type ProjectionSourceOrigin =
   | { readonly kind: "active-space" };
 
 export type ProjectionOrigin = ProjectionSourceOrigin | {
+  readonly kind: "root-history";
+  readonly source: ProjectionSourceOrigin;
+  readonly history: RootHistory;
+} | {
   readonly kind: "native-policy";
   readonly source: ProjectionSourceOrigin;
   readonly admission: NativePolicyAdmission;

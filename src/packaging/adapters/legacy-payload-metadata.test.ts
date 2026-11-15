@@ -6,6 +6,7 @@ import { SCRATCH_HOST, SCRATCH_HOST_DATA } from "../../projection/fixtures/scrat
 import { claudeCopyPayloadFixture } from "../fixtures/claude-payload.fixture.ts";
 import { scratchHostDistributionFixture } from "../fixtures/host-distribution.fixture.ts";
 import { createLegacyPayloadMetadata } from "./legacy-payload-metadata.ts";
+import { serializeRootHistory, type RootSerialization } from "../../projection/domain/root-history.ts";
 
 const hasher = { hash: () => accepted(hash(
   "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")) };
@@ -27,6 +28,55 @@ const metadataPayload = () => ({ ...claudeCopyPayloadFixture, descriptor: {
 const originalProjection = () => ({ host: SCRATCH_HOST, files: [], findings: [] });
 const metadataReader = () => createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher, distribution: distribution(), hostData: SCRATCH_HOST_DATA,
   onboarding: path(".scratch/SKILL.md") });
+
+test("native managed-root metadata hashes the serializer's unchanged copy-authoring snapshot", () => {
+  const current: RootSerialization = { path: path("AGENTS.md"), mode: "regular", content: { kind: "text", text: "Native\n" },
+    origin: { kind: "rendered", concept: "onboarding", name: "AGENTS.md" } };
+  const serialize = mock().mockReturnValueOnce(accepted(current))
+    .mockReturnValueOnce(accepted({ ...current, content: { kind: "text", text: "Copy authoring, native tokens\n" } }));
+  const serialized = accept(serializeRootHistory({ serialize, mismatch: "Destination changed" }));
+  const hashing = mock().mockReturnValue(accepted(hash("sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")));
+  const layout = { rootIntegrations: [{ path: path("AGENTS.md"), policy: "managed-block" as const, marker: "agents",
+    sharing: "exclusive" as const, presence: "required" as const }], managedDirectories: [] };
+  const releasePayload = { ...metadataPayload(), channel: "native" as const, descriptor: { ...metadataPayload().descriptor,
+    layout, history: { retiredFiles: [], priorIntegrations: [] } }, files: [file("AGENTS.md", "Native\n")] };
+  const metadataReading = createLegacyPayloadMetadata({ projection: { ...originalProjection(), files: [serialized] },
+    copy: { ...releasePayload, channel: "copy", files: [] }, hasher: { hash: hashing },
+    distribution: { ...distribution(), layout, priorIntegrations: [] }, hostData: SCRATCH_HOST_DATA }).files(releasePayload);
+  expect(metadataReading).toEqual(accepted([
+    { ...file(".scratch/tools/data/root-blocks/agents", "Native\n"), origin: { kind: "distribution-descriptor" } },
+    { ...file(".scratch/tools/data/aidlc-projection.json", `{
+  "schemaVersion": 1,
+  "distribution": "claude",
+  "productName": "Scratch",
+  "configNextStep": "open Scratch in this project and run /aidlc",
+  "harnessDir": ".scratch",
+  "managedDirectories": [],
+  "rootIntegrations": [
+    {
+      "path": "AGENTS.md",
+      "policy": "managed-block",
+      "marker": "agents",
+      "legacySignatures": {
+        "wholeFileHashes": [
+          "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        ]
+      }
+    }
+  ],
+  "retiredCopyFileHashes": {}
+}
+`), origin: { kind: "distribution-descriptor" } },
+    file(".scratch/tools/data/aidlc-stamp.json", `{
+  "schemaVersion": 1,
+  "frameworkVersion": "2.12.0",
+  "distribution": "claude",
+  "harnessDir": ".scratch"
+}
+`),
+  ]));
+  expect(hashing).toHaveBeenCalledWith({ kind: "text", text: "Copy authoring, native tokens\n" });
+});
 
 test("schema-one descriptor and stamp preserve exact serialization and exclude root-only directories", () => {
   const files = accept(metadataReader().files(metadataPayload()));

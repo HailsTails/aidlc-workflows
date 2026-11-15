@@ -13,7 +13,10 @@ export const selectOnboardingPath = ({ host, files }: {
   readonly host: Projection["host"];
   readonly files: readonly Pick<ProjectedFile, "path" | "origin">[];
 }): ProjectPath | undefined => {
-  const rendered = files.filter((file) => file.origin.kind === "rendered" && file.origin.concept === "onboarding");
+  const rendered = files.filter((file) => {
+    const origin = file.origin.kind === "root-history" ? file.origin.source : file.origin;
+    return origin.kind === "rendered" && origin.concept === "onboarding";
+  });
   return (rendered.find((file) => file.path.startsWith(`${host.directory}/`)) ?? rendered[0])?.path;
 };
 

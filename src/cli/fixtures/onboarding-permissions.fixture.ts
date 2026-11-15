@@ -21,6 +21,7 @@ import { nativeLayoutFiles } from "../../packaging/application/native-layout.ts"
 import { nativeOnboardingText } from "../../packaging/domain/native-onboarding.ts";
 import { channelTokens } from "../../packaging/domain/channel-tokens.ts";
 import { codexHost } from "../../hosts/codex/host.ts";
+import { copilotHost } from "../../hosts/copilot/host.ts";
 import { cursorHost } from "../../hosts/cursor/host.ts";
 import { kiroHost } from "../../hosts/kiro/host.ts";
 import { kiroIdeHost } from "../../hosts/kiro-ide/host.ts";
@@ -28,7 +29,7 @@ import { openCodeHost } from "../../hosts/opencode/host.ts";
 import { kiroAgentRenderer } from "../../hosts/kiro/projection/agent-renderer.ts";
 
 export const PERMISSION_HOSTS = {
-  codex: accept(codexHost()), cursor: accept(cursorHost()), kiro: accept(kiroHost()),
+  codex: accept(codexHost()), copilot: accept(copilotHost()), cursor: accept(cursorHost()), kiro: accept(kiroHost()),
   "kiro-ide": accept(kiroIdeHost(kiroAgentRenderer)), opencode: accept(openCodeHost()),
 } satisfies Readonly<Record<string, HostModule>>;
 
