@@ -92,7 +92,8 @@ export const createNeutralReading = (ports: NeutralReadPorts): NeutralReading =>
   const documents = admitCwdDocuments({ documents: [...captured.documents, ...protocols.documents, ...authored.documents],
     guidance: capture.cwdGuidance });
   if (!documents.ok) return refused([{ kind: "render-failed", concept: "neutral-document",
-    name: capture.cwdGuidance?.kind === "framework-cwd" ? capture.cwdGuidance.source : "cwd-guidance", reason: documents.refusal }]);
+    name: capture.cwdGuidance?.kind === "framework-cwd" && typeof capture.cwdGuidance.source === "string"
+      ? capture.cwdGuidance.source : "cwd-guidance", reason: documents.refusal }]);
   return accepted({ documents: documents.value,
     skills: [], onboarding: onboarding.value });
 };

@@ -5,7 +5,7 @@ import { createInMemoryFileSystem } from "../../kernel/fixtures/file-system.fake
 import { methodSource } from "../../workflow-definition/fixtures/method-source.fixture.ts";
 import { createNeutralReading } from "./neutral-surface-files.ts";
 import { refused } from "../../kernel/result.ts";
-import { bindCwdDocuments } from "../domain/cwd-guidance.ts";
+import { bindCwdDocuments, type CwdGuidanceSource } from "../domain/cwd-guidance.ts";
 import type { AuthoredOnboardingSource } from "../domain/onboarding-source.ts";
 import type { CapturedNeutralSurface } from "../domain/neutral-surface.ts";
 
@@ -79,7 +79,7 @@ test("explicit CWD declaration is admitted with raw protocol bytes, not inferred
   const surface = accept(await createNeutralReading({ files: fileSystem, tree: fileSystem })({ core, sources,
     hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored",
     cwdGuidance: { kind: "framework-cwd", source: "aidlc-common/protocols/one.md" } }));
-  expect(surface.documents.guidance).toEqual({ kind: "framework-cwd", source: "aidlc-common/protocols/one.md" });
+  expect(surface.documents.guidance).toEqual<CwdGuidanceSource>({ kind: "framework-cwd", source: "aidlc-common/protocols/one.md" });
   expect(bindCwdDocuments({ captured: surface.documents, channel: "native" })[1]).toEqual({
     source: source("aidlc-common/protocols/one.md"), role: "protocol", content: { kind: "text", text:
       "Before\r\n**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.\r\nAfter" } });
@@ -111,6 +111,15 @@ test("ordinary protocol read failure precedes CWD admission", async () => {
     cwdGuidance: { kind: "framework-cwd", source: "aidlc-common/protocols/one.md" } })).toEqual(refused([{ kind: "neutral-source-unreadable",
     source: source("aidlc-common/protocols/one.md"), reason: "permission-denied" }]));
 });
+
+test.each(['{"kind":"framework-cwd"}', '{"kind":"framework-cwd","source":null}', '{"kind":"framework-cwd","source":17}'])(
+  "malformed CWD author source retains a string diagnostic name: %s", async (json) => {
+    const fileSystem = createInMemoryFileSystem({ files });
+    expect(await createNeutralReading({ files: fileSystem, tree: fileSystem })({ core, sources: [],
+      hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored", cwdGuidance: JSON.parse(json) }))
+      .toEqual(refused([{ kind: "render-failed", concept: "neutral-document", name: "cwd-guidance",
+        reason: "The declared CWD protocol source must be a portable source path." }]));
+  });
 
 test.each(["copy-looking text", "{{SLOT:framework_hook_runtime}}", "{{SLOT:framework_hook_runtime}}{{SLOT:framework_hook_runtime}}"])(
   "legacy capture snapshots %s without inferring guidance", async (skeleton) => {
