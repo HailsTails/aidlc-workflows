@@ -1,4 +1,5 @@
 import type { HookGuidanceSource } from "../projection/domain/hook-guidance.ts";
+import type { ToolsGuidanceSource } from "../projection/domain/tools-guidance.ts";
 import type {
   HostConversationSource,
   HostEventDecoder,
@@ -121,6 +122,7 @@ export type Platform = {
 
 export type BuildSources = {
   readonly hookGuidance: HookGuidanceSource;
+  readonly toolsGuidance: ToolsGuidanceSource;
   readonly core: URL;
   readonly plugins: URL;
   readonly pluginHookTemplates: URL;

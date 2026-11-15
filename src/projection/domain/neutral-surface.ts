@@ -2,6 +2,7 @@ import type { FileContent } from "../../kernel/file-content.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 import type { HookGuidanceSource } from "./hook-guidance.ts";
+import type { ToolsGuidanceSource } from "./tools-guidance.ts";
 
 export const NEUTRAL_DOCUMENT_ROLES = ["protocol", "template", "conductor", "stage", "knowledge"] as const;
 
@@ -32,6 +33,7 @@ export type SkillTableRenderer = (verb: SkillTableVerb) => Result<string, string
 
 export type OnboardingTemplates = {
   readonly hookGuidance: HookGuidanceSource;
+  readonly toolsGuidance: ToolsGuidanceSource;
   readonly neutral: string;
   readonly harnessSkeleton: string;
 };

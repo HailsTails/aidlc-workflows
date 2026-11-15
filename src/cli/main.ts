@@ -17,7 +17,7 @@ type MainComposition = {
 };
 
 export const openPackageBuildRoot = (composition: MainComposition): PackageBuildRoot => {
-  const sources = { hookGuidance: "framework-hooks" as const,
+  const sources = { hookGuidance: "framework-hooks" as const, toolsGuidance: "framework-tools" as const,
     core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url),
     pluginHookTemplates: new URL("../../scripts/plugin-hooks-template/", import.meta.url) };
   const platform: Platform = {

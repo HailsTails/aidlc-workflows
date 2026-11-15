@@ -1,6 +1,7 @@
 import { refused } from "../../kernel/result.ts";
 import { DEFAULT_WORKSPACE } from "../domain/workspace.ts";
 import { hookGuidanceFills } from "../domain/hook-guidance.ts";
+import { bindToolsGuidance } from "../domain/tools-guidance.ts";
 import type { HarnessRenderers } from "./ports/harness-assembly.ts";
 import type { CapturedHostProjectionPorts, HostProjectionMember, ProjectCapturedHost } from "./ports/captured-host.ts";
 
@@ -20,6 +21,9 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
   if (!compiled.ok) return refused([compiled.refusal]);
   const captured = await ports.capture(request.core);
   if (!captured.ok) return captured;
+  const onboarding = bindToolsGuidance(captured.value.surface.onboarding, request.channel);
+  const surface = onboarding === captured.value.surface.onboarding ? captured.value.surface
+    : { ...captured.value.surface, onboarding };
   const assembled = await ports.assemble({ method: request.core.method,
     sources: request.core.sources, host: request.host, renderers: renderersOf(members),
     files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,
@@ -32,7 +36,7 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
   if (!assembled.ok) return assembled;
   return ports.hosted({ host: request.host, harness: assembled.value }).project({
     harness: request.host.distribution, method: request.core.method, sources: request.core.sources,
-    surface: captured.value.surface, runtime: captured.value.runtime, compiled: compiled.value,
+    surface, runtime: captured.value.runtime, compiled: compiled.value,
     companions: captured.value.companions,
     hostFiles: request.files.filter((file) => members.projection.placements.some((placement) => placement.source === file.source)),
   });

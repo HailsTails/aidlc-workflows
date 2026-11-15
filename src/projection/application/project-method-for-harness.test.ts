@@ -45,7 +45,7 @@ const codexHarness = (): Harness => ({
 const request: ProjectMethodRequest = {
   harness: claudeProjectionFixture.host.distribution, method: methodSliceFixture,
   compiled: { graph: "graph", grid: "grid" },
-  sources: [], companions: [], hostFiles: [], surface: { documents: [], skills: [], onboarding: { hookGuidance: "legacy-authored" as const, neutral: "N", harnessSkeleton: "H" } },
+  sources: [], companions: [], hostFiles: [], surface: { documents: [], skills: [], onboarding: { hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "N", harnessSkeleton: "H" } },
   runtime: { files: [], version: { kind: "text", text: "version" },
     agentTiers: { kind: "text", text: "tiers" }, settingsSchema: { kind: "text", text: "schema" } },
 };
@@ -120,7 +120,7 @@ test("a full fixture Harness reproduces Codex's split native paths and every fix
     ]) }));
   expect(projection).toHaveProperty("value.files.length", 13);
   expect(harness.renderOrchestratorSkill).toHaveBeenCalledWith({ method: methodSliceFixture });
-  expect(harness.renderOnboarding).toHaveBeenCalledWith({ templates: { hookGuidance: "legacy-authored" as const, neutral: "N", harnessSkeleton: "H" },
+  expect(harness.renderOnboarding).toHaveBeenCalledWith({ templates: { hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "N", harnessSkeleton: "H" },
     method: methodSliceFixture });
 });
 

@@ -7,6 +7,7 @@ import type { ProjectionRefusal } from "../../domain/projection.ts";
 import type { TokenBindings } from "../../domain/template-token.ts";
 import type { Harness, Rendering } from "./harness.ts";
 import type { HookGuidanceSource } from "../../domain/hook-guidance.ts";
+import type { ToolsGuidanceSource } from "../../domain/tools-guidance.ts";
 
 export type DocumentRenderingInputs = {
   readonly bindingHeadings: readonly string[];
@@ -20,6 +21,7 @@ export type HostDocumentRenderer = (
 
 export type NeutralCapture = {
   readonly hookGuidance: HookGuidanceSource;
+  readonly toolsGuidance: ToolsGuidanceSource;
   readonly core: URL;
   readonly sources: readonly MethodSource[];
 };
