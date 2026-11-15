@@ -2,13 +2,12 @@ import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { KernelRefusal } from "../../../kernel/values.ts";
 import type { AuthoredHostFile } from "../../domain/host-surface.ts";
-import type { MemoryCompanion, NeutralSurface, SharedRuntime } from "../../domain/neutral-surface.ts";
+import type { MemoryCompanion, CapturedNeutralSurface, SharedRuntime } from "../../domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../../domain/projection.ts";
 import type { BuildProjection } from "./build-projection.ts";
 import type { HostProjectionParts } from "./host-parts.ts";
 import type { HostSourcesInput } from "../../domain/host-sources-query.ts";
-import type { HookGuidanceSource } from "../../domain/hook-guidance.ts";
-import type { ToolsGuidanceSource } from "../../domain/tools-guidance.ts";
+import type { HookGuidanceSource, ToolsGuidanceSource } from "../../domain/onboarding-source.ts";
 
 export type { HostSourcesInput } from "../../domain/host-sources-query.ts";
 
@@ -27,7 +26,7 @@ export type HostSourceMember = {
 };
 
 export type FullHostCapture = {
-  readonly surface: NeutralSurface;
+  readonly surface: CapturedNeutralSurface;
   readonly runtime: SharedRuntime;
   readonly companions: readonly MemoryCompanion[];
 };

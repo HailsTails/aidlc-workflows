@@ -2,12 +2,11 @@ import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { Method } from "../../../workflow-definition/domain/method.ts";
 import type { MethodSource } from "../../../workflow-definition/domain/method-source.ts";
-import type { NeutralSurface, OnboardingFills } from "../../domain/neutral-surface.ts";
+import type { NeutralSurface, CapturedNeutralSurface, OnboardingFills } from "../../domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../../domain/projection.ts";
 import type { TokenBindings } from "../../domain/template-token.ts";
 import type { Harness, Rendering } from "./harness.ts";
-import type { HookGuidanceSource } from "../../domain/hook-guidance.ts";
-import type { ToolsGuidanceSource } from "../../domain/tools-guidance.ts";
+import type { HookGuidanceSource, ToolsGuidanceSource } from "../../domain/onboarding-source.ts";
 
 export type DocumentRenderingInputs = {
   readonly bindingHeadings: readonly string[];
@@ -28,7 +27,7 @@ export type NeutralCapture = {
 
 export type NeutralReading = (
   capture: NeutralCapture,
-) => Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
+) => Promise<Result<CapturedNeutralSurface, readonly ProjectionRefusal[]>>;
 
 export type DocumentProjectionRequest = {
   readonly bindingHeadings: readonly string[];

@@ -1,7 +1,7 @@
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { sourcePath, type KernelRefusal } from "../../kernel/values.ts";
 import { hostSourcesQuery, sameHostSourcesQuery, type HostSourcesQuery } from "../domain/host-sources-query.ts";
-import type { NeutralSurface, SessionSkill, SharedRuntime, MemoryCompanion } from "../domain/neutral-surface.ts";
+import type { CapturedNeutralSurface, SessionSkill, SharedRuntime, MemoryCompanion } from "../domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 import { requiredHostSources } from "./host-source-files.ts";
 import type { BuildCore, BuildSourceCapture, BuildSourceCaptureRequest, CaptureBuildSources,
@@ -9,7 +9,7 @@ import type { BuildCore, BuildSourceCapture, BuildSourceCaptureRequest, CaptureB
 
 type HostCapture = Promise<Result<CapturedHostSources, readonly (KernelRefusal | ProjectionRefusal)[]>>;
 type SessionReading = () => Promise<Result<readonly SessionSkill[], readonly ProjectionRefusal[]>>;
-type CoreNeutralCapture = (core: BuildCore) => Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
+type CoreNeutralCapture = (core: BuildCore) => Promise<Result<CapturedNeutralSurface, readonly ProjectionRefusal[]>>;
 
 const hostReading = (request: BuildSourceCaptureRequest): BuildSourceCapture["readHostSources"] => {
   const captures: { readonly query: HostSourcesQuery; readonly captured: HostCapture }[] = [];

@@ -53,7 +53,7 @@ test("copied document tokens keep the native default.rules exception", () => {
 
 test("onboarding rewrites native skill paths and preserves its no-option-letters transform", () => {
   const rendered = accept(renderer.renderOnboarding({ method: methodSliceFixture, templates: {
-    hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "Neutral\n", harnessSkeleton: "{{HARNESS_DIR}}/skills/aidlc {{OPTION_LETTERS}}\n",
+    neutral: "Neutral\n", harnessSkeleton: "{{HARNESS_DIR}}/skills/aidlc {{OPTION_LETTERS}}\n",
   } }));
   expect(rendered[1]).toEqual({ path: path(".codex/onboarding.md"), mode: "regular",
     origin: { kind: "rendered", concept: "onboarding", name: ".codex/onboarding.md" },
@@ -63,7 +63,7 @@ test("onboarding rewrites native skill paths and preserves its no-option-letters
 
 test("the config delimiter refuses the whole onboarding member", () => {
   expect(renderer.renderOnboarding({ method: methodSliceFixture, templates: {
-    hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "Neutral\n", harnessSkeleton: "This contains ''' delimiter\n",
+    neutral: "Neutral\n", harnessSkeleton: "This contains ''' delimiter\n",
   } })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "onboarding", name: ".codex/config.toml",
     reason: "Codex onboarding contains the TOML multiline literal delimiter (''')." } });
 });

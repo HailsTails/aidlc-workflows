@@ -1,3 +1,4 @@
+import { onboardingSourceFixture } from "../fixtures/onboarding-source.fixture.ts";
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { host, source } from "../../kernel/fixtures/values.fixture.ts";
@@ -5,7 +6,7 @@ import { accept } from "../../kernel/fixtures/accept.ts";
 import type { BuildCore, BuildSourceCaptureRequest, HostSourceMember, HostSourcesInput }
   from "./ports/build-sources.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
-import type { MemoryCompanion, NeutralSurface, SessionSkill, SharedRuntime } from "../domain/neutral-surface.ts";
+import type { MemoryCompanion, CapturedNeutralSurface, SessionSkill, SharedRuntime } from "../domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import { captureBuildSources } from "./capture-build-sources.ts";
@@ -19,8 +20,8 @@ const member: HostSourceMember = { host: identity, projection: {
   documents: { inputs: [source("documents/a.md")] }, placements: [{ source: "placement.md", destination: "placed.md" }],
 } };
 const core: BuildCore = { method: methodSliceFixture, sources: [] };
-const neutral: NeutralSurface = { documents: [], skills: [],
-  onboarding: { hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "neutral", harnessSkeleton: "host" } };
+const neutral: CapturedNeutralSurface = { documents: [], skills: [],
+  onboarding: onboardingSourceFixture({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "neutral", harnessSkeleton: "host" }) };
 const sessions: readonly SessionSkill[] = [{ name: "aidlc-session-cost", files: [{ source: source("SKILL.md"),
   content: { kind: "bytes", bytes: new Uint8Array([0, 255, 10]) } }] }];
 const runtime: SharedRuntime = { files: [{ source: source("tools/a.ts"),

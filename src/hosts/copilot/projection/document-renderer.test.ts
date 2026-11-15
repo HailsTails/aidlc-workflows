@@ -52,7 +52,7 @@ test("final document bytes are not rebound after the native renderer", () => {
 
 test("only onboarding rewrites the slash-suffixed skills family across both combined parts", () => {
   expect(renderer.renderOnboarding({ templates: {
-    hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const, neutral: "Shared .aidlc/skills/reference.md and .claude/skills/keep.md.\n",
+    neutral: "Shared .aidlc/skills/reference.md and .claude/skills/keep.md.\n",
     harnessSkeleton: "Read {{HARNESS_DIR}}/skills/main.md and .aidlc/skills-other/example.\n",
   }, method: methodSliceFixture })).toEqual({ ok: true, value: [{
     path: path("AGENTS.md"), mode: "regular",

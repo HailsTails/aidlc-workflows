@@ -1,8 +1,7 @@
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { SourcePath } from "../../kernel/values.ts";
-import type { HookGuidanceSource } from "./hook-guidance.ts";
-import type { ToolsGuidanceSource } from "./tools-guidance.ts";
+import type { AdmittedOnboardingTemplates } from "./onboarding-source.ts";
 
 export const NEUTRAL_DOCUMENT_ROLES = ["protocol", "template", "conductor", "stage", "knowledge"] as const;
 
@@ -32,8 +31,6 @@ export type SkillTableVerb = "stage-table" | "scope-table";
 export type SkillTableRenderer = (verb: SkillTableVerb) => Result<string, string>;
 
 export type OnboardingTemplates = {
-  readonly hookGuidance: HookGuidanceSource;
-  readonly toolsGuidance: ToolsGuidanceSource;
   readonly neutral: string;
   readonly harnessSkeleton: string;
 };
@@ -47,6 +44,10 @@ export type NeutralSurface = {
   readonly documents: readonly NeutralDocument[];
   readonly skills: readonly SessionSkill[];
   readonly onboarding: OnboardingTemplates;
+};
+
+export type CapturedNeutralSurface = Omit<NeutralSurface, "onboarding"> & {
+  readonly onboarding: AdmittedOnboardingTemplates;
 };
 
 export const RUNTIME_FOLDERS = ["tools", "hooks", "sensors", "scopes"] as const;

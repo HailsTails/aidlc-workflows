@@ -1,5 +1,4 @@
-import type { HookGuidanceSource } from "../projection/domain/hook-guidance.ts";
-import type { ToolsGuidanceSource } from "../projection/domain/tools-guidance.ts";
+import type { HookGuidanceSource, ToolsGuidanceSource } from "../projection/domain/onboarding-source.ts";
 import type {
   HostConversationSource,
   HostEventDecoder,

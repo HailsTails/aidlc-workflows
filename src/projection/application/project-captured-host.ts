@@ -1,7 +1,6 @@
 import { refused } from "../../kernel/result.ts";
 import { DEFAULT_WORKSPACE } from "../domain/workspace.ts";
-import { hookGuidanceFills } from "../domain/hook-guidance.ts";
-import { bindToolsGuidance } from "../domain/tools-guidance.ts";
+import { bindOnboardingSource } from "../domain/onboarding-source.ts";
 import type { HarnessRenderers } from "./ports/harness-assembly.ts";
 import type { CapturedHostProjectionPorts, HostProjectionMember, ProjectCapturedHost } from "./ports/captured-host.ts";
 
@@ -21,7 +20,7 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
   if (!compiled.ok) return refused([compiled.refusal]);
   const captured = await ports.capture(request.core);
   if (!captured.ok) return captured;
-  const onboarding = bindToolsGuidance(captured.value.surface.onboarding, request.channel);
+  const onboarding = bindOnboardingSource(captured.value.surface.onboarding, request.channel);
   const surface = onboarding === captured.value.surface.onboarding ? captured.value.surface
     : { ...captured.value.surface, onboarding };
   const assembled = await ports.assemble({ method: request.core.method,
@@ -29,8 +28,7 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
     files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,
     modelCap: request.modelCap, tierFlavor: members.projection.tierFlavor,
     entrypoints: request.entrypoints,
-    fills: hookGuidanceFills(captured.value.surface.onboarding.hookGuidance, request.channel,
-      members.projection.fills(request.channel)),
+    fills: members.projection.fills(request.channel),
     bindingHeadings: ports.members.map((member) => member.projection.bindingHeading), projectRoot: request.projectRoot,
     reviewerAgents: request.reviewerAgents, runtime: captured.value.runtime, compiled: compiled.value });
   if (!assembled.ok) return assembled;

@@ -136,6 +136,18 @@ test("ordinary read failure precedes both invalid declarations", async () => {
     hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" })).toEqual(refused([{ kind: "neutral-source-unreadable",
     source: source("aidlc-common/conductor.md"), reason: "permission-denied" }]));
 });
+
+test.each([
+  ["Missing", "Declared framework Hook guidance requires exactly one {{SLOT:framework_hook_runtime}} marker."],
+  ["{{SLOT:framework_hook_runtime}}", "Declared framework Tools guidance requires exactly one {{SLOT:framework_tools_runtime}} marker."],
+])("captured admission owns malformed source precedence over later neutral markers: %s", async (harnessSkeleton, reason) => {
+  const fileSystem = createInMemoryFileSystem({ files: { ...files,
+    "file:///core/templates/onboarding.md": "{{UNKNOWN}}",
+    "file:///core/templates/onboarding-harness.md": harnessSkeleton } });
+  expect(await createNeutralReading({ files: fileSystem, tree: fileSystem })({ core, sources: [],
+    hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" })).toEqual(refused([{ kind: "render-failed",
+    concept: "onboarding", name: "onboarding-harness.md", reason }]));
+});
 test.each(["{{SLOT:framework_tools_runtime}}", "{{SLOT:framework_tools_runtime}}{{SLOT:framework_tools_runtime}}"])(
   "legacy capture does not promote the Tools slot spelling %s", async (skeleton) => {
     const fileSystem = createInMemoryFileSystem({ files: { ...files,
