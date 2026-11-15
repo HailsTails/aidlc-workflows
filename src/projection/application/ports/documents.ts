@@ -7,6 +7,7 @@ import type { ProjectionRefusal } from "../../domain/projection.ts";
 import type { TokenBindings } from "../../domain/template-token.ts";
 import type { Harness, Rendering } from "./harness.ts";
 import type { HookGuidanceSource, ToolsGuidanceSource } from "../../domain/onboarding-source.ts";
+import type { CwdGuidanceSource } from "../../domain/cwd-guidance.ts";
 
 export type DocumentRenderingInputs = {
   readonly bindingHeadings: readonly string[];
@@ -19,6 +20,7 @@ export type HostDocumentRenderer = (
 ) => Pick<Harness, "renderOnboarding" | "placeNeutralDocument">;
 
 export type NeutralCapture = {
+  readonly cwdGuidance: CwdGuidanceSource;
   readonly hookGuidance: HookGuidanceSource;
   readonly toolsGuidance: ToolsGuidanceSource;
   readonly core: URL;

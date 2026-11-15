@@ -42,8 +42,9 @@ const sessionReading = (request: BuildSourceCaptureRequest): SessionReading => {
 
 const neutralReading = (request: BuildSourceCaptureRequest): CoreNeutralCapture => {
   let captured: ReturnType<CoreNeutralCapture> | undefined;
+  const cwdGuidance = Object.freeze({ ...request.cwdGuidance });
   return (core) => captured ??= request.projection.readNeutral({ core: request.core, sources: core.sources,
-    hookGuidance: request.hookGuidance, toolsGuidance: request.toolsGuidance });
+    hookGuidance: request.hookGuidance, toolsGuidance: request.toolsGuidance, cwdGuidance });
 };
 
 const fullHostCapture = (ports: {

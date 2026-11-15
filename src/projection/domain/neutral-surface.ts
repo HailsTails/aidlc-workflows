@@ -2,6 +2,7 @@ import type { FileContent } from "../../kernel/file-content.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 import type { AdmittedOnboardingTemplates } from "./onboarding-source.ts";
+import type { AdmittedCwdDocuments } from "./cwd-guidance.ts";
 
 export const NEUTRAL_DOCUMENT_ROLES = ["protocol", "template", "conductor", "stage", "knowledge"] as const;
 
@@ -46,8 +47,9 @@ export type NeutralSurface = {
   readonly onboarding: OnboardingTemplates;
 };
 
-export type CapturedNeutralSurface = Omit<NeutralSurface, "onboarding"> & {
+export type CapturedNeutralSurface = Omit<NeutralSurface, "onboarding" | "documents"> & {
   readonly onboarding: AdmittedOnboardingTemplates;
+  readonly documents: AdmittedCwdDocuments;
 };
 
 export const RUNTIME_FOLDERS = ["tools", "hooks", "sensors", "scopes"] as const;

@@ -1,6 +1,7 @@
 import { refused } from "../../kernel/result.ts";
 import { DEFAULT_WORKSPACE } from "../domain/workspace.ts";
 import { bindOnboardingSource } from "../domain/onboarding-source.ts";
+import { bindCwdDocuments } from "../domain/cwd-guidance.ts";
 import type { HarnessRenderers } from "./ports/harness-assembly.ts";
 import type { CapturedHostProjectionPorts, HostProjectionMember, ProjectCapturedHost } from "./ports/captured-host.ts";
 
@@ -21,8 +22,8 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
   const captured = await ports.capture(request.core);
   if (!captured.ok) return captured;
   const onboarding = bindOnboardingSource(captured.value.surface.onboarding, request.channel);
-  const surface = onboarding === captured.value.surface.onboarding ? captured.value.surface
-    : { ...captured.value.surface, onboarding };
+  const surface = { ...captured.value.surface, onboarding,
+    documents: bindCwdDocuments({ captured: captured.value.surface.documents, channel: request.channel }) };
   const assembled = await ports.assemble({ method: request.core.method,
     sources: request.core.sources, host: request.host, renderers: renderersOf(members),
     files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,

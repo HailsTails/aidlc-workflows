@@ -34,7 +34,7 @@ const files = {
   "file:///core/memory/.keep": "", "file:///core/knowledge/.keep": "",
 };
 const sources = { core: new URL("file:///core/"), plugins: new URL("file:///plugins/"),
-  hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, pluginHookTemplates: new URL("file:///hook-templates/") };
+  hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, cwdGuidance: { kind: "legacy-authored" as const }, pluginHookTemplates: new URL("file:///hook-templates/") };
 const yaml = createInMemoryYamlParser({ documents: {} });
 const terminal = createRecordingTerminal();
 const digester: ContentDigester = { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) };

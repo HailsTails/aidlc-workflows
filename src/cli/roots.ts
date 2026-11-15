@@ -1,4 +1,5 @@
 import type { HookGuidanceSource, ToolsGuidanceSource } from "../projection/domain/onboarding-source.ts";
+import type { CwdGuidanceSource } from "../projection/domain/cwd-guidance.ts";
 import type {
   HostConversationSource,
   HostEventDecoder,
@@ -120,6 +121,7 @@ export type Platform = {
 };
 
 export type BuildSources = {
+  readonly cwdGuidance: CwdGuidanceSource;
   readonly hookGuidance: HookGuidanceSource;
   readonly toolsGuidance: ToolsGuidanceSource;
   readonly core: URL;

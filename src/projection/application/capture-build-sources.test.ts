@@ -1,3 +1,4 @@
+import { admitCwdDocuments } from "../domain/cwd-guidance.ts";
 import { admitOnboardingSource } from "../domain/onboarding-source.ts";
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
@@ -18,7 +19,7 @@ const member: HostSourceMember = { host: identity, projection: {
   documents: { inputs: [source("documents/a.md")] }, placements: [{ source: "placement.md", destination: "placed.md" }],
 } };
 const core: BuildCore = { method: methodSliceFixture, sources: [] };
-const neutral: CapturedNeutralSurface = { documents: [], skills: [],
+const neutral: CapturedNeutralSurface = { documents: accept(admitCwdDocuments({ documents: [], guidance: { kind: "legacy-authored" } })), skills: [],
   onboarding: accept(admitOnboardingSource({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "neutral", harnessSkeleton: "host" })) };
 const sessions: readonly SessionSkill[] = [{ name: "aidlc-session-cost", files: [{ source: source("SKILL.md"),
   content: { kind: "bytes", bytes: new Uint8Array([0, 255, 10]) } }] }];
@@ -46,7 +47,7 @@ const fixture = (hosts: readonly HostSourceMember[] = [member]) => {
   const readSessionSkills = mock<Readers["readSessionSkills"]>().mockResolvedValue(accepted(sessions));
   const readRuntime = mock<Readers["readRuntime"]>().mockResolvedValue(accepted(runtime));
   const readMemoryCompanions = mock<Readers["readMemoryCompanions"]>().mockResolvedValue(accepted(companions));
-  const binding: BuildSourceCaptureRequest = { hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const, hosts, core: new URL("file:///core/"),
+  const binding: BuildSourceCaptureRequest = { cwdGuidance: { kind: "legacy-authored" }, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const, hosts, core: new URL("file:///core/"),
     projection: { readHostSources, readNeutral, readSessionSkills, readRuntime, readMemoryCompanions } };
   return { capture: captureBuildSources(binding), binding,
     readHostSources, readNeutral, readSessionSkills, readRuntime, readMemoryCompanions };
@@ -85,6 +86,24 @@ test("Tools admission failure shares the same neutral cache and only a fresh roo
   expect(await captureBuildSources({ ...current.binding, hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" }).captureFullHost(core))
     .toMatchObject({ ok: true, value: { surface: { onboarding: { hookGuidance: "framework-hooks", toolsGuidance: "framework-tools",
       harnessSkeleton: "{{SLOT:framework_hook_runtime}}{{SLOT:framework_tools_runtime}}" } } } });
+  expect(current.readNeutral).toHaveBeenCalledTimes(2);
+});
+
+test("CWD admission failure retains identity until a fresh root and snapshots the author declaration", async () => {
+  const current = fixture();
+  const declaration = { kind: "framework-cwd" as const, source: "aidlc-common/protocols/one.md" };
+  current.readNeutral.mockResolvedValue(refused([{ kind: "render-failed", concept: "neutral-document", name: declaration.source,
+    reason: "Declared CWD guidance requires exactly one {{SLOT:framework_cwd_guidance}} position." }]));
+  const captured = captureBuildSources({ ...current.binding, cwdGuidance: declaration });
+  declaration.source = "aidlc-common/protocols/other.md";
+  const first = await captured.captureFullHost(core);
+  expect(first).toEqual(refused([{ kind: "render-failed", concept: "neutral-document", name: "aidlc-common/protocols/one.md",
+    reason: "Declared CWD guidance requires exactly one {{SLOT:framework_cwd_guidance}} position." }]));
+  current.readNeutral.mockResolvedValue(accepted(neutral));
+  expect(await captured.captureFullHost(core)).toBe(first);
+  expect(current.readNeutral).toHaveBeenCalledTimes(1);
+  expect(current.readNeutral.mock.calls[0]?.[0].cwdGuidance).toEqual({ kind: "framework-cwd", source: "aidlc-common/protocols/one.md" });
+  expect(await captureBuildSources(current.binding).captureFullHost(core)).toMatchObject({ ok: true });
   expect(current.readNeutral).toHaveBeenCalledTimes(2);
 });
 
@@ -234,7 +253,7 @@ test("full capture keeps neutral-session-runtime-companion order and exact retur
   expect(await current.capture.captureFullHost(core)).toEqual(accepted({
     surface: { ...neutral, skills: sessions }, runtime, companions,
   }));
-  expect(current.readNeutral).toHaveBeenCalledWith({ core: current.binding.core, sources: core.sources, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const });
+  expect(current.readNeutral).toHaveBeenCalledWith({ core: current.binding.core, sources: core.sources, cwdGuidance: { kind: "legacy-authored" }, hookGuidance: "legacy-authored", toolsGuidance: "legacy-authored" as const });
   expect(current.readSessionSkills).toHaveBeenCalledWith({ source: source("skills"),
     folder: new URL("skills/", current.binding.core) });
   expect(current.readRuntime).toHaveBeenCalledWith({ core: current.binding.core, method: core.method });

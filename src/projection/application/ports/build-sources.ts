@@ -8,6 +8,7 @@ import type { BuildProjection } from "./build-projection.ts";
 import type { HostProjectionParts } from "./host-parts.ts";
 import type { HostSourcesInput } from "../../domain/host-sources-query.ts";
 import type { HookGuidanceSource, ToolsGuidanceSource } from "../../domain/onboarding-source.ts";
+import type { CwdGuidanceSource } from "../../domain/cwd-guidance.ts";
 
 export type { HostSourcesInput } from "../../domain/host-sources-query.ts";
 
@@ -44,6 +45,7 @@ export type BuildSourceCapture = {
 };
 
 export type BuildSourceCaptureRequest = {
+  readonly cwdGuidance: CwdGuidanceSource;
   readonly hookGuidance: HookGuidanceSource;
   readonly toolsGuidance: ToolsGuidanceSource;
   readonly projection: Pick<

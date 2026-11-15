@@ -1,3 +1,4 @@
+import { admitCwdDocuments } from "../domain/cwd-guidance.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { admitOnboardingSource } from "../domain/onboarding-source.ts";
 import type { HostFileDeriver } from "./ports/harness.ts";
@@ -34,7 +35,7 @@ const member: HostProjectionMember = { host: SCRATCH_HOST, projection: {
 const other: HostProjectionMember = { host: host({ name: "other", directory: ".other" }),
   projection: { ...member.projection, bindingHeading: "Other" } };
 const compiled = { graph: "captured graph", grid: "captured grid" };
-const captured: FullHostCapture = { surface: { documents: [], skills: [], onboarding: accept(admitOnboardingSource({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "Neutral", harnessSkeleton: "Host" })) },
+const captured: FullHostCapture = { surface: { documents: accept(admitCwdDocuments({ documents: [], guidance: { kind: "legacy-authored" } })), skills: [], onboarding: accept(admitOnboardingSource({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "Neutral", harnessSkeleton: "Host" })) },
   runtime: { files: [], version: { kind: "text", text: "Version" }, agentTiers: { kind: "text", text: "Tiers" },
     settingsSchema: { kind: "text", text: "Schema" } }, companions: [] };
 const requiredFile = { source: source("required.md"), content: { kind: "text" as const, text: "Required\r\n" } };
@@ -103,6 +104,19 @@ test("copy and native callers bind separately from the same immutable captured T
   expect(current.project.mock.calls[1]?.[0].surface.onboarding.harnessSkeleton)
     .toBe("(TypeScript sources invoked through the self-contained `aidlc` runtime)\r\n");
   expect(snapshot.surface.onboarding.harnessSkeleton).toBe("({{SLOT:framework_tools_runtime}})\r\n");
+});
+
+test("the actual first caller binds admitted protocol meaning before hosted interpolation", async () => {
+  const current = fixture();
+  const documents = accept(admitCwdDocuments({ documents: [{ source: source("protocol.md"), role: "protocol",
+    content: { kind: "text", text: "{{SLOT:framework_cwd_guidance}}\r\n{{HARNESS_DIR}}\r\n" } }],
+    guidance: { kind: "framework-cwd", source: "protocol.md" } }));
+  current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, documents } }));
+  await current.projectHost({ ...current.request, channel: "native" });
+  expect(current.project.mock.calls[0]?.[0].surface.documents).toEqual([{ source: source("protocol.md"), role: "protocol", content: {
+    kind: "text", text: "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.\r\n{{HARNESS_DIR}}\r\n" } }]);
+  expect(documents.documents[0]?.content).toEqual({ kind: "text", text: "{{SLOT:framework_cwd_guidance}}\r\n{{HARNESS_DIR}}\r\n" });
+  expect(current.assemble.mock.calls[0]?.[0].fills).toEqual({ invoke: "/aidlc", slots: {} });
 });
 
 test("an unknown Projection member refuses before compilation or capture", async () => {
@@ -177,7 +191,7 @@ test("assembly receives Projection-owned renderer mapping and every host heading
     projectRoot: new URL("file:///project/"), reviewerAgents: new Set([agent("reviewer")]), runtime: captured.runtime, compiled });
   expect(current.hosted).toHaveBeenCalledWith({ host: SCRATCH_HOST, harness });
   expect(current.project).toHaveBeenCalledWith({ harness: SCRATCH_HOST.distribution, method: methodSliceFixture,
-    sources: [], surface: captured.surface, runtime: captured.runtime, compiled, companions: [], hostFiles: [requiredFile] });
+    sources: [], surface: { ...captured.surface, documents: captured.surface.documents.documents }, runtime: captured.runtime, compiled, companions: [], hostFiles: [requiredFile] });
   expect(current.compile.mock.invocationCallOrder[0]).toBeLessThan(current.capture.mock.invocationCallOrder[0] ?? -1);
   expect(current.capture.mock.invocationCallOrder[0]).toBeLessThan(current.assemble.mock.invocationCallOrder[0] ?? -1);
   expect(current.assemble.mock.invocationCallOrder[0]).toBeLessThan(current.hosted.mock.invocationCallOrder[0] ?? -1);
