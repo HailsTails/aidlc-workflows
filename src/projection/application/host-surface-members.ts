@@ -68,6 +68,7 @@ const placeFile = (request: {
   readonly file: AuthoredHostFile;
   readonly placements: readonly AuthoredPlacement[];
   readonly prepare: AuthoredFilePreparer;
+  readonly channel: DistributionChannel;
 }): Rendering => {
   const placement = request.placements.find((candidate) => candidate.source === request.file.source);
   if (!placement) return refused({ kind: "render-failed", concept: "host-data",
@@ -76,9 +77,20 @@ const placeFile = (request: {
   if (!path.ok) return refused({ kind: "render-failed", concept: "host-data",
     name: request.file.source, reason: "The authored destination must be project-relative." });
   const prepared = request.prepare(request.file);
-  return prepared.ok ? accepted([{ path: path.value, content: prepared.value.content,
+  if (!prepared.ok) return prepared;
+  const prompt = placement.prompt?.({ content: prepared.value.content, channel: request.channel });
+  if (prompt != null) {
+    const serialized = serializeNativePolicy<ProjectionRefusal>({ prompt, serialize: (lines) => {
+      const text = lines.join("\n");
+      return accepted({ path: path.value, content: prepared.value.content.kind === "text"
+        ? { kind: "text", text } : { kind: "bytes", bytes: new TextEncoder().encode(text) },
+      mode: "regular", origin: { kind: "harness-authored", source: request.file.source } });
+    } });
+    return serialized.ok ? accepted([serialized.value]) : serialized;
+  }
+  return accepted([{ path: path.value, content: prepared.value.content,
     mode: "regular",
-    origin: { kind: "harness-authored", source: request.file.source } }]) : prepared;
+    origin: { kind: "harness-authored", source: request.file.source } }]);
 };
 
 export const createHostSurfaceMembers = (request: {
@@ -108,5 +120,5 @@ export const createHostSurfaceMembers = (request: {
     ]);
   },
   placeAuthoredFile: ({ file }) => placeFile({ file, placements: request.placements,
-    prepare: request.prepare }),
+    prepare: request.prepare, channel: request.channel }),
 });

@@ -1,4 +1,5 @@
 import type { PromptLines } from "./native-policy.ts";
+import type { DistributionChannel } from "./projected-file.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { sourcePath, type KernelRefusal, type SourcePath } from "../../kernel/values.ts";
@@ -38,6 +39,9 @@ export type HostData = {
 export type AuthoredPlacement = {
   readonly source: string;
   readonly destination: string;
+  // Explicit authored-slot owner; null leaves legacy/custom content untouched.
+  readonly prompt?: (request: { readonly content: FileContent;
+    readonly channel: DistributionChannel }) => PromptLines | null;
 };
 
 export const authoredSourcePaths = (raws: readonly string[]): Result<readonly SourcePath[], KernelRefusal> => {

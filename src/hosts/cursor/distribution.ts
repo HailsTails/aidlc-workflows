@@ -1,6 +1,7 @@
 import type { HostDistribution } from "../../packaging/domain/payload.ts";
 import { accepted, type Result } from "../../kernel/result.ts";
 import { contentHash, projectPath, type ContentHash, type KernelRefusal } from "../../kernel/values.ts";
+import { CURSOR_DOCTOR_COPY, CURSOR_DOCTOR_NATIVE } from "./projection/doctor-guidance.ts";
 
 const GITIGNORE_PRIOR_HASHES = [
   "sha256:b4bf7694361e76aae9feabc5d985d09afb7863cf8458b0c9aaa73f20a589582f",
@@ -64,8 +65,8 @@ export const cursorDistribution = (): Result<HostDistribution, KernelRefusal> =>
     listing: {},
     native: {
       replacements: [{
-        from: "run `bun .cursor/tools/aidlc.ts doctor` (after installing Bun from https://bun.sh/install if `bun` is not found),",
-        to: "run `aidlc doctor`,",
+        from: CURSOR_DOCTOR_COPY,
+        to: CURSOR_DOCTOR_NATIVE,
       }],
       copyOnly: [installer.value], permissions: { kind: "authored" },
     },

@@ -4,6 +4,7 @@ import { distributionId, projectPath, type KernelRefusal } from "../../kernel/va
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
 import type { TierFlavor } from "../../projection/domain/tier-flavor.ts";
+import { cursorDoctorPrompt } from "./projection/doctor-guidance.ts";
 
 export const CURSOR_BINDING_HEADING = "Cursor";
 
@@ -24,7 +25,7 @@ export const CURSOR_TOKENS = {
 } as const satisfies HostTokenChoices;
 
 export const CURSOR_AUTHORED_PLACEMENTS = [
-  { source: "rules-aidlc.mdc", destination: ".cursor/rules/aidlc.mdc" },
+  { source: "rules-aidlc.mdc", destination: ".cursor/rules/aidlc.mdc", prompt: cursorDoctorPrompt },
   { source: "rules-aidlc-phase-ideation.mdc", destination: ".cursor/rules/aidlc-phase-ideation.mdc" },
   { source: "rules-aidlc-phase-inception.mdc", destination: ".cursor/rules/aidlc-phase-inception.mdc" },
   { source: "rules-aidlc-phase-construction.mdc", destination: ".cursor/rules/aidlc-phase-construction.mdc" },

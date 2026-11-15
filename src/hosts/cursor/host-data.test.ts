@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { host } from "../../kernel/fixtures/values.fixture.ts";
+import { cursorDoctorPrompt } from "./projection/doctor-guidance.ts";
 import { cursorHostIdentity, CURSOR_HOST_DATA, CURSOR_TOKENS, CURSOR_AUTHORED_PLACEMENTS } from "./host-data.ts";
 
 test("Cursor declares its conversation and explicit-only runner surface", () => {
@@ -16,7 +17,7 @@ test("Cursor declares its conversation and explicit-only runner surface", () => 
 
 test("Cursor places its native rules and adapter without taking settings or copy-only inputs", () => {
   expect(CURSOR_AUTHORED_PLACEMENTS).toEqual([
-    { source: "rules-aidlc.mdc", destination: ".cursor/rules/aidlc.mdc" },
+    { source: "rules-aidlc.mdc", destination: ".cursor/rules/aidlc.mdc", prompt: cursorDoctorPrompt },
     { source: "rules-aidlc-phase-ideation.mdc", destination: ".cursor/rules/aidlc-phase-ideation.mdc" },
     { source: "rules-aidlc-phase-inception.mdc", destination: ".cursor/rules/aidlc-phase-inception.mdc" },
     { source: "rules-aidlc-phase-construction.mdc", destination: ".cursor/rules/aidlc-phase-construction.mdc" },

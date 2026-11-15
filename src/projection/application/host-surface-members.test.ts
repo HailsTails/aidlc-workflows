@@ -7,11 +7,67 @@ import { tokenBindingsFixture } from "../fixtures/token-bindings.fixture.ts";
 import { createHostSurfaceMembers } from "./host-surface-members.ts";
 import type { HarnessRecordConstructor } from "./ports/host-surface.ts";
 import type { HarnessRecord } from "../domain/harness-record.ts";
+import type { AuthoredPlacement } from "../domain/host-surface.ts";
+import type { AuthoredFilePreparer } from "./ports/host-sources.ts";
 
 const claude = host({ name: "claude", directory: ".claude" });
 const tokens = tokenBindingsFixture({ harnessDir: ".claude" });
 const request = { record: commonHarnessRecord, host: claude, data: claudeHostDataFixture, placements: AUTHORED_PLACEMENTS_FIXTURE,
   tokens, channel: "copy", prepare: accepted } as const;
+
+test("the declared owner sees exactly one prepared snapshot and the selected channel", () => {
+  const file = { source: source("notice.md"), content: { kind: "text" as const, text: "Captured" } };
+  const prepared = { ...file, content: { kind: "text" as const, text: "Prepared" } };
+  const prepare = mock<AuthoredFilePreparer>().mockReturnValue(accepted(prepared));
+  const prompt = mock<NonNullable<AuthoredPlacement["prompt"]>>().mockReturnValue(["Bound", ""]);
+  expect(createHostSurfaceMembers({ ...request, prepare, channel: "native", placements: [{
+    source: "notice.md", destination: ".claude/notice.md", prompt,
+  }] }).placeAuthoredFile({ file })).toEqual(accepted([{
+    path: path(".claude/notice.md"), content: { kind: "text", text: "Bound\n" }, mode: "regular",
+    origin: { kind: "harness-authored", source: source("notice.md") },
+  }]));
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(prepare).toHaveBeenCalledWith(file);
+  expect(prompt).toHaveBeenCalledTimes(1);
+  expect(prompt).toHaveBeenCalledWith({ content: prepared.content, channel: "native" });
+});
+
+test("failed captured-source preparation never invokes the owner or constructs a receipt", () => {
+  const failure = refused({ kind: "render-failed" as const, concept: "host-data" as const,
+    name: "notice.md", reason: "Unreadable" });
+  const prepare = mock().mockReturnValue(failure);
+  const prompt = mock<NonNullable<AuthoredPlacement["prompt"]>>().mockReturnValue(["Bound"]);
+  expect(createHostSurfaceMembers({ ...request, prepare, placements: [{
+    source: "notice.md", destination: ".claude/notice.md", prompt,
+  }] }).placeAuthoredFile({ file: { source: source("notice.md"), content: { kind: "text", text: "Captured" } } }))
+    .toBe(failure);
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(prompt).not.toHaveBeenCalled();
+});
+
+test("a declined authored slot preserves opaque prepared bytes without admission", () => {
+  const file = { source: source("notice.md"), content: { kind: "bytes" as const, bytes: new Uint8Array([0, 255]) } };
+  const prepare = mock().mockReturnValue(accepted(file));
+  const prompt = mock<NonNullable<AuthoredPlacement["prompt"]>>().mockReturnValue(null);
+  expect(createHostSurfaceMembers({ ...request, prepare, placements: [{
+    source: "notice.md", destination: ".claude/notice.md", prompt,
+  }] }).placeAuthoredFile({ file })).toEqual(accepted([{
+    path: path(".claude/notice.md"), content: { kind: "bytes", bytes: new Uint8Array([0, 255]) },
+    mode: "regular", origin: { kind: "harness-authored", source: source("notice.md") },
+  }]));
+});
+
+test("a declared copy serializer preserves the byte-backed content representation", () => {
+  const file = { source: source("notice.md"), content: { kind: "bytes" as const, bytes: new Uint8Array([65]) } };
+  const prepare = mock().mockReturnValue(accepted(file));
+  const prompt = mock<NonNullable<AuthoredPlacement["prompt"]>>().mockReturnValue(["Bound"]);
+  expect(createHostSurfaceMembers({ ...request, prepare, placements: [{
+    source: "notice.md", destination: ".claude/notice.md", prompt,
+  }] }).placeAuthoredFile({ file })).toEqual(accepted([{
+    path: path(".claude/notice.md"), content: { kind: "bytes", bytes: new Uint8Array([66, 111, 117, 110, 100]) },
+    mode: "regular", origin: { kind: "harness-authored", source: source("notice.md") },
+  }]));
+});
 
 test("constructor refusal is preserved atomically before any plugin or record file is emitted", () => {
   const failure = refused({ kind: "render-failed" as const, concept: "host-data" as const,
