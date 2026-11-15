@@ -31,7 +31,7 @@ const member: HostProjectionMember = { host: SCRATCH_HOST, projection: {
 const other: HostProjectionMember = { host: host({ name: "other", directory: ".other" }),
   projection: { ...member.projection, bindingHeading: "Other" } };
 const compiled = { graph: "captured graph", grid: "captured grid" };
-const captured: FullHostCapture = { surface: { documents: [], skills: [], onboarding: { neutral: "Neutral", harnessSkeleton: "Host" } },
+const captured: FullHostCapture = { surface: { documents: [], skills: [], onboarding: { hookGuidance: "legacy-authored" as const, neutral: "Neutral", harnessSkeleton: "Host" } },
   runtime: { files: [], version: { kind: "text", text: "Version" }, agentTiers: { kind: "text", text: "Tiers" },
     settingsSchema: { kind: "text", text: "Schema" } }, companions: [] };
 const requiredFile = { source: source("required.md"), content: { kind: "text" as const, text: "Required\r\n" } };
@@ -54,6 +54,16 @@ const fixture = (members: readonly HostProjectionMember[] = [member, other]) => 
   return { compile, capture, assemble, project, hosted, request,
     projectHost: createProjectCapturedHost({ members, capture, assemble, hosted }) };
 };
+
+test("the real first caller binds declared native guidance before assembly using the captured declaration", async () => {
+  const current = fixture();
+  current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface,
+    onboarding: { neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_hook_runtime}}", hookGuidance: "framework-hooks" } } }));
+  await current.projectHost({ ...current.request, channel: "native" });
+  expect(current.assemble.mock.calls[0]?.[0].fills).toEqual({ invoke: "/aidlc", slots: {
+    framework_hook_runtime: "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required." } });
+  expect(current.capture).toHaveBeenCalledTimes(1);
+});
 
 test("an unknown Projection member refuses before compilation or capture", async () => {
   const current = fixture([]);

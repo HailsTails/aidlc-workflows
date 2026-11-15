@@ -7,6 +7,7 @@ import type { ProjectionRefusal } from "../../domain/projection.ts";
 import type { BuildProjection } from "./build-projection.ts";
 import type { HostProjectionParts } from "./host-parts.ts";
 import type { HostSourcesInput } from "../../domain/host-sources-query.ts";
+import type { HookGuidanceSource } from "../../domain/hook-guidance.ts";
 
 export type { HostSourcesInput } from "../../domain/host-sources-query.ts";
 
@@ -43,6 +44,7 @@ export type BuildSourceCapture = {
 };
 
 export type BuildSourceCaptureRequest = {
+  readonly hookGuidance: HookGuidanceSource;
   readonly projection: Pick<
     BuildProjection,
     "readHostSources" | "readSessionSkills" | "readNeutral" | "readRuntime" | "readMemoryCompanions"

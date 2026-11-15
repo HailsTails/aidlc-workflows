@@ -67,7 +67,7 @@ const projectEighthHost = async (module: HostModule = SCRATCH_MODULE) => {
       terminal: createRecordingTerminal() },
     outliner: { outline: (text: string) => ({ text, headings: [] }) },
     sources: { core: new URL("file:///core/"), plugins: new URL("file:///plugins/"),
-      pluginHookTemplates: new URL("file:///hook-templates/") },
+      hookGuidance: "legacy-authored", pluginHookTemplates: new URL("file:///hook-templates/") },
     runnerFrames: new URL("file:///frames/"), workingDirectory: new URL("file:///H:/working/"),
     plugins: createRecordingPluginProjector() });
   const loaded = accept(await root.loadCore());

@@ -264,7 +264,8 @@ export const createPackageBuildRoot: CreatePackageBuildRoot = (request) => {
     plugins: request.plugins,
     runnerProcess: request.platform.processRunner, runnerScratch: request.platform.fileSystem,
     runnerFrames: request.runnerFrames, runnerChild: new URL("./legacy-runner-child.ts", import.meta.url) });
-  const sourceCapture = captureBuildSources({ projection, core: request.sources.core, hosts: request.hosts });
+  const sourceCapture = captureBuildSources({ projection, core: request.sources.core, hosts: request.hosts,
+    hookGuidance: request.sources.hookGuidance });
   const readDistribution = createHostDistributionReading({ members: request.hosts.map((module) => ({
     host: module.host, read: () => module.distribution({ delegateShellFacts: projection.delegateShellFacts }),
   })) });

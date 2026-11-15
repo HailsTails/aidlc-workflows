@@ -4,7 +4,7 @@ import type { NeutralDocument, OnboardingFills, OnboardingTemplates } from "../d
 import { tokenBindingsFixture } from "./token-bindings.fixture.ts";
 import { text } from "./values.fixture.ts";
 
-export const ONBOARDING_TEMPLATES_FIXTURE: OnboardingTemplates = {
+export const ONBOARDING_TEMPLATES_FIXTURE: OnboardingTemplates = { hookGuidance: "legacy-authored",
   neutral: ["# AI-DLC in this project", "", "Your work is recorded under aidlc/.", ""].join("\n"),
   harnessSkeleton: [
     "{{SLOT:title_block}}",

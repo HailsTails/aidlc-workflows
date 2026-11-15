@@ -1,5 +1,6 @@
 import { refused } from "../../kernel/result.ts";
 import { DEFAULT_WORKSPACE } from "../domain/workspace.ts";
+import { hookGuidanceFills } from "../domain/hook-guidance.ts";
 import type { HarnessRenderers } from "./ports/harness-assembly.ts";
 import type { CapturedHostProjectionPorts, HostProjectionMember, ProjectCapturedHost } from "./ports/captured-host.ts";
 
@@ -23,7 +24,9 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
     sources: request.core.sources, host: request.host, renderers: renderersOf(members),
     files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,
     modelCap: request.modelCap, tierFlavor: members.projection.tierFlavor,
-    entrypoints: request.entrypoints, fills: members.projection.fills(request.channel),
+    entrypoints: request.entrypoints,
+    fills: hookGuidanceFills(captured.value.surface.onboarding.hookGuidance, request.channel,
+      members.projection.fills(request.channel)),
     bindingHeadings: ports.members.map((member) => member.projection.bindingHeading), projectRoot: request.projectRoot,
     reviewerAgents: request.reviewerAgents, runtime: captured.value.runtime, compiled: compiled.value });
   if (!assembled.ok) return assembled;

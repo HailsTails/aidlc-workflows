@@ -9,6 +9,8 @@ import type { MemoryCompanion, NeutralSurface, SessionSkill, SharedRuntime } fro
 import type { ProjectionRefusal } from "../domain/projection.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import { captureBuildSources } from "./capture-build-sources.ts";
+import { createInMemoryFileSystem } from "../../kernel/fixtures/file-system.fake.ts";
+import { createNeutralReading } from "../adapters/neutral-surface-files.ts";
 
 const identity = host({ name: "fixture-host", directory: ".fixture" });
 const member: HostSourceMember = { host: identity, projection: {
@@ -18,7 +20,7 @@ const member: HostSourceMember = { host: identity, projection: {
 } };
 const core: BuildCore = { method: methodSliceFixture, sources: [] };
 const neutral: NeutralSurface = { documents: [], skills: [],
-  onboarding: { neutral: "neutral", harnessSkeleton: "host" } };
+  onboarding: { hookGuidance: "legacy-authored" as const, neutral: "neutral", harnessSkeleton: "host" } };
 const sessions: readonly SessionSkill[] = [{ name: "aidlc-session-cost", files: [{ source: source("SKILL.md"),
   content: { kind: "bytes", bytes: new Uint8Array([0, 255, 10]) } }] }];
 const runtime: SharedRuntime = { files: [{ source: source("tools/a.ts"),
@@ -45,11 +47,34 @@ const fixture = (hosts: readonly HostSourceMember[] = [member]) => {
   const readSessionSkills = mock<Readers["readSessionSkills"]>().mockResolvedValue(accepted(sessions));
   const readRuntime = mock<Readers["readRuntime"]>().mockResolvedValue(accepted(runtime));
   const readMemoryCompanions = mock<Readers["readMemoryCompanions"]>().mockResolvedValue(accepted(companions));
-  const binding: BuildSourceCaptureRequest = { hosts, core: new URL("file:///core/"),
+  const binding: BuildSourceCaptureRequest = { hookGuidance: "legacy-authored", hosts, core: new URL("file:///core/"),
     projection: { readHostSources, readNeutral, readSessionSkills, readRuntime, readMemoryCompanions } };
   return { capture: captureBuildSources(binding), binding,
     readHostSources, readNeutral, readSessionSkills, readRuntime, readMemoryCompanions };
 };
+
+test("declared admission failure is cached with neutral capture until a new build root", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: {
+    "file:///core/aidlc-common/conductor.md": "Conductor",
+    "file:///core/aidlc-common/protocols/one.md": "Protocol",
+    "file:///core/templates/onboarding.md": "Neutral",
+    "file:///core/templates/onboarding-harness.md": "No declared slot",
+  } });
+  const current = fixture();
+  current.readNeutral.mockImplementation(createNeutralReading({ files: fileSystem, tree: fileSystem }));
+  const captured = captureBuildSources({ ...current.binding, hookGuidance: "framework-hooks" });
+  const first = await captured.captureFullHost(core);
+  expect(first).toEqual(refused([{ kind: "render-failed", concept: "onboarding", name: "onboarding-harness.md",
+    reason: "Declared framework Hook guidance requires exactly one {{SLOT:framework_hook_runtime}} marker." }]));
+  await fileSystem.writeFile({ file: new URL("file:///core/templates/onboarding-harness.md"),
+    content: { kind: "text", text: "{{SLOT:framework_hook_runtime}}" } });
+  expect(await captured.captureFullHost(core)).toBe(first);
+  expect(current.readNeutral).toHaveBeenCalledTimes(1);
+  expect(await captureBuildSources({ ...current.binding, hookGuidance: "framework-hooks" }).captureFullHost(core))
+    .toMatchObject({ ok: true, value: { surface: { onboarding: { hookGuidance: "framework-hooks",
+      harnessSkeleton: "{{SLOT:framework_hook_runtime}}" } } } });
+  expect(current.readNeutral).toHaveBeenCalledTimes(2);
+});
 
 test("caller requirements and all five declared parts retain first-seen source and required order", async () => {
   const current = fixture();
@@ -197,7 +222,7 @@ test("full capture keeps neutral-session-runtime-companion order and exact retur
   expect(await current.capture.captureFullHost(core)).toEqual(accepted({
     surface: { ...neutral, skills: sessions }, runtime, companions,
   }));
-  expect(current.readNeutral).toHaveBeenCalledWith({ core: current.binding.core, sources: core.sources });
+  expect(current.readNeutral).toHaveBeenCalledWith({ core: current.binding.core, sources: core.sources, hookGuidance: "legacy-authored" });
   expect(current.readSessionSkills).toHaveBeenCalledWith({ source: source("skills"),
     folder: new URL("skills/", current.binding.core) });
   expect(current.readRuntime).toHaveBeenCalledWith({ core: current.binding.core, method: core.method });

@@ -9,6 +9,7 @@ import type { NeutralReading } from "../application/ports/documents.ts";
 import type { SessionSkillTreeReader } from "../application/ports/skills.ts";
 import type { NeutralDocument, NeutralDocumentRole } from "../domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
+import { admitHookGuidance } from "../domain/hook-guidance.ts";
 
 type DocumentCapture = {
   readonly documents: readonly NeutralDocument[];
@@ -81,8 +82,11 @@ export const createNeutralReading = (ports: NeutralReadPorts): NeutralReading =>
   const failures = [conductor, neutral, harness].flatMap((reading) => reading.ok ? [] : [reading.refusal]);
   failures.push(...protocols.failures, ...authored.failures);
   if (!conductor.ok || !neutral.ok || !harness.ok || failures.length > 0) return refused(failures);
+  const guidance = admitHookGuidance(capture.hookGuidance, harness.value);
+  if (!guidance.ok) return refused([{ kind: "render-failed", concept: "onboarding",
+    name: "onboarding-harness.md", reason: guidance.refusal }]);
   const captured = capturedDocument({ source: "aidlc-common/conductor.md", role: "conductor",
     content: { kind: "text", text: conductor.value } });
   return accepted({ documents: [...captured.documents, ...protocols.documents, ...authored.documents],
-    skills: [], onboarding: { neutral: neutral.value, harnessSkeleton: harness.value } });
+    skills: [], onboarding: { neutral: neutral.value, harnessSkeleton: harness.value, hookGuidance: guidance.value } });
 };

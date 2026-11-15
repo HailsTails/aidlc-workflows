@@ -56,7 +56,7 @@ test("the entry constructs each implementer once and binds its instance to the c
     workingDirectory: new URL("file:///H:/working/"), plugins,
     platform: { fileSystem, processRunner, yaml, digester, terminal },
     sources: { core: new URL("../../core/", import.meta.url), plugins: new URL("../../plugins/", import.meta.url),
-      pluginHookTemplates: new URL("../../scripts/plugin-hooks-template/", import.meta.url) },
+      hookGuidance: "framework-hooks", pluginHookTemplates: new URL("../../scripts/plugin-hooks-template/", import.meta.url) },
     runnerFrames: new URL("../../.cache/runner-frames/", import.meta.url),
   });
 });

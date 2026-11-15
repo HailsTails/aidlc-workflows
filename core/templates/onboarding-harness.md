@@ -5,7 +5,7 @@
 
 {{SLOT:prereq_bullets}}
 - **Locking**: Audit log file locking is handled portably using mkdir-based locking in the system temp directory (no external dependencies).
-- **Hook permissions**: All 17 hooks are TypeScript (`.ts`) and run via `bun`. No executable bits required — works identically on macOS, Linux, and native Windows PowerShell.
+{{SLOT:framework_hook_runtime}}
 {{SLOT:hook_permissions_note}}
 {{SLOT:prereq_bullets_tail}}
 
