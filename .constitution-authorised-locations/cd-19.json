@@ -355,23 +355,23 @@
     "files": [
       "plugins/rin/tools/github-apps/infrastructure/local-file-system.ts"
     ],
-    "reason": "The one adapter that touches the file system for the GitHub bot tooling, behind the TextFileReader, CanonicalPathResolver, PrivateFileReplacer, PrivateFileCreator and FileRemover ports. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy, and extended to write because the user grant and its lock file are persisted in the credential store.",
+    "reason": "The one adapter that touches the file system for the GitHub bot tooling, behind the TextFileReader, CanonicalPathResolver, PrivateFileReplacer, PrivateFileCreator, FileMover and FileRemover ports. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy, and extended to write because the user grant and its lock file are persisted in the credential store.",
     "whyChain": {
       "whys": [
         {
           "why": "Why does local-file-system.ts import node:fs/promises?",
-          "because": "It implements the file ports: reading file text, resolving a canonical path, replacing a file owner-only through a sibling temporary file and a rename, creating a file owner-only only if it does not exist, and removing a file, each returning a Result instead of throwing",
-          "evidence": "plugins/rin/tools/github-apps/infrastructure/local-file-system.ts exports readTextFile, resolveCanonicalPath, replacePrivateFile, createPrivateFile and removeFile against application/text-file-port.ts and application/private-file-port.ts; nothing else in the package imports node:fs"
+          "because": "It implements the file ports: reading file text, resolving a canonical path, replacing a file owner-only through a sibling temporary file and a rename, creating a file owner-only only if it does not exist, moving a file to a new name, and removing a file, each returning a Result instead of throwing",
+          "evidence": "plugins/rin/tools/github-apps/infrastructure/local-file-system.ts exports readTextFile, resolveCanonicalPath, replacePrivateFile, createPrivateFile, moveFile and removeFile against application/text-file-port.ts and application/private-file-port.ts; nothing else in the package imports node:fs"
         },
         {
           "why": "Why must the bot tooling read and write files at all?",
           "because": "The identity configuration, the credential store, the app private keys and --body-file bodies live on disk, and the operator's OAuth grant for attachment uploads is persisted per machine in the credential store and refreshed under an exclusive lock file there, because GitHub invalidates the old tokens on every refresh and parallel sessions share the grant",
-          "evidence": "identity-configuration.ts, file-credential-store.ts and application/read-body-file.ts take readTextFile; file-user-grant-store.ts takes readTextFile and replacePrivateFile; exclusive-file-lock.ts takes createPrivateFile, readTextFile and removeFile"
+          "evidence": "identity-configuration.ts, file-credential-store.ts and application/read-body-file.ts take readTextFile; file-user-grant-store.ts takes readTextFile and replacePrivateFile; exclusive-file-lock.ts takes createPrivateFile, readTextFile, moveFile and removeFile"
         },
         {
           "why": "Why do those callers not import node:fs themselves?",
           "because": "They depend on the port types, and composition-root.ts injects the one implementation",
-          "evidence": "file-credential-store.test.ts, identity-configuration.test.ts, read-body-file.test.ts, file-user-grant-store.test.ts and exclusive-file-lock.test.ts run against vi.fn<TextFileReader>(), vi.fn<CanonicalPathResolver>(), vi.fn<PrivateFileReplacer>(), vi.fn<PrivateFileCreator>() and vi.fn<FileRemover>() fakes"
+          "evidence": "file-credential-store.test.ts, identity-configuration.test.ts, read-body-file.test.ts, file-user-grant-store.test.ts and exclusive-file-lock.test.ts run against vi.fn<TextFileReader>(), vi.fn<CanonicalPathResolver>(), vi.fn<PrivateFileReplacer>(), vi.fn<PrivateFileCreator>(), vi.fn<FileMover>() and vi.fn<FileRemover>() fakes"
         },
         {
           "why": "Why an authorised location rather than a carve-out?",
@@ -380,7 +380,7 @@
         },
         {
           "why": "Why one file rather than a second node:fs site for the writes?",
-          "because": "Replacing the file system binding must touch one file, so the write, create and remove capabilities joined the existing reader instead of opening a second wrapping site, and only this adapter sees the node:fs surface",
+          "because": "Replacing the file system binding must touch one file, so the write, create, move and remove capabilities joined the existing reader instead of opening a second wrapping site, and only this adapter sees the node:fs surface",
           "evidence": "CD-19 rule text: a dependency swap then touches one file and vendor types never leak inward; local-file-system.ts is the only node:fs import under plugins/rin/tools/github-apps"
         }
       ],

@@ -10,6 +10,10 @@ type FileUnwritable = {
 
 type FileAlreadyExists = { readonly kind: "file-already-exists"; readonly location: string };
 
+type FileMissing = { readonly kind: "file-missing"; readonly location: string };
+
+type FileMove = { readonly from: string; readonly to: string };
+
 type PrivateFileReplacer = (write: PrivateFileWrite) => Promise<Result<void, FileUnwritable>>;
 
 type PrivateFileCreator = (
@@ -18,8 +22,13 @@ type PrivateFileCreator = (
 
 type FileRemover = (location: string) => Promise<Result<void, FileUnwritable>>;
 
+type FileMover = (move: FileMove) => Promise<Result<void, FileUnwritable | FileMissing>>;
+
 export type {
   FileAlreadyExists,
+  FileMissing,
+  FileMove,
+  FileMover,
   FileRemover,
   FileUnwritable,
   PrivateFileCreator,

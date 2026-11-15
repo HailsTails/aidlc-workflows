@@ -75,6 +75,13 @@ type ReviewRequest = {
   readonly commitSha: string | undefined;
 };
 
+type AttachmentDelivery =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: Exclude<AttachmentCarriage, "unsupported">;
+      readonly files: readonly string[];
+    };
+
 type GhInvocation = {
   readonly verb: GhVerb;
   readonly route: GhRoute;
@@ -82,10 +89,16 @@ type GhInvocation = {
   readonly passThrough: readonly string[];
   readonly body: BodySource | undefined;
   readonly closingComment: string | undefined;
-  readonly attachments: readonly string[];
+  readonly attachments: AttachmentDelivery;
   readonly head: string | undefined;
   readonly session: string | undefined;
   readonly review: ReviewRequest;
+};
+
+type AttachedFiles = {
+  readonly verb: GhVerb;
+  readonly route: GhRoute;
+  readonly files: readonly string[];
 };
 
 type GhInvocationRefusal =
@@ -287,6 +300,19 @@ const reviewRequestOf = (
   return succeed({ event: scanned.reviewEvents[0], commitSha: scanned.commitSha });
 };
 
+const attachmentDeliveryOf = ({
+  verb,
+  route,
+  files,
+}: AttachedFiles): Result<AttachmentDelivery, GhInvocationRefusal> => {
+  if (files.length === 0) return succeed({ kind: "none" });
+  if (route.attachments === "unsupported") return fail({ kind: "gh-attach-unsupported", verb });
+  return succeed({ kind: route.attachments, files });
+};
+
+const attachedFilesOf = (delivery: AttachmentDelivery): readonly string[] =>
+  delivery.kind === "none" ? [] : delivery.files;
+
 const parseGhInvocation = (
   commandArguments: readonly string[],
 ): Result<GhInvocation, GhInvocationRefusal> => {
@@ -296,9 +322,8 @@ const parseGhInvocation = (
   const route: GhRoute = GH_ROUTES[verb];
   const scanned = scanFlags({ tokens, scanned: NOTHING_SCANNED, route });
   if (scanned.kind === "failure") return scanned;
-  if (route.attachments === "unsupported" && scanned.outcome.attachments.length > 0) {
-    return fail({ kind: "gh-attach-unsupported", verb });
-  }
+  const attachments = attachmentDeliveryOf({ verb, route, files: scanned.outcome.attachments });
+  if (attachments.kind === "failure") return attachments;
   const review = reviewRequestOf(route, scanned.outcome);
   if (review.kind === "failure") return review;
   return succeed({
@@ -308,7 +333,7 @@ const parseGhInvocation = (
     passThrough: [noun, action, ...scanned.outcome.passThrough],
     body: bodySourceOf(scanned.outcome),
     closingComment: scanned.outcome.closingComment,
-    attachments: scanned.outcome.attachments,
+    attachments: attachments.outcome,
     head: scanned.outcome.head,
     session: scanned.outcome.session,
     review: review.outcome,
@@ -318,9 +343,11 @@ const parseGhInvocation = (
 const supportedGhVerbs = (): readonly GhVerb[] => Object.keys(GH_ROUTES).filter(isGhVerb);
 
 export {
+  attachedFilesOf,
   parseGhInvocation,
   supportedGhVerbs,
   type AttachmentCarriage,
+  type AttachmentDelivery,
   type BodySource,
   type GhInvocation,
   type GhInvocationRefusal,

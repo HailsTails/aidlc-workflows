@@ -5,7 +5,11 @@ import type {
   LockUnavailable,
 } from "../application/exclusive-lock-port.ts";
 import type { PausePort } from "../application/pause-port.ts";
-import type { FileRemover, PrivateFileCreator } from "../application/private-file-port.ts";
+import type {
+  FileMover,
+  FileRemover,
+  PrivateFileCreator,
+} from "../application/private-file-port.ts";
 import type { TextFileReader } from "../application/text-file-port.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
 
@@ -20,9 +24,11 @@ const EPOCH_SECONDS_PATTERN = /^\d+$/;
 type ExclusiveFileLockDependencies = {
   readonly createPrivateFile: PrivateFileCreator;
   readonly readTextFile: TextFileReader;
+  readonly moveFile: FileMover;
   readonly removeFile: FileRemover;
   readonly clock: ClockPort;
   readonly pause: PausePort;
+  readonly createClaimName: () => string;
 };
 
 type LockAttempt = ExclusiveFileLockDependencies & {
@@ -32,32 +38,54 @@ type LockAttempt = ExclusiveFileLockDependencies & {
 
 type FoundLock = { readonly lockText: string; readonly nowEpochSeconds: number };
 
+type KnownLock = ExclusiveFileLockDependencies & {
+  readonly lockLocation: string;
+  readonly lockText: string;
+};
+
+type ClaimedLock = KnownLock & { readonly claimLocation: string };
+
 const isBreakable = ({ lockText, nowEpochSeconds }: FoundLock): boolean =>
   !EPOCH_SECONDS_PATTERN.test(lockText) || Number(lockText) <= nowEpochSeconds;
 
-const releaseOf =
-  ({ removeFile, lockLocation }: LockAttempt): LockRelease =>
-  async () => {
-    await removeFile(lockLocation);
-  };
+const putBackUnlessKnown = async ({
+  readTextFile,
+  createPrivateFile,
+  lockLocation,
+  lockText,
+  claimLocation,
+}: ClaimedLock): Promise<void> => {
+  const claimedText = await readTextFile(claimLocation);
+  if (claimedText.kind === "failure" || claimedText.outcome === lockText) return;
+  await createPrivateFile({ location: lockLocation, text: claimedText.outcome });
+};
+
+const removeKnownLock = async (known: KnownLock): Promise<void> => {
+  const { moveFile, removeFile, lockLocation, createClaimName } = known;
+  const claimLocation = `${lockLocation}.${createClaimName()}.claimed`;
+  const claimed = await moveFile({ from: lockLocation, to: claimLocation });
+  if (claimed.kind === "failure") return;
+  await putBackUnlessKnown({ ...known, claimLocation });
+  await removeFile(claimLocation);
+};
 
 const attemptLock = async (attempt: LockAttempt): Promise<Result<LockRelease, LockUnavailable>> => {
   const { lockLocation, attemptsLeft, clock, createPrivateFile, readTextFile } = attempt;
   if (attemptsLeft === 0) return fail({ kind: "lock-unavailable", lockLocation });
   const nowEpochSeconds = clock.nowEpochSeconds();
-  const created = await createPrivateFile({
-    location: lockLocation,
-    text: String(nowEpochSeconds + LOCK_LIFETIME_SECONDS),
-  });
-  if (created.kind === "success") return succeed(releaseOf(attempt));
+  const ownLockText = String(nowEpochSeconds + LOCK_LIFETIME_SECONDS);
+  const created = await createPrivateFile({ location: lockLocation, text: ownLockText });
+  if (created.kind === "success") {
+    return succeed(() => removeKnownLock({ ...attempt, lockText: ownLockText }));
+  }
   if (created.reason.kind === "file-unwritable") {
     return fail({ kind: "lock-unavailable", lockLocation });
   }
   const nextAttempt = { ...attempt, attemptsLeft: attemptsLeft - 1 };
-  const lockText = await readTextFile(lockLocation);
-  if (lockText.kind === "failure") return attemptLock(nextAttempt);
-  if (isBreakable({ lockText: lockText.outcome, nowEpochSeconds })) {
-    await attempt.removeFile(lockLocation);
+  const foundText = await readTextFile(lockLocation);
+  if (foundText.kind === "failure") return attemptLock(nextAttempt);
+  if (isBreakable({ lockText: foundText.outcome, nowEpochSeconds })) {
+    await removeKnownLock({ ...attempt, lockText: foundText.outcome });
     return attemptLock(nextAttempt);
   }
   await attempt.pause.pauseMilliseconds(LOCK_RETRY_MILLISECONDS);

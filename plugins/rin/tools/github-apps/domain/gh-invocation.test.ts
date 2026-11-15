@@ -1,5 +1,5 @@
 import { assert, describe, expect, it } from "vitest";
-import { parseGhInvocation } from "./gh-invocation.ts";
+import { attachedFilesOf, parseGhInvocation } from "./gh-invocation.ts";
 import { fail } from "./result.ts";
 
 describe("parseGhInvocation routing", () => {
@@ -21,7 +21,7 @@ describe("parseGhInvocation routing", () => {
       passThrough: ["pr", "create", "--title", "Basket"],
       body: { kind: "inline", text: "Adds it." },
       closingComment: undefined,
-      attachments: [],
+      attachments: { kind: "none" },
       head: undefined,
       session: undefined,
       review: { event: undefined, commitSha: undefined },
@@ -137,6 +137,17 @@ describe("parseGhInvocation flags", () => {
     );
   });
 
+  it.each([
+    [["pr", "create", "--attach", "a.png"], { kind: "follow-up-edit", files: ["a.png"] }],
+    [["issue", "comment", "9", "--attach", "a.png"], { kind: "same-write", files: ["a.png"] }],
+    [["pr", "create", "--title", "T"], { kind: "none" }],
+  ])("delivers the attachments of %j as %j", (commandArguments, delivery) => {
+    const invocation = parseGhInvocation(commandArguments);
+
+    assert(invocation.kind === "success");
+    expect(invocation.outcome.attachments).toEqual(delivery);
+  });
+
   it("names an owned flag left without a value", () => {
     expect(parseGhInvocation(["pr", "create", "--body"])).toEqual(
       fail({ kind: "gh-flag-value-missing", flag: "--body" }),
@@ -150,7 +161,7 @@ describe("parseGhInvocation flags", () => {
     const invocation = parseGhInvocation(commandArguments);
 
     assert(invocation.kind === "success");
-    expect(invocation.outcome.attachments).toEqual(attachments);
+    expect(attachedFilesOf(invocation.outcome.attachments)).toEqual(attachments);
     expect(invocation.outcome.passThrough).not.toContain("--attach");
     expect(invocation.outcome.passThrough.some((token) => token.startsWith("--attach="))).toBe(false);
     expect(invocation.outcome.passThrough.some((token) => attachments.includes(token))).toBe(false);
@@ -200,7 +211,7 @@ describe("parseGhInvocation flags", () => {
       passThrough: ["issue", "reopen", "9"],
       body: undefined,
       closingComment: undefined,
-      attachments: [],
+      attachments: { kind: "none" },
       head: undefined,
       session: "pr-6",
       review: { event: undefined, commitSha: undefined },
@@ -225,7 +236,7 @@ describe("parseGhInvocation flags", () => {
       passThrough: ["pr", "close", "4", "--delete-branch"],
       body: undefined,
       closingComment: "Superseded.",
-      attachments: [],
+      attachments: { kind: "none" },
       head: undefined,
       session: undefined,
       review: { event: undefined, commitSha: undefined },
@@ -252,7 +263,7 @@ describe("parseGhInvocation review", () => {
       passThrough: ["pr", "review", "4"],
       body: { kind: "inline", text: "Fix." },
       closingComment: undefined,
-      attachments: [],
+      attachments: { kind: "none" },
       head: undefined,
       session: undefined,
       review: { event: "request-changes", commitSha: "abc123" },

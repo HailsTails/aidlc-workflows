@@ -1,6 +1,7 @@
 import { assessClose, type CloseRefusal } from "../domain/close-guard.ts";
 import { createdNumberOf, type CreatedNumberUnreadable } from "../domain/created-write.ts";
 import {
+  attachedFilesOf,
   parseGhInvocation,
   type GhInvocation,
   type GhInvocationRefusal,
@@ -78,8 +79,6 @@ type GhRunOutcome = Promise<Result<GhRun, GhAsBotFailure>>;
 
 type GhAsBotOutcome = Promise<Result<GhAsBotReport, GhAsBotFailure>>;
 
-type AttachmentRouting = "no-attachments" | "same-write" | "follow-up-edit";
-
 type PreparedText = {
   readonly authoredBody: string | undefined;
   readonly closingComment: string | undefined;
@@ -119,13 +118,13 @@ const prepareText = async (
   dependencies: GhAsBotDependencies,
 ): Promise<Result<PreparedText, GhAsBotFailure>> => {
   const guarded = await guardAttachments({
-    attachments: invocation.attachments,
+    attachments: attachedFilesOf(invocation.attachments),
     placeInStore: dependencies.placeInStore,
   });
   if (guarded.kind === "failure") return guarded;
   const authoredBody = await readAuthoredBody({ ...dependencies, source: invocation.body });
   if (authoredBody.kind === "failure") return authoredBody;
-  const bodyRequired = invocation.route.body === "required" && invocation.attachments.length === 0;
+  const bodyRequired = invocation.route.body === "required" && invocation.attachments.kind === "none";
   if (bodyRequired && authoredBody.outcome === undefined) {
     return fail({ kind: "gh-body-missing", verb: invocation.verb });
   }
@@ -152,13 +151,8 @@ const bodyToStamp = (invocation: GhInvocation, authoredBody: string | undefined)
 const passedVerbatim = (invocation: GhInvocation, authoredBody: string | undefined) =>
   invocation.route.body === "verbatim" ? authoredBody : undefined;
 
-const attachmentRoutingOf = ({ attachments, route }: GhInvocation): AttachmentRouting =>
-  attachments.length === 0 || route.attachments === "unsupported"
-    ? "no-attachments"
-    : route.attachments;
-
-const writeCredentialOf = (invocation: GhInvocation): WriteCredential =>
-  attachmentRoutingOf(invocation) === "no-attachments" ? "installation" : "user-grant";
+const writeCredentialOf = ({ attachments }: GhInvocation): WriteCredential =>
+  attachments.kind === "none" ? "installation" : "user-grant";
 
 const resolveSession = async ({
   invocation,
@@ -293,7 +287,7 @@ const writeAsBot = async (write: RoutedWrite): GhAsBotOutcome => {
 const writeAsUser = async (write: RoutedWrite): GhAsBotOutcome => {
   const gh = await connectAsUser(write);
   if (gh.kind === "failure") return gh;
-  const { attachments } = write.invocation;
+  const attachments = attachedFilesOf(write.invocation.attachments);
   return singleWrite(writeChecked({ ...write, attachments, gh: gh.outcome }));
 };
 
@@ -313,7 +307,7 @@ const attachToCreated = async ({
       editedNounOf(invocation),
       "edit",
       String(createdNumber.outcome),
-      ...attachFlags(invocation.attachments),
+      ...attachFlags(attachedFilesOf(invocation.attachments)),
       ...bodyFlags(body),
     ],
     standardInput: body,
@@ -341,8 +335,8 @@ const createThenAttach = async (write: RoutedWrite): GhAsBotOutcome => {
 };
 
 const writeRouted = (write: RoutedWrite): GhAsBotOutcome => {
-  switch (attachmentRoutingOf(write.invocation)) {
-    case "no-attachments":
+  switch (write.invocation.attachments.kind) {
+    case "none":
       return writeAsBot(write);
     case "same-write":
       return writeAsUser(write);

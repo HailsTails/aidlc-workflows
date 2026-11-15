@@ -25,6 +25,7 @@ import { createSystemClock } from "./infrastructure/system-clock.ts";
 import { createSystemPause } from "./infrastructure/system-pause.ts";
 import {
   createPrivateFile,
+  moveFile,
   readTextFile,
   removeFile,
   replacePrivateFile,
@@ -57,7 +58,15 @@ const createCliDependencies = (): CliDependencies => {
       locateStoreDirectory: locateCredentialStore,
       readTextFile,
       replacePrivateFile,
-      lock: createExclusiveFileLock({ createPrivateFile, readTextFile, removeFile, clock, pause }),
+      lock: createExclusiveFileLock({
+        createPrivateFile,
+        readTextFile,
+        moveFile,
+        removeFile,
+        clock,
+        pause,
+        createClaimName: () => globalThis.crypto.randomUUID(),
+      }),
     }),
     clock,
   };

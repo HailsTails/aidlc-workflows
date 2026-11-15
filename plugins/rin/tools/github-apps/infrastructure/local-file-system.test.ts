@@ -1,6 +1,7 @@
 import { afterEach, assert, describe, expect, it } from "vitest";
 import {
   createPrivateFile,
+  moveFile,
   readTextFile,
   removeFile,
   replacePrivateFile,
@@ -150,5 +151,27 @@ describe("removeFile", () => {
       location: import.meta.dirname,
       detail: expect.any(String),
     });
+  });
+});
+
+describe("moveFile", () => {
+  it("moves a file to a new name, leaving nothing at the old one", async () => {
+    const from = freshScratchLocation();
+    const to = freshScratchLocation();
+    await createPrivateFile({ location: from, text: "held" });
+
+    const moved = await moveFile({ from, to });
+
+    expect(moved).toEqual({ kind: "success", outcome: undefined });
+    expect(await readTextFile(to)).toEqual({ kind: "success", outcome: "held" });
+    expect((await readTextFile(from)).kind).toBe("failure");
+  });
+
+  it("reports a file that is no longer there to move", async () => {
+    const from = freshScratchLocation();
+
+    const moved = await moveFile({ from, to: freshScratchLocation() });
+
+    expect(moved).toEqual({ kind: "failure", reason: { kind: "file-missing", location: from } });
   });
 });

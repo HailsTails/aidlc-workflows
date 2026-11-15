@@ -1,5 +1,6 @@
 import { readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import type {
+  FileMover,
   FileRemover,
   PrivateFileCreator,
   PrivateFileReplacer,
@@ -90,4 +91,23 @@ const removeFile: FileRemover = async (location) => {
   }
 };
 
-export { createPrivateFile, readTextFile, removeFile, replacePrivateFile, resolveCanonicalPath };
+const moveFile: FileMover = async ({ from, to }) => {
+  try {
+    await rename(from, to);
+    return succeed(undefined);
+  } catch (caught) {
+    if (isErrorCoded({ caught, code: NOT_FOUND_CODE })) {
+      return fail({ kind: "file-missing", location: from });
+    }
+    return fail({ kind: "file-unwritable", location: from, detail: describeFailure(caught) });
+  }
+};
+
+export {
+  createPrivateFile,
+  moveFile,
+  readTextFile,
+  removeFile,
+  replacePrivateFile,
+  resolveCanonicalPath,
+};
