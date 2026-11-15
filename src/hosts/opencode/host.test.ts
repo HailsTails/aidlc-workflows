@@ -37,6 +37,6 @@ test("openCode module gathers the identity, distribution and every projection pa
 
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(openCodeHost());
-  expect(module.projection.fills("copy")).toEqual(OPENCODE_ONBOARDING_FILLS);
+  expect(module.projection.fills({ channel: "copy" })).toEqual(OPENCODE_ONBOARDING_FILLS);
   expect(module.projection.fills).toBe(openCodeOnboardingFills);
 });

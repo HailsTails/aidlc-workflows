@@ -38,5 +38,5 @@ test("cursor module gathers the identity, distribution and every projection part
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(cursorHost());
   expect(module.projection.fills).toBe(cursorOnboardingFills);
-  expect(module.projection.fills("copy")).toEqual(CURSOR_ONBOARDING_FILLS);
+  expect(module.projection.fills({ channel: "copy" })).toEqual(CURSOR_ONBOARDING_FILLS);
 });

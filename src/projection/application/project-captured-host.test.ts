@@ -1,3 +1,5 @@
+import { brand } from "../../kernel/brand.ts";
+import type { OnboardingContext, OnboardingPermissions } from "../domain/onboarding-context.ts";
 import { admitCwdDocuments } from "../domain/cwd-guidance.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { admitOnboardingSource } from "../domain/onboarding-source.ts";
@@ -53,17 +55,21 @@ const fixture = (members: readonly HostProjectionMember[] = [member, other]) => 
   const hosted = mock<CapturedHostProjectionPorts["hosted"]>().mockReturnValue({ project });
   const request: CapturedHostProjectionRequest = { host: SCRATCH_HOST,
     core: { method: methodSliceFixture, sources: [] }, compile, files: [requiredFile, unusedFile], prepare: accepted,
-    tokens, channel: "copy", modelCap: "balanced", entrypoints: [source("tools/aidlc.ts")],
+    tokens, onboarding: { channel: "copy" }, modelCap: "balanced", entrypoints: [source("tools/aidlc.ts")],
     projectRoot: new URL("file:///project/"), reviewerAgents: new Set([agent("reviewer")]) };
   return { compile, capture, assemble, project, hosted, request,
     projectHost: createProjectCapturedHost({ members, capture, assemble, hosted }) };
 };
 
+const nativeContext: OnboardingContext = { channel: "native", permissions: brand<OnboardingPermissions>({
+  policy: "prefix-only", prefix: "aidlc engine",
+}) };
+
 test("the real first caller binds declared native guidance before assembly using the captured declaration", async () => {
   const current = fixture();
   current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface,
     onboarding: accept(admitOnboardingSource({ neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_hook_runtime}}", hookGuidance: "framework-hooks", toolsGuidance: "legacy-authored" as const })) } }));
-  await current.projectHost({ ...current.request, channel: "native" });
+  await current.projectHost({ ...current.request, onboarding: nativeContext });
   expect(current.assemble.mock.calls[0]?.[0].fills).toEqual({ invoke: "/aidlc", slots: {} });
   expect(current.project.mock.calls[0]?.[0].surface.onboarding.harnessSkeleton)
     .toBe("- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.");
@@ -75,7 +81,7 @@ test("the first caller binds Tools independently while Hook keeps custom legacy 
   const current = fixture([{ ...member, projection: { ...member.projection, fills: () => fills } }]);
   current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, onboarding: accept(admitOnboardingSource({
     neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_tools_runtime}}", hookGuidance: "legacy-authored", toolsGuidance: "framework-tools" })) } }));
-  await current.projectHost({ ...current.request, channel: "native" });
+  await current.projectHost({ ...current.request, onboarding: nativeContext });
   expect(current.assemble.mock.calls[0]?.[0].fills).toBe(fills);
   expect(current.project.mock.calls[0]?.[0].surface.onboarding).toEqual({ neutral: "Neutral",
     harnessSkeleton: "TypeScript sources invoked through the self-contained `aidlc` runtime" });
@@ -86,7 +92,7 @@ test("the first caller composes both declared meanings without changing their ow
   current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, onboarding: accept(admitOnboardingSource({
     neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_hook_runtime}}{{SLOT:framework_tools_runtime}}",
     hookGuidance: "framework-hooks", toolsGuidance: "framework-tools" })) } }));
-  await current.projectHost({ ...current.request, channel: "native" });
+  await current.projectHost({ ...current.request, onboarding: nativeContext });
   expect(current.assemble.mock.calls[0]?.[0].fills).toEqual({ invoke: "/aidlc", slots: {} });
   expect(current.project.mock.calls[0]?.[0].surface.onboarding.harnessSkeleton)
     .toBe("- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.TypeScript sources invoked through the self-contained `aidlc` runtime");
@@ -98,8 +104,8 @@ test("copy and native callers bind separately from the same immutable captured T
     neutral: "Neutral", harnessSkeleton: "({{SLOT:framework_tools_runtime}})\r\n",
     hookGuidance: "legacy-authored" as const, toolsGuidance: "framework-tools" as const })) } };
   current.capture.mockResolvedValue(accepted(snapshot));
-  await current.projectHost({ ...current.request, channel: "copy" });
-  await current.projectHost({ ...current.request, channel: "native" });
+  await current.projectHost({ ...current.request, onboarding: { channel: "copy" } });
+  await current.projectHost({ ...current.request, onboarding: nativeContext });
   expect(current.project.mock.calls[0]?.[0].surface.onboarding.harnessSkeleton).toBe("(TypeScript, run via bun)\r\n");
   expect(current.project.mock.calls[1]?.[0].surface.onboarding.harnessSkeleton)
     .toBe("(TypeScript sources invoked through the self-contained `aidlc` runtime)\r\n");
@@ -112,7 +118,7 @@ test("the actual first caller binds admitted protocol meaning before hosted inte
     content: { kind: "text", text: "{{SLOT:framework_cwd_guidance}}\r\n{{HARNESS_DIR}}\r\n" } }],
     guidance: { kind: "framework-cwd", source: "protocol.md" } }));
   current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, documents } }));
-  await current.projectHost({ ...current.request, channel: "native" });
+  await current.projectHost({ ...current.request, onboarding: nativeContext });
   expect(current.project.mock.calls[0]?.[0].surface.documents).toEqual([{ source: source("protocol.md"), role: "protocol", content: {
     kind: "text", text: "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.\r\n{{HARNESS_DIR}}\r\n" } }]);
   expect(documents.documents[0]?.content).toEqual({ kind: "text", text: "{{SLOT:framework_cwd_guidance}}\r\n{{HARNESS_DIR}}\r\n" });
@@ -209,8 +215,8 @@ test("Projection requests the channel's fills once after admission and forwards 
   const fills = { invoke: "custom", slots: { ["prereq_bullets"]: "Opaque custom prerequisite" } };
   const readFills = mock<HostProjectionMember["projection"]["fills"]>().mockReturnValue(fills);
   const current = fixture([{ ...member, projection: { ...member.projection, fills: readFills } }]);
-  expect(await current.projectHost({ ...current.request, channel: "native" })).toBe(completion);
-  expect(readFills).toHaveBeenCalledWith("native");
+  expect(await current.projectHost({ ...current.request, onboarding: nativeContext })).toBe(completion);
+  expect(readFills).toHaveBeenCalledWith(nativeContext);
   expect(readFills).toHaveBeenCalledTimes(1);
   expect(current.assemble.mock.calls[0]?.[0].fills).toBe(fills);
 });

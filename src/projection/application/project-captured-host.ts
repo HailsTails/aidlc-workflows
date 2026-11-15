@@ -21,15 +21,15 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
   if (!compiled.ok) return refused([compiled.refusal]);
   const captured = await ports.capture(request.core);
   if (!captured.ok) return captured;
-  const onboarding = bindOnboardingSource(captured.value.surface.onboarding, request.channel);
+  const channel = request.onboarding.channel;
+  const onboarding = bindOnboardingSource(captured.value.surface.onboarding, channel);
   const surface = { ...captured.value.surface, onboarding,
-    documents: bindCwdDocuments({ captured: captured.value.surface.documents, channel: request.channel }) };
+    documents: bindCwdDocuments({ captured: captured.value.surface.documents, channel }) };
   const assembled = await ports.assemble({ method: request.core.method,
     sources: request.core.sources, host: request.host, renderers: renderersOf(members),
-    files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,
-    modelCap: request.modelCap, tierFlavor: members.projection.tierFlavor,
-    entrypoints: request.entrypoints,
-    fills: members.projection.fills(request.channel),
+    files: request.files, prepare: request.prepare, tokens: request.tokens, channel,
+    modelCap: request.modelCap, tierFlavor: members.projection.tierFlavor, entrypoints: request.entrypoints,
+    fills: members.projection.fills(request.onboarding),
     bindingHeadings: ports.members.map((member) => member.projection.bindingHeading), projectRoot: request.projectRoot,
     reviewerAgents: request.reviewerAgents, runtime: captured.value.runtime, compiled: compiled.value });
   if (!assembled.ok) return assembled;

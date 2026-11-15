@@ -22,7 +22,7 @@ import type { YamlParser } from "../kernel/yaml-parser-port.ts";
 import type { PackagingRefusal } from "../packaging/domain/artifact.ts";
 import type { ReleaseArchives } from "../packaging/domain/release-archives.ts";
 export type { ReleaseArchives } from "../packaging/domain/release-archives.ts";
-import type { HostDistribution, Payload } from "../packaging/domain/payload.ts";
+import type { HostDistribution, Payload, Channel } from "../packaging/domain/payload.ts";
 import type { DelegateShellFacts } from "../projection/application/ports/delegate-shell.ts";
 import type { ConceptMembers, HostProjectionParts } from "../projection/application/ports/host-parts.ts";
 import type { CommandSource } from "../projection/application/ports/commands.ts";
@@ -89,7 +89,10 @@ export type { CapturedHostSources, HostSourcesInput } from "../projection/applic
 
 export type HostBuildTable = readonly HostModule[];
 
-export type HostBuildRequest = Omit<CapturedHostProjectionRequest, "compile" | "core"> & { readonly core: CoreBuild };
+export type HostBuildRequest = Omit<CapturedHostProjectionRequest, "compile" | "core" | "onboarding"> & {
+  readonly channel: Channel;
+  readonly core: CoreBuild;
+};
 
 export type ProjectHost = (
   request: HostBuildRequest,

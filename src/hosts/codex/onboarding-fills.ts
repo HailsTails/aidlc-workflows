@@ -1,3 +1,4 @@
+import { nativePermissionsLine, type OnboardingContext } from "../../projection/domain/onboarding-context.ts";
 import type { DistributionChannel } from "../../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../../projection/domain/neutral-surface.ts";
 
@@ -5,7 +6,7 @@ const runtimePrerequisite = (channel: DistributionChannel): string => channel ==
   ? "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available. If `aidlc` is not found in this tool, give the person both fixes in one line, then end your turn without installing anything or working around it: if AI-DLC was installed while this tool was open, quit the tool fully and reopen it (a new tab or reloaded window is not enough); otherwise the installer's bin folder is not on PATH (an install with `-NoModifyPath`, or a Unix install whose PATH line was not applied), so add the folder the installer printed to PATH, or rerun the installer without `-NoModifyPath`, then reopen the tool."
   : `- **bun**: Required for CLI tools and hook scripts (state management, audit logging, jump orchestration). Install via \`curl -fsSL https://bun.sh/install | bash\`. On Windows: \`npm install -g bun\` or \`powershell -c "irm bun.sh/install.ps1 | iex"\`. Its hooks run with the PATH of the terminal you start \`codex\` from, so \`bun --version\` working there is enough. If Codex runs inside an IDE opened from the dock or a desktop icon and its hooks do not run, run \`bun .codex/tools/aidlc.ts doctor\` in such a terminal: its Runtime hook PATH row names the directory to add and where, so dock launches work after a restart. Until then, open the IDE from that terminal.`;
 
-export const codexOnboardingFills = (channel: DistributionChannel): OnboardingFills => ({
+export const codexOnboardingFills = (context: OnboardingContext): OnboardingFills => ({
   invoke: "$aidlc",
   slots: {
     ["title_block"]: `# AI-DLC on Codex CLI
@@ -34,11 +35,11 @@ work's own files, such as a plan to approve, and a file AI-DLC asks the person
 to change, such as where a setting is locked, are still named by path.`,
 
     ["prereq_bullets"]: `- **Codex CLI >= 0.145.0**: earlier releases defer compact-source SessionStart after a mid-turn auto-compaction, so one model continuation can run without the restored workflow mission. Releases before 0.139.0 also lack reliable subagent role attribution and hyphenated agent-TOML resolution. \`$aidlc --doctor\` advises on the pin. Check with \`codex --version\`.
-${runtimePrerequisite(channel)}
+${runtimePrerequisite(context.channel)}
 - **Model provider**: The shipped \`.codex/config.toml\` does not select a provider or model. Codex keeps the provider, authentication, model, context window, and reasoning effort from your user-level configuration. Agent roles inherit that model; balanced reviewers retain only their medium reasoning-effort cap. Run \`$aidlc config providers\` to record the project choice and see any manual provider action.
 - **MCP servers (optional)**: Codex reads MCP server definitions from \`[mcp_servers.<name>]\` tables in \`config.toml\` (project \`.codex/config.toml\` or \`~/.codex/config.toml\`). The shipped config declares none — add the servers you need there. Credentials flow through your environment; a server you have no credentials for is simply unavailable and never blocks a workflow.`,
 
-    ["prereq_bullets_tail"]: `- **Permissions**: \`.codex/rules/default.rules\` (Starlark prefix rules) pre-allows AI-DLC's workflow commands as it runs them, so Codex runs them without asking, outside its sandbox: \`bun .codex/tools/aidlc.ts engine ...\`, the \`bun .codex/tools/aidlc-<tool>.ts\` scripts except the ones behind \`config\`, \`doctor\` and the commands that change the machine's AI-DLC install (\`use\`, \`update\`, \`rollback\`, \`uninstall\`, \`system\`), and \`git worktree\`/\`commit\`/\`add\`. Everything else runs inside the \`workspace-write\` sandbox, so a command that writes \`.git\` or \`.codex/\` (a \`config\` change, for one) needs your approval to run outside it.
+    ["prereq_bullets_tail"]: `${context.channel === "native" ? nativePermissionsLine(context.permissions) : "- **Permissions**: `.codex/rules/default.rules` (Starlark prefix rules) pre-allows AI-DLC's workflow commands as it runs them, so Codex runs them without asking, outside its sandbox: `bun .codex/tools/aidlc.ts engine ...`, the `bun .codex/tools/aidlc-<tool>.ts` scripts except the ones behind `config`, `doctor` and the commands that change the machine's AI-DLC install (`use`, `update`, `rollback`, `uninstall`, `system`), and `git worktree`/`commit`/`add`. Everything else runs inside the `workspace-write` sandbox, so a command that writes `.git` or `.codex/` (a `config` change, for one) needs your approval to run outside it."}
 - **Personal overrides**: Put machine-specific defaults (model, AWS profile/region, environment variables) in \`~/.codex/config.toml\` to avoid changing the shared project config. For keys supported at both levels, project-scoped settings take precedence over user-level settings, as documented in the [Codex configuration reference](https://developers.openai.com/codex/config-reference/). \`developer_instructions\` is single-valued: the trusted project's \`.codex/config.toml\` value overrides a user-level one, so do not define it in \`~/.codex/config.toml\` for AI-DLC projects.`,
 
     ["agents_note"]: `On Codex all 14 expert roles are transposed into \`.codex/agents/\` TOMLs (the \`/aidlc\` session reads the role \`.md\` bodies as prose); the four delegated stages (2.1 pipeline, 2.2 subagent, 2.4 mob, 3.5 subagent), reviewer passes, and composer requests run through Codex subagent roles.`,
@@ -63,4 +64,4 @@ The Codex-specific guide (prerequisites, trust pre-seed, provider config, the gi
   },
 });
 
-export const CODEX_ONBOARDING_FILLS = codexOnboardingFills("copy");
+export const CODEX_ONBOARDING_FILLS = codexOnboardingFills({ channel: "copy" });

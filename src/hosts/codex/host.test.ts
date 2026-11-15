@@ -58,6 +58,6 @@ test("Codex binds the real host-owned hash into both hook settings and the trust
 
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(codexHost());
-  expect(module.projection.fills("copy")).toEqual(CODEX_ONBOARDING_FILLS);
+  expect(module.projection.fills({ channel: "copy" })).toEqual(CODEX_ONBOARDING_FILLS);
   expect(module.projection.fills).toBe(codexOnboardingFills);
 });

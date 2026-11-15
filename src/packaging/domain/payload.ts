@@ -1,3 +1,4 @@
+import type { NativePermissionPolicy } from "../../projection/domain/onboarding-context.ts";
 import type { FileContent, FileMode } from "../../kernel/file-content.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
 import type {

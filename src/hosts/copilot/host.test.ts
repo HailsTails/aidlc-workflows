@@ -37,6 +37,6 @@ test("copilot module gathers the identity, distribution and every projection par
 
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(copilotHost());
-  expect(module.projection.fills("copy")).toEqual(COPILOT_ONBOARDING_FILLS);
+  expect(module.projection.fills({ channel: "copy" })).toEqual(COPILOT_ONBOARDING_FILLS);
   expect(module.projection.fills).toBe(copilotOnboardingFills);
 });

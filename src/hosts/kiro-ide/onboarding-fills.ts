@@ -1,3 +1,4 @@
+import { nativePermissionsLine, type OnboardingContext } from "../../projection/domain/onboarding-context.ts";
 import type { DistributionChannel } from "../../projection/domain/projected-file.ts";
 import type { OnboardingFills } from "../../projection/domain/neutral-surface.ts";
 
@@ -5,7 +6,7 @@ const runtimePrerequisite = (channel: DistributionChannel): string => channel ==
   ? "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available. If `aidlc` is not found in this tool, give the person both fixes in one line, then end your turn without installing anything or working around it: if AI-DLC was installed while this tool was open, quit the tool fully and reopen it (a new tab or reloaded window is not enough); otherwise the installer's bin folder is not on PATH (an install with `-NoModifyPath`, or a Unix install whose PATH line was not applied), so add the folder the installer printed to PATH, or rerun the installer without `-NoModifyPath`, then reopen the tool."
   : `- **bun**: Required for the CLI tools and hook scripts (tracking progress, writing the decision log, deciding what runs next). Install via \`curl -fsSL https://bun.sh/install | bash\`. Its hooks run with the PATH Kiro was started with: Kiro CLI, or Kiro IDE opened from a terminal, uses that terminal's PATH, so \`bun --version\` working there is enough. If Kiro IDE is opened from the dock or a desktop icon and its hooks do not run, run \`bun .kiro/tools/aidlc.ts doctor\` in such a terminal: its Runtime hook PATH row names the directory to add and where, so dock launches work after a restart. Until then, open the IDE from that terminal.`;
 
-export const kiroIdeOnboardingFills = (channel: DistributionChannel): OnboardingFills => ({
+export const kiroIdeOnboardingFills = (context: OnboardingContext): OnboardingFills => ({
   invoke: "/aidlc",
   slots: {
     ["frontmatter"]: "---\ninclusion: always\n---",
@@ -15,9 +16,9 @@ This project uses AI-DLC (AI-Driven Development Life Cycle) for structured devel
 
     ["prereq_bullets"]: `- **Kiro IDE 1.1.70+ or Kiro CLI 2.24.1+**: the oldest builds this install has been checked on (\`/aidlc --doctor\` warns about an older \`kiro-cli\`; it cannot read the Kiro IDE version). Sign in and select Claude Opus 4.8 as the chat model before starting a workflow (the model picker in Kiro IDE, \`/model\` in Kiro CLI).
 - **Kiro CLI engine**: start Kiro CLI with \`kiro-cli --v3\`. Kiro CLI's v2 engine runs none of the \`.kiro/hooks/\` registrations, and Kiro CLI 2.33.0 or later takes the engine only from the command line or your own Kiro CLI settings, not from \`.kiro/settings/cli.json\`, which asks older releases for the v3 engine and the \`aidlc\` agent.
-${runtimePrerequisite(channel)}
+${runtimePrerequisite(context.channel)}
 - **Activation**: In Kiro IDE, new chats start on Kiro's Default agent, so choose **aidlc** in the chat panel's agent picker first (on Default, Kiro asks you to approve each command AI-DLC runs, unless Kiro's Approve for me mode is on), then type the whole \`/aidlc ...\` request before pressing Enter. In Kiro CLI, start \`kiro-cli --v3\` in the project; it opens on the \`aidlc\` agent. The first time, Kiro CLI 2.33.0 or later asks whether you trust this workspace: if you know what is in this folder, choose "Trust, continue", since Kiro CLI loads the folder's hooks and agents only then ("Don't trust" exits). \`/aidlc\` loads the shipped \`skills/aidlc/SKILL.md\`, which drives the workflow. The \`.kiro/hooks/aidlc-*.json\` hook files register when a session starts, on both surfaces.
-- **Permissions**: the conductor and delegation-target agent \`.md\` files carry \`tools:\` grants and \`permissions.rules\` capability rules. The conductor delegates through the dispatch tool that runs each specialist under its own rules (\`invoke_sub_agent\` in Kiro IDE, \`orchestrate_subagent\` in Kiro CLI). The approval gates plus your Kiro permission settings remain the control boundary.`,
+${context.channel === "native" ? nativePermissionsLine(context.permissions) : "- **Permissions**: the conductor and delegation-target agent `.md` files carry `tools:` grants and `permissions.rules` capability rules. The conductor delegates through the dispatch tool that runs each specialist under its own rules (`invoke_sub_agent` in Kiro IDE, `orchestrate_subagent` in Kiro CLI). The approval gates plus your Kiro permission settings remain the control boundary."}`,
 
     ["prereq_bullets_tail"]: "",
 
@@ -44,4 +45,4 @@ The guide for this Kiro distribution (install, hook wiring, and harness differen
   },
 });
 
-export const KIRO_IDE_ONBOARDING_FILLS = kiroIdeOnboardingFills("copy");
+export const KIRO_IDE_ONBOARDING_FILLS = kiroIdeOnboardingFills({ channel: "copy" });

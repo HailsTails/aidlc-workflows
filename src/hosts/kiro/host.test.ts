@@ -43,6 +43,6 @@ test("Kiro offers its persona renderer beside its module for the host that build
 
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(kiroHost());
-  expect(module.projection.fills("copy")).toEqual(KIRO_ONBOARDING_FILLS);
+  expect(module.projection.fills({ channel: "copy" })).toEqual(KIRO_ONBOARDING_FILLS);
   expect(module.projection.fills).toBe(kiroOnboardingFills);
 });

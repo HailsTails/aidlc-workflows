@@ -63,6 +63,6 @@ test("kiroIde says Kiro CLI's native permissions line, handed in by the root", (
 
 test("host onboarding binds channel fills without changing its copy facts", () => {
   const module = accept(kiroIdeHost(kiroCli));
-  expect(module.projection.fills("copy")).toEqual(KIRO_IDE_ONBOARDING_FILLS);
+  expect(module.projection.fills({ channel: "copy" })).toEqual(KIRO_IDE_ONBOARDING_FILLS);
   expect(module.projection.fills).toBe(kiroIdeOnboardingFills);
 });

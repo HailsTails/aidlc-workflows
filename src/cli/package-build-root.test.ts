@@ -1,3 +1,5 @@
+import { brand } from "../kernel/brand.ts";
+import type { OnboardingContext, OnboardingPermissions } from "../projection/domain/onboarding-context.ts";
 import { commonHarnessRecord } from "../projection/domain/harness-record.ts";
 import { SCRATCH_HOST, SCRATCH_TOKENS, SCRATCH_HOST_DATA, scratchAgentRenderer, scratchCommandPlacement,
   scratchSkillRenderer, scratchSettingsRenderer, scratchDocumentRenderer }
@@ -44,6 +46,10 @@ const releaseRequest = { archives: new URL("file:///archives/"), pluginTrees: ne
 const processRunner = createScriptedProcessRunner({ outcome: refused({
   kind: "not-started", reason: "No process expected",
 }) });
+
+const nativeContext: OnboardingContext = { channel: "native", permissions: brand<OnboardingPermissions>({
+  policy: "exact-reads", prefix: "aidlc engine",
+}) };
 
 test("one admitted core snapshot projects to multiple hosts without another source read", async () => {
   const fileSystem = createInMemoryFileSystem({ files });
@@ -711,6 +717,25 @@ const fullHostProcess = () => createScriptedProcessRunner({ outcome: accepted({
     '{"subject":{"concept":"orchestrator-skill","name":"aidlc-init"},"files":null,"reason":null},' +
     '{"subject":{"concept":"orchestrator-skill","name":"aidlc-compose"},"files":null,"reason":null}]}',
 }) });
+
+test("the actual root binds the read distribution policy and native route prefix once", async () => {
+  const member = distributionMembers();
+  const fills = mock<HostModule["projection"]["fills"]>().mockReturnValue({ invoke: "/custom", slots: {} });
+  const distribution = mock<HostModule["distribution"]>().mockReturnValue(accepted({
+    ...scratchHostDistributionFixture,
+    native: { ...scratchHostDistributionFixture.native, permissionsLine: "exact-reads" },
+  }));
+  const root = createPackageBuildRoot({ hosts: [{ ...member, distribution,
+    projection: { ...member.projection, fills } }], platform: {
+    fileSystem: createInMemoryFileSystem({ files: fullHostFiles() }), processRunner: fullHostProcess(),
+    yaml, digester, terminal,
+  }, outliner, sources, runnerFrames });
+  const core = accept(await root.loadCore());
+  accept(await root.projectHost({ ...fullHostRequest(core), channel: "native" }));
+  expect(distribution).toHaveBeenCalledTimes(1);
+  expect(fills).toHaveBeenCalledTimes(1);
+  expect(fills).toHaveBeenCalledWith(nativeContext);
+});
 
 test("the full host compiles once per projection and reuses raw neutral and runtime captures", async () => {
   const fileSystem = createInMemoryFileSystem({ files: { ...fullHostFiles(),

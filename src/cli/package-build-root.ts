@@ -3,6 +3,7 @@ import { createBuildPackaging, createBuildHostPayload, createHostDistributionRea
 import { channelTokens } from "../packaging/domain/channel-tokens.ts";
 import { bindCopiedSource } from "../projection/domain/source-binding.ts";
 import { prepareHostSource } from "../projection/application/prepared-host-source.ts";
+import { onboardingContext } from "../projection/domain/onboarding-context.ts";
 import { createPluginBuildRoute } from "./adapters/routes/build/plugin-route.ts";
 import { createPluginBuilds } from "./adapters/routes/build/plugin-builds.ts";
 import { reviewerAgentSet } from "../workflow-definition/domain/method-participation.ts";
@@ -51,8 +52,12 @@ const hostProjector = (ports: {
   return async (request) => {
     const distribution = ports.readDistribution({ host: request.host });
     if (!distribution.ok) return distribution;
+    const onboarding = onboardingContext({ channel: request.channel,
+      permissionsLine: distribution.value.native.permissionsLine, prefix: ports.projection.nativeCommands.prefix });
+    if (!onboarding.ok) return refused([{ kind: "render-failed", concept: "onboarding",
+      name: request.host.distribution, reason: onboarding.refusal }]);
     return project({ ...request, core: { method: request.core.method, sources: request.core.sources },
-      compile: request.core.project });
+      compile: request.core.project, onboarding: onboarding.value });
   };
 };
 

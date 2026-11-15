@@ -7,6 +7,7 @@ import type { HarnessAssembly, HarnessAssemblyRequest } from "./harness-assembly
 import type { HostProjectionParts } from "./host-parts.ts";
 import type { HostedHarness } from "./harness.ts";
 import type { ProjectMethodForHarness } from "./method-projection.ts";
+import type { OnboardingContext } from "../../domain/onboarding-context.ts";
 
 export type CompiledMethodTarget = {
   readonly name: string; readonly directory: string; readonly memoryRoot: string;
@@ -17,7 +18,8 @@ export type CapturedMethodCompiler = (target: CompiledMethodTarget) => Result<Co
 export type HostProjectionMember = { readonly host: HostIdentity; readonly projection: HostProjectionParts };
 
 export type CapturedHostProjectionRequest = Pick<HarnessAssemblyRequest,
-  "host" | "files" | "prepare" | "tokens" | "channel" | "modelCap" | "entrypoints" | "projectRoot" | "reviewerAgents"> & {
+  "host" | "files" | "prepare" | "tokens" | "modelCap" | "entrypoints" | "projectRoot" | "reviewerAgents"> & {
+  readonly onboarding: OnboardingContext;
   readonly core: BuildCore;
   readonly compile: CapturedMethodCompiler;
 };
