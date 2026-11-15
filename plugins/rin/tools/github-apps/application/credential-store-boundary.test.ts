@@ -4,7 +4,7 @@ import { createStorePlacementCheck } from "./credential-store-boundary.ts";
 import type { StoreLocator } from "./credential-store-port.ts";
 import type { CanonicalPathResolver } from "./text-file-port.ts";
 
-const storeDirectory = "C:/Users/helen/.config/rin-github-apps";
+const storeDirectory = "C:/Users/operator/.config/rin-github-apps";
 
 const locatedStore = () => vi.fn<StoreLocator>().mockReturnValue(succeed(storeDirectory));
 

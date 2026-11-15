@@ -39,6 +39,58 @@ describe("describeCliFailure", () => {
       "Refusing to post that text: it contains a private key.",
     ],
     [
+      { kind: "inline-body-refused", reason: "contains-github-token" },
+      "Refusing to post that text: it contains a GitHub token.",
+    ],
+    [
+      { kind: "body-file-refused", location: "notes.md", reason: "contains-github-token" },
+      "Refusing to post notes.md: it contains a GitHub token.",
+    ],
+    [
+      { kind: "created-number-unreadable" },
+      "gh did not print the URL of what it created, so there was nothing to attach the files to.",
+    ],
+    [
+      { kind: "gh-attach-unsupported", verb: "pr merge" },
+      "gh pr merge takes no --attach. Attach files with gh pr create, gh pr edit, gh pr comment, gh issue create, gh issue edit or gh issue comment.",
+    ],
+    [
+      { kind: "gh-attach-target-not-number", verb: "pr comment" },
+      'gh pr comment with --attach needs the number right after the verb, as in "gh pr comment 12 --attach shot.png". A URL, a branch or a flag in that place is refused: the write runs under the operator\'s grant, which GitHub does not limit to this repository.',
+    ],
+    [
+      { kind: "gh-attach-argument-refused", verb: "issue comment", token: "--delete-last" },
+      'Refusing "--delete-last" on gh issue comment with --attach. That write runs under the operator\'s grant, which GitHub does not limit to this repository, so it accepts only the number, --body or --body-file, --attach and these flags: --edit-last, --create-if-none. Make any other change in a separate write without --attach.',
+    ],
+    [
+      { kind: "gh-attach-not-local-file", attachment: "https://github.com/other/repo/issues/3" },
+      '--attach takes a local file, and "https://github.com/other/repo/issues/3" contains a URL.',
+    ],
+    [
+      { kind: "gh-attach-dry-run-refused" },
+      "--dry-run creates nothing, so there is nothing to attach files to. Drop --attach or --dry-run.",
+    ],
+    [
+      { kind: "user-grant-lock-unwritable", path: "store/author.user-grant.lock", detail: "ENOENT" },
+      "Cannot create the user grant lock at store/author.user-grant.lock: ENOENT. Check that the credential store directory exists and can be written.",
+    ],
+    [
+      { kind: "user-grant-unwritable", path: "store/author.user-grant.json", detail: "EPERM: rename" },
+      'Cannot write the user grant to store/author.user-grant.json: EPERM: rename. If a refresh had just succeeded, the grant on disk is now out of date. Run the "login" command of the bot CLI, then retry.',
+    ],
+    [
+      { kind: "user-grant-missing", path: "store/author.user-grant.json" },
+      'No user grant at store/author.user-grant.json, and attachments are never uploaded under another identity. Run the "login" command of the bot CLI, then retry.',
+    ],
+    [
+      { kind: "refresh-token-rejected" },
+      `GitHub no longer accepts this machine's user grant; it was revoked or replaced. Run the "login" command of the bot CLI, then retry.`,
+    ],
+    [
+      { kind: "user-authorisation-unconfigured", role: "author", path: "store/credentials.json" },
+      "The author entry in store/credentials.json has no userAuthorisation.clientId, so the author role cannot upload attachments. Add the OAuth app's client ID and scope there; see the Rin GitHub bot identity guide.",
+    ],
+    [
       { kind: "app-not-installed", repository },
       "The GitHub App is not installed on HailsTails/minutesarah-shop; install it there first.",
     ],

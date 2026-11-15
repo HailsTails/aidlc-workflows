@@ -1,4 +1,9 @@
 import type { GhRun } from "../../application/github-cli-port.ts";
+import type {
+  AttachmentFollowUpFailure,
+  GhAsBotReport,
+} from "../../application/run-gh-as-bot.ts";
+import type { WriteCredential } from "../../domain/provenance.ts";
 import type { Result } from "../../domain/result.ts";
 import type {
   CliCommand,
@@ -22,6 +27,9 @@ const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
 
 const ARGUMENT_SEPARATOR = "--";
+
+const ATTACHMENTS_INCOMPLETE =
+  "It was created as the bot, but its attachments were not all uploaded. Add them with gh pr edit <number> --attach or gh issue edit <number> --attach.\n";
 
 const COMMANDS = {
   gh: ghCommand,
@@ -53,7 +61,16 @@ type Reported = {
 };
 
 type PassedThrough = {
-  readonly outcome: Result<GhRun, CliFailure>;
+  readonly outcome: Result<GhAsBotReport, CliFailure>;
+  readonly terminal: Terminal;
+};
+
+type RelayedRun = { readonly run: GhRun; readonly terminal: Terminal };
+
+type RelayedWrite = RelayedRun & { readonly via: WriteCredential };
+
+type AttachmentFollowUpReport = {
+  readonly attached: Result<GhRun, AttachmentFollowUpFailure>;
   readonly terminal: Terminal;
 };
 
@@ -79,7 +96,7 @@ const runPassThrough = async ({
   command,
   commandTokens,
   dependencies,
-}: CommandSelection<PassThroughCommand>): Promise<Result<GhRun, CliFailure>> => {
+}: CommandSelection<PassThroughCommand>): Promise<Result<GhAsBotReport, CliFailure>> => {
   const configuration = await dependencies.loadConfiguration();
   if (configuration.kind === "failure") return configuration;
   return command.execute({
@@ -104,11 +121,42 @@ const reportOutcome = ({ outcome, outputOnFailure, terminal }: Reported): number
   return EXIT_SUCCESS;
 };
 
+const GRANT_MAY_BE_REVOKED = `This step ran under the operator's grant. If gh reported bad credentials, the grant was revoked: run the "login" command of the bot CLI, then retry.\n`;
+
+const relayRun = ({ run, terminal }: RelayedRun): number => {
+  terminal.writeOutput(run.standardOutput);
+  terminal.writeError(run.standardError);
+  return run.exitCode;
+};
+
+const relayWrite = ({ run, terminal, via }: RelayedWrite): number => {
+  const exitCode = relayRun({ run, terminal });
+  if (via === "user-grant" && exitCode !== EXIT_SUCCESS) terminal.writeError(GRANT_MAY_BE_REVOKED);
+  return exitCode;
+};
+
+const reportAttachmentFollowUp = ({ attached, terminal }: AttachmentFollowUpReport): number => {
+  if (attached.kind === "failure") {
+    terminal.writeError(`${describeCliFailure(attached.reason)}\n${ATTACHMENTS_INCOMPLETE}`);
+    return EXIT_FAILURE;
+  }
+  terminal.writeError(attached.outcome.standardError);
+  if (attached.outcome.exitCode !== EXIT_SUCCESS) {
+    terminal.writeError(`${ATTACHMENTS_INCOMPLETE}${GRANT_MAY_BE_REVOKED}`);
+  }
+  return attached.outcome.exitCode;
+};
+
 const reportPassThrough = ({ outcome, terminal }: PassedThrough): number => {
   if (outcome.kind === "failure") return reportFailure(terminal, outcome.reason);
-  terminal.writeOutput(outcome.outcome.standardOutput);
-  terminal.writeError(outcome.outcome.standardError);
-  return outcome.outcome.exitCode;
+  const report = outcome.outcome;
+  switch (report.kind) {
+    case "single-write":
+      return relayWrite({ run: report.run, terminal, via: report.via });
+    case "created-then-attached":
+      relayRun({ run: report.created, terminal });
+      return reportAttachmentFollowUp({ attached: report.attached, terminal });
+  }
 };
 
 const reportUnknownCommand = ({ commandName, terminal }: UnknownCommand): number => {

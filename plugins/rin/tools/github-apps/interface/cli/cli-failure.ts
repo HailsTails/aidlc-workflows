@@ -2,10 +2,15 @@ import type {
   PushRemoteElsewhere,
   PushRemoteNotHttps,
 } from "../../application/adopt-worktree-git-identity.ts";
+import type { AuthoriseUserFailure } from "../../application/authorise-user.ts";
 import type { ConfigurationFailure } from "../../application/identity-configuration-port.ts";
 import type { CredentialDestinationRefused } from "../../application/issue-git-credential.ts";
-import type { GhAsBotFailure } from "../../application/run-gh-as-bot.ts";
+import type {
+  AttachmentFollowUpFailure,
+  GhAsBotFailure,
+} from "../../application/run-gh-as-bot.ts";
 import { supportedGhVerbs } from "../../domain/gh-invocation.ts";
+import { acceptedGrantFlags } from "../../domain/grant-write.ts";
 import { formatRepositorySlug } from "../../domain/repository-slug.ts";
 import type { FlagFailure } from "./command-flags.ts";
 
@@ -19,6 +24,8 @@ type CommandLineFailure =
 
 type CliFailure =
   | GhAsBotFailure
+  | AuthoriseUserFailure
+  | AttachmentFollowUpFailure
   | PushRemoteElsewhere
   | PushRemoteNotHttps
   | CredentialDestinationRefused
@@ -36,6 +43,13 @@ type DescribedFailure<Kind extends FailureKind> = {
   readonly kind: Kind;
   readonly failure: FailureOf<Kind>;
 };
+
+const LOGIN_HINT = 'Run the "login" command of the bot CLI, then retry.';
+
+const UNPUBLISHABLE_CONTENT = {
+  "contains-private-key": "a private key",
+  "contains-github-token": "a GitHub token",
+} as const;
 
 const shortSha = (sha: string | null): string => sha?.slice(0, SHORT_SHA_LENGTH) ?? "no commit";
 
@@ -65,6 +79,16 @@ const describers: FailureDescribers = {
     `"gh ${verb}" is not a write the bot wrapper runs. It runs: ${supportedGhVerbs().map((name) => `gh ${name}`).join(", ")}. Run reads as plain gh.`,
   "gh-flag-refused": ({ flag }) =>
     `${flag} is refused: the wrapper pins the repository, never bypasses rulesets, never opens a browser or editor, and never posts a body it did not stamp. Drop ${flag} and give the text with --body or --body-file.`,
+  "gh-attach-unsupported": ({ verb }) =>
+    `gh ${verb} takes no --attach. Attach files with gh pr create, gh pr edit, gh pr comment, gh issue create, gh issue edit or gh issue comment.`,
+  "gh-attach-target-not-number": ({ verb }) =>
+    `gh ${verb} with --attach needs the number right after the verb, as in "gh ${verb} 12 --attach shot.png". A URL, a branch or a flag in that place is refused: the write runs under the operator's grant, which GitHub does not limit to this repository.`,
+  "gh-attach-argument-refused": ({ verb, token }) =>
+    `Refusing "${token}" on gh ${verb} with --attach. That write runs under the operator's grant, which GitHub does not limit to this repository, so it accepts only the number, --body or --body-file, --attach and these flags: ${acceptedGrantFlags(verb).join(", ")}. Make any other change in a separate write without --attach.`,
+  "gh-attach-not-local-file": ({ attachment }) =>
+    `--attach takes a local file, and "${attachment}" contains a URL.`,
+  "gh-attach-dry-run-refused": () =>
+    "--dry-run creates nothing, so there is nothing to attach files to. Drop --attach or --dry-run.",
   "gh-flag-value-missing": ({ flag }) => `${flag} needs a value.`,
   "gh-body-given-twice": () => "Pass --body or --body-file, not both.",
   "gh-body-missing": ({ verb }) =>
@@ -78,6 +102,8 @@ const describers: FailureDescribers = {
   "gh-unavailable": ({ detail }) =>
     `gh could not be run: ${detail}. Install GitHub CLI 2.103.2 or later and put it on PATH.`,
   "gh-read-failed": ({ operation, detail }) => `gh could not ${operation}: ${detail}`,
+  "created-number-unreadable": () =>
+    "gh did not print the URL of what it created, so there was nothing to attach the files to.",
   "attachment-refused": ({ attachment }) =>
     `Refusing to attach ${attachment}: it is inside the bot credential store.`,
   "git-command-failed": ({ command, detail }) => `${command} failed: ${detail}`,
@@ -103,12 +129,36 @@ const describers: FailureDescribers = {
   "flag-repeated": ({ flag }) => `--${flag} was given more than once.`,
   "flag-value-missing": ({ flag }) => `--${flag} needs a value.`,
   "flags-invalid": ({ issues }) => `Invalid flags: ${issues}`,
-  "inline-body-refused": () => "Refusing to post that text: it contains a private key.",
+  "inline-body-refused": ({ reason }) =>
+    `Refusing to post that text: it contains ${UNPUBLISHABLE_CONTENT[reason]}.`,
   "body-file-unreadable": ({ location }) => `Cannot read the body file ${location}.`,
   "body-file-refused": ({ location, reason }) =>
     reason === "inside-credential-store"
       ? `Refusing to post ${location}: it is inside the bot credential store.`
-      : `Refusing to post ${location}: it contains a private key.`,
+      : `Refusing to post ${location}: it contains ${UNPUBLISHABLE_CONTENT[reason]}.`,
+  "user-authorisation-unconfigured": ({ role, path }) =>
+    `The ${role} entry in ${path} has no userAuthorisation.clientId, so the ${role} role cannot upload attachments. Add the OAuth app's client ID and scope there; see the Rin GitHub bot identity guide.`,
+  "device-flow-disabled": () =>
+    "The OAuth app has device flow switched off. Enable device flow in its settings, then log in again.",
+  "oauth-client-rejected": () =>
+    "GitHub does not recognise the userAuthorisation.clientId in the credential store; copy the client ID from the OAuth app's settings page.",
+  "oauth-request-refused": ({ operation, error, description }) =>
+    `GitHub refused to ${operation} (${error}): ${description}`,
+  "device-code-expired": () => `The login code expired before it was approved. ${LOGIN_HINT}`,
+  "device-authorisation-denied": () => "The login was declined on GitHub; nothing was stored.",
+  "refresh-token-rejected": () =>
+    `GitHub no longer accepts this machine's user grant; it was revoked or replaced. ${LOGIN_HINT}`,
+  "user-grant-missing": ({ path }) =>
+    `No user grant at ${path}, and attachments are never uploaded under another identity. ${LOGIN_HINT}`,
+  "user-grant-invalid": ({ path, issues }) =>
+    `The user grant at ${path} is malformed: ${issues}. ${LOGIN_HINT}`,
+  "user-grant-expired": () => `This machine's user grant has expired. ${LOGIN_HINT}`,
+  "user-grant-unwritable": ({ path, detail }) =>
+    `Cannot write the user grant to ${path}: ${detail}. If a refresh had just succeeded, the grant on disk is now out of date. ${LOGIN_HINT}`,
+  "user-grant-lock-unwritable": ({ path, detail }) =>
+    `Cannot create the user grant lock at ${path}: ${detail}. Check that the credential store directory exists and can be written.`,
+  "user-grant-lock-unavailable": ({ path }) =>
+    `Another session has held the user grant lock at ${path} for too long. Retry; if it persists, delete that file.`,
   "unknown-command": ({ commandName }) => `Unknown command "${commandName}".`,
   "credential-query-invalid": ({ issues }) =>
     `git sent an unreadable credential request: ${issues}`,

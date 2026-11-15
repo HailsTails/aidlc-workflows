@@ -5,7 +5,7 @@ import type { TextFileReader } from "../application/text-file-port.ts";
 import { createFileCredentialStore, locateUserStore } from "./file-credential-store.ts";
 import type { UserEnvironment } from "./user-environment.ts";
 
-const storeDirectory = "C:/Users/helen/.config/rin-github-apps";
+const storeDirectory = "C:/Users/operator/.config/rin-github-apps";
 
 const locatedStore = () => vi.fn<StoreLocator>().mockReturnValue(succeed(storeDirectory));
 
@@ -29,28 +29,28 @@ describe("locateUserStore", () => {
 
   it("finds the one per-user store under the home directory, outside every repository", () => {
     const locate = locateUserStore({
-      environment: environmentWith({ variables: {}, homeDirectory: "C:\\Users\\helen" }),
+      environment: environmentWith({ variables: {}, homeDirectory: "C:\\Users\\operator" }),
     });
 
-    expect(locate()).toEqual(succeed("C:/Users/helen/.config/rin-github-apps"));
+    expect(locate()).toEqual(succeed("C:/Users/operator/.config/rin-github-apps"));
   });
 
   it("prefers the directory the environment names", () => {
     const locate = locateUserStore({
       environment: environmentWith({
         variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: "H:\\keys\\rin" },
-        homeDirectory: "/home/helen",
+        homeDirectory: "/home/operator",
       }),
     });
 
     expect(locate()).toEqual(succeed("H:/keys/rin"));
   });
 
-  it.each(["/home/helen/keys", "C:/keys/rin"])("accepts the absolute override %s", (directory) => {
+  it.each(["/home/operator/keys", "C:/keys/rin"])("accepts the absolute override %s", (directory) => {
     const locate = locateUserStore({
       environment: environmentWith({
         variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: directory },
-        homeDirectory: "/home/helen",
+        homeDirectory: "/home/operator",
       }),
     });
 
@@ -63,7 +63,7 @@ describe("locateUserStore", () => {
       const locate = locateUserStore({
         environment: environmentWith({
           variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: directory },
-          homeDirectory: "/home/helen",
+          homeDirectory: "/home/operator",
         }),
       });
 
@@ -79,11 +79,11 @@ describe("locateUserStore", () => {
     const locate = locateUserStore({
       environment: environmentWith({
         variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: "" },
-        homeDirectory: "/home/helen",
+        homeDirectory: "/home/operator",
       }),
     });
 
-    expect(locate()).toEqual(succeed("/home/helen/.config/rin-github-apps"));
+    expect(locate()).toEqual(succeed("/home/operator/.config/rin-github-apps"));
   });
 
   it("reports a user with neither an override nor a home directory", () => {
@@ -179,6 +179,88 @@ describe("createFileCredentialStore refusals", () => {
     }).loadRoleCredentials({ role: "author" });
 
     expect(credentials).toEqual(
+      fail({ kind: "credential-store-unlocatable", detail: "no home directory" }),
+    );
+  });
+});
+
+describe("createFileCredentialStore loadUserAuthorisationSettings", () => {
+  it("loads the role's OAuth client id without reading its private key", async () => {
+    const readTextFile = readingFiles(
+      '{"author":{"appId":"101","privateKeyPath":"a.pem","userAuthorisation":{"clientId":"Ov23liOperator","scope":"repo"}}}',
+    );
+
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile,
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    expect(settings).toEqual(succeed({ clientId: "Ov23liOperator", scope: "repo" }));
+    expect(readTextFile).toHaveBeenCalledOnce();
+    expect(readTextFile).toHaveBeenCalledWith(`${storeDirectory}/credentials.json`);
+  });
+
+  it("reports a role with no user authorisation configured", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile: readingFiles('{"author":{"appId":"101","privateKeyPath":"a.pem"}}'),
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    expect(settings).toEqual(
+      fail({
+        kind: "user-authorisation-unconfigured",
+        role: "author",
+        path: `${storeDirectory}/credentials.json`,
+      }),
+    );
+  });
+
+  it("reports a role the store has no entry for", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile: readingFiles('{"author":{"appId":"101","privateKeyPath":"a.pem"}}'),
+    }).loadUserAuthorisationSettings({ role: "reviewer" });
+
+    expect(settings).toEqual(
+      fail({ kind: "role-credentials-missing", role: "reviewer", path: storeDirectory }),
+    );
+  });
+
+  it("reports an empty client id", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile: readingFiles(
+        '{"author":{"appId":"101","privateKeyPath":"a.pem","userAuthorisation":{"clientId":"","scope":"repo"}}}',
+      ),
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    assert(settings.kind === "failure" && settings.reason.kind === "credentials-invalid");
+    expect(settings.reason.path).toBe(`${storeDirectory}/credentials.json`);
+    expect(settings.reason.issues).toContain("clientId");
+  });
+
+  it("reports a missing credentials file", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: locatedStore(),
+      readTextFile: vi
+        .fn<TextFileReader>()
+        .mockResolvedValue(fail({ kind: "file-unreadable", location: "credentials.json" })),
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    expect(settings).toEqual(
+      fail({ kind: "credentials-unreadable", path: `${storeDirectory}/credentials.json` }),
+    );
+  });
+
+  it("reports a store it cannot locate", async () => {
+    const settings = await createFileCredentialStore({
+      locateStoreDirectory: vi
+        .fn<StoreLocator>()
+        .mockReturnValue(fail({ detail: "no home directory" })),
+      readTextFile: vi.fn<TextFileReader>(),
+    }).loadUserAuthorisationSettings({ role: "author" });
+
+    expect(settings).toEqual(
       fail({ kind: "credential-store-unlocatable", detail: "no home directory" }),
     );
   });

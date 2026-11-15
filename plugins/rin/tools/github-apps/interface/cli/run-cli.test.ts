@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import type { UserAuthoriser } from "../../application/authorise-user.ts";
 import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
+import type { UserTokenMinter } from "../../application/mint-user-token.ts";
 import { fail, succeed } from "../../domain/result.ts";
 import { secret } from "../../domain/secret.ts";
 import type { CliDependencies } from "./cli-command.ts";
@@ -15,6 +17,14 @@ const configuration = {
 };
 
 const botToken = secret("ghs_reviewer");
+
+const created = succeed({
+  standardOutput: "https://github.com/HailsTails/minutesarah-shop/issues/429\n",
+  standardError: "",
+  exitCode: 0,
+});
+
+const createWithAttachment = ["gh", "issue", "create", "-t", "T", "-b", "x", "--attach", "b.png"];
 
 const fakeGitHubCli = () => ({
   run: vi.fn<GitHubCliPort["run"]>().mockResolvedValue(
@@ -44,6 +54,11 @@ const fakeDependencies = (githubCli: GitHubCliPort = fakeGitHubCli()) => ({
       .fn<TokenMinter["mintInstallationToken"]>()
       .mockResolvedValue(succeed(botToken)),
   },
+  userTokenMinter: {
+    mintUserToken: vi
+      .fn<UserTokenMinter["mintUserToken"]>()
+      .mockResolvedValue(succeed(secret("gho_operator"))),
+  },
   connectGitHubCli: vi.fn<CliDependencies["connectGitHubCli"]>().mockReturnValue(githubCli),
   worktree: {
     readCurrentBranch: vi.fn(),
@@ -56,6 +71,7 @@ const fakeDependencies = (githubCli: GitHubCliPort = fakeGitHubCli()) => ({
     .fn<CliDependencies["placeInStore"]>()
     .mockResolvedValue({ kind: "outside-store", canonicalPath: "H:/shop/b.png" }),
   credentialHelperCommand: '!bun "cli-main.ts" git-credential --operation',
+  userAuthoriser: { authoriseUser: vi.fn<UserAuthoriser["authoriseUser"]>() },
 });
 
 describe("runCli gh", () => {
@@ -150,7 +166,103 @@ describe("runCli gh", () => {
       commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
     });
 
-    expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith("failed to upload b.png\n");
+    expect(dependencies.terminal.writeError).toHaveBeenNthCalledWith(1, "failed to upload b.png\n");
+  });
+
+  it("says a failed write under the operator's grant may mean the grant was revoked", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run.mockResolvedValue(
+      succeed({ standardOutput: "", standardError: "HTTP 401: Bad credentials\n", exitCode: 1 }),
+    );
+    const dependencies = fakeDependencies(githubCli);
+
+    await runCli({
+      dependencies,
+      commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
+    });
+
+    expect(dependencies.terminal.writeError).toHaveBeenLastCalledWith(
+      "This step ran under the operator's grant. If gh reported bad credentials, the grant was revoked: run the \"login\" command of the bot CLI, then retry.\n",
+    );
+  });
+
+  it("says nothing about the grant when a write as the bot fails", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run.mockResolvedValue(
+      succeed({ standardOutput: "", standardError: "HTTP 401: Bad credentials\n", exitCode: 1 }),
+    );
+    const dependencies = fakeDependencies(githubCli);
+
+    await runCli({
+      dependencies,
+      commandArguments: ["gh", "issue", "comment", "429", "-b", "x"],
+    });
+
+    expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(
+      "HTTP 401: Bad credentials\n",
+    );
+  });
+
+  it("says nothing about the grant when the write under it succeeded", async () => {
+    const dependencies = fakeDependencies();
+
+    await runCli({
+      dependencies,
+      commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
+    });
+
+    expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith("");
+  });
+
+  it("prints the created URL once and exits 0 when the attachments followed", async () => {
+    const dependencies = fakeDependencies();
+
+    const exitCode = await runCli({ dependencies, commandArguments: createWithAttachment });
+
+    expect(exitCode).toBe(0);
+    expect(dependencies.terminal.writeOutput).toHaveBeenCalledExactlyOnceWith(
+      "https://github.com/HailsTails/minutesarah-shop/issues/429\n",
+    );
+  });
+
+  it("still prints the created URL, and exits with the follow-up's code, when attaching failed", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run.mockResolvedValueOnce(created).mockResolvedValueOnce(
+      succeed({ standardOutput: "", standardError: "failed to upload b.png\n", exitCode: 1 }),
+    );
+    const dependencies = fakeDependencies(githubCli);
+
+    const exitCode = await runCli({ dependencies, commandArguments: createWithAttachment });
+
+    expect(exitCode).toBe(1);
+    expect(dependencies.terminal.writeOutput).toHaveBeenCalledExactlyOnceWith(
+      "https://github.com/HailsTails/minutesarah-shop/issues/429\n",
+    );
+    expect(dependencies.terminal.writeError.mock.calls).toEqual([
+      [""],
+      ["failed to upload b.png\n"],
+      [
+        "It was created as the bot, but its attachments were not all uploaded. Add them with gh pr edit <number> --attach or gh issue edit <number> --attach.\nThis step ran under the operator's grant. If gh reported bad credentials, the grant was revoked: run the \"login\" command of the bot CLI, then retry.\n",
+      ],
+    ]);
+  });
+
+  it("says why when the follow-up could not run at all, and exits 1", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run
+      .mockResolvedValueOnce(created)
+      .mockResolvedValueOnce(fail({ kind: "gh-unavailable", detail: "spawn gh ENOENT" }));
+    const dependencies = fakeDependencies(githubCli);
+
+    const exitCode = await runCli({ dependencies, commandArguments: createWithAttachment });
+
+    expect(exitCode).toBe(1);
+    expect(dependencies.terminal.writeOutput).toHaveBeenCalledExactlyOnceWith(
+      "https://github.com/HailsTails/minutesarah-shop/issues/429\n",
+    );
+    expect(dependencies.terminal.writeError).toHaveBeenLastCalledWith(
+      "gh could not be run: spawn gh ENOENT. Install GitHub CLI 2.103.2 or later and put it on PATH.\nIt was created as the bot, but its attachments were not all uploaded. Add them with gh pr edit <number> --attach or gh issue edit <number> --attach.\n",
+    );
   });
 
   it("reports a refused gh flag and exits 1", async () => {

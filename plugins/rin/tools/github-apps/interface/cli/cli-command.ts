@@ -1,13 +1,15 @@
+import type { UserAuthoriser } from "../../application/authorise-user.ts";
 import type { StorePlacementCheck } from "../../application/credential-store-boundary.ts";
-import type { GhRun, GitHubCliPort } from "../../application/github-cli-port.ts";
+import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
 import type {
   IdentityConfiguration,
   IdentityConfigurationLoader,
 } from "../../application/identity-configuration-port.ts";
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
+import type { UserTokenMinter } from "../../application/mint-user-token.ts";
 import type { BodyFileReader } from "../../application/read-body-file.ts";
-import type { GitHubCliAccess } from "../../application/run-gh-as-bot.ts";
+import type { GhAsBotReport, GitHubCliAccess } from "../../application/run-gh-as-bot.ts";
 import type { Result } from "../../domain/result.ts";
 import type { CliFailure } from "./cli-failure.ts";
 import type { CommandFlags } from "./command-flags.ts";
@@ -17,11 +19,13 @@ type CliDependencies = {
   readonly terminal: Terminal;
   readonly loadConfiguration: IdentityConfigurationLoader;
   readonly tokenMinter: TokenMinter;
+  readonly userTokenMinter: UserTokenMinter;
   readonly connectGitHubCli: (access: GitHubCliAccess) => GitHubCliPort;
   readonly worktree: GitWorktreePort;
   readonly readBodyFile: BodyFileReader;
   readonly placeInStore: StorePlacementCheck;
   readonly credentialHelperCommand: string;
+  readonly userAuthoriser: UserAuthoriser;
 };
 
 type CommandReport = { readonly standardOutput: string; readonly standardError: string };
@@ -43,7 +47,7 @@ type PassThroughContext = {
 
 type PassThroughCommand = {
   readonly access: "pass-through";
-  readonly execute: (context: PassThroughContext) => Promise<Result<GhRun, CliFailure>>;
+  readonly execute: (context: PassThroughContext) => Promise<Result<GhAsBotReport, CliFailure>>;
 };
 
 type LocalCommand = {

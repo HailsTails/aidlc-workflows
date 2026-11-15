@@ -1,4 +1,4 @@
-import { containsPrivateKey } from "../domain/publishable-text.ts";
+import { assessPublishability, type Publishability } from "../domain/publishable-text.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
 import type { StorePlacementCheck } from "./credential-store-boundary.ts";
 import type { TextFileReader } from "./text-file-port.ts";
@@ -8,7 +8,7 @@ type BodyFileFailure =
   | {
       readonly kind: "body-file-refused";
       readonly location: string;
-      readonly reason: "inside-credential-store" | "contains-private-key";
+      readonly reason: "inside-credential-store" | Exclude<Publishability, "publishable">;
     };
 
 type BodyFileReader = (location: string) => Promise<Result<string, BodyFileFailure>>;
@@ -28,8 +28,9 @@ const createBodyFileReader =
     }
     const bodyText = await readTextFile(placement.canonicalPath);
     if (bodyText.kind === "failure") return fail({ kind: "body-file-unreadable", location });
-    if (containsPrivateKey(bodyText.outcome)) {
-      return fail({ kind: "body-file-refused", location, reason: "contains-private-key" });
+    const publishability = assessPublishability(bodyText.outcome);
+    if (publishability !== "publishable") {
+      return fail({ kind: "body-file-refused", location, reason: publishability });
     }
     return succeed(bodyText.outcome);
   };

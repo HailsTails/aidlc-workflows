@@ -4,6 +4,7 @@ import type {
   CredentialStorePort,
   RoleCredentials,
   StoreLocator,
+  UserAuthorisationSettingsPort,
 } from "../application/credential-store-port.ts";
 import type { TextFileReader } from "../application/text-file-port.ts";
 import type { AgentRole } from "../domain/agent-role.ts";
@@ -21,6 +22,9 @@ const STORE_PATH_IN_HOME = ".config/rin-github-apps";
 const roleEntrySchema = z.object({
   appId: z.union([z.string().regex(/^\d+$/), z.number().int().positive().transform(String)]),
   privateKeyPath: z.string().min(1),
+  userAuthorisation: z
+    .object({ clientId: z.string().min(1), scope: z.string().min(1) })
+    .optional(),
 });
 
 const credentialsFileSchema = z.object({
@@ -29,6 +33,8 @@ const credentialsFileSchema = z.object({
 });
 
 type CredentialsFile = z.infer<typeof credentialsFileSchema>;
+
+type RoleEntry = z.infer<typeof roleEntrySchema>;
 
 type FileCredentialStoreDependencies = {
   readonly locateStoreDirectory: StoreLocator;
@@ -44,16 +50,23 @@ type RoleLookup = FileCredentialStoreDependencies & {
   readonly storeDirectory: string;
 };
 
+type RoleRequest = FileCredentialStoreDependencies & { readonly role: AgentRole };
+
+type LocatedRoleEntry = { readonly roleEntry: RoleEntry; readonly storeDirectory: string };
+
 const isAbsolutePath = (path: string): boolean => /^(?:[A-Za-z]:)?[\\/]/.test(path);
 
 const resolveKeyPath = ({ storeDirectory, privateKeyPath }: KeyLocation): string =>
   isAbsolutePath(privateKeyPath) ? privateKeyPath : `${storeDirectory}/${privateKeyPath}`;
 
+const credentialsPathIn = (storeDirectory: string): string =>
+  `${storeDirectory}/${CREDENTIALS_FILE_NAME}`;
+
 const readCredentialsFile = async ({
   readTextFile,
   storeDirectory,
 }: RoleLookup): Promise<Result<CredentialsFile, CredentialFailure>> => {
-  const credentialsPath = `${storeDirectory}/${CREDENTIALS_FILE_NAME}`;
+  const credentialsPath = credentialsPathIn(storeDirectory);
   const credentialsText = await readTextFile(credentialsPath);
   if (credentialsText.kind === "failure") {
     return fail({ kind: "credentials-unreadable", path: credentialsPath });
@@ -73,20 +86,36 @@ const readCredentialsFile = async ({
   return succeed(parsed.data);
 };
 
-const loadFromStore = async (
-  lookup: RoleLookup,
-): Promise<Result<RoleCredentials, CredentialFailure>> => {
-  const { role, storeDirectory, readTextFile } = lookup;
-  const credentialsFile = await readCredentialsFile(lookup);
+const loadRoleEntry = async (
+  request: RoleRequest,
+): Promise<Result<LocatedRoleEntry, CredentialFailure>> => {
+  const { role, locateStoreDirectory } = request;
+  const storeDirectory = locateStoreDirectory();
+  if (storeDirectory.kind === "failure") {
+    return fail({ kind: "credential-store-unlocatable", detail: storeDirectory.reason.detail });
+  }
+  const credentialsFile = await readCredentialsFile({
+    ...request,
+    storeDirectory: storeDirectory.outcome,
+  });
   if (credentialsFile.kind === "failure") return credentialsFile;
   const roleEntry = credentialsFile.outcome[role];
   if (roleEntry === undefined) {
-    return fail({ kind: "role-credentials-missing", role, path: storeDirectory });
+    return fail({ kind: "role-credentials-missing", role, path: storeDirectory.outcome });
   }
+  return succeed({ roleEntry, storeDirectory: storeDirectory.outcome });
+};
+
+const loadRoleCredentials = async (
+  request: RoleRequest,
+): Promise<Result<RoleCredentials, CredentialFailure>> => {
+  const located = await loadRoleEntry(request);
+  if (located.kind === "failure") return located;
+  const { roleEntry, storeDirectory } = located.outcome;
   const keyPath = resolveKeyPath({ storeDirectory, privateKeyPath: roleEntry.privateKeyPath });
-  const privateKeyPem = await readTextFile(keyPath);
+  const privateKeyPem = await request.readTextFile(keyPath);
   if (privateKeyPem.kind === "failure") {
-    return fail({ kind: "private-key-unreadable", role, path: keyPath });
+    return fail({ kind: "private-key-unreadable", role: request.role, path: keyPath });
   }
   return succeed({ appId: roleEntry.appId, privateKey: secret(privateKeyPem.outcome) });
 };
@@ -114,13 +143,21 @@ const locateUserStore =
 
 const createFileCredentialStore = (
   dependencies: FileCredentialStoreDependencies,
-): CredentialStorePort => ({
-  loadRoleCredentials: async ({ role }) => {
-    const storeDirectory = dependencies.locateStoreDirectory();
-    if (storeDirectory.kind === "failure") {
-      return fail({ kind: "credential-store-unlocatable", detail: storeDirectory.reason.detail });
+): CredentialStorePort & UserAuthorisationSettingsPort => ({
+  loadRoleCredentials: ({ role }) => loadRoleCredentials({ ...dependencies, role }),
+  loadUserAuthorisationSettings: async ({ role }) => {
+    const located = await loadRoleEntry({ ...dependencies, role });
+    if (located.kind === "failure") return located;
+    const { roleEntry, storeDirectory } = located.outcome;
+    if (roleEntry.userAuthorisation === undefined) {
+      return fail({
+        kind: "user-authorisation-unconfigured",
+        role,
+        path: credentialsPathIn(storeDirectory),
+      });
     }
-    return loadFromStore({ ...dependencies, role, storeDirectory: storeDirectory.outcome });
+    const { clientId, scope } = roleEntry.userAuthorisation;
+    return succeed({ clientId, scope });
   },
 });
 

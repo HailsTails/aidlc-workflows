@@ -13,6 +13,14 @@ type CredentialFailure =
 
 type CredentialRequest = { readonly role: AgentRole };
 
+type UserAuthorisationSettings = { readonly clientId: string; readonly scope: string };
+
+type UserAuthorisationUnconfigured = {
+  readonly kind: "user-authorisation-unconfigured";
+  readonly role: AgentRole;
+  readonly path: string;
+};
+
 type StoreLocator = () => Result<string, { readonly detail: string }>;
 
 type CredentialStorePort = {
@@ -21,10 +29,19 @@ type CredentialStorePort = {
   ) => Promise<Result<RoleCredentials, CredentialFailure>>;
 };
 
+type UserAuthorisationSettingsPort = {
+  readonly loadUserAuthorisationSettings: (
+    request: CredentialRequest,
+  ) => Promise<Result<UserAuthorisationSettings, CredentialFailure | UserAuthorisationUnconfigured>>;
+};
+
 export type {
   CredentialFailure,
   CredentialRequest,
   CredentialStorePort,
   RoleCredentials,
   StoreLocator,
+  UserAuthorisationSettings,
+  UserAuthorisationSettingsPort,
+  UserAuthorisationUnconfigured,
 };
