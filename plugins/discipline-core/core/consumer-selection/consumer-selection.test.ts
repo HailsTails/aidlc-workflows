@@ -6,7 +6,13 @@ import { absolutePathSchema } from "../values/absolute-path.ts";
 import { ruleSetNameSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
-import { createSelectionRepository, type RuleSetLocation, readSelection, ruleSetRootOf } from "./consumer-selection.ts";
+import {
+  createSelectionRepository,
+  type RuleSetLocation,
+  readReportOutput,
+  readSelection,
+  ruleSetRootOf,
+} from "./consumer-selection.ts";
 
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
@@ -229,6 +235,7 @@ describe("createSelectionRepository", () => {
           },
         ],
         excluded: [],
+        fileExceptionWhyChains: "required",
       },
     });
   });
@@ -250,6 +257,18 @@ describe("createSelectionRepository", () => {
     });
 
     expect(repository.read({})).toMatchObject({ outcome: "ok", value: { excluded: ["vendor", "src/generated.ts"] } });
+  });
+
+  it("reads optional file exception why-chains when disciplines.json makes them optional", () => {
+    expect(
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" }, fileExceptionWhyChains: "optional" }),
+    ).toMatchObject({ outcome: "ok", value: { fileExceptionWhyChains: "optional" } });
+  });
+
+  it("is file-malformed when disciplines.json gives file exception why-chains a value other than required or optional", () => {
+    expect(
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" }, fileExceptionWhyChains: "off" }),
+    ).toMatchObject({ outcome: "failed", error: { kind: "file-malformed", path: SELECTION_PATH } });
   });
 
   it("is file-malformed when disciplines.json excludes a path that is not a repository path", () => {
@@ -326,6 +345,67 @@ describe("createSelectionRepository", () => {
   });
 });
 
+describe("readReportOutput", () => {
+  const configuredOutput = (selection: unknown) =>
+    readReportOutput({
+      fileText: fileTextOver({ [SELECTION_PATH]: presentFile({ text: JSON.stringify(selection) }) }),
+      path: TABLE_PATH,
+      repoRoot: REPO_ROOT,
+    });
+
+  it("is the full report when disciplines.json sets no report output", () => {
+    expect(configuredOutput({ version: 1, ruleSets: {}, clauses: {} })).toEqual({ outcome: "ok", value: "full" });
+  });
+
+  it.each(["full", "failures-only", "counts", "verdict-only"])("reads the report output %s from disciplines.json", (reportOutput) => {
+    expect(configuredOutput({ version: 1, ruleSets: {}, clauses: {}, reportOutput })).toEqual({
+      outcome: "ok",
+      value: reportOutput,
+    });
+  });
+
+  it.each([
+    ["a name that is not one of the four", "summary"],
+    ["null", null],
+    ["a number", 3],
+    ["a list", ["full"]],
+  ])("is file-malformed when disciplines.json gives the report output as %s", (_shape, reportOutput) => {
+    expect(configuredOutput({ version: 1, ruleSets: {}, clauses: {}, reportOutput })).toMatchObject({
+      outcome: "failed",
+      error: { kind: "file-malformed", path: SELECTION_PATH },
+    });
+  });
+
+  it("is file-unreadable when disciplines.json cannot be read, so no default output is guessed", () => {
+    expect(
+      readReportOutput({
+        fileText: fileTextOver({
+          [SELECTION_PATH]: {
+            presence: "present",
+            read: { outcome: "failed", error: { kind: "unreadable", path: SELECTION_PATH, detail: "EACCES" } },
+          },
+        }),
+        path: TABLE_PATH,
+        repoRoot: REPO_ROOT,
+      }),
+    ).toEqual({ outcome: "failed", error: { kind: "file-unreadable", path: SELECTION_PATH, detail: "EACCES" } });
+  });
+
+  it("reads the report output without resolving the selected clauses", () => {
+    expect(
+      readReportOutput({
+        fileText: fileTextOver({
+          [SELECTION_PATH]: presentFile({
+            text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-99#missing": "audit" }, reportOutput: "counts" }),
+          }),
+        }),
+        path: TABLE_PATH,
+        repoRoot: REPO_ROOT,
+      }),
+    ).toEqual({ outcome: "ok", value: "counts" });
+  });
+});
+
 describe("readSelection", () => {
   it("selects a shared clause, rooted at the install, with its mechanism", () => {
     expect(
@@ -365,6 +445,7 @@ describe("readSelection", () => {
           },
         ],
         excluded: [],
+        fileExceptionWhyChains: "required",
       },
     });
   });
@@ -397,6 +478,7 @@ describe("readSelection", () => {
           },
         ],
         excluded: [],
+        fileExceptionWhyChains: "required",
       },
     });
   });
@@ -415,6 +497,7 @@ describe("readSelection", () => {
         },
         bindings: [expect.objectContaining({ mechanism: "audit" })],
         excluded: [],
+        fileExceptionWhyChains: "required",
       },
     });
   });

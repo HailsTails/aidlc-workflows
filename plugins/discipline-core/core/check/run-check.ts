@@ -10,6 +10,7 @@ import {
   legacyChainsIn,
   parseExceptionEntries,
   readExceptionEntries,
+  recordImportOf,
   type StructuralExceptionEntry,
   UNMEASURED_EXCEPTION_BASELINE,
 } from "../exception-records/exception-records.ts";
@@ -171,7 +172,12 @@ export const loadInputs = async (request: LoadRequest): Promise<Result<LoadedInp
     return mechanisms;
   }
   const exceptionBaseline = request.exceptionBaselineOf({ entries: entries.value });
-  const parsed = parseExceptionEntries({ entries: entries.value, selection: reading.value.selection, baseline: exceptionBaseline });
+  const parsed = parseExceptionEntries({
+    entries: entries.value,
+    selection: reading.value.selection,
+    baseline: exceptionBaseline,
+    fileExceptionWhyChains: reading.value.fileExceptionWhyChains,
+  });
   return {
     outcome: "ok",
     value: {
@@ -200,7 +206,7 @@ const forfeitureUnmeasured = (request: {
     : [];
 
 const importedRecords = (request: { readonly records: readonly ExceptionRecord[] }): "present" | "absent" =>
-  request.records.some((record) => record.kind !== "clause-wide-carve-out" && record.whyChain === undefined)
+  request.records.some((record) => recordImportOf({ record }).imported === "yes")
     ? "present"
     : "absent";
 

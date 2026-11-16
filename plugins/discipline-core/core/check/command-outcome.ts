@@ -1,5 +1,6 @@
 import type { ProjectionWrite } from "../mechanism-port/runner-result-schema.ts";
 import type { ExitCode } from "../platform-ports/process-port.ts";
+import type { ReportOutput } from "../values/report-output.ts";
 import type { Result } from "../values/result.ts";
 import type { CheckReport } from "../verdict/check-report.ts";
 import { renderReportText } from "../verdict/report-text.ts";
@@ -12,6 +13,11 @@ export type CommandOutcome = {
   readonly text: string;
 };
 
+export type CheckRun = {
+  readonly report: CheckReport;
+  readonly output: ReportOutput;
+};
+
 const LOAD_FAILURE_CODE = 2;
 
 const loadFailureOutcome = (request: { readonly failure: LoadFailure }): CommandOutcome => ({
@@ -19,15 +25,17 @@ const loadFailureOutcome = (request: { readonly failure: LoadFailure }): Command
   text: loadFailureText(request),
 });
 
+const checkRunOutcome = (request: { readonly run: CheckRun }): CommandOutcome => ({
+  code: verdictOf({ report: request.run.report }) === "pass" ? 0 : 1,
+  text: renderReportText(request.run),
+});
+
 export const checkCommandOutcome = (request: {
-  readonly result: Result<CheckReport, LoadFailure>;
-}): CommandOutcome => {
-  if (request.result.outcome === "failed") {
-    return loadFailureOutcome({ failure: request.result.error });
-  }
-  const report = request.result.value;
-  return { code: verdictOf({ report }) === "pass" ? 0 : 1, text: renderReportText({ report }) };
-};
+  readonly result: Result<CheckRun, LoadFailure>;
+}): CommandOutcome =>
+  request.result.outcome === "failed"
+    ? loadFailureOutcome({ failure: request.result.error })
+    : checkRunOutcome({ run: request.result.value });
 
 export const projectCommandOutcome = (request: {
   readonly result: Result<readonly ProjectionWrite[], LoadFailure>;

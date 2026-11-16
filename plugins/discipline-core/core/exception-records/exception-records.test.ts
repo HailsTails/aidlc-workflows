@@ -10,10 +10,13 @@ import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import {
   createExceptionRepository,
   type ExceptionBaseline,
+  type ExceptionRecord,
   exceptionEntriesOfText,
+  type ImportEvidence,
   legacyChainsIn,
   parseExceptionEntries,
   readExceptionEntries,
+  recordImportOf,
   type StructuralExceptionEntry,
   UNMEASURED_EXCEPTION_BASELINE,
 } from "./exception-records.ts";
@@ -116,7 +119,7 @@ const readCanonicalExceptions = (request: { readonly text: string; readonly sele
     repoRoot: REPO_ROOT,
     path: pathJoiningTo({ joined: EXCEPTIONS_PATH }),
     fileText: fileTextReading({ text: request.text }),
-  }).read({ selection: request.selection ?? SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE });
+  }).read({ selection: request.selection ?? SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE });
 
 describe("createExceptionRepository", () => {
   it("reads complete records against the supplied full selection and preserves original invalid indexes", () => {
@@ -130,7 +133,7 @@ describe("createExceptionRepository", () => {
       }) }),
     });
 
-    expect(repository.read({ selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
+    expect(repository.read({ selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
       outcome: "ok",
       value: {
         records: [
@@ -166,7 +169,7 @@ describe("createExceptionRepository", () => {
       },
     });
 
-    expect(repository.read({ selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
+    expect(repository.read({ selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
       outcome: "failed",
       error: { kind: "file-unreadable", path: EXCEPTIONS_PATH, detail: "EACCES" },
     });
@@ -175,7 +178,7 @@ describe("createExceptionRepository", () => {
 
 describe("parseExceptionEntries records", () => {
   it("parses an authorised location with the mechanism copied from the selection", () => {
-    expect(parseExceptionEntries({ entries: [LOCATION], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
+    expect(parseExceptionEntries({ entries: [LOCATION], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
       records: [
         { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/factory.ts", reason: LOCATION.reason, provenance: LOCATION.provenance },
       ],
@@ -184,7 +187,7 @@ describe("parseExceptionEntries records", () => {
   });
 
   it("parses a file carve-out with its why-chain", () => {
-    expect(parseExceptionEntries({ entries: [FILE_CARVE_OUT], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
+    expect(parseExceptionEntries({ entries: [FILE_CARVE_OUT], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
       records: [
         {
           kind: "file-carve-out",
@@ -200,7 +203,7 @@ describe("parseExceptionEntries records", () => {
   });
 
   it("parses a clause-wide carve-out in a named rule set with that clause's mechanism", () => {
-    expect(parseExceptionEntries({ entries: [CLAUSE_WIDE], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
+    expect(parseExceptionEntries({ entries: [CLAUSE_WIDE], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE })).toEqual({
       records: [
         {
           kind: "clause-wide-carve-out",
@@ -218,7 +221,7 @@ describe("parseExceptionEntries records", () => {
     const carveOut = { ...FILE_CARVE_OUT, file: "src/factory.ts" };
 
     expect(
-      parseExceptionEntries({ entries: [LOCATION, carveOut], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }).invalid,
+      parseExceptionEntries({ entries: [LOCATION, carveOut], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }).invalid,
     ).toEqual([]);
   });
 
@@ -226,7 +229,7 @@ describe("parseExceptionEntries records", () => {
     const other = { ...LOCATION, file: "src/other-factory.ts" };
 
     expect(
-      parseExceptionEntries({ entries: [LOCATION, other], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }).records,
+      parseExceptionEntries({ entries: [LOCATION, other], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }).records,
     ).toHaveLength(2);
   });
 });
@@ -234,7 +237,7 @@ describe("parseExceptionEntries records", () => {
 describe("parseExceptionEntries invalid records", () => {
   it("is clause-unparseable for a clause that is not a clause address", () => {
     expect(
-      parseExceptionEntries({ entries: [{ ...LOCATION, clause: "CD-14 class-syntax" }], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }),
+      parseExceptionEntries({ entries: [{ ...LOCATION, clause: "CD-14 class-syntax" }], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }),
     ).toMatchObject({
       records: [],
       invalid: [{ index: 0, problem: { kind: "clause-unparseable", detail: expect.stringMatching(/.+/) } }],
@@ -243,7 +246,7 @@ describe("parseExceptionEntries invalid records", () => {
 
   it("is clause-not-selected for a clause the selection does not hold", () => {
     expect(
-      parseExceptionEntries({ entries: [{ ...LOCATION, clause: "CD-14#abstract-syntax" }], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }),
+      parseExceptionEntries({ entries: [{ ...LOCATION, clause: "CD-14#abstract-syntax" }], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }),
     ).toEqual({
       records: [],
       invalid: [
@@ -257,7 +260,7 @@ describe("parseExceptionEntries invalid records", () => {
 
   it("is file-not-repo-path for a file that is not a RepoPath", () => {
     expect(
-      parseExceptionEntries({ entries: [{ ...LOCATION, file: "../factory.ts" }], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }),
+      parseExceptionEntries({ entries: [{ ...LOCATION, file: "../factory.ts" }], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }),
     ).toEqual({
       records: [],
       invalid: [{ index: 0, problem: { kind: "file-not-repo-path", file: "../factory.ts" } }],
@@ -266,7 +269,7 @@ describe("parseExceptionEntries invalid records", () => {
 
   it("is why-chain-refused for a file carve-out whose chain is refused", () => {
     expect(
-      parseExceptionEntries({ entries: [{ ...FILE_CARVE_OUT, whyChain: SHORT_CHAIN }], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }),
+      parseExceptionEntries({ entries: [{ ...FILE_CARVE_OUT, whyChain: SHORT_CHAIN }], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }),
     ).toMatchObject({
       records: [],
       invalid: [{ index: 0, problem: { kind: "why-chain-refused", detail: expect.stringMatching(/.+/) } }],
@@ -275,7 +278,7 @@ describe("parseExceptionEntries invalid records", () => {
 
   it("is why-chain-refused for a clause-wide carve-out whose chain is refused", () => {
     expect(
-      parseExceptionEntries({ entries: [{ ...CLAUSE_WIDE, whyChain: "because" }], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }),
+      parseExceptionEntries({ entries: [{ ...CLAUSE_WIDE, whyChain: "because" }], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }),
     ).toMatchObject({
       records: [],
       invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }],
@@ -284,7 +287,7 @@ describe("parseExceptionEntries invalid records", () => {
 
   it("is a duplicate of the earlier valid entry with the same kind, clause and file", () => {
     expect(
-      parseExceptionEntries({ entries: [LOCATION, { ...LOCATION, reason: "said again" }], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }),
+      parseExceptionEntries({ entries: [LOCATION, { ...LOCATION, reason: "said again" }], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }),
     ).toMatchObject({
       records: [{ kind: "authorised-location", file: "src/factory.ts", reason: LOCATION.reason }],
       invalid: [{ index: 1, problem: { kind: "duplicate", ofIndex: 0 } }],
@@ -293,7 +296,7 @@ describe("parseExceptionEntries invalid records", () => {
 
   it("is a duplicate of an earlier clause-wide carve-out for the same clause", () => {
     expect(
-      parseExceptionEntries({ entries: [CLAUSE_WIDE, CLAUSE_WIDE], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }).invalid,
+      parseExceptionEntries({ entries: [CLAUSE_WIDE, CLAUSE_WIDE], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }).invalid,
     ).toEqual([{ index: 1, problem: { kind: "duplicate", ofIndex: 0 } }]);
   });
 
@@ -301,7 +304,9 @@ describe("parseExceptionEntries invalid records", () => {
     expect(
       parseExceptionEntries({
         entries: [{ ...FILE_CARVE_OUT, whyChain: SHORT_CHAIN }, FILE_CARVE_OUT],
-        selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE,
+        selection: SELECTION,
+        fileExceptionWhyChains: "required",
+        baseline: UNMEASURED_EXCEPTION_BASELINE,
       }),
     ).toMatchObject({
       records: [{ kind: "file-carve-out", file: "src/legacy.ts" }],
@@ -313,7 +318,9 @@ describe("parseExceptionEntries invalid records", () => {
     expect(
       parseExceptionEntries({
         entries: [LOCATION, FILE_CARVE_OUT, { ...LOCATION, file: "/abs/factory.ts" }],
-        selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE,
+        selection: SELECTION,
+        fileExceptionWhyChains: "required",
+        baseline: UNMEASURED_EXCEPTION_BASELINE,
       }).invalid,
     ).toEqual([{ index: 2, problem: { kind: "file-not-repo-path", file: "/abs/factory.ts" } }]);
   });
@@ -530,6 +537,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [IMPORTED_CARVE_OUT],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [IMPORTED_CARVE_OUT], sourceTextsAtBase: new Map() }),
       }),
     ).toEqual({ records: [IMPORTED_RECORD], invalid: [] });
@@ -540,6 +548,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [IMPORTED_CARVE_OUT],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({
           entriesAtBase: [],
           sourceTextsAtBase: new Map([[IMPORT_SOURCE, '[{ "files": ["src/legacy.ts"], "reason": "inherited" }]']]),
@@ -550,7 +559,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
 
   it("refuses a new record without a why-chain whose provenance source is not at base", () => {
     expect(
-      parseExceptionEntries({ entries: [IMPORTED_CARVE_OUT], selection: SELECTION, baseline: NOTHING_AT_BASE }),
+      parseExceptionEntries({ entries: [IMPORTED_CARVE_OUT], selection: SELECTION, fileExceptionWhyChains: "required", baseline: NOTHING_AT_BASE }),
     ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "import-unverified" } }] });
   });
 
@@ -559,6 +568,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [IMPORTED_CARVE_OUT],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [], sourceTextsAtBase: new Map([[IMPORT_SOURCE, '[{ "files": ["src/other.ts"] }]']]) }),
       }),
     ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "import-unverified" } }] });
@@ -568,12 +578,12 @@ describe("parseExceptionEntries imported records against the base revision", () 
     const baseline = baselineHolding({ entriesAtBase: [IMPORTED_CARVE_OUT], sourceTextsAtBase: new Map() });
     const edited = { ...IMPORTED_CARVE_OUT, reason: "legacy class, now partly paid down" };
 
-    expect(parseExceptionEntries({ entries: [edited], selection: SELECTION, baseline })).toMatchObject({
+    expect(parseExceptionEntries({ entries: [edited], selection: SELECTION, fileExceptionWhyChains: "required", baseline })).toMatchObject({
       records: [],
       invalid: [{ index: 0, problem: { kind: "import-unverified" } }],
     });
     expect(
-      parseExceptionEntries({ entries: [{ ...edited, whyChain: CAUSAL_WHY_CHAIN }], selection: SELECTION, baseline }).invalid,
+      parseExceptionEntries({ entries: [{ ...edited, whyChain: CAUSAL_WHY_CHAIN }], selection: SELECTION, fileExceptionWhyChains: "required", baseline }).invalid,
     ).toEqual([]);
   });
 
@@ -582,6 +592,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [IMPORTED_CARVE_OUT],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({
           entriesAtBase: [],
           sourceTextsAtBase: new Map([[IMPORT_SOURCE, '[{ "files": ["src/other.ts"], "reason": "src/legacy.ts was paid down" }]']]),
@@ -595,6 +606,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [{ ...IMPORTED_CARVE_OUT, provenance: { ...IMPORTED_CARVE_OUT.provenance, source: `${IMPORT_SOURCE}#1` } }],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({
           entriesAtBase: [],
           sourceTextsAtBase: new Map([[IMPORT_SOURCE, '[{ "files": ["src/legacy.ts"] }, { "files": ["src/other.ts"] }]']]),
@@ -610,6 +622,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [{ ...IMPORTED_CARVE_OUT, provenance: { ...IMPORTED_CARVE_OUT.provenance, source: `${otherDisciplineSource}#0` } }],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({
           entriesAtBase: [],
           sourceTextsAtBase: new Map([[otherDisciplineSource, '[{ "files": ["src/legacy.ts"] }]']]),
@@ -625,6 +638,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [{ ...IMPORTED_CARVE_OUT, provenance: { ...IMPORTED_CARVE_OUT.provenance, source: `${authorisationSource}#0` } }],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({
           entriesAtBase: [],
           sourceTextsAtBase: new Map([[authorisationSource, '[{ "files": ["src/legacy.ts"] }]']]),
@@ -638,6 +652,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [{ ...IMPORTED_CARVE_OUT, reason: "legacy class, now partly paid down" }],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({
           entriesAtBase: [IMPORTED_CARVE_OUT],
           sourceTextsAtBase: new Map([[IMPORT_SOURCE, '[{ "files": ["src/legacy.ts"] }]']]),
@@ -651,6 +666,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       parseExceptionEntries({
         entries: [{ ...IMPORTED_CARVE_OUT, clause: "CD-1#any-cast" }],
         selection: { selected: [{ address: clauseAddressSchema.parse("CD-1#any-cast"), mechanism: mechanismIdSchema.parse("audit"), exceptions: "refused" }], uncovered: [] },
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [IMPORTED_CARVE_OUT], sourceTextsAtBase: new Map() }),
       }),
     ).toEqual({
@@ -661,8 +677,146 @@ describe("parseExceptionEntries imported records against the base revision", () 
 
   it("accepts an imported record without a why-chain while the base is unmeasured", () => {
     expect(
-      parseExceptionEntries({ entries: [IMPORTED_CARVE_OUT], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }),
+      parseExceptionEntries({ entries: [IMPORTED_CARVE_OUT], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }),
     ).toEqual({ records: [IMPORTED_RECORD], invalid: [] });
+  });
+});
+
+const REASONED_LOCATION = {
+  kind: "authorised-location",
+  clause: "CD-14#class-syntax",
+  file: "src/factory.ts",
+  reason: "the wrapping factory for the library",
+} as const;
+
+const REASONED_CARVE_OUT = {
+  kind: "file-carve-out",
+  clause: "CD-14#class-syntax",
+  file: "src/legacy.ts",
+  reason: "legacy class awaiting paydown",
+} as const;
+
+const REASONED_CLAUSE_WIDE = {
+  kind: "clause-wide-carve-out",
+  clause: "team/TM-1#no-tmp-files",
+  reason: "the whole clause is held",
+} as const;
+
+const parsedWithOptionalWhyChains = (request: {
+  readonly entries: readonly StructuralExceptionEntry[];
+  readonly baseline: ExceptionBaseline;
+}) => parseExceptionEntries({ ...request, selection: SELECTION, fileExceptionWhyChains: "optional" });
+
+describe("parseExceptionEntries when file exception why-chains are optional", () => {
+  it("accepts an authorised location and a file carve-out that give only a reason", () => {
+    expect(
+      parsedWithOptionalWhyChains({ entries: [REASONED_LOCATION, REASONED_CARVE_OUT], baseline: UNMEASURED_EXCEPTION_BASELINE }),
+    ).toEqual({
+      records: [
+        { ...REASONED_LOCATION, clause: CLASS_SYNTAX, mechanism: "audit" },
+        { ...REASONED_CARVE_OUT, clause: CLASS_SYNTAX, mechanism: "audit" },
+      ],
+      invalid: [],
+    });
+  });
+
+  it("accepts a reason-only record that is new since a base revision holding no exceptions", () => {
+    expect(parsedWithOptionalWhyChains({ entries: [REASONED_LOCATION, REASONED_CARVE_OUT], baseline: NOTHING_AT_BASE }).invalid).toEqual([]);
+  });
+
+  it.each([
+    ["authorised location", REASONED_LOCATION],
+    ["file carve-out", REASONED_CARVE_OUT],
+  ] as const)("refuses a reason-only %s whose reason is blank", (_label, entry) => {
+    expect(
+      parsedWithOptionalWhyChains({ entries: [{ ...entry, reason: "" }, { ...entry, file: "src/blank.ts", reason: " \t " }], baseline: UNMEASURED_EXCEPTION_BASELINE }),
+    ).toEqual({
+      records: [],
+      invalid: [
+        { index: 0, problem: { kind: "evidence-refused", detail: expect.any(String) } },
+        { index: 1, problem: { kind: "evidence-refused", detail: expect.any(String) } },
+      ],
+    });
+  });
+
+  it.each([
+    ["authorised location", REASONED_LOCATION],
+    ["file carve-out", REASONED_CARVE_OUT],
+  ] as const)("judges a reason-only-shaped %s that also carries a why-chain on that chain", (_label, entry) => {
+    expect(
+      parsedWithOptionalWhyChains({ entries: [{ ...entry, whyChain: SHORT_CHAIN }, { ...entry, file: "src/chained.ts", whyChain: CAUSAL_WHY_CHAIN }], baseline: UNMEASURED_EXCEPTION_BASELINE }),
+    ).toEqual({
+      records: [{ ...entry, file: "src/chained.ts", clause: CLASS_SYNTAX, mechanism: "audit", whyChain: CAUSAL_WHY_CHAIN }],
+      invalid: [{ index: 0, problem: { kind: "why-chain-refused", detail: expect.any(String) } }],
+    });
+  });
+
+  it("keeps a blank reason beside a why-chain as it is while file exception why-chains are required", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...FILE_CARVE_OUT, reason: "" }],
+        selection: SELECTION,
+        fileExceptionWhyChains: "required",
+        baseline: UNMEASURED_EXCEPTION_BASELINE,
+      }).invalid,
+    ).toEqual([]);
+  });
+
+  it("still verifies provenance a file record supplies against the base revision", () => {
+    expect(parsedWithOptionalWhyChains({ entries: [IMPORTED_CARVE_OUT], baseline: NOTHING_AT_BASE })).toMatchObject({
+      records: [],
+      invalid: [{ index: 0, problem: { kind: "import-unverified" } }],
+    });
+  });
+
+  it("still refuses malformed provenance a file record supplies", () => {
+    expect(
+      parsedWithOptionalWhyChains({
+        entries: [{ ...REASONED_CARVE_OUT, provenance: { ...FICTIONAL_DEBT_PROVENANCE, decision: " \t " } }],
+        baseline: UNMEASURED_EXCEPTION_BASELINE,
+      }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "evidence-refused" } }] });
+  });
+
+  it("still judges a clause-wide carve-out's why-chain", () => {
+    expect(
+      parsedWithOptionalWhyChains({ entries: [{ ...REASONED_CLAUSE_WIDE, whyChain: "because" }], baseline: UNMEASURED_EXCEPTION_BASELINE }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
+  });
+
+  it("still reads a clause-wide carve-out without a why-chain as a malformed exceptions file", () => {
+    expect(readEntriesOf({ text: JSON.stringify({ version: 1, exceptions: [REASONED_CLAUSE_WIDE] }) })).toMatchObject({
+      outcome: "failed",
+      error: { kind: "file-malformed", path: EXCEPTIONS_PATH },
+    });
+  });
+
+  it("still refuses a reason-only record for a clause whose discipline refuses exceptions", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...REASONED_CARVE_OUT, clause: "CD-1#any-cast" }],
+        selection: { selected: [{ address: clauseAddressSchema.parse("CD-1#any-cast"), mechanism: mechanismIdSchema.parse("audit"), exceptions: "refused" }], uncovered: [] },
+        fileExceptionWhyChains: "optional",
+        baseline: UNMEASURED_EXCEPTION_BASELINE,
+      }).invalid,
+    ).toEqual([{ index: 0, problem: { kind: "non-exemptible-clause", clause: { ruleSet: "shared", discipline: "CD-1", clause: "any-cast" } } }]);
+  });
+
+  it("refuses the same reason-only records as evidence-refused while file exception why-chains are required", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [REASONED_LOCATION, REASONED_CARVE_OUT],
+        selection: SELECTION,
+        fileExceptionWhyChains: "required",
+        baseline: NOTHING_AT_BASE,
+      }),
+    ).toEqual({
+      records: [],
+      invalid: [
+        { index: 0, problem: { kind: "evidence-refused", detail: expect.any(String) } },
+        { index: 1, problem: { kind: "evidence-refused", detail: expect.any(String) } },
+      ],
+    });
   });
 });
 
@@ -685,6 +839,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
       parseExceptionEntries({
         entries: [LEGACY_CARVE_OUT],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [LEGACY_CARVE_OUT], sourceTextsAtBase: new Map() }),
       }),
     ).toEqual({ records: [LEGACY_RECORD], invalid: [] });
@@ -695,6 +850,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
       parseExceptionEntries({
         entries: [LEGACY_CARVE_OUT],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [LOCATION, LEGACY_CARVE_OUT], sourceTextsAtBase: new Map() }),
       }).invalid,
     ).toEqual([]);
@@ -702,7 +858,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
 
   it("accepts a legacy chain when no base revision was measured, for the run to report as unmeasured", () => {
     expect(
-      parseExceptionEntries({ entries: [LEGACY_CARVE_OUT], selection: SELECTION, baseline: UNMEASURED_EXCEPTION_BASELINE }),
+      parseExceptionEntries({ entries: [LEGACY_CARVE_OUT], selection: SELECTION, fileExceptionWhyChains: "required", baseline: UNMEASURED_EXCEPTION_BASELINE }),
     ).toEqual({ records: [LEGACY_RECORD], invalid: [] });
   });
 
@@ -713,6 +869,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
       parseExceptionEntries({
         entries: [edited],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [LEGACY_CARVE_OUT], sourceTextsAtBase: new Map() }),
       }),
     ).toMatchObject({
@@ -731,6 +888,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
       parseExceptionEntries({
         entries: [reordered],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [LEGACY_CARVE_OUT], sourceTextsAtBase: new Map() }),
       }),
     ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
@@ -738,7 +896,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
 
   it("refuses a legacy chain on a new entry when base holds no exceptions file", () => {
     expect(
-      parseExceptionEntries({ entries: [LEGACY_CARVE_OUT], selection: SELECTION, baseline: NOTHING_AT_BASE }),
+      parseExceptionEntries({ entries: [LEGACY_CARVE_OUT], selection: SELECTION, fileExceptionWhyChains: "required", baseline: NOTHING_AT_BASE }),
     ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
   });
 
@@ -747,6 +905,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
       parseExceptionEntries({
         entries: [LEGACY_CARVE_OUT],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: exceptionEntriesOfText({ text: "{ not json" }), sourceTextsAtBase: new Map() }),
       }),
     ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
@@ -759,6 +918,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
       parseExceptionEntries({
         entries: [ownerless],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [ownerless], sourceTextsAtBase: new Map() }),
       }),
     ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
@@ -769,11 +929,12 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
       parseExceptionEntries({
         entries: [LEGACY_CLAUSE_WIDE],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [LEGACY_CLAUSE_WIDE], sourceTextsAtBase: new Map() }),
       }).invalid,
     ).toEqual([]);
     expect(
-      parseExceptionEntries({ entries: [LEGACY_CLAUSE_WIDE], selection: SELECTION, baseline: NOTHING_AT_BASE }),
+      parseExceptionEntries({ entries: [LEGACY_CLAUSE_WIDE], selection: SELECTION, fileExceptionWhyChains: "required", baseline: NOTHING_AT_BASE }),
     ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
   });
 
@@ -782,6 +943,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
       parseExceptionEntries({
         entries: [{ ...FILE_CARVE_OUT, whyChain: { ...LEGACY_WHY_CHAIN, rootCheck: CAUSAL_WHY_CHAIN.rootCheck } }],
         selection: SELECTION,
+        fileExceptionWhyChains: "required",
         baseline: baselineHolding({ entriesAtBase: [LEGACY_CARVE_OUT], sourceTextsAtBase: new Map() }),
       }),
     ).toMatchObject({
@@ -798,5 +960,31 @@ describe("legacyChainsIn reports whether any entry holds a chain without rootChe
     ["no entries", [], "absent"],
   ] as const)("reads %s as %s", (_label, entries, presence) => {
     expect(legacyChainsIn({ entries })).toBe(presence);
+  });
+});
+
+const CLASS_SYNTAX_ADDRESS = clauseAddressSchema.parse("CD-14#class-syntax");
+
+const AUDIT = mechanismIdSchema.parse("audit");
+
+const IMPORTED_EXCEPTION_RECORD: ExceptionRecord = {
+  kind: "file-carve-out",
+  clause: CLASS_SYNTAX_ADDRESS,
+  mechanism: AUDIT,
+  file: repoPathSchema.parse("src/legacy.ts"),
+  reason: IMPORTED_CARVE_OUT.reason,
+  provenance: IMPORTED_CARVE_OUT.provenance,
+};
+
+const RECORD_IMPORT_CASES: readonly (readonly [string, ExceptionRecord, ImportEvidence])[] = [
+  ["an imported file carve-out", IMPORTED_EXCEPTION_RECORD, { imported: "yes", source: IMPORTED_CARVE_OUT.provenance.source }],
+  ["a chained record that also gives provenance", { ...IMPORTED_EXCEPTION_RECORD, whyChain: CAUSAL_WHY_CHAIN }, { imported: "no" }],
+  ["a reason-only record", { kind: "authorised-location", clause: CLASS_SYNTAX_ADDRESS, mechanism: AUDIT, file: repoPathSchema.parse("src/factory.ts"), reason: REASONED_LOCATION.reason }, { imported: "no" }],
+  ["a clause-wide carve-out", { kind: "clause-wide-carve-out", clause: CLASS_SYNTAX_ADDRESS, mechanism: AUDIT, reason: CLAUSE_WIDE.reason, whyChain: CAUSAL_WHY_CHAIN }, { imported: "no" }],
+];
+
+describe("recordImportOf names the provenance source of an imported record, and of no other", () => {
+  it.each(RECORD_IMPORT_CASES)("reads %s", (_label, record, recordImport) => {
+    expect(recordImportOf({ record })).toEqual(recordImport);
   });
 });

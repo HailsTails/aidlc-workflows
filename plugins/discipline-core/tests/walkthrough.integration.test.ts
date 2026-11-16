@@ -1,10 +1,12 @@
 import { assert, describe, expect, it, vi } from "vitest";
 import { checkCommandOutcome } from "../core/check/command-outcome.ts";
 import { runCheck } from "../core/check/run-check.ts";
+import { runCheckCommand } from "../core/check/run-check-command.ts";
 import { createDefaultFileTextPort } from "../core/platform-ports/file-text-port.ts";
 import type { GitPort } from "../core/platform-ports/git-port.ts";
 import { createDefaultModuleLoaderPort } from "../core/platform-ports/module-loader-port.ts";
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
+import type { ProcessPort } from "../core/platform-ports/process-port.ts";
 import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
 import expectedReports from "./test-fixtures/walkthrough/expected-reports.json" with { type: "json" };
@@ -41,24 +43,42 @@ const AFTER_TRACKED: readonly RepoPath[] = [
   repoPathSchema.parse("src/format.ts"),
 ];
 
+const trackingGit = (request: { readonly tracked: readonly RepoPath[] }): GitPort => ({
+  trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
+  changedSince: vi.fn<GitPort["changedSince"]>(),
+  contentInBase: vi.fn<GitPort["contentInBase"]>(),
+  textInBase: vi.fn<GitPort["textInBase"]>(),
+});
+
 const checkedText = async (request: { readonly repo: AbsolutePath; readonly tracked: readonly RepoPath[] }) => {
-  const git: GitPort = {
-    trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
-    changedSince: vi.fn<GitPort["changedSince"]>(),
-    contentInBase: vi.fn<GitPort["contentInBase"]>(),
-    textInBase: vi.fn<GitPort["textInBase"]>(),
-  };
-  return checkCommandOutcome({
-    result: await runCheck({
-      repoRoot: request.repo,
-      installRoot: INSTALL_ROOT,
-      baseRevision: undefined,
-      fileText: createDefaultFileTextPort({}),
-      modules: createDefaultModuleLoaderPort({}),
-      path,
-      git,
-    }),
+  const checked = await runCheck({
+    repoRoot: request.repo,
+    installRoot: INSTALL_ROOT,
+    baseRevision: undefined,
+    fileText: createDefaultFileTextPort({}),
+    modules: createDefaultModuleLoaderPort({}),
+    path,
+    git: trackingGit({ tracked: request.tracked }),
   });
+  assert(checked.outcome === "ok", `${request.repo} loads`);
+  return checkCommandOutcome({ result: { outcome: "ok", value: { report: checked.value, output: "full" } } });
+};
+
+const commandOutput = async (request: { readonly repo: AbsolutePath; readonly tracked: readonly RepoPath[] }) => {
+  const processPort: ProcessPort = {
+    arguments: ["--repo", request.repo],
+    writeOut: vi.fn<ProcessPort["writeOut"]>(),
+    exitWith: vi.fn<ProcessPort["exitWith"]>(),
+  };
+  await runCheckCommand({
+    process: processPort,
+    path,
+    fileText: createDefaultFileTextPort({}),
+    modules: createDefaultModuleLoaderPort({}),
+    git: trackingGit({ tracked: request.tracked }),
+    moduleUrl: new URL("../core/check/check-command.ts", import.meta.url).href,
+  });
+  return { writes: vi.mocked(processPort.writeOut).mock.calls, exits: vi.mocked(processPort.exitWith).mock.calls };
 };
 
 
@@ -70,5 +90,21 @@ describe("the adopter walkthrough's sample repository, checked against this inst
 
   it("passes after the fix with the clock adapter exempted by its authorised location, exiting 0", async () => {
     expect(await checkedText({ repo: AFTER, tracked: AFTER_TRACKED })).toEqual({ code: 0, text: expectedReports.after });
+  });
+});
+
+describe("the walkthrough reports printed by the check command when neither --report-output nor disciplines.json sets an output", () => {
+  it("prints the before report byte for byte and exits 1", async () => {
+    expect(await commandOutput({ repo: BEFORE, tracked: BEFORE_TRACKED })).toEqual({
+      writes: [[{ text: expectedReports.before }]],
+      exits: [[{ code: 1 }]],
+    });
+  });
+
+  it("prints the after report byte for byte and exits 0", async () => {
+    expect(await commandOutput({ repo: AFTER, tracked: AFTER_TRACKED })).toEqual({
+      writes: [[{ text: expectedReports.after }]],
+      exits: [[{ code: 0 }]],
+    });
   });
 });
