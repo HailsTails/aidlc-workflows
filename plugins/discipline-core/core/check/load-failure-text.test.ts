@@ -77,7 +77,26 @@ describe("loadFailureText", () => {
         },
       }),
     ).toBe(
-      "load failure: runner-failed audit toolchain-shadowed eslint resolved from /repo/tools/discipline-core/node_modules/eslint/lib/api.js inside the core install /repo/tools/discipline-core: delete /repo/tools/discipline-core/node_modules and reinstall core with npm ci so the repository's own copy is used\n",
+      "load failure: runner-failed audit toolchain-shadowed eslint resolved from /repo/tools/discipline-core/node_modules/eslint/lib/api.js inside the core install /repo/tools/discipline-core: delete /repo/tools/discipline-core/node_modules, then reinstall core, a copied folder with npm ci inside it or the package with the repository's package manager, so the repository's own copy is used\n",
+    );
+  });
+
+  it("prints toolchain-shadowed for a packaged install with the same remedy, naming the package folder", () => {
+    expect(
+      loadFailureText({
+        failure: {
+          kind: "runner-failed",
+          mechanism: WALKER,
+          failure: {
+            kind: "toolchain-shadowed",
+            packageName: "typescript",
+            location: "/repo/node_modules/discipline-core/node_modules/typescript/lib/typescript.js",
+            installRoot: "/repo/node_modules/discipline-core",
+          },
+        },
+      }),
+    ).toBe(
+      "load failure: runner-failed audit toolchain-shadowed typescript resolved from /repo/node_modules/discipline-core/node_modules/typescript/lib/typescript.js inside the core install /repo/node_modules/discipline-core: delete /repo/node_modules/discipline-core/node_modules, then reinstall core, a copied folder with npm ci inside it or the package with the repository's package manager, so the repository's own copy is used\n",
     );
   });
 
