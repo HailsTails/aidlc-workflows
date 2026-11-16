@@ -4,8 +4,6 @@ export const reportOutputSchema = z.enum(["full", "failures-only", "counts", "ve
 
 export type ReportOutput = z.infer<typeof reportOutputSchema>;
 
-export const REPORT_OUTPUTS: readonly ReportOutput[] = reportOutputSchema.options;
-
 export const reportOutputInEffect = (request: {
   readonly requested: ReportOutput | undefined;
   readonly configured: ReportOutput;

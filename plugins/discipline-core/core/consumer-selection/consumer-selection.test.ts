@@ -364,8 +364,13 @@ describe("readReportOutput", () => {
     });
   });
 
-  it("is file-malformed when disciplines.json gives a report output that is not one of the four", () => {
-    expect(configuredOutput({ version: 1, ruleSets: {}, clauses: {}, reportOutput: "summary" })).toMatchObject({
+  it.each([
+    ["a name that is not one of the four", "summary"],
+    ["null", null],
+    ["a number", 3],
+    ["a list", ["full"]],
+  ])("is file-malformed when disciplines.json gives the report output as %s", (_shape, reportOutput) => {
+    expect(configuredOutput({ version: 1, ruleSets: {}, clauses: {}, reportOutput })).toMatchObject({
       outcome: "failed",
       error: { kind: "file-malformed", path: SELECTION_PATH },
     });

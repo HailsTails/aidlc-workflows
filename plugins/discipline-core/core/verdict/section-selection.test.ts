@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { sectionsWithRole } from "./section-roles.ts";
 import { type ReportSection, printedSectionLines } from "./section-selection.ts";
+
+const ENTRIES = ["first entry", "second entry"];
+
+const FAILING_SECTIONS = sectionsWithRole({ role: "failing" });
+
+const INFORMATIONAL_SECTIONS = sectionsWithRole({ role: "informational" });
 
 const findings: ReportSection = {
   name: "findings",
@@ -22,24 +29,29 @@ describe("printedSectionLines", () => {
     expect(printedSectionLines({ output: "full", section: excluded })).toEqual(["excluded (1)", "generated"]);
   });
 
-  it("prints a failing section's heading and every entry for the failures-only output", () => {
-    expect(printedSectionLines({ output: "failures-only", section: findings })).toEqual([
-      "findings (2)",
-      ...findings.lines,
+  it.each(FAILING_SECTIONS)("prints the failing %s section's heading and every entry for the failures-only output", (name) => {
+    expect(printedSectionLines({ output: "failures-only", section: { name, lines: ENTRIES } })).toEqual([
+      `${name} (2)`,
+      ...ENTRIES,
     ]);
   });
 
-  it.each([excluded, exempted])("prints nothing of the informational $name section for the failures-only output", (section) => {
-    expect(printedSectionLines({ output: "failures-only", section })).toEqual([]);
+  it.each(INFORMATIONAL_SECTIONS)("prints nothing of the informational %s section for the failures-only output", (name) => {
+    expect(printedSectionLines({ output: "failures-only", section: { name, lines: ENTRIES } })).toEqual([]);
   });
 
-  it.each<[ReportSection, string]>([
-    [findings, "findings (2)"],
-    [excluded, "excluded (1)"],
-    [exempted, "exempted (1)"],
-  ])("prints only the heading with its count for the counts output", (section, heading) => {
-    expect(printedSectionLines({ output: "counts", section })).toEqual([heading]);
+  it.each(FAILING_SECTIONS)("prints only the failing %s section's heading with its count for the counts output", (name) => {
+    expect(printedSectionLines({ output: "counts", section: { name, lines: ENTRIES } })).toEqual([`${name} (2)`]);
   });
+
+  it.each(INFORMATIONAL_SECTIONS)(
+    "prints the informational %s section's heading with its count, marked informational, for the counts output",
+    (name) => {
+      expect(printedSectionLines({ output: "counts", section: { name, lines: ENTRIES } })).toEqual([
+        `${name} (2) informational`,
+      ]);
+    },
+  );
 
   it.each([findings, excluded, exempted])("prints nothing of the $name section for the verdict-only output", (section) => {
     expect(printedSectionLines({ output: "verdict-only", section })).toEqual([]);

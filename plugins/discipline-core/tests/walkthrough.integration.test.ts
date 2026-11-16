@@ -81,6 +81,8 @@ const commandOutput = async (request: { readonly repo: AbsolutePath; readonly tr
   return { writes: vi.mocked(processPort.writeOut).mock.calls, exits: vi.mocked(processPort.exitWith).mock.calls };
 };
 
+
+
 describe("the adopter walkthrough's sample repository, checked against this install through the default runners (CD-47: the shipped pieces and the fixture's own files are the assertion's subject; nothing is spawned or written)", () => {
   it("fails before the fix with one finding per violation and none in the excluded generated folder, exiting 1", async () => {
     expect(await checkedText({ repo: BEFORE, tracked: BEFORE_TRACKED })).toEqual({ code: 1, text: expectedReports.before });

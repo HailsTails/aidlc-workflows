@@ -8,7 +8,7 @@ import type { PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
-import { REPORT_OUTPUTS } from "../values/report-output.ts";
+import { reportOutputSchema } from "../values/report-output.ts";
 import { type CommandRequest, runCheckCommand } from "./run-check-command.ts";
 
 const ENTRY_URL = "file:///install/core/check/check-command.ts";
@@ -254,19 +254,19 @@ describe("runCheckCommand report output", () => {
     ).toEqual({ writes: [[{ text: FAILING_FULL_REPORT }]], exits: [[{ code: 1 }]] });
   });
 
-  it.each(REPORT_OUTPUTS)("exits 1 for a failing run requested as %s", async (output) => {
+  it.each(reportOutputSchema.options)("exits 1 for a failing run requested as %s", async (output) => {
     expect((await checkedWith({ arguments: ["--repo", "/repo", "--report-output", output], settings: {} })).exits).toEqual(
       [[{ code: 1 }]],
     );
   });
 
-  it.each(REPORT_OUTPUTS)("exits 1 for a failing run configured as %s", async (reportOutput) => {
+  it.each(reportOutputSchema.options)("exits 1 for a failing run configured as %s", async (reportOutput) => {
     expect((await checkedWith({ arguments: ["--repo", "/repo"], settings: { reportOutput } })).exits).toEqual([
       [{ code: 1 }],
     ]);
   });
 
-  it.each(REPORT_OUTPUTS)("exits 0 printing the pass verdict for a clean run requested as %s", async (output) => {
+  it.each(reportOutputSchema.options)("exits 0 printing the pass verdict for a clean run requested as %s", async (output) => {
     const processPort = processWith({ arguments: ["--repo", "/repo", "--report-output", output] });
 
     await runCheckCommand(commandRequest({ process: processPort }));

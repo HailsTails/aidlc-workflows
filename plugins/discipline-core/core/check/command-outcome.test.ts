@@ -3,7 +3,7 @@ import type { Finding } from "../governance/governance.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
-import { REPORT_OUTPUTS } from "../values/report-output.ts";
+import { reportOutputSchema } from "../values/report-output.ts";
 import type { CheckReport } from "../verdict/check-report.ts";
 import { checkCommandOutcome, projectCommandOutcome } from "./command-outcome.ts";
 
@@ -57,14 +57,14 @@ describe("checkCommandOutcome", () => {
     ).toEqual({ code: 1, text: "unmeasured (1)\nforfeiture-unmeasured\nverdict: fail\n" });
   });
 
-  it.each(REPORT_OUTPUTS)("exits 1 for a failing report whatever the %s output prints", (output) => {
+  it.each(reportOutputSchema.options)("exits 1 for a failing report whatever the %s output prints", (output) => {
     expect(
       checkCommandOutcome({ result: { outcome: "ok", value: { report: { ...EMPTY_REPORT, findings: [CLASS_IN_A] }, output } } })
         .code,
     ).toBe(1);
   });
 
-  it.each(REPORT_OUTPUTS)("exits 0 for a passing report whatever the %s output prints", (output) => {
+  it.each(reportOutputSchema.options)("exits 0 for a passing report whatever the %s output prints", (output) => {
     expect(
       checkCommandOutcome({
         result: { outcome: "ok", value: { report: { ...EMPTY_REPORT, excluded: [repoPathSchema.parse("generated")] }, output } },

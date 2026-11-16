@@ -5,7 +5,7 @@ import type { Finding } from "../governance/governance.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
-import { REPORT_OUTPUTS } from "../values/report-output.ts";
+import { reportOutputSchema } from "../values/report-output.ts";
 import type { CheckReport } from "./check-report.ts";
 import { renderReportText } from "./report-text.ts";
 
@@ -543,9 +543,9 @@ describe("renderReportText outputs", () => {
     );
   });
 
-  it("renders one count line per non-empty section and the verdict for the counts output", () => {
+  it("renders one count line per non-empty section, marking the informational ones, and the verdict for the counts output", () => {
     expect(renderReportText({ output: "counts", report: mixedReport })).toBe(
-      "excluded (1)\nfindings (1)\nexempted (1)\nstale (2)\nverdict: fail\n",
+      "excluded (1) informational\nfindings (1)\nexempted (1) informational\nstale (2)\nverdict: fail\n",
     );
   });
 
@@ -562,11 +562,11 @@ describe("renderReportText outputs", () => {
     ).toBe("verdict: pass\n");
   });
 
-  it.each(REPORT_OUTPUTS)("ends the %s output of a failing report with the fail verdict", (output) => {
+  it.each(reportOutputSchema.options)("ends the %s output of a failing report with the fail verdict", (output) => {
     expect(renderReportText({ output, report: mixedReport })).toMatch(/(?:^|\n)verdict: fail\n$/);
   });
 
-  it.each(REPORT_OUTPUTS)("ends the %s output of a passing report with the pass verdict", (output) => {
+  it.each(reportOutputSchema.options)("ends the %s output of a passing report with the pass verdict", (output) => {
     expect(renderReportText({ output, report: { ...emptyReport, exempted: [{ finding, by: [carved] }] } })).toMatch(
       /(?:^|\n)verdict: pass\n$/,
     );

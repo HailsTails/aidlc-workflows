@@ -1,9 +1,8 @@
 import type { ReportOutput } from "../values/report-output.ts";
-import type { CheckReport } from "./check-report.ts";
-import { sectionRoleOf } from "./verdict.ts";
+import { type SectionName, sectionRoleOf } from "./section-roles.ts";
 
 export type ReportSection = {
-  readonly name: keyof CheckReport;
+  readonly name: SectionName;
   readonly lines: readonly string[];
 };
 
@@ -18,6 +17,9 @@ const headedEntries = (request: { readonly section: ReportSection }): readonly s
 const failingEntries = (request: { readonly section: ReportSection }): readonly string[] =>
   sectionRoleOf({ section: request.section.name }) === "failing" ? headedEntries(request) : [];
 
+const countLine = (request: { readonly section: ReportSection }): string =>
+  sectionRoleOf({ section: request.section.name }) === "failing" ? heading(request) : `${heading(request)} informational`;
+
 export const printedSectionLines = (request: {
   readonly output: ReportOutput;
   readonly section: ReportSection;
@@ -28,7 +30,7 @@ export const printedSectionLines = (request: {
     case "failures-only":
       return failingEntries(request);
     case "counts":
-      return [heading(request)];
+      return [countLine(request)];
     case "verdict-only":
       return [];
   }

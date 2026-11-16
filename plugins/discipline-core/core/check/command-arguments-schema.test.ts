@@ -123,7 +123,8 @@ describe("parseCheckArguments", () => {
   });
 });
 
-describe("parseProjectArguments", () => {  it("reads --repo", () => {
+describe("parseProjectArguments", () => {
+  it("reads --repo", () => {
     expect(parseProjectArguments({ arguments: ["--repo", "/work/repo"] })).toEqual({
       outcome: "ok",
       value: { repo: "/work/repo" },

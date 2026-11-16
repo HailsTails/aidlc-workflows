@@ -1,5 +1,4 @@
 import { assert, describe, expect, it, type MockInstance, vi } from "vitest";
-import { checkCommandOutcome } from "../core/check/command-outcome.ts";
 import { runCheck } from "../core/check/run-check.ts";
 import { runProject } from "../core/check/run-project.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../core/platform-ports/file-text-port.ts";
@@ -8,22 +7,15 @@ import { createDefaultModuleLoaderPort, type ModuleLoaderPort } from "../core/pl
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
-import type { LoadFailure } from "../core/check/load-failure.ts";
-import type { ExitCode } from "../core/platform-ports/process-port.ts";
-import type { Result } from "../core/values/result.ts";
-import type { CheckReport } from "../core/verdict/check-report.ts";
 import { createEslintRunner } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import { createDefaultEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
 import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
 import { createDefaultParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
 import { type PathCallsOutside, pathCallsOutside } from "./confinement.ts";
+import { fullReportExitCode } from "./full-report-exit-code.ts";
 
 const path = createDefaultPathPort({});
 
-const fullReportExitCode = (request: { readonly checked: Result<CheckReport, LoadFailure> }): ExitCode => {
-  assert(request.checked.outcome === "ok", "the check loads");
-  return checkCommandOutcome({ result: { outcome: "ok", value: { report: request.checked.value, output: "full" } } }).code;
-};
 const resolvedPath = (request: { readonly path: string }): AbsolutePath => {
   const resolved = path.resolve(request);
   assert(resolved.outcome === "ok", `${request.path} resolves to an absolute path`);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { REPORT_OUTPUTS, type ReportOutput, reportOutputInEffect, reportOutputSchema } from "./report-output.ts";
+import { type ReportOutput, reportOutputInEffect, reportOutputSchema } from "./report-output.ts";
 
 describe("reportOutputSchema", () => {
   it.each(["full", "failures-only", "counts", "verdict-only"])("accepts %s", (output) => {
@@ -8,12 +8,6 @@ describe("reportOutputSchema", () => {
 
   it.each(["summary", "", "Full", "quiet", true])("refuses %j", (output) => {
     expect(reportOutputSchema.safeParse(output).success).toBe(false);
-  });
-});
-
-describe("REPORT_OUTPUTS", () => {
-  it("lists the four outputs with the full report first", () => {
-    expect(REPORT_OUTPUTS).toEqual(["full", "failures-only", "counts", "verdict-only"]);
   });
 });
 
