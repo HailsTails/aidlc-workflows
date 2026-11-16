@@ -13,7 +13,7 @@ export type AddedFile = {
 export type OptionalPatch = {
   readonly name: string;
   readonly file: string;
-  readonly pendingDecision: string;
+  readonly readmeNote: string;
 };
 
 export type ShapePlan = {
@@ -90,10 +90,10 @@ export const SHAPE_PLAN: ShapePlan = {
     {
       name: "gitleaks-golden-allowlist",
       file: "patches-optional/gitleaks-golden-allowlist.patch",
-      pendingDecision:
-        "- Pending decision: `.gitleaks.toml` allowlists `tests/golden/*.json` and `tests/golden/install/*.json` by path. " +
-        "The sha256 values in them sit under keys whose paths contain `api`, and gitleaks' `generic-api-key` rule reports them " +
-        "(21 findings). The alternative is a golden file format that rule does not match.",
+      readmeNote:
+        "The goldens are generated hash maps, so `.gitleaks.toml` allowlists `tests/golden/` by path, " +
+        "following the existing pattern from [#161](https://github.com/awslabs/aidlc-workflows/pull/161) " +
+        "and [#678](https://github.com/awslabs/aidlc-workflows/pull/678).",
     },
   ],
   addedFiles: [

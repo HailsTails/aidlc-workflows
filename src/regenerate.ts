@@ -8,7 +8,7 @@ import { isStripped, SHAPE_PLAN, type OptionalPatch, type ShapePlan } from "./sh
 
 const TOOLING_ROOT = resolve(import.meta.dir, "..");
 const BRIDGE_MAP_TOKEN = "{{bridge-map}}";
-const PENDING_DECISIONS_TOKEN = "{{pending-decisions}}\n";
+const OPTIONAL_PATCH_NOTES_TOKEN = "{{optional-patch-notes}}\n\n";
 const BLOB_MODE = "100644";
 
 const USAGE = [
@@ -107,8 +107,8 @@ const applyOptionalPatches = (git: Git, patches: readonly OptionalPatch[]): void
   for (const patch of patches) git.applyToIndex(join(TOOLING_ROOT, patch.file));
 };
 
-const pendingDecisions = (patches: readonly OptionalPatch[]): string =>
-  patches.map((patch) => `${patch.pendingDecision}\n`).join("");
+const optionalPatchNotes = (patches: readonly OptionalPatch[]): string =>
+  patches.map((patch) => `${patch.readmeNote}\n\n`).join("");
 
 const blobLine = (git: Git, path: string, content: string, mode: string): string =>
   entryLine(`${mode} ${git.storeBlob(content)}`, path);
@@ -117,7 +117,7 @@ const addFiles = async (git: Git, plan: ShapePlan, foundation: string, patches: 
   const map = await bridgeMapFrom(git.show(foundation, plan.bridgeMapSource));
   const readme = toolingFile(plan.readmeTemplate)
     .replace(BRIDGE_MAP_TOKEN, bridgeMapMarkdown(map))
-    .replace(PENDING_DECISIONS_TOKEN, pendingDecisions(patches));
+    .replace(OPTIONAL_PATCH_NOTES_TOKEN, optionalPatchNotes(patches));
   git.updateIndex([
     ...plan.addedFiles.map((file) => blobLine(git, file.path, toolingFile(file.source), file.mode)),
     blobLine(git, plan.bridgeMapPath, bridgeMapJson(map), BLOB_MODE),

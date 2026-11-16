@@ -15,7 +15,7 @@ The twin of the branch as one commit on the upstream pin, for a pull request aga
 bun src/regenerate.ts --repository <aidlc-workflows checkout> --parent caea995ae --branch upstream-shape-on-pin
 ```
 
-An optional patch carries a change that waits on a decision. Leaving it out also drops its line from the open items in `PARITY.md`:
+An optional patch carries a change the branch can be built without. Leaving it out also drops its note from `PARITY.md`:
 
 ```sh
 bun src/regenerate.ts --repository <aidlc-workflows checkout> --without gitleaks-golden-allowlist
