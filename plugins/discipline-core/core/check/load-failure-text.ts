@@ -11,6 +11,12 @@ const runnerFailureFields = (request: { readonly failure: RunnerFailure }): read
     case "file-unreadable":
     case "file-unparseable":
       return [request.failure.kind, request.failure.file, request.failure.detail];
+    case "toolchain-unavailable":
+      return [
+        request.failure.kind,
+        request.failure.packageName,
+        `found ${request.failure.found}, supported ${request.failure.supported}: add a supported version to the devDependencies of the repository root`,
+      ];
     case "tool-failed":
     case "plugin-conflict":
     case "team-config-unloadable":

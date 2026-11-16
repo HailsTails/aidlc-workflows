@@ -13,7 +13,9 @@ const ENTRY_URL = "file:///package/scripts/install-proof.ts";
 const README =
   "## Installing\n\n- always: `package.json` and `core/`\n- for each selected clause in the shared rule set: `rules/<DisciplineId>/`\n\nLeave out test files (`*.test.ts`) and `tests/` folders.\n";
 
-const PACKAGE_MANIFEST = '{ "dependencies": { "zod": "4.4.3" } }';
+const PACKAGE_MANIFEST = '{ "peerDependencies": { "typescript": "~6.0.3" }, "devDependencies": { "typescript": "6.0.3" } }';
+
+const CONSUMER_MANIFEST = '{\n  "private": true,\n  "type": "commonjs",\n  "devDependencies": {\n    "typescript": "6.0.3"\n  }\n}\n';
 
 const PACKAGE_FILES: Readonly<Record<string, string>> = {
   "/package/README.md": README,
@@ -31,9 +33,9 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/package","core"]': "/package/core",
   '["/package","rules/CD-14"]': "/package/rules/CD-14",
   '["/package","tests","test-fixtures","consumer-proof","audit"]': "/package/tests/test-fixtures/consumer-proof/audit",
-  '["/scratch","package.json"]': "/scratch/package.json",
   '["/scratch","audit"]': "/scratch/audit",
   '["/scratch/audit","package.json"]': "/scratch/audit/package.json",
+  '["/scratch/audit",".gitignore"]': "/scratch/audit/.gitignore",
   '["/scratch/audit","tools","discipline-core"]': "/scratch/audit/tools/discipline-core",
   '["/scratch/audit/tools/discipline-core","package.json"]': "/scratch/audit/tools/discipline-core/package.json",
   '["/scratch/audit/tools/discipline-core","core"]': "/scratch/audit/tools/discipline-core/core",
@@ -44,6 +46,7 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
 const EXPECTING_PASS: ProofCase = {
   consumer: "audit",
   mechanism: "audit",
+  toolchain: "without-eslint",
   disciplineId: "CD-14",
   installedManifest: "kept",
   actions: [{ kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } }],
@@ -136,13 +139,31 @@ describe("runInstallProof", () => {
     });
   });
 
-  it("runs npm at the consumer root, then git, then the installed check with node, in that order", async () => {
+  it("writes the consumer's commonjs manifest carrying its toolchain, and ignores installed packages", async () => {
+    const fileText = fileTextPort();
+
+    await runInstallProof(proofRequest({ fileText }));
+
+    expect(vi.mocked(fileText.write).mock.calls).toEqual([
+      [{ path: "/scratch/audit/package.json", text: CONSUMER_MANIFEST }],
+      [{ path: "/scratch/audit/.gitignore", text: "node_modules/\n" }],
+    ]);
+  });
+
+  it("installs the toolchain in the consumer, the core from its lockfile without peers, then runs git and the installed check, in that order", async () => {
     const commands = commandsReturning(EXITED_PASSING);
 
     await runInstallProof(proofRequest({ commands }));
 
     expect(vi.mocked(commands.run).mock.calls).toEqual([
-      [{ command: "npm", arguments: ["install", "--no-audit", "--no-fund", "--ignore-scripts"], directory: "/scratch" }],
+      [{ command: "npm", arguments: ["install", "--no-audit", "--no-fund", "--ignore-scripts"], directory: "/scratch/audit" }],
+      [
+        {
+          command: "npm",
+          arguments: ["ci", "--omit=dev", "--legacy-peer-deps", "--no-audit", "--no-fund", "--ignore-scripts"],
+          directory: "/scratch/audit/tools/discipline-core",
+        },
+      ],
       [{ command: "git", arguments: expect.arrayContaining(["init", "-q"]), directory: "/scratch/audit" }],
       [{ command: "git", arguments: expect.arrayContaining(["add", "-A"]), directory: "/scratch/audit" }],
       [{ command: "git", arguments: expect.arrayContaining(["commit", "-q", "-m", "consumer"]), directory: "/scratch/audit" }],
@@ -214,7 +235,7 @@ describe("runInstallProof", () => {
     expect(vi.mocked(scratch.listTree).mock.calls).toEqual([[{ path: "/scratch/audit/tools/discipline-core" }]]);
   });
 
-  it("exits 1 with the npm output when npm install fails, running nothing after it", async () => {
+  it("exits 1 with the npm output when the toolchain install fails, running nothing after it", async () => {
     const proofProcess = processPort();
     const commands = commandsReturning(EXITED_NPM_ERROR);
 
@@ -222,14 +243,14 @@ describe("runInstallProof", () => {
 
     expect({ report: reportOf({ process: proofProcess }), runs: vi.mocked(commands.run).mock.calls.length }).toEqual({
       report: {
-        writes: [[{ text: "FAIL: npm install at the consumer root: exit 1\nnpm ERR! network\n" }]],
+        writes: [[{ text: "FAIL: npm install the toolchain in audit: exit 1\nnpm ERR! network\n" }]],
         exits: [[{ code: 1 }]],
       },
       runs: 1,
     });
   });
 
-  it("removes the temporary consumer root when npm install fails", async () => {
+  it("removes the temporary consumer root when the toolchain install fails", async () => {
     const scratch = scratchPort({});
 
     await runInstallProof(proofRequest({ scratch, commands: commandsReturning(EXITED_NPM_ERROR) }));

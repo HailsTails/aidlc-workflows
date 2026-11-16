@@ -3,13 +3,13 @@ import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
-import { createDefaultParsePort } from "../runner/typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PreparedWalkerCheck, WalkerFile } from "../runner/walker-piece.ts";
 import { check } from "./clock-sources.ts";
 
 const FILE = repoPathSchema.parse("src/clock-source.ts");
 const ADDRESS = clauseAddressSchema.parse("CD-17#clock-sources");
-const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
+const SYNTAX_API = defaultParsePort.syntaxApi;
 const DATE_NOW = "Date" + ".now()";
 const NEW_DATE = "new" + " Date";
 const LINE_COMMENT = "/" + "/";

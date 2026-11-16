@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createDefaultParsePort } from "./typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 
-const port = createDefaultParsePort({});
+const port = defaultParsePort;
 const TWO_STATEMENTS = "const a = 1;\nconst b = 2;\n";
 
-describe("createDefaultParsePort", () => {
+describe("the parse port loaded from the development install's typescript", () => {
   it("parses the given source under the given file name", () => {
     expect(port.parse({ fileName: "src/a.ts", source: TWO_STATEMENTS })).toMatchObject({
       fileName: "src/a.ts",

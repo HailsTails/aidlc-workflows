@@ -11,7 +11,7 @@ import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
 import { requiredEntry } from "../../../tests/required-entry.ts";
 import { createWalkerRunner } from "../runner/create-walker-runner.ts";
-import { createDefaultParsePort } from "../runner/typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import { check } from "./class-syntax.ts";
 
 const CLASS_ON_LINE_THREE = "const a = 1;\n\n  class Alpha {}\n";
@@ -82,7 +82,7 @@ const walkerRunner = createWalkerRunner({
   fileText: sourceOnLineThree,
   modules: loadingThisPiece,
   path: TABLE_PATH,
-  parse: createDefaultParsePort({}),
+  parse: defaultParsePort,
 });
 
 describe("CD-14 class-syntax audit check over TypeScript's own parse", () => {

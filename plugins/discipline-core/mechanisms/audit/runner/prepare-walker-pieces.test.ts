@@ -6,7 +6,7 @@ import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
 import { prepareWalkerPieces } from "./prepare-walker-pieces.ts";
-import { createDefaultParsePort } from "./typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PreparedWalkerCheck, WalkerPiece, WalkerRepository } from "./walker-piece.ts";
 
 const PIECE_ROOT = "/install/mechanisms/audit/XX-1";
@@ -14,7 +14,7 @@ const FIRST_MODULE = "/install/mechanisms/audit/XX-1/first.ts";
 const SECOND_MODULE = "/install/mechanisms/audit/XX-1/second.ts";
 const ALPHA = repoPathSchema.parse("src/alpha.ts");
 const BETA = repoPathSchema.parse("src/beta.ts");
-const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
+const SYNTAX_API = defaultParsePort.syntaxApi;
 
 const REPOSITORY: WalkerRepository = {
   files: [ALPHA, BETA],

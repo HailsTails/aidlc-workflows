@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  consumerRootManifest,
+  consumerManifest,
   entryDisposition,
   environmentWithoutGit,
   exclusionRules,
@@ -27,7 +27,7 @@ const packageFiles = import.meta.glob(["../README.md", "../package.json"], {
 });
 
 const README_INSTALL_LIST = {
-  always: ["package.json", "README.md", "core/", "docs/why-chain-contract.md"],
+  always: ["package.json", "package-lock.json", "README.md", "core/", "docs/why-chain-contract.md"],
   perSharedClause: ["rules/<DisciplineId>/", "mechanisms/<MechanismId>/runner/", "mechanisms/<MechanismId>/<DisciplineId>/"],
   leftOut: ["*.test.ts", "tests/", "test-fixtures/"],
 };
@@ -92,7 +92,7 @@ describe("installPaths", () => {
   it("substitutes the discipline and mechanism into concrete relative paths", () => {
     expect(installPaths({ installList: README_INSTALL_LIST, disciplineId: "CD-14", mechanism: "eslint" })).toEqual({
       outcome: "ok",
-      value: ["package.json", "README.md", "core", "docs/why-chain-contract.md", "rules/CD-14", "mechanisms/eslint/runner", "mechanisms/eslint/CD-14"],
+      value: ["package.json", "package-lock.json", "README.md", "core", "docs/why-chain-contract.md", "rules/CD-14", "mechanisms/eslint/runner", "mechanisms/eslint/CD-14"],
     });
   });
 
@@ -170,38 +170,62 @@ describe("judgedStep", () => {
   });
 });
 
-describe("consumerRootManifest", () => {
-  it("carries this package's own dependencies, read as a build-time raw module", () => {
-    expect(consumerRootManifest({ packageManifest: packageFiles["../package.json"] })).toEqual({
+const consumerManifestText = (request: { readonly devDependencies: Readonly<Record<string, string>> }): string =>
+  `${JSON.stringify({ private: true, type: "commonjs", devDependencies: request.devDependencies }, null, 2)}\n`;
+
+describe("consumerManifest, over this package's own package.json read as a build-time raw module", () => {
+  it("gives a consumer without ESLint only the required peer, at its development pin", () => {
+    expect(consumerManifest({ packageManifest: packageFiles["../package.json"], toolchain: "without-eslint" })).toEqual({
       outcome: "ok",
-      value: `${JSON.stringify(
-        {
-          private: true,
-          dependencies: {
-            "@eslint/plugin-kit": "0.7.3",
-            "@typescript-eslint/eslint-plugin": "8.71.2",
-            "@typescript-eslint/parser": "8.71.2",
-            eslint: "10.11.0",
-            "jsonc-parser": "3.3.1",
-            typescript: "6.0.3",
-            zod: "4.4.3",
-          },
+      value: consumerManifestText({ devDependencies: { typescript: "6.0.3" } }),
+    });
+  });
+
+  it("gives an ESLint 10 consumer every peer at its development pin", () => {
+    expect(consumerManifest({ packageManifest: packageFiles["../package.json"], toolchain: "eslint-10" })).toEqual({
+      outcome: "ok",
+      value: consumerManifestText({
+        devDependencies: {
+          "@typescript-eslint/eslint-plugin": "8.71.2",
+          "@typescript-eslint/parser": "8.71.2",
+          eslint: "10.11.0",
+          typescript: "6.0.3",
         },
-        null,
-        2,
-      )}\n`,
+      }),
+    });
+  });
+
+  it("gives an ESLint 9 consumer the development alias's ESLint 9 pin installed under the name eslint", () => {
+    expect(consumerManifest({ packageManifest: packageFiles["../package.json"], toolchain: "eslint-9" })).toEqual({
+      outcome: "ok",
+      value: consumerManifestText({
+        devDependencies: {
+          "@typescript-eslint/eslint-plugin": "8.71.2",
+          "@typescript-eslint/parser": "8.71.2",
+          eslint: "npm:eslint@9.39.5",
+          typescript: "6.0.3",
+        },
+      }),
     });
   });
 
   it("fails on a manifest that is not JSON", () => {
-    expect(consumerRootManifest({ packageManifest: "{" }).outcome).toBe("failed");
+    expect(consumerManifest({ packageManifest: "{", toolchain: "eslint-10" }).outcome).toBe("failed");
   });
 
-  it("fails on a manifest without dependencies", () => {
-    expect(consumerRootManifest({ packageManifest: '{ "name": "x" }' }).outcome).toBe("failed");
+  it("fails on a manifest without peers", () => {
+    expect(consumerManifest({ packageManifest: '{ "devDependencies": {} }', toolchain: "eslint-10" }).outcome).toBe("failed");
+  });
+
+  it("fails naming a peer that has no development pin", () => {
+    expect(
+      consumerManifest({
+        packageManifest: '{ "peerDependencies": { "eslint": "^10.11.0" }, "devDependencies": {} }',
+        toolchain: "eslint-10",
+      }),
+    ).toEqual({ outcome: "failed", error: { kind: "manifest-invalid", detail: "no development pin eslint for the peer eslint" } });
   });
 });
-
 describe("environmentWithoutGit", () => {
   it("removes every GIT_ variable and keeps the rest", () => {
     expect(environmentWithoutGit({ environment: { GIT_DIR: "/x", GIT_INDEX_FILE: "/y", PATH: "/bin", HOME: "/h" } })).toEqual({

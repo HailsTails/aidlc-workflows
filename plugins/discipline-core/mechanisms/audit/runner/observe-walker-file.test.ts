@@ -8,18 +8,13 @@ import type {
   LoadedPreparedWalkerCheck,
   PreparedWalkerPiece,
 } from "./prepare-walker-pieces.ts";
-import {
-  createDefaultParsePort,
-  type CommentRange,
-  type SyntaxNode,
-  type SyntaxTree,
-  type TypeScriptParsePort,
-} from "./typescript-parse.ts";
+import type { CommentRange, SyntaxNode, SyntaxTree, TypeScriptParsePort } from "./typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PieceHit, SourceObservers, WalkerFile } from "./walker-piece.ts";
 
 const FILE = repoPathSchema.parse("src/example.tsx");
 const SOURCE = "{ { /* note */ } }\n";
-const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
+const SYNTAX_API = defaultParsePort.syntaxApi;
 const TREE = SYNTAX_API.createSourceFile(FILE, SOURCE, SYNTAX_API.ScriptTarget.Latest, true);
 const OUTER_BLOCK = TREE.getChildAt(0, TREE).getChildAt(0, TREE);
 const INNER_BLOCK = OUTER_BLOCK.getChildAt(1, TREE).getChildAt(0, TREE);

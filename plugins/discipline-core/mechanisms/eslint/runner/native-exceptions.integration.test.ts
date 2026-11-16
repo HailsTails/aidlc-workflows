@@ -19,8 +19,14 @@ import { overlaidFileText } from "../../../tests/overlaid-file-text.ts";
 import cd14Discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
 import { runner as walkerRunner } from "../../audit/runner/runner.ts";
 import { createEslintRunner } from "./create-eslint-runner.ts";
-import { createDefaultEslintPort } from "./eslint-instance.ts";
-import { runner as eslintRunner } from "./runner.ts";
+import {
+  ESLINT_LINES,
+  type EslintLine,
+  eslintPortOn,
+  eslintRunnerOn,
+  pieceModulesOn,
+  runnerModulesOn,
+} from "../../../tests/eslint-toolchains.ts";
 
 const INSTALL_ROOT = absolutePathSchema.parse(`${import.meta.dirname}/../../..`);
 
@@ -58,13 +64,13 @@ const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPor
   textInBase: vi.fn<GitPort["textInBase"]>(),
 });
 
-const checkOf = (request: { readonly name: string; readonly tracked: readonly RepoPath[] }) =>
+const checkOf = (request: { readonly name: string; readonly tracked: readonly RepoPath[]; readonly line: EslintLine }) =>
   runCheck({
     repoRoot: consumerRepo({ name: request.name }),
     installRoot: INSTALL_ROOT,
     baseRevision: undefined,
     fileText,
-    modules,
+    modules: runnerModulesOn({ line: request.line, base: modules }),
     path,
     git: gitTracking({ tracked: request.tracked }),
   });
@@ -79,9 +85,9 @@ const classFinding = (request: { readonly file: string; readonly line: number })
 
 const NOT_RUN_NOT_INCLUDED = { kind: "mechanism-not-run", mechanism: "eslint", projection: "not-included" };
 
-describe("real ESLint 10 config resolution behind the ESLint runner's query instance, over a consumer repository", () => {
+describe.each(ESLINT_LINES)("real %s config resolution behind the ESLint runner's query instance, over a consumer repository", (line) => {
   it("reports an unrecorded override block placed after the projection as a config-override", async () => {
-    await expect(checkOf({ name: "override-after", tracked: [repoPathSchema.parse("x.ts")] })).resolves.toMatchObject({
+    await expect(checkOf({ name: "override-after", tracked: [repoPathSchema.parse("x.ts")], line })).resolves.toMatchObject({
       outcome: "ok",
       value: {
         findings: [classFinding({ file: "x.ts", line: 1 })],
@@ -93,7 +99,7 @@ describe("real ESLint 10 config resolution behind the ESLint runner's query inst
   });
 
   it("reports an unrecorded global ignore over a file holding a class, and core still finds the class", async () => {
-    await expect(checkOf({ name: "global-ignore", tracked: [repoPathSchema.parse("gen/g.ts"), repoPathSchema.parse("src/clean.ts")] })).resolves.toMatchObject({
+    await expect(checkOf({ name: "global-ignore", tracked: [repoPathSchema.parse("gen/g.ts"), repoPathSchema.parse("src/clean.ts")], line })).resolves.toMatchObject({
       outcome: "ok",
       value: {
         findings: [classFinding({ file: "gen/g.ts", line: 1 })],
@@ -104,7 +110,7 @@ describe("real ESLint 10 config resolution behind the ESLint runner's query inst
   });
 
   it("reports a rule the team sets to severity 0 everywhere with no records as config-overrides, the projection still in effect", async () => {
-    await expect(checkOf({ name: "severity-zero", tracked: [repoPathSchema.parse("x.ts")] })).resolves.toMatchObject({
+    await expect(checkOf({ name: "severity-zero", tracked: [repoPathSchema.parse("x.ts")], line })).resolves.toMatchObject({
       outcome: "ok",
       value: {
         findings: [classFinding({ file: "x.ts", line: 1 })],
@@ -116,17 +122,17 @@ describe("real ESLint 10 config resolution behind the ESLint runner's query inst
   });
 
   it("lists mechanism-not-run not-included when a later team block sets a recorded file back to error", async () => {
-    await expect(checkOf({ name: "re-enabled-record", tracked: [repoPathSchema.parse("src/owned.ts")] })).resolves.toMatchObject({
+    await expect(checkOf({ name: "re-enabled-record", tracked: [repoPathSchema.parse("src/owned.ts")], line })).resolves.toMatchObject({
       outcome: "ok",
       value: { findings: [], unrecorded: [], unmeasured: [NOT_RUN_NOT_INCLUDED] },
     });
   });
 });
 
-describe("eslint-suppressions.json files and package.json lint scripts read by the ESLint runner, over a consumer repository", () => {
+describe.each(ESLINT_LINES)("eslint-suppressions.json files and package.json lint scripts read by the ESLint runner on %s, over a consumer repository", (line) => {
   it("reports an entry in the default eslint-suppressions.json as a suppression-entry", async () => {
     await expect(
-      checkOf({ name: "suppression-default", tracked: [repoPathSchema.parse("supp/a.ts"), repoPathSchema.parse("eslint-suppressions.json")] }),
+      checkOf({ name: "suppression-default", tracked: [repoPathSchema.parse("supp/a.ts"), repoPathSchema.parse("eslint-suppressions.json")], line }),
     ).resolves.toMatchObject({
       outcome: "ok",
       value: {
@@ -147,6 +153,7 @@ describe("eslint-suppressions.json files and package.json lint scripts read by t
   it("reports entries in suppressions files a package.json script names in space and equals form, a dormant one included", async () => {
     await expect(
       checkOf({
+        line,
         name: "suppression-scripted",
         tracked: [
           repoPathSchema.parse("supp/b.ts"),
@@ -183,6 +190,7 @@ describe("eslint-suppressions.json files and package.json lint scripts read by t
   it("reports an entry in a nested tracked eslint-suppressions.json against its own directory", async () => {
     await expect(
       checkOf({
+        line,
         name: "suppression-nested",
         tracked: [repoPathSchema.parse("packages/a/src/n.ts"), repoPathSchema.parse("packages/a/eslint-suppressions.json")],
       }),
@@ -205,6 +213,7 @@ describe("eslint-suppressions.json files and package.json lint scripts read by t
   it("reports each weakening command-line option in a lint script and not a rule id that merely extends the selected one", async () => {
     await expect(
       checkOf({
+        line,
         name: "command-line-options",
         tracked: [repoPathSchema.parse("src/plain.ts"), repoPathSchema.parse("package.json")],
       }),
@@ -270,9 +279,9 @@ const INLINE_FORM_FILES: readonly RepoPath[] = [
   repoPathSchema.parse("i/global.ts"),
 ];
 
-describe("inline configuration comments read by the ESLint runner's governance rule on real ESLint 10, over a consumer repository", () => {
+describe.each(ESLINT_LINES)("inline configuration comments read by the ESLint runner's governance rule on real %s, over a consumer repository", (line) => {
   it("reports each disable and rule-config form naming the selected rule and none of the rest", async () => {
-    await expect(checkOf({ name: "inline-forms", tracked: INLINE_FORM_FILES })).resolves.toMatchObject({
+    await expect(checkOf({ name: "inline-forms", tracked: INLINE_FORM_FILES, line })).resolves.toMatchObject({
       outcome: "ok",
       value: {
         unrecorded: [
@@ -322,7 +331,7 @@ describe("inline configuration comments read by the ESLint runner's governance r
   });
 
   it("still finds the class in every file whatever its inline comment says", async () => {
-    await expect(checkOf({ name: "inline-forms", tracked: INLINE_FORM_FILES })).resolves.toMatchObject({
+    await expect(checkOf({ name: "inline-forms", tracked: INLINE_FORM_FILES, line })).resolves.toMatchObject({
       outcome: "ok",
       value: {
         findings: [
@@ -346,10 +355,10 @@ describe("inline configuration comments read by the ESLint runner's governance r
   });
 });
 
-describe("real ESLint 10 glob matching of the generated projection's record blocks, over a consumer repository", () => {
+describe.each(ESLINT_LINES)("real %s glob matching of the generated projection's record blocks, over a consumer repository", (line) => {
   it("exempts route/[id].ts by its authorised location and still finds the class in route/i.ts", async () => {
     await expect(
-      checkOf({ name: "route-brackets", tracked: [repoPathSchema.parse("route/[id].ts"), repoPathSchema.parse("route/i.ts")] }),
+      checkOf({ name: "route-brackets", tracked: [repoPathSchema.parse("route/[id].ts"), repoPathSchema.parse("route/i.ts")], line }),
     ).resolves.toMatchObject({
       outcome: "ok",
       value: {
@@ -368,16 +377,16 @@ describe("real ESLint 10 glob matching of the generated projection's record bloc
   });
 });
 
-describe("the ESLint runner's projection states under real ESLint 10, over a consumer repository", () => {
+describe.each(ESLINT_LINES)("the ESLint runner's projection states under real %s, over a consumer repository", (line) => {
   it("lists mechanism-not-run missing when the projection was never generated", async () => {
-    await expect(checkOf({ name: "projection-missing", tracked: [repoPathSchema.parse("x.ts")] })).resolves.toMatchObject({
+    await expect(checkOf({ name: "projection-missing", tracked: [repoPathSchema.parse("x.ts")], line })).resolves.toMatchObject({
       outcome: "ok",
       value: { findings: [], unmeasured: [{ kind: "mechanism-not-run", mechanism: "eslint", projection: "missing" }] },
     });
   });
 
   it("lists the projection out-of-date when it was hand-edited", async () => {
-    await expect(checkOf({ name: "projection-hand-edited", tracked: [repoPathSchema.parse("x.ts")] })).resolves.toMatchObject({
+    await expect(checkOf({ name: "projection-hand-edited", tracked: [repoPathSchema.parse("x.ts")], line })).resolves.toMatchObject({
       outcome: "ok",
       value: {
         findings: [classFinding({ file: "x.ts", line: 1 })],
@@ -388,7 +397,7 @@ describe("the ESLint runner's projection states under real ESLint 10, over a con
   });
 
   it("lists mechanism-not-run not-included when the team config does not import the projection", async () => {
-    await expect(checkOf({ name: "projection-not-imported", tracked: [repoPathSchema.parse("x.ts")] })).resolves.toMatchObject({
+    await expect(checkOf({ name: "projection-not-imported", tracked: [repoPathSchema.parse("x.ts")], line })).resolves.toMatchObject({
       outcome: "ok",
       value: { findings: [], unrecorded: [], unmeasured: [NOT_RUN_NOT_INCLUDED] },
     });
@@ -397,6 +406,7 @@ describe("the ESLint runner's projection states under real ESLint 10, over a con
   it("lists mechanism-not-run not-included when the piece's fragment is imported instead of the projection beside an authorised location", async () => {
     await expect(
       checkOf({
+        line,
         name: "fragment-not-projection",
         tracked: [repoPathSchema.parse("src/owned.ts"), repoPathSchema.parse("src/clean.ts")],
       }),
@@ -444,9 +454,9 @@ const EXPECTED_SHARED_HITS = [
   },
 ];
 
-describe("FR-3 over real files: the ESLint runner on real ESLint 10 and the audit runner on real TypeScript", () => {
+describe.each(ESLINT_LINES)("FR-3 over real files: the ESLint runner on real %s and the audit runner on real TypeScript", (line) => {
   it("give the same whole anchors for every flagged CD-14 shared case", async () => {
-    const eslintRun = await eslintRunner.run({ ...SHARED_CASES_RUN, records: [], clauses: [ESLINT_CLAUSE] });
+    const eslintRun = await eslintRunnerOn({ line }).run({ ...SHARED_CASES_RUN, records: [], clauses: [ESLINT_CLAUSE] });
     const walkerRun = await walkerRunner.run({ ...SHARED_CASES_RUN, clauses: [WALKER_CLAUSE] });
     expect({ eslint: eslintRun, audit: walkerRun }).toEqual({
       eslint: { outcome: "ok", value: { hits: EXPECTED_SHARED_HITS, nativeExceptions: [], projection: "current" } },
@@ -491,19 +501,19 @@ const exportedRunnerOf = (request: { readonly namespace: unknown }): unknown => 
   return request.namespace.runner;
 };
 
-const coreLoadedEslintRunner = async (): Promise<LoadedRunner> => {
-  const loaded = await modules.load({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` });
+const coreLoadedEslintRunner = async (request: { readonly line: EslintLine }): Promise<LoadedRunner> => {
+  const loaded = await runnerModulesOn({ line: request.line, base: modules }).load({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` });
   assert(loaded.outcome === "ok", "core loads the ESLint runner module");
   return runnerModuleSchema.parse(exportedRunnerOf({ namespace: loaded.value }));
 };
 
-describe("checkConformance over the ESLint runner as core loads it, on real ESLint 10", () => {
+describe.each(ESLINT_LINES)("checkConformance over the ESLint runner as core loads it, on real %s", (line) => {
   it("has no failures for CD-14#class-syntax over every CD-14 shared case", async () => {
     await expect(
       checkConformance({
         clause: ESLINT_CLAUSE,
         cases: [...CLASS_SYNTAX_CASES.flag, ...CLASS_SYNTAX_CASES.allow],
-        runner: await coreLoadedEslintRunner(),
+        runner: await coreLoadedEslintRunner({ line }),
       }),
     ).resolves.toEqual({ outcome: "ok", value: [] });
   });
@@ -517,7 +527,8 @@ const eslintVersion = (request: { readonly version: string }): string => JSON.st
 
 const lintScript = (request: { readonly command: string }): string => JSON.stringify({ scripts: { lint: request.command } });
 
-const monorepoRun = (request: {
+const monorepoRun = async (request: {
+  readonly line: EslintLine;
   readonly name: string;
   readonly version: string;
   readonly lintCommand: string;
@@ -530,9 +541,9 @@ const monorepoRun = (request: {
         [`${consumerRepo({ name: request.name })}/${LINT_SCRIPT_PACKAGE_JSON}`]: lintScript({ command: request.lintCommand }),
       },
     }),
-    modules,
+    modules: pieceModulesOn({ line: request.line, base: modules }),
     path,
-    eslint: createDefaultEslintPort({}),
+    eslint: await eslintPortOn({ line: request.line }),
   }).run({
     repoRoot: consumerRepo({ name: request.name }),
     installRoot: INSTALL_ROOT,
@@ -551,9 +562,9 @@ const NEAREST_LOOKUP_TEAMS = [
   { version: "9.39.5", lintCommand: `eslint ${NEAREST_LOOKUP_FLAG} .` },
 ];
 
-describe("the ESLint runner follows the config lookup the team's own ESLint run uses, over a monorepo with a config per package", () => {
+describe.each(ESLINT_LINES)("the ESLint runner on %s follows the config lookup the team's own ESLint run uses, over a monorepo with a config per package", (line) => {
   it.each(NEAREST_LOOKUP_TEAMS)("applies a package config's projection under ESLint $version running `$lintCommand`", async (team) => {
-    await expect(monorepoRun({ name: "monorepo-package-config", ...team })).resolves.toMatchObject({
+    await expect(monorepoRun({ line, name: "monorepo-package-config", ...team })).resolves.toMatchObject({
       outcome: "ok",
       value: { hits: [PACKAGE_HIT], projection: "current" },
     });
@@ -561,12 +572,12 @@ describe("the ESLint runner follows the config lookup the team's own ESLint run 
 
   it("finds no projection in effect under ESLint 9 run from the root, which loads only the root config", async () => {
     await expect(
-      monorepoRun({ name: "monorepo-package-config", version: "9.39.5", lintCommand: "eslint ." }),
+      monorepoRun({ line, name: "monorepo-package-config", version: "9.39.5", lintCommand: "eslint ." }),
     ).resolves.toMatchObject({ outcome: "ok", value: { hits: [], projection: "not-included" } });
   });
 
   it.each(NEAREST_LOOKUP_TEAMS)("finds no projection in effect where a package config drops it under ESLint $version running `$lintCommand`", async (team) => {
-    await expect(monorepoRun({ name: "monorepo-root-config", ...team })).resolves.toMatchObject({
+    await expect(monorepoRun({ line, name: "monorepo-root-config", ...team })).resolves.toMatchObject({
       outcome: "ok",
       value: { hits: [], projection: "not-included" },
     });
@@ -574,7 +585,7 @@ describe("the ESLint runner follows the config lookup the team's own ESLint run 
 
   it("applies the root config's projection to every package under ESLint 9 run from the root", async () => {
     await expect(
-      monorepoRun({ name: "monorepo-root-config", version: "9.39.5", lintCommand: "eslint ." }),
+      monorepoRun({ line, name: "monorepo-root-config", version: "9.39.5", lintCommand: "eslint ." }),
     ).resolves.toMatchObject({ outcome: "ok", value: { hits: [PACKAGE_HIT], projection: "current" } });
   });
 });

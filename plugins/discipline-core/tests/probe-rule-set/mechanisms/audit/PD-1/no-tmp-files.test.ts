@@ -2,7 +2,7 @@ import { assert, describe, expect, it, vi } from "vitest";
 import type { RunnerClause } from "../../../../../core/mechanism-port/runner-module-schema.ts";
 import { clauseAddressSchema } from "../../../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../../../core/values/repo-path.ts";
-import { createDefaultParsePort } from "../../../../../mechanisms/audit/runner/typescript-parse.ts";
+import { defaultParsePort } from "../../../../typescript-parse-port.ts";
 import { check } from "./no-tmp-files.ts";
 
 const ADDRESS = clauseAddressSchema.parse("probe/PD-1#no-tmp-files");
@@ -18,7 +18,7 @@ const fileCheckOf = (request: { readonly file: string }) => {
   const prepared = check.prepare({
     clauses: [CLAUSE],
     repository: { files: [file], exists: vi.fn().mockReturnValue("present") },
-    syntaxApi: createDefaultParsePort({}).syntaxApi,
+    syntaxApi: defaultParsePort.syntaxApi,
   });
   assert(prepared.outcome === "ok");
   return prepared.value.prepareFile({ file, readText: vi.fn() });

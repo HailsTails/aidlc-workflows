@@ -3,13 +3,13 @@ import type { RunnerClause } from "../../../core/mechanism-port/runner-module-sc
 import type { Anchor } from "../../../core/values/anchor.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
-import { createDefaultParsePort } from "../runner/typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PreparedWalkerCheck, SourceObservers } from "../runner/walker-piece.ts";
 import { check } from "./comments-directives.ts";
 
 const FILE = repoPathSchema.parse("src/annotations.ts");
 const ADDRESS = clauseAddressSchema.parse("CD-5#comments-directives");
-const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
+const SYNTAX_API = defaultParsePort.syntaxApi;
 const TODO_ANNOTATION = "TO" + "DO";
 const TYPE_EXPECTATION = "@ts-expect-" + "error";
 const CLAUSE: RunnerClause = {

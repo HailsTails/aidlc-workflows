@@ -16,17 +16,34 @@
   },
   "dependencies": {
     "@eslint/plugin-kit": "0.7.3",
-    "@typescript-eslint/eslint-plugin": "8.71.2",
-    "@typescript-eslint/parser": "8.71.2",
-    "eslint": "10.11.0",
     "jsonc-parser": "3.3.1",
-    "typescript": "6.0.3",
     "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.71.2",
+    "@typescript-eslint/parser": "^8.71.2",
+    "eslint": "^9.39.5 || ^10.11.0",
+    "typescript": "~6.0.3"
+  },
+  "peerDependenciesMeta": {
+    "@typescript-eslint/eslint-plugin": {
+      "optional": true
+    },
+    "@typescript-eslint/parser": {
+      "optional": true
+    },
+    "eslint": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
     "@types/node": "25.9.1",
+    "@typescript-eslint/eslint-plugin": "8.71.2",
+    "@typescript-eslint/parser": "8.71.2",
+    "eslint": "10.11.0",
     "eslint-9": "npm:eslint@9.39.5",
+    "typescript": "6.0.3",
     "vitest": "4.1.11"
   }
 }

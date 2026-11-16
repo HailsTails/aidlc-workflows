@@ -51,6 +51,11 @@ export const packageTypeImport =
   ({ moduleImport }) =>
     moduleImport.specifier === request.packageName && moduleImport.form === "type-only" ? "allowed" : "outside";
 
+export const packageDynamicImport =
+  (request: { readonly packageName: string }): ImportAllowance =>
+  ({ moduleImport }) =>
+    moduleImport.specifier === request.packageName && moduleImport.form === "dynamic" ? "allowed" : "outside";
+
 const reachOf = (request: {
   readonly importingPath: PathPort;
   readonly reach: RegExp;

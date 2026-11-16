@@ -15,6 +15,14 @@ export const runnerFailureSchema = z.discriminatedUnion("kind", [
   z
     .object({ kind: z.literal("file-unparseable"), file: repoPathSchema, detail: z.string() })
     .readonly(),
+  z
+    .object({
+      kind: z.literal("toolchain-unavailable"),
+      packageName: z.string(),
+      supported: z.string(),
+      found: z.string(),
+    })
+    .readonly(),
 ]);
 
 export type RunnerFailure = z.infer<typeof runnerFailureSchema>;

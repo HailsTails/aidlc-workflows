@@ -37,9 +37,12 @@ export type ProofAction =
   | { readonly kind: "remove"; readonly path: string }
   | { readonly kind: "commit"; readonly message: string };
 
+export type ProofToolchain = "without-eslint" | "eslint-10" | "eslint-9";
+
 export type ProofCase = {
   readonly consumer: string;
   readonly mechanism: Mechanism;
+  readonly toolchain: ProofToolchain;
   readonly disciplineId: string;
   readonly installedManifest: "kept" | "removed";
   readonly actions: readonly ProofAction[];
@@ -56,10 +59,20 @@ const MECHANISM_PLACEHOLDER = "<MechanismId>";
 const PLACEHOLDER_PATTERN = /<[^>]+>/;
 const CODE_SPAN_PATTERN = /`([^`]+)`/g;
 
+const ESLINT_CONSUMER_ACTIONS: readonly ProofAction[] = [
+  { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } } },
+  { kind: "commit", message: "project" },
+  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  { kind: "remove", path: "src/kept.ts" },
+  { kind: "commit", message: "clean" },
+  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+];
+
 export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "audit",
     mechanism: "audit",
+    toolchain: "without-eslint",
     disciplineId: "CD-23",
     installedManifest: "kept",
     actions: [
@@ -71,22 +84,38 @@ export const PROOF_CASES: readonly ProofCase[] = [
     ],
   },
   {
-    consumer: "eslint",
+    consumer: "eslint-10",
     mechanism: "eslint",
+    toolchain: "eslint-10",
+    disciplineId: "CD-14",
+    installedManifest: "kept",
+    actions: ESLINT_CONSUMER_ACTIONS,
+  },
+  {
+    consumer: "eslint-9",
+    mechanism: "eslint",
+    toolchain: "eslint-9",
+    disciplineId: "CD-14",
+    installedManifest: "kept",
+    actions: ESLINT_CONSUMER_ACTIONS,
+  },
+  {
+    consumer: "eslint-missing",
+    mechanism: "eslint",
+    toolchain: "without-eslint",
     disciplineId: "CD-14",
     installedManifest: "kept",
     actions: [
-      { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } } },
-      { kind: "commit", message: "project" },
-      { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
-      { kind: "remove", path: "src/kept.ts" },
-      { kind: "commit", message: "clean" },
-      { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+      {
+        kind: "project",
+        expectation: { exitCode: 2, output: { kind: "contains", text: "toolchain-unavailable eslint found not installed" } },
+      },
     ],
   },
   {
     consumer: "no-package-json",
     mechanism: "audit",
+    toolchain: "without-eslint",
     disciplineId: "CD-23",
     installedManifest: "removed",
     actions: [
@@ -248,22 +277,69 @@ export const judgedStep = (request: {
       };
 };
 
-const dependenciesManifestSchema = z.object({ dependencies: z.record(z.string(), z.string()) });
+const toolchainManifestSchema = z.object({
+  peerDependencies: z.record(z.string(), z.string()),
+  peerDependenciesMeta: z.record(z.string(), z.object({ optional: z.boolean() })).default({}),
+  devDependencies: z.record(z.string(), z.string()),
+});
 
-export const consumerRootManifest = (request: { readonly packageManifest: string }): Result<string, ManifestFailure> => {
+type ToolchainManifest = z.output<typeof toolchainManifestSchema>;
+
+const ESLINT_PACKAGE = "eslint";
+
+const ESLINT_9_DEVELOPMENT_ALIAS = "eslint-9";
+
+const toolchainPackages = (request: {
+  readonly manifest: ToolchainManifest;
+  readonly toolchain: ProofToolchain;
+}): readonly string[] => {
+  const peers = Object.keys(request.manifest.peerDependencies);
+  switch (request.toolchain) {
+    case "without-eslint":
+      return peers.filter((name) => request.manifest.peerDependenciesMeta[name]?.optional !== true);
+    case "eslint-10":
+    case "eslint-9":
+      return peers;
+  }
+};
+
+const developmentPinName = (request: { readonly name: string; readonly toolchain: ProofToolchain }): string =>
+  request.toolchain === "eslint-9" && request.name === ESLINT_PACKAGE ? ESLINT_9_DEVELOPMENT_ALIAS : request.name;
+
+const pinnedToolchain = (request: {
+  readonly manifest: ToolchainManifest;
+  readonly toolchain: ProofToolchain;
+}): Result<Readonly<Record<string, string>>, ManifestFailure> => {
+  const pins = toolchainPackages(request).map((name) => {
+    const pinName = developmentPinName({ name, toolchain: request.toolchain });
+    return { name, pinName, pin: request.manifest.devDependencies[pinName] };
+  });
+  const unpinned = pins.find((entry) => entry.pin === undefined);
+  return unpinned === undefined
+    ? { outcome: "ok", value: Object.fromEntries(pins.map((entry) => [entry.name, entry.pin])) }
+    : { outcome: "failed", error: { kind: "manifest-invalid", detail: `no development pin ${unpinned.pinName} for the peer ${unpinned.name}` } };
+};
+
+export const consumerManifest = (request: {
+  readonly packageManifest: string;
+  readonly toolchain: ProofToolchain;
+}): Result<string, ManifestFailure> => {
   const parsed = parsedJson({ text: request.packageManifest });
   if (parsed.outcome === "failed") {
     return { outcome: "failed", error: { kind: "manifest-invalid", detail: parsed.error } };
   }
-  const manifest = dependenciesManifestSchema.safeParse(parsed.value);
-  return manifest.success
-    ? {
+  const manifest = toolchainManifestSchema.safeParse(parsed.value);
+  if (!manifest.success) {
+    return { outcome: "failed", error: { kind: "manifest-invalid", detail: manifest.error.message } };
+  }
+  const pinned = pinnedToolchain({ manifest: manifest.data, toolchain: request.toolchain });
+  return pinned.outcome === "failed"
+    ? pinned
+    : {
         outcome: "ok",
-        value: `${JSON.stringify({ private: true, dependencies: manifest.data.dependencies }, null, 2)}\n`,
-      }
-    : { outcome: "failed", error: { kind: "manifest-invalid", detail: manifest.error.message } };
+        value: `${JSON.stringify({ private: true, type: "commonjs", devDependencies: pinned.value }, null, 2)}\n`,
+      };
 };
-
 export const environmentWithoutGit = (request: {
   readonly environment: Readonly<Record<string, string | undefined>>;
 }): Readonly<Record<string, string | undefined>> =>

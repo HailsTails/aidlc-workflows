@@ -3,7 +3,7 @@ import type { PathPort } from "../core/platform-ports/path-port.ts";
 import type { ProcessPort } from "../core/platform-ports/process-port.ts";
 import type { Result } from "../core/values/result.ts";
 import {
-  consumerRootManifest,
+  consumerManifest,
   type ExclusionRule,
   entryDisposition,
   exclusionRules,
@@ -39,11 +39,12 @@ type ProofContext = {
 };
 
 const SUCCEEDED: Result<null, string> = { outcome: "ok", value: null };
-const COMMONJS_MANIFEST = '{ "type": "commonjs" }\n';
+const IGNORED_INSTALLS = "node_modules/\n";
 const INSTALL_DIRECTORY = ["tools", "discipline-core"];
 const TEMPORARY_PREFIX = "discipline-core-install-proof-";
 const GIT_IDENTITY = ["-c", "user.name=proof", "-c", "user.email=proof@invalid", "-c", "commit.gpgsign=false"];
 const NPM_INSTALL = ["install", "--no-audit", "--no-fund", "--ignore-scripts"];
+const NPM_CI = ["ci", "--omit=dev", "--legacy-peer-deps", "--no-audit", "--no-fund", "--ignore-scripts"];
 const PASS_LINE = "install proof: pass\n";
 
 const inOrder = (request: { readonly steps: readonly Step[] }): Result<null, string> =>
@@ -233,11 +234,22 @@ const installLeavesOut = (request: {
   return SUCCEEDED;
 };
 
+const writtenFile = (request: {
+  readonly context: ProofContext;
+  readonly label: string;
+  readonly path: string;
+  readonly text: string;
+}): Result<null, string> =>
+  emptied({
+    result: labelled({ label: request.label, result: request.context.fileText.write({ path: request.path, text: request.text }) }),
+  });
+
 const preparedConsumer = (request: {
   readonly context: ProofContext;
   readonly consumer: string;
   readonly fixture: string;
   readonly repo: string;
+  readonly manifest: string;
 }): Result<null, string> => {
   const label = `prepare the ${request.consumer} consumer`;
   return inOrder({
@@ -248,14 +260,26 @@ const preparedConsumer = (request: {
           result: request.context.scratch.copyTree({ from: request.fixture, to: request.repo, disposition: () => "kept" }),
         }),
       () =>
-        emptied({
-          result: labelled({
-            label,
-            result: request.context.fileText.write({
-              path: request.context.path.join({ segments: [request.repo, "package.json"] }),
-              text: COMMONJS_MANIFEST,
-            }),
-          }),
+        writtenFile({
+          context: request.context,
+          label,
+          path: request.context.path.join({ segments: [request.repo, "package.json"] }),
+          text: request.manifest,
+        }),
+      () =>
+        writtenFile({
+          context: request.context,
+          label,
+          path: request.context.path.join({ segments: [request.repo, ".gitignore"] }),
+          text: IGNORED_INSTALLS,
+        }),
+      () =>
+        ranCommand({
+          context: request.context,
+          label: `npm install the toolchain in ${request.consumer}`,
+          command: "npm",
+          arguments: NPM_INSTALL,
+          directory: request.repo,
         }),
     ],
   });
@@ -264,6 +288,7 @@ const preparedConsumer = (request: {
 const provenCase = (request: {
   readonly context: ProofContext;
   readonly temporaryRoot: string;
+  readonly packageManifest: string;
   readonly installList: InstallList;
   readonly rules: readonly ExclusionRule[];
   readonly proofCase: ProofCase;
@@ -278,6 +303,10 @@ const provenCase = (request: {
   if (paths.outcome === "failed") {
     return { outcome: "failed", error: `FAIL: install path ${paths.error.path} keeps a placeholder` };
   }
+  const manifest = consumerManifest({ packageManifest: request.packageManifest, toolchain: request.proofCase.toolchain });
+  if (manifest.outcome === "failed") {
+    return { outcome: "failed", error: `FAIL: package.json: ${manifest.error.detail}` };
+  }
   const repo = context.path.join({ segments: [request.temporaryRoot, consumer] });
   const installDirectory = context.path.join({ segments: [repo, ...INSTALL_DIRECTORY] });
   const fixture = context.path.join({
@@ -285,9 +314,17 @@ const provenCase = (request: {
   });
   return inOrder({
     steps: [
-      () => preparedConsumer({ context, consumer, fixture, repo }),
+      () => preparedConsumer({ context, consumer, fixture, repo, manifest: manifest.value }),
       () => copiedInstall({ context, installDirectory, paths: paths.value, rules: request.rules }),
       () => installLeavesOut({ context, consumer, installDirectory, installList: request.installList, rules: request.rules }),
+      () =>
+        ranCommand({
+          context,
+          label: `npm ci the core install in ${consumer}`,
+          command: "npm",
+          arguments: NPM_CI,
+          directory: installDirectory,
+        }),
       () => git({ context, repo, consumer, arguments: ["init", "-q"] }),
       () => commitAll({ context, repo, consumer, message: "consumer" }),
       () =>
@@ -310,44 +347,29 @@ const provenCase = (request: {
 const provenInside = (request: {
   readonly context: ProofContext;
   readonly temporaryRoot: string;
-  readonly rootManifest: string;
+  readonly packageManifest: string;
   readonly installList: InstallList;
   readonly proofCases: readonly ProofCase[];
 }): Result<null, string> => {
-  const context = request.context;
   const rules = exclusionRules({ leftOut: request.installList.leftOut });
   return inOrder({
-    steps: [
-      () =>
-        emptied({
-          result: labelled({
-            label: "write the consumer root package.json",
-            result: context.fileText.write({
-              path: context.path.join({ segments: [request.temporaryRoot, "package.json"] }),
-              text: request.rootManifest,
-            }),
+    steps: request.proofCases.map(
+      (proofCase): Step =>
+        () =>
+          provenCase({
+            context: request.context,
+            temporaryRoot: request.temporaryRoot,
+            packageManifest: request.packageManifest,
+            installList: request.installList,
+            rules,
+            proofCase,
           }),
-        }),
-      () =>
-        ranCommand({
-          context,
-          label: "npm install at the consumer root",
-          command: "npm",
-          arguments: NPM_INSTALL,
-          directory: request.temporaryRoot,
-        }),
-      ...request.proofCases.map(
-        (proofCase): Step =>
-          () =>
-            provenCase({ context, temporaryRoot: request.temporaryRoot, installList: request.installList, rules, proofCase }),
-      ),
-    ],
+    ),
   });
 };
-
 const provenWithin = (request: {
   readonly context: ProofContext;
-  readonly rootManifest: string;
+  readonly packageManifest: string;
   readonly installList: InstallList;
   readonly proofCases: readonly ProofCase[];
 }): Result<null, string> => {
@@ -398,13 +420,9 @@ const proof = (request: { readonly context: ProofContext; readonly proofCases: r
   if (packageManifest.outcome === "failed") {
     return packageManifest;
   }
-  const rootManifest = consumerRootManifest({ packageManifest: packageManifest.value });
-  if (rootManifest.outcome === "failed") {
-    return { outcome: "failed", error: `FAIL: package.json: ${rootManifest.error.detail}` };
-  }
   return provenWithin({
     context: request.context,
-    rootManifest: rootManifest.value,
+    packageManifest: packageManifest.value,
     installList: installList.value,
     proofCases: request.proofCases,
   });

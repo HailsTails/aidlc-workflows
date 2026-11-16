@@ -10,7 +10,7 @@ import { absolutePathSchema } from "../../../../core/values/absolute-path.ts";
 import { disciplineIdSchema } from "../../../../core/values/identifiers.ts";
 import { repoPathSchema } from "../../../../core/values/repo-path.ts";
 import discipline from "../../../../rules/CD-14/discipline.json" with { type: "json" };
-import { createDefaultEslintPort } from "../../runner/eslint-instance.ts";
+import { defaultEslintPort } from "../../../../tests/eslint-toolchains.ts";
 import { eslintPluginModuleSchema } from "../../runner/eslint-plugin-schema.ts";
 import classAuthoringPlugin, { classDisposition, containerMode } from "./cd14.eslint-plugin.ts";
 
@@ -61,7 +61,7 @@ const keywordAfterNodeStartCases: readonly SourceCase[] = [
 
 const loadedPlugin = eslintPluginModuleSchema.parse({ default: classAuthoringPlugin }).default;
 
-const eslint = createDefaultEslintPort({});
+const eslint = defaultEslintPort;
 
 test("runtime class declarations are reported", () => {
   expect(

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SourceCase } from "../../../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../../../core/values/absolute-path.ts";
 import { repoPathSchema } from "../../../../core/values/repo-path.ts";
-import { createDefaultEslintPort } from "../../runner/eslint-instance.ts";
+import { defaultEslintPort } from "../../../../tests/eslint-toolchains.ts";
 import { eslintPluginModuleSchema } from "../../runner/eslint-plugin-schema.ts";
 import cd6Plugin from "./cd6.eslint-plugin.ts";
 
@@ -10,7 +10,7 @@ const PIECE_ROOT = absolutePathSchema.parse(`${import.meta.dirname}/..`);
 
 const loadedPlugin = eslintPluginModuleSchema.parse({ default: cd6Plugin }).default;
 
-const eslint = createDefaultEslintPort({});
+const eslint = defaultEslintPort;
 
 const flagCases: readonly SourceCase[] = [
   {

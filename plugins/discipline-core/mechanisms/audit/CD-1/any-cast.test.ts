@@ -3,13 +3,14 @@ import type { RunnerClause } from "../../../core/mechanism-port/runner-module-sc
 import type { Anchor } from "../../../core/values/anchor.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
-import { createDefaultParsePort, type SyntaxTree } from "../runner/typescript-parse.ts";
+import type { SyntaxTree } from "../runner/typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PreparedWalkerCheck, SourceObservers, WalkerRepository } from "../runner/walker-piece.ts";
 import { check } from "./any-cast.ts";
 
 const FILE = repoPathSchema.parse("src/casts.ts");
 const ADDRESS = clauseAddressSchema.parse("CD-1#any-cast");
-const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
+const SYNTAX_API = defaultParsePort.syntaxApi;
 const CLAUSE: RunnerClause = {
   address: ADDRESS,
   anchor: { kind: "file" },

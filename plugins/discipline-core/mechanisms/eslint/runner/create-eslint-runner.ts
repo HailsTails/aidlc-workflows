@@ -1130,9 +1130,11 @@ const projectedWrite = (request: {
   );
 };
 
+export const ESLINT_PROJECTED_KINDS: readonly NativeException["kind"][] = ["config-override"];
+
 export const createEslintRunner = (ports: EslintRunnerPorts): EmbeddedRunner => ({
   exceptionPath: "embedded",
-  projectedKinds: ["config-override"],
+  projectedKinds: ESLINT_PROJECTED_KINDS,
   run: (request) =>
     selectedClauses({ clauses: request.clauses, path: ports.path, repoRoot: request.repoRoot, modules: ports.modules }).then((selected) =>
       selected.outcome === "failed" ? selected : selectedRun({ run: request, selected: selected.value, ports }),

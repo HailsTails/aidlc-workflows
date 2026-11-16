@@ -3,13 +3,13 @@ import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
-import { createDefaultParsePort } from "../runner/typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PreparedWalkerCheck, WalkerFile } from "../runner/walker-piece.ts";
 import { check } from "./hermetic-git-spawns.ts";
 
 const FILE = repoPathSchema.parse("tests/git.test.ts");
 const ADDRESS = clauseAddressSchema.parse("CD-47#hermetic-git-spawns");
-const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
+const SYNTAX_API = defaultParsePort.syntaxApi;
 const GIT = "g" + "it";
 const SPAWN = "spawn" + "Sync";
 const LINE_COMMENT = "/" + "/";
