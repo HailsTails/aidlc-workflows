@@ -10,7 +10,7 @@ import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
 import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
-import { defaultTypeScriptPeers, loadParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
+import { defaultTypeScriptModules, loadParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
 import { createEslintRunner, ESLINT_PROJECTED_KINDS } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import { createEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
 import { loadEslintToolchain } from "../mechanisms/eslint/runner/eslint-toolchain.ts";
@@ -63,7 +63,7 @@ const eslintRunnerLocatingBy = (request: { readonly pieces: ModuleLoaderPort; re
 
 const auditRunnerWithoutTypescript = (request: { readonly pieces: ModuleLoaderPort }) =>
   toolchainBoundStandaloneRunner({
-    toolchain: loadParsePort({ peers: { ...defaultTypeScriptPeers, location: unresolvedAs({ packageName: "typescript" }) } }),
+    toolchain: loadParsePort({ peers: { modules: defaultTypeScriptModules, location: unresolvedAs({ packageName: "typescript" }) } }),
     runnerOf: (parse) => createWalkerRunner({ fileText, modules: request.pieces, path, parse }),
   });
 
@@ -145,7 +145,7 @@ describe("a check whose adopter has not installed a toolchain peer the selected 
     });
     assert(checked.outcome === "failed", "the check fails to load");
     expect({ printed: loadFailureText({ failure: checked.error }), pieceLoads: vi.mocked(pieces.load).mock.calls }).toEqual({
-      printed: `load failure: runner-failed eslint toolchain-shadowed eslint resolved from ${INSTALL_ROOT}/node_modules/eslint/lib/api.js inside the core install ${INSTALL_ROOT}: delete ${INSTALL_ROOT}/node_modules and reinstall core with npm ci so the repository's own copy is used\n`,
+      printed: `load failure: runner-failed eslint toolchain-shadowed eslint resolved from ${INSTALL_ROOT}/node_modules/eslint/lib/api.js inside the core install ${INSTALL_ROOT}: delete ${INSTALL_ROOT}/node_modules, then reinstall core, a copied folder with npm ci inside it or the package with the repository's package manager, so the repository's own copy is used\n`,
       pieceLoads: [],
     });
   });

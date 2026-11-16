@@ -26,6 +26,7 @@ import {
   mechanismIdSchema,
   ruleSetNameSchema,
 } from "../values/identifiers.ts";
+import { installedRunnerSegments } from "../values/install-layout.ts";
 import type { Result } from "../values/result.ts";
 import type { ClauseBinding, SelectionReading } from "./selection.ts";
 
@@ -221,7 +222,7 @@ type PieceEntry = { readonly piece: PieceFile; readonly settings: unknown };
 
 const pieceEntry = (request: PieceRequest): Result<PieceEntry, LoadFailure> => {
   const runnerPath = request.path.join({
-    segments: [request.installRoot, "mechanisms", request.mechanism, "runner", "runner.ts"],
+    segments: installedRunnerSegments({ installRoot: request.installRoot, mechanism: request.mechanism }),
   });
   if (request.fileText.exists({ path: runnerPath }) === "absent") {
     return failed({ kind: "runner-missing", mechanism: request.mechanism });

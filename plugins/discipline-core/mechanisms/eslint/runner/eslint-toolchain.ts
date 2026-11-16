@@ -68,14 +68,16 @@ const NEAREST_CONFIG_LOOKUPS: readonly ConfigLookup[] = [
   { releases: { packageName: "eslint", lines: [{ floor: "9.30.0", below: "10.0.0" }] }, flags: ["v10_config_lookup_from_file"] },
 ];
 
-export const defaultEslintToolchainPeers: EslintToolchainPeers = {
-  location: createDefaultPackageLocationPort({}),
-  modules: {
-    eslint: () => import("eslint"),
-    typescriptParser: () => import("@typescript-eslint/parser"),
-    typescriptEslintPlugin: () => import("@typescript-eslint/eslint-plugin"),
-  },
+export const defaultEslintToolchainModules: EslintToolchainModules = {
+  eslint: () => import("eslint"),
+  typescriptParser: () => import("@typescript-eslint/parser"),
+  typescriptEslintPlugin: () => import("@typescript-eslint/eslint-plugin"),
 };
+
+export const defaultEslintToolchainPeers = (options: { readonly installRoot: string }): EslintToolchainPeers => ({
+  location: createDefaultPackageLocationPort(options),
+  modules: defaultEslintToolchainModules,
+});
 
 const lookupFlagsOf = (request: { readonly version: string }): readonly string[] =>
   NEAREST_CONFIG_LOOKUPS.find((lookup) => versionSupport({ requirement: lookup.releases, version: request.version }) === "supported")

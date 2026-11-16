@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PackageLocationPort } from "../../../core/platform-ports/package-location-port.ts";
 import { defaultParsePort, parsePortOn, TYPESCRIPT_LINES } from "../../../tests/typescript-parse-port.ts";
-import { defaultTypeScriptPeers, loadParsePort, type TypeScriptModules } from "./typescript-parse.ts";
+import { defaultTypeScriptModules, loadParsePort, type TypeScriptModules } from "./typescript-parse.ts";
 
 const INSTALL_ROOT = "/repo/tools/discipline-core";
 
 const typescriptAt = (request: { readonly version: string }): TypeScriptModules => ({
   typescript: () =>
-    defaultTypeScriptPeers.modules.typescript().then((loaded) => ({ default: { ...loaded.default, version: request.version } })),
+    defaultTypeScriptModules.typescript().then((loaded) => ({ default: { ...loaded.default, version: request.version } })),
 });
 
 const locatedAt = (request: { readonly location: string }): PackageLocationPort => ({

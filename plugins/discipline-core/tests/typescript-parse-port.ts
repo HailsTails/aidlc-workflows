@@ -32,13 +32,15 @@ const floorTypeScriptSchema = z.object({
   ),
 });
 
+const DEVELOPMENT_PEERS: TypeScriptPeers = defaultTypeScriptPeers({ installRoot: `${import.meta.dirname}/..` });
+
 export const typeScriptPeersOn = (request: { readonly line: TypeScriptLine }): TypeScriptPeers => {
   switch (request.line) {
     case "typescript":
-      return defaultTypeScriptPeers;
+      return DEVELOPMENT_PEERS;
     case "typescript-floor":
       return {
-        location: defaultTypeScriptPeers.location,
+        location: DEVELOPMENT_PEERS.location,
         modules: { typescript: () => import("typescript-floor").then((typescript) => floorTypeScriptSchema.parse(typescript)) },
       };
   }

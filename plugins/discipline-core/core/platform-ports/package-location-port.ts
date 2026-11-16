@@ -1,16 +1,16 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installRootAboveEntry } from "../values/install-layout.ts";
 
 export type PackageLocationPort = {
   readonly installRoot: string;
   readonly locate: (request: { readonly packageName: string }) => string;
 };
 
-const PORT_FILE = fileURLToPath(import.meta.url);
+export const installRootOfRunnerEntry = (request: { readonly entryUrl: string }): string =>
+  installRootAboveEntry({ entryFile: fileURLToPath(request.entryUrl), entry: "runner", directoryOf: dirname });
 
-const INSTALL_ROOT = dirname(dirname(dirname(PORT_FILE)));
-
-export const createDefaultPackageLocationPort = (_options: Record<string, never>): PackageLocationPort => ({
-  installRoot: INSTALL_ROOT,
+export const createDefaultPackageLocationPort = (options: { readonly installRoot: string }): PackageLocationPort => ({
+  installRoot: options.installRoot,
   locate: (request) => fileURLToPath(import.meta.resolve(request.packageName)),
 });
