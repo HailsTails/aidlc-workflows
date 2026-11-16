@@ -9,10 +9,10 @@ This is the record of how the 126 upstream commits from `caea995ae` to `8c4f79b4
 | Upstream pin | `awslabs/aidlc-workflows` `main` | `8c4f79b4b77c5a64738b01b350be2bf72c357dae` (AIDLC_VERSION 2.11.4) |
 | Previous pin | | `caea995ae` |
 | Foundation before | `rebuild/foundation` | `965cbec73` (613 commits over `caea995ae`) |
-| Rebased foundation | `study/foundation-8c4f79b` | `7e586689b4c404fd6bef4f7b56250f34c40ff28b` |
+| Rebased foundation | `study/foundation-8c4f79b` | `8e310c44dd97342782ded657673a371c677a0c6e` |
 | Tooling | `study/upstream-shape-tooling-8c4f79b` | this branch |
-| Candidate on foundation | `study/upstream-shape-8c4f79b` | `c6b67ac6497cbf2a884e734c61b77d4a6c33ffa0` |
-| Candidate on the pin | `ci-proof/upstream-shape-8c4f79b` | `23886338e4000314ceac820ca5132b8bdda93d9f` (same tree `080f045e1`) |
+| Candidate on foundation | `study/upstream-shape-8c4f79b` | `5622701a58510169b6d124978806cf6eba7c883e` |
+| Candidate on the pin | `ci-proof/upstream-shape-8c4f79b` | `2d9a859e11f34828659aca41c0963e64e4a308fb` (same tree `b706b30ac`) |
 | Previous release | `v2.11.3` | `a8721be3631e6a254cf524ea57e5932aa56b4149` |
 
 ## Method
@@ -104,6 +104,21 @@ Each of these changes a type, a port or a test seam in the foundation's shape. N
   - The upgrade step exits 0 on all seven harnesses.
   - The seven release stamps are unchanged.
 
+## Zod uses
+
+`8e310c44d` is a separate commit on `study/foundation-8c4f79b`, so it can be cherry-picked onto `rebuild/foundation`. It removes the Zod uses that guard no boundary and changes no behaviour on real data. Files importing `zod`: 44 before, 43 after (`src/`: 24 before, 23 after).
+
+| Candidate | Verdict |
+| --- | --- |
+| `src/projection/adapters/legacy-plugin-emit.ts` | Removed. `z.enum(...).parse(row.kind)` ran on data our own `shippedPluginTarget` builds. A type guard over the shipped emitter's `PluginTargetKind` narrows it. An unknown format is still refused before the emitter runs; only the refusal's wording changes, from Zod's "Invalid option" to "The shipped plugin emitter has no <format> target." No registered host has such a format. Narrowing the domain's `HostPluginTarget.format` to the union instead was tried and refused by the harness-name rule, because the domain may not name `kiro`, `kiro-ide` or `cursor`. |
+| `src/projection/adapters/compiled-method-file.ts` | Kept. As plain types, the compiled graph's `consumes[].required` key is a `boolean` field, which discipline CD-43 (`boolean-signatures`) refuses. Deriving that type from the serializer with `ReturnType` is refused by CD-7a (`factory-return-types`). Removing the schemas needs an authorised-location exception for the on-disk format, which is Helen's call. Until then `z.infer` carries the types. |
+| `src/execution/adapters/intent-registry-file.ts` | Kept. It decodes the intent registry rows `core/tools/aidlc-lib.ts` writes into the person's project. Execution's `RecordStore.load` port is the planned reader, and `discipline-exceptions.json` already authorises its snake_case keys as that decoder. |
+| `src/execution/adapters/session-binding-file.ts` | Kept. It decodes the per-session binding the runtime writes (`readSessionBinding` in `core/tools/aidlc-lib.ts`). Execution's `Sessions.current` port is the planned reader. |
+| `src/installation/adapters/ownership-record-file.ts` | Kept. It decodes the install's ownership record. Installation's `OwnershipStore` port is the planned reader, and the glossary defines that port as reading the record "parsing it with Zod". |
+| `src/packaging/adapters/distribution-descriptor-file.ts` | Kept. It is the documented format of the distribution descriptor Packaging writes into every payload (`legacy-payload-metadata.ts`, origin `distribution-descriptor`), which Installation reads back through the payload's `DistributionDescriptor`. |
+
+The silent-failure and error-handling problems seen on the way are out of scope here. They are packaged-sources returning `{}`, the Kiro tool-allows `accepted(null)`, raw `ZodError` throws and dropped issues.
+
 ## Ratchets
 
 All of these rises are upstream code arriving. The records check already admits rises in arrivals, meaning files byte-equal to an upstream merge parent. Commit `7e586689b` writes them down. **It is a proposal: record moves belong to Lane G and need Helen.**
@@ -142,17 +157,17 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
   - `templates/PARITY.md` renders `{{pin}}`, `{{release}}`, `{{previous-release}}` and `{{golden-file-count}}` from those reads.
   - The coverage-registry observation stays dated to `caea995ae`, because it was measured there.
 - `shape-plan.ts` names those sources (`pinSources`).
-- The candidate is authored and committed by the global git identity, read by `src/contributor.ts`.
-  - It refuses a missing identity or a `[bot]` one.
+- The candidate is authored and committed by `HailsTails <9475175+HailsTails@users.noreply.github.com>`, a constant in `regenerate.ts`, never read from git config.
   - It keeps foundation's tip dates and adds no `Co-Authored-By` trailer.
-  - The repository-local identity is `rin-author[bot]`, so `--reset-author` would have resolved to the bot.
+  - The repository-local identity is `rin-author[bot]`, so `--reset-author` would have resolved to the bot. The global identity is a personal address and is not used either.
+  - A first regeneration (`c6b67ac64` and `23886338e`, pushed to the two candidate refs and since replaced) read the global identity and so carried the personal address. Those two commits are no longer on any branch but stay reachable on the public fork by SHA and from run 43812083339 (cancelled).
 - **Patch redone:** in `patches/scripts~parity~install-lifecycle.ts.patch`, the usage line said `v2.11.2` and now says `<previous release tag>`. A hard-coded release would go stale at every pin.
 - All 16 patches and the optional gitleaks patch apply to the rebased foundation unchanged.
   - The kiro README patch's sentence about the packager at `caea995ae` is kept. It is a historical fact about that packager, not the pin.
 
 ## Re-prove
 
-**Foundation gate.** On `study/foundation-8c4f79b` at `7e586689b`, `bun scripts/gate.ts --full --only zones,records,lint,disciplines,typecheck,monolith,kernel,isolation,goldens` is green with 0 findings in every check.
+**Foundation gate.** On `study/foundation-8c4f79b` at `8e310c44d` (and before the Zod commit at `7e586689b`), `bun scripts/gate.ts --full --only zones,records,lint,disciplines,typecheck,monolith,kernel,isolation,goldens` is green with 0 findings in every check.
 
 - The goldens check counts files per harness: claude 818, codex 934, copilot 846, cursor 836, kiro 853, kiro-ide 859, opencode 848, plugin-marketplaces 4.
 - `tests` was not run. It runs the legacy suites, which is the full suite.
@@ -160,20 +175,21 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
 - No sweep is recorded for this commit.
 - The touched legacy test files ran on their own and gave 159 pass, 0 fail: t181, t239, t-question-options-fit-the-box, t-generated-text-names-what-the-harness-has, t-phase-check-has-one-owner and t-aidlc-lib-only-shrinks.
 - `bun test ./src` gives 1580 pass, 0 fail.
+- The candidate's local runs below used `bun --cwd <candidate>` (never a shell `cd`) under the machine lock.
 
-**Candidate.** The candidate is `c6b67ac64`, with the same tree as `23886338e`. All of these checks ran in a clean worktree after `bun scripts/package.ts`:
+**Candidate.** The candidate is `5622701a5`, with the same tree as `2d9a859e1`. All of these checks ran in a clean worktree after `bun scripts/package.ts`:
 
 | Check | Result |
 | --- | --- |
 | `bun scripts/parity/dist-goldens.ts --check` | 0 findings |
 | `bun scripts/parity/install-lifecycle.ts --check --previous <v2.11.3 dist>` | 0 findings |
 | `bun run check` | exit 0 |
-| `bun test <candidate>/src` | 1580 pass, 0 fail (run by absolute path, from the foundation checkout's working directory under the machine lock) |
-| `bun test <candidate>/scripts/parity` | 13 pass, 0 fail (same way) |
-| Goldens re-recorded on an unmodified `8c4f79b4b` checkout with the candidate's `scripts/parity/` (`--record` for both) | byte-identical to the candidate's `tests/golden/` |
-| `git diff --name-status 8c4f79b4b 23886338e -- core plugins` | empty |
+| `bun test ./src` | 1580 pass, 0 fail |
+| `bun test ./scripts/parity` | 13 pass, 0 fail |
+| Goldens re-recorded on an unmodified `8c4f79b4b` checkout with the candidate's `scripts/parity/` (`--record` for both) | byte-identical to the candidate's `tests/golden/` (recorded against `c6b67ac64`; the later regeneration changed only `PARITY.md` and the plugin emitter adapter and its test, not `scripts/parity/` or `tests/golden/`) |
+| `git diff --name-status 8c4f79b4b 2d9a859e1 -- core plugins` | empty |
 
-`git diff --name-status 8c4f79b4b 23886338e -- harness` lists 18 deletions and nothing else:
+`git diff --name-status 8c4f79b4b 2d9a859e1 -- harness` lists 18 deletions and nothing else:
 
 - `harness/<host>/manifest.ts` for all 7 hosts
 - `harness/<host>/onboarding.fills.ts` for all 7 hosts
@@ -182,7 +198,7 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
 
 None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `settings/`, `steering/`, `command/`, `plugin/`).
 
-**Commit identity.** The candidate commit's author and committer are both `HailsTails <helencodemonkey@gmail.com>`. The message has no trailer.
+**Commit identity.** The candidate commit's author and committer are both `HailsTails <9475175+HailsTails@users.noreply.github.com>`. The message has no trailer.
 
 ## CI
 
