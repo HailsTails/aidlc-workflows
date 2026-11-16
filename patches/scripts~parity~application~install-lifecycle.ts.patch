@@ -1,0 +1,13 @@
+diff --git a/scripts/parity/application/install-lifecycle.ts b/scripts/parity/application/install-lifecycle.ts
+index 072fd9f63..110eab877 100644
+--- a/scripts/parity/application/install-lifecycle.ts
++++ b/scripts/parity/application/install-lifecycle.ts
+@@ -63,7 +63,7 @@ export const recordLifecycle = (lab: InstallLab, harness: string): LifecycleReco
+ const unrecorded = (harness: string): Finding => ({
+   subject: harness,
+   violation: "has no recorded install lifecycle",
+-  fix: "Record it with bun lint/gate/install-lifecycle.ts --record, then review and commit.",
++  fix: "Record it with bun scripts/parity/install-lifecycle.ts --record, then review and commit.",
+ });
+ 
+ export const checkLifecycles = (lab: InstallLab, fixtures: LifecycleFixtures): readonly Finding[] =>

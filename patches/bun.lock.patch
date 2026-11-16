@@ -1,0 +1,12 @@
+diff --git a/bun.lock b/bun.lock
+index efa3b7377..649935575 100644
+--- a/bun.lock
++++ b/bun.lock
+@@ -12,6 +12,7 @@
+         "eslint": "10.11.0",
+         "smol-toml": "1.9.1",
+         "typescript": "^6.0.3",
++        "zod": "4.4.3",
+       },
+     },
+   },

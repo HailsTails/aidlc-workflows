@@ -1,0 +1,13 @@
+diff --git a/tests/integration/t-runner-process-lifecycle.test.ts b/tests/integration/t-runner-process-lifecycle.test.ts
+index e8c484c5e..48d4cf5c9 100644
+--- a/tests/integration/t-runner-process-lifecycle.test.ts
++++ b/tests/integration/t-runner-process-lifecycle.test.ts
+@@ -38,8 +38,6 @@ function git(cwd: string, args: string[]): void {
+ 
+ const RUNNER_SOURCE_FILES = [
+     "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts",
+-    "lint/gate/adapters/runner-progress.ts",
+-    "lint/gate/adapters/package-lock.ts",
+     "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
+     "tests/harness/tui-process-identity.ts",
+     "tests/harness/tui-screen.ts", "tests/harness/tui-time-budget.ts",

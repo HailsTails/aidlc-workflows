@@ -1,0 +1,22 @@
+diff --git a/scripts/parity/install-lifecycle.ts b/scripts/parity/install-lifecycle.ts
+index 9ba27fe0c..2d91fd6ed 100644
+--- a/scripts/parity/install-lifecycle.ts
++++ b/scripts/parity/install-lifecycle.ts
+@@ -11,12 +11,14 @@ const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/[\\/]$/,
+ const SANDBOX = join(ROOT, ".cache", "install-lab");
+ 
+ const USAGE = [
+-  "usage: bun lint/gate/install-lifecycle.ts (--record | --check) --previous <dist root>",
++  "usage: bun scripts/parity/install-lifecycle.ts (--record | --check) --previous <dist root>",
+   "  --record    install every harness through the real CLI and write tests/golden/install",
+   "  --check     install every harness again and compare it with the recorded lifecycle",
+   "  --previous  the dist folder built from the previous release (or AIDLC_PREVIOUS_DIST)",
+-  "Run it under the machine lock:",
+-  "  bun scripts/gate.ts --locked -- bun lint/gate/install-lifecycle.ts …",
++  "Build the previous-release dist first:",
++  "  git worktree add ../aidlc-previous-release v2.11.2",
++  "  bun install --cwd ../aidlc-previous-release",
++  "  bun ../aidlc-previous-release/scripts/package.ts",
+ ].join("\n");
+ 
+ type Mode = "record" | "check";

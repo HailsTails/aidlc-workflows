@@ -1,0 +1,36 @@
+diff --git a/src/hosts/kiro/projection/README.md b/src/hosts/kiro/projection/README.md
+index a1b497284..46241ac5b 100644
+--- a/src/hosts/kiro/projection/README.md
++++ b/src/hosts/kiro/projection/README.md
+@@ -1,6 +1,6 @@
+ # Kiro agent document preparation
+ 
+-This adapter is a candidate for the production caller cutover after T-R3. It does not implement a complete Harness.
++The Kiro JSON agent renderer prepares each agent document through this adapter. It does not implement a complete Harness.
+ 
+ ## Owned boundary
+ 
+@@ -14,7 +14,7 @@ Expected failures are named local refusal values. The public result uses the exi
+ 
+ ## Recorded legacy intermediate-serialization quirk
+ 
+-Pinned upstream `66d08a909` and foundation `f2e9ef347` serialize after model projection and after shared-glob expansion. JSON serialization turns numeric overflow such as `1e400` into `null`. A later preparation step can therefore refuse a value that it would otherwise accept.
++The packager at `caea995ae` serializes after model projection and after shared-glob expansion. JSON serialization turns numeric overflow such as `1e400` into `null`. A later preparation step can therefore refuse a value that it would otherwise accept.
+ 
+ The edge decoder names only the observable cases as `legacy-overflow`, `legacy-overflow-hooks` and `legacy-overflow-row`. For example:
+ 
+@@ -22,10 +22,10 @@ The edge decoder names only the observable cases as `legacy-overflow`, `legacy-o
+ - A hook row containing `1e400` is accepted without earlier formatting. Model projection or shared-glob expansion formats first, so hook preparation refuses that row as legacy null.
+ - Unknown nested overflow values need no traversal. Final JSON serialization already gives the same emitted null bytes.
+ 
+-These tags replace the previous generic recursive number-normalization pass. They are parity debt, not desired Kiro admission policy. Remove them only through a separately approved behavior change after caller cutover, with explicit before/after acceptance expectations and packaging/golden qualification. The literal quirk tests and bounded pinned-function comparison are the evidence to update when that decision is made.
++These tags replace the previous generic recursive number-normalization pass. They are parity debt, not desired Kiro admission policy. Remove them only as a deliberate behavior change, with explicit before/after expectations and re-recorded goldens. The literal quirk tests and bounded pinned-function comparison are the evidence to update when that decision is made.
+ 
+-## Caller handoff
++## Caller contract
+ 
+-Integration owns the production switch and deletion after candidate acceptance and T-R3. Apply preparation once after tokens, using the captured content and existing host/source identity. Consume its Result directly; do not throw its expected refusal to transport it through a catch. Preserve policy-resolution order and existing captured-persona/tier refusal handling.
++Preparation runs once after token substitution, using the captured content and the existing host/source identity. Its Result is consumed directly; an expected refusal is never thrown to transport it through a catch. Policy-resolution order and the captured-persona/tier refusal handling are unchanged.
+ 
+-Delete the package-side model/shared/hook chain in the same cutover. Retain the runtime `writeKiroAgentSurface` export and its runtime callers. Do not run preparation again in a renderer on already prepared content. Full packaging and golden qualification belong to Lane G.
++The runtime `writeKiroAgentSurface` export and its runtime callers stay. Preparation never runs again in a renderer on already prepared content. `bun scripts/parity/dist-goldens.ts --check` is the packaging proof.

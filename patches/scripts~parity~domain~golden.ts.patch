@@ -1,0 +1,13 @@
+diff --git a/scripts/parity/domain/golden.ts b/scripts/parity/domain/golden.ts
+index 804c7e466..4549412f8 100644
+--- a/scripts/parity/domain/golden.ts
++++ b/scripts/parity/domain/golden.ts
+@@ -55,7 +55,7 @@ export const driftFinding = (drift: GoldenDrift): Finding => ({
+   fix:
+     "Investigate the difference and correct the source until the output matches the pinned " +
+     "output contract. A deliberate change is not a reason to update the goldens; " +
+-    "--update-goldens belongs to the upstream-pin workflow only.",
++    "--record belongs to re-recording at a new upstream commit only.",
+ });
+ 
+ export const PLUGIN_MARKETPLACE_GROUP = "plugin-marketplaces";
