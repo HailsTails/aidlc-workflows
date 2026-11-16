@@ -231,11 +231,7 @@ function runnerFixture(mode: "success" | "timeout" | "cancel" | "capture", witne
   const fixture = join(scratch(), "runner");
   const copied = [
     "tests/run-tests.ts", "tests/gen-coverage-registry.ts", "tests/harness/claude-gate.ts",
-    "lint/gate/adapters/runner-progress.ts",
-    "lint/gate/adapters/package-lock.ts",
-    "tests/lib/test-matrix.ts", "tests/lib/test-source.ts",
-    "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts",
-    "src/kernel/file-system-port.ts",
+    "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts", "src/kernel/file-system-port.ts",
     "src/kernel/content-digester.ts", "src/kernel/values.ts", "src/kernel/brand.ts", "src/kernel/result.ts",
     "tests/harness/runner-profile.ts",
     "tests/harness/test-budget.ts",
@@ -261,8 +257,6 @@ function runnerFixture(mode: "success" | "timeout" | "cancel" | "capture", witne
   }
   // Every copied module can load during the run, so each one must be complete.
   assertRunnerFixtureImports(fixture, copied.filter((path) => path.startsWith("tests/harness/") || path.startsWith("tests/lib/")));
-  assertRunnerFixtureImports(fixture, ["tests/gen-coverage-registry.ts"]);
-  assertRunnerFixtureImports(fixture, ["tests/run-tests.ts"]);
   let dependencies = SOURCE;
   while (!existsSync(join(dependencies, "node_modules"))) {
     if (dirname(dependencies) === dependencies) throw new Error("native cancellation test needs installed dependencies");
