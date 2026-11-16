@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import {
 	missingProjectToolMessage,
 	projectToolCommand,
@@ -15,6 +16,7 @@ import { selectInstalledEslint } from "../../core/tools/aidlc-sensor-linter.ts";
 import { selectInstalledTsc } from "../../core/tools/aidlc-sensor-type-check.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
+const PathProbeObservation = z.object({ onPath: z.string().nullable(), resolved: z.unknown() });
 const createdRoots: string[] = [];
 
 afterAll(() => {
@@ -122,7 +124,7 @@ describe("resolveProjectTool reads the project's own dependency tree", () => {
 			const result = spawnSync(process.execPath, [probe], {
 				encoding: "utf-8", env: { ...process.env, [pathKey]: shadowedPath },
 			});
-			const observed = JSON.parse(result.stdout) as { onPath: string | null; resolved: unknown };
+			const observed = PathProbeObservation.parse(JSON.parse(result.stdout));
 			expect(observed.onPath, result.stderr).not.toBeNull();
 			expect(observed.resolved).toBeNull();
 		},
@@ -146,8 +148,8 @@ describe("projectToolCommand runs the installed CLI under a JavaScript runtime",
 
 	test("Bun treats the compiled-binary switch as a no-op, so source runs are unchanged", () => {
 		const tsc = resolveProjectTool({ projectRoot: REPO_ROOT, packageName: "typescript", binName: "tsc" });
-		expect(tsc).not.toBeNull();
-		const command = projectToolCommand(tsc as ProjectTool, ["--version"]);
+		if (tsc === null) throw new Error("this repository's lockfile-installed typescript was not resolved");
+		const command = projectToolCommand(tsc, ["--version"]);
 		const result = spawnSync(command.executable, [...command.args], {
 			encoding: "utf-8", env: { ...process.env, ...command.environment },
 		});

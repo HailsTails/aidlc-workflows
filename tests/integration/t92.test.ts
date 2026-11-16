@@ -581,7 +581,7 @@ async function watchRegistry(): Promise<RegistryWatch> {
   const child = spawn(BUN, [listener], { stdio: ["ignore", "pipe", "inherit"] });
   const port = await new Promise<string>((resolve, reject) => {
     child.on("error", reject);
-    child.stdout!.setEncoding("utf-8").once("data", (chunk: string) => resolve(chunk.trim()));
+    child.stdout.setEncoding("utf-8").once("data", (chunk: string) => resolve(chunk.trim()));
   });
   return { url: `http://127.0.0.1:${port}/`, log, stop: () => child.kill() };
 }
