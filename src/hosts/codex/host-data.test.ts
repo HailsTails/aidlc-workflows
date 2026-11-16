@@ -34,7 +34,7 @@ test("Codex declares its exact native runtime facts", () => {
 });
 
 test("Codex declares five-option questions and the existing invocation token choice", () => {
-  expect(CODEX_TOKENS).toEqual({ ["SKILL_INVOKE"]: null, ["OPTION_LETTERS"]: "A-E" });
+  expect(CODEX_TOKENS).toEqual({ ["SKILL_INVOKE"]: null, ["OPTION_LETTERS"]: "A-C" });
 });
 
 test("Codex owns its adapter and project-root gitignore placements", () => {

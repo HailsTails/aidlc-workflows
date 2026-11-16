@@ -29,7 +29,7 @@ export const CODEX_HOST_DATA = {
 
 export const CODEX_TOKENS = {
   ["SKILL_INVOKE"]: null,
-  ["OPTION_LETTERS"]: "A-E",
+  ["OPTION_LETTERS"]: "A-C",
 } as const satisfies HostTokenChoices;
 
 export const CODEX_AUTHORED_PLACEMENTS = [
