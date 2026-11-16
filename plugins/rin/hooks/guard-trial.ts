@@ -4,18 +4,18 @@
 // and guard-navigation - so their actual coverage can be counted.
 //
 // THIS MODULE IS THE TESTED SPECIFICATION, NOT THE IMPORTED IMPLEMENTATION.
-// Both guards INLINE these semantics rather than importing them, because each
-// must run when spawned as a standalone copy at an arbitrary path -- a property
-// mutant-detection.test.ts asserts, and which a relative import breaks. That is
-// duplication with a reason, and it is bounded three ways: guard-trial.test.ts
-// pins the semantics here, guard-trial-relaxation.test.ts proves both live
-// hooks behave identically to them on both faces, and guard-trial-scope.test.ts
-// holds every copy to the same safety property. A future harness that can
-// resolve a shared import from a relocated hook should collapse the copies back
-// onto this module.
+// Both guards INLINE these semantics rather than importing them.
+// guard-navigation.mjs is a plain JavaScript hook. block-inline-exec carries a
+// narrower copy: it reads only the RIN_GUARD_TRIAL environment token, never the
+// common-dir token, and its shadow line has no built-in coverage column, so
+// importing this module would widen what can relax it. The duplication is
+// bounded three ways: guard-trial.test.ts pins the semantics here,
+// guard-trial-relaxation.test.ts proves both live hooks behave identically to
+// them on both faces, and guard-trial-scope.test.ts holds every copy to the
+// same safety property.
 //
 // THE SAFETY PROPERTY IS STRUCTURAL, NOT A PROMISE. The token names guards
-// individually, and only the two relaxed guards import this module. The
+// individually, and only the two relaxed guards carry this logic. The
 // safety-critical guards (primary-commit, vault-write, github-writes, the
 // audit and verdict guards, destructive-git) never read it, so no value of
 // RIN_GUARD_TRIAL can disable them -- there is no token that reaches them.
@@ -33,14 +33,15 @@
 // self-report. Logging failure never blocks the command -- the trial is an
 // observation, not a gate.
 
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
 import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-} from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+  defaultFileKindPort,
+  defaultFileTextPort,
+} from "../tools/rin-harness-sidecar-file-reader.ts";
+
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const fileKinds = defaultFileKindPort();
 
 const RELAX_TOKEN_VARIABLE = "RIN_GUARD_TRIAL";
 const LOG_PATH_VARIABLE = "RIN_GUARD_TRIAL_LOG";
@@ -49,7 +50,9 @@ const COMMON_DIR_TOKEN_FILE = "rin-guard-trial";
 const PROJECT_DIR_VARIABLE = "CLAUDE_PROJECT_DIR";
 const SHADOW_LOG_RUNTIME_FILE = "rin-guard-trial-shadow.jsonl";
 
-const DEFAULT_LOG_RELATIVE_PATH = join(".claude", "guard-trial-shadow.jsonl");
+const DEFAULT_LOG_RELATIVE_PATH = paths.join({
+  segments: [".claude", "guard-trial-shadow.jsonl"],
+});
 
 type RelaxableGuard = "relax-inline-exec" | "navigation";
 
@@ -82,25 +85,29 @@ const parseRelaxSet = ({
 const primaryGitDirectoryFrom = (
   startDirectory: string,
 ): string | undefined => {
-  const gitPath = join(startDirectory, ".git");
-  if (!existsSync(gitPath)) {
-    const parent = dirname(startDirectory);
+  const gitPath = paths.join({ segments: [startDirectory, ".git"] });
+  if (!files.exists(gitPath)) {
+    const parent = paths.dirname({ path: startDirectory });
     return parent === startDirectory
       ? undefined
       : primaryGitDirectoryFrom(parent);
   }
-  if (statSync(gitPath).isDirectory()) return gitPath;
-  const pointer = readFileSync(gitPath, "utf8").match(/^gitdir:\s*(.+?)\s*$/m);
+  if (fileKinds.isDirectory(gitPath)) return gitPath;
+  const pointer = files.read(gitPath).match(/^gitdir:\s*(.+?)\s*$/m);
   const pointerTarget = pointer?.[1];
   if (pointerTarget === undefined) return undefined;
-  const worktreeGitDir = isAbsolute(pointerTarget)
+  const worktreeGitDir = paths.isAbsolute({ path: pointerTarget })
     ? pointerTarget
-    : resolve(startDirectory, pointerTarget);
-  const commonDirPointer = join(worktreeGitDir, COMMON_DIR_POINTER);
-  if (!existsSync(commonDirPointer)) return worktreeGitDir;
-  const commonDir = readFileSync(commonDirPointer, "utf8").trim();
+    : paths.resolve({ segments: [startDirectory, pointerTarget] });
+  const commonDirPointer = paths.join({
+    segments: [worktreeGitDir, COMMON_DIR_POINTER],
+  });
+  if (!files.exists(commonDirPointer)) return worktreeGitDir;
+  const commonDir = files.read(commonDirPointer).trim();
   if (commonDir === "") return worktreeGitDir;
-  return isAbsolute(commonDir) ? commonDir : resolve(worktreeGitDir, commonDir);
+  return paths.isAbsolute({ path: commonDir })
+    ? commonDir
+    : paths.resolve({ segments: [worktreeGitDir, commonDir] });
 };
 
 // The token's ONE durable home: `<git-common-dir>/rin-guard-trial`, which every
@@ -120,10 +127,10 @@ const commonDirToken = ({
   try {
     const gitDirectory = primaryGitDirectoryFrom(startDirectory);
     if (gitDirectory === undefined) return undefined;
-    const tokenPath = join(gitDirectory, COMMON_DIR_TOKEN_FILE);
-    return existsSync(tokenPath)
-      ? readFileSync(tokenPath, "utf8").trim()
-      : undefined;
+    const tokenPath = paths.join({
+      segments: [gitDirectory, COMMON_DIR_TOKEN_FILE],
+    });
+    return files.exists(tokenPath) ? files.read(tokenPath).trim() : undefined;
   } catch {
     return undefined;
   }
@@ -178,8 +185,8 @@ const shadowLogPath = ({
   const startDirectory = environment[PROJECT_DIR_VARIABLE] ?? process.cwd();
   const gitDirectory = primaryGitDirectoryFrom(startDirectory);
   if (gitDirectory !== undefined)
-    return join(gitDirectory, SHADOW_LOG_RUNTIME_FILE);
-  return join(startDirectory, DEFAULT_LOG_RELATIVE_PATH);
+    return paths.join({ segments: [gitDirectory, SHADOW_LOG_RUNTIME_FILE] });
+  return paths.join({ segments: [startDirectory, DEFAULT_LOG_RELATIVE_PATH] });
 };
 
 // Whether Claude Code's own worktree isolation would ALSO have refused this
@@ -283,8 +290,8 @@ const recordDenyShadow = ({
   });
   const path = shadowLogPath({ environment });
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+    files.mkdir(paths.dirname({ path }), { recursive: true });
+    files.append(path, `${JSON.stringify(entry)}\n`);
   } catch {
     // An unwritable log must not turn an allowed command into a failure.
   }

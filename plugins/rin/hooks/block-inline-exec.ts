@@ -317,10 +317,11 @@ const segmentIsArbitraryExecution = ({
 };
 
 // Guard-relaxation trial (record 260904-guard-relaxation-trial-2). INLINED
-// rather than imported from guard-trial.ts, as guard-navigation.mjs also
-// carries it. The shared module remains the tested specification of these
-// semantics, and guard-trial-scope.test.ts holds every copy to the same safety
-// property.
+// rather than imported from guard-trial.ts because this copy is narrower: it
+// reads only the environment token, never guard-trial.ts's common-dir token, so
+// importing that module would widen what can relax this guard. The shared
+// module remains the tested specification of these semantics, and
+// guard-trial-scope.test.ts holds every copy to the same safety property.
 //
 // The token names guards individually and this hook answers only to its own
 // name, so no value of it reaches a safety-critical guard. Fails closed: the
