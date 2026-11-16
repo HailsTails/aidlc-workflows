@@ -194,6 +194,8 @@ Lines are 1-based and columns 0-based. The run passes only when every section ex
 | `doublyHeld` | a file both authorised and carved out for one clause: keep one |
 | `unmeasured` | something could not be measured, for example `forfeiture-unmeasured` when file carve-outs exist and no `--base-revision` was given |
 
+To print less, set `"reportOutput"` in `disciplines.json` for the repository, or pass `--report-output <output>` for one run, which wins over the file. `full` is the default and prints the report above; `failures-only` leaves out `excluded` and `exempted`; `counts` prints only each section's heading and count, adding `informational` after `excluded` and `exempted` so every other line names a section that failed the run; `verdict-only` prints only the verdict line. Every output ends in the verdict line, and the exit code is the same whichever output you choose. An unknown value fails the run with exit `2`, as `arguments-invalid` for the option or `file-malformed` for the file.
+
 ## 7. Record exceptions
 
 Fix findings where you can. Where a file legitimately needs what a clause forbids, record it in `<repo>/discipline-exceptions.json`:

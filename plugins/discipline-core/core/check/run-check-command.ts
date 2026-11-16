@@ -1,13 +1,15 @@
+import { readReportOutput } from "../consumer-selection/consumer-selection.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
+import { type ReportOutput, reportOutputInEffect } from "../values/report-output.ts";
 import type { Result } from "../values/result.ts";
 import type { CheckReport } from "../verdict/check-report.ts";
 import { parseCheckArguments } from "./command-arguments-schema.ts";
-import { type CommandOutcome, checkCommandOutcome } from "./command-outcome.ts";
+import { type CheckRun, type CommandOutcome, checkCommandOutcome } from "./command-outcome.ts";
 import { installRootOf } from "./install-root.ts";
 import type { LoadFailure } from "./load-failure.ts";
 import { runCheck } from "./run-check.ts";
@@ -43,20 +45,32 @@ export const printOutcome = (request: {
   request.process.exitWith({ code: request.outcome.code });
 };
 
-const checkResult = (request: CommandRequest): Promise<Result<CheckReport, LoadFailure>> => {
+const checkRunOf = (request: {
+  readonly report: Result<CheckReport, LoadFailure>;
+  readonly output: ReportOutput;
+}): Result<CheckRun, LoadFailure> =>
+  request.report.outcome === "failed"
+    ? request.report
+    : { outcome: "ok", value: { report: request.report.value, output: request.output } };
+
+const checkResult = async (request: CommandRequest): Promise<Result<CheckRun, LoadFailure>> => {
   const parsed = parseCheckArguments({ arguments: request.process.arguments });
   if (parsed.outcome === "failed") {
-    return Promise.resolve(parsed);
+    return parsed;
   }
   const repoRoot = repoRootOf({ path: request.path, repo: parsed.value.repo });
   if (repoRoot.outcome === "failed") {
-    return Promise.resolve(repoRoot);
+    return repoRoot;
   }
   const installRoot = installRootOf({ path: request.path, moduleUrl: request.moduleUrl });
   if (installRoot.outcome === "failed") {
-    return Promise.resolve(installRoot);
+    return installRoot;
   }
-  return runCheck({
+  const configured = readReportOutput({ fileText: request.fileText, path: request.path, repoRoot: repoRoot.value });
+  if (configured.outcome === "failed") {
+    return configured;
+  }
+  const report = await runCheck({
     repoRoot: repoRoot.value,
     installRoot: installRoot.value,
     baseRevision: parsed.value.baseRevision,
@@ -64,6 +78,10 @@ const checkResult = (request: CommandRequest): Promise<Result<CheckReport, LoadF
     modules: request.modules,
     path: request.path,
     git: request.git,
+  });
+  return checkRunOf({
+    report,
+    output: reportOutputInEffect({ requested: parsed.value.reportOutput, configured: configured.value }),
   });
 };
 

@@ -1,7 +1,10 @@
 import { type ExceptionRecord, type InvalidRecord, recordImportOf } from "../exception-records/exception-records.ts";
 import type { AttributedNativeException, ExemptedFinding, Finding } from "../governance/governance.ts";
 import { clauseAddressText } from "../values/clause-address.ts";
+import type { ReportOutput } from "../values/report-output.ts";
 import type { CheckReport, Unmeasured } from "./check-report.ts";
+import { SECTION_NAMES, type SectionName } from "./section-roles.ts";
+import { printedSectionLines, type ReportSection } from "./section-selection.ts";
 import { verdictOf } from "./verdict.ts";
 
 const escapedLineBreaks = (request: { readonly text: string }): string =>
@@ -79,41 +82,35 @@ const unmeasuredLine = (request: { readonly unmeasured: Unmeasured }): string =>
   }
 };
 
-export const renderReportText = (request: { readonly report: CheckReport }): string => {
-  const sections: readonly { readonly name: keyof CheckReport; readonly lines: readonly string[] }[] = [
-    { name: "excluded", lines: request.report.excluded },
-    { name: "findings", lines: request.report.findings.map((finding) => findingLine({ finding })) },
-    { name: "exempted", lines: request.report.exempted.map((exempted) => exemptedLine({ exempted })) },
-    { name: "uncovered", lines: request.report.uncovered.map((address) => clauseAddressText({ address })) },
-    { name: "stale", lines: request.report.stale.map((record) => recordLine({ record })) },
-    { name: "forfeited", lines: request.report.forfeited.map((record) => recordLine({ record })) },
-    {
-      name: "unrecorded",
-      lines: request.report.unrecorded.map((exception) => unrecordedLine({ exception })),
-    },
-    {
-      name: "doublyHeld",
-      lines: request.report.doublyHeld.map(
-        (held) => `${clauseAddressText({ address: held.clause })} ${held.mechanism} doubly-held ${held.file}`,
-      ),
-    },
-    {
-      name: "invalidRecords",
-      lines: request.report.invalidRecords.map(
-        (invalid) => `exceptions[${invalid.index}] ${invalid.problem.kind} ${invalidDetail(invalid)}`,
-      ),
-    },
-    {
-      name: "unmeasured",
-      lines: request.report.unmeasured.map((unmeasured) => unmeasuredLine({ unmeasured })),
-    },
-    {
-      name: "projectionProblems",
-      lines: request.report.projectionProblems.map((problem) => `${problem.mechanism} ${problem.state}`),
-    },
-  ];
-  const sectionLines = sections.flatMap((section) =>
-    section.lines.length === 0 ? [] : [`${section.name} (${section.lines.length})`, ...section.lines],
-  );
+type ReportLines = (request: { readonly report: CheckReport }) => readonly string[];
+
+const SECTION_LINES: Readonly<Record<SectionName, ReportLines>> = {
+  excluded: (request) => request.report.excluded,
+  findings: (request) => request.report.findings.map((finding) => findingLine({ finding })),
+  exempted: (request) => request.report.exempted.map((exempted) => exemptedLine({ exempted })),
+  uncovered: (request) => request.report.uncovered.map((address) => clauseAddressText({ address })),
+  stale: (request) => request.report.stale.map((record) => recordLine({ record })),
+  forfeited: (request) => request.report.forfeited.map((record) => recordLine({ record })),
+  unrecorded: (request) => request.report.unrecorded.map((exception) => unrecordedLine({ exception })),
+  doublyHeld: (request) =>
+    request.report.doublyHeld.map(
+      (held) => `${clauseAddressText({ address: held.clause })} ${held.mechanism} doubly-held ${held.file}`,
+    ),
+  invalidRecords: (request) =>
+    request.report.invalidRecords.map(
+      (invalid) => `exceptions[${invalid.index}] ${invalid.problem.kind} ${invalidDetail(invalid)}`,
+    ),
+  unmeasured: (request) => request.report.unmeasured.map((unmeasured) => unmeasuredLine({ unmeasured })),
+  projectionProblems: (request) =>
+    request.report.projectionProblems.map((problem) => `${problem.mechanism} ${problem.state}`),
+};
+
+const reportSections = (request: { readonly report: CheckReport }): readonly ReportSection[] =>
+  SECTION_NAMES.map((name) => ({ name, lines: SECTION_LINES[name](request) }));
+
+export const renderReportText = (request: { readonly report: CheckReport; readonly output: ReportOutput }): string => {
+  const sectionLines = reportSections(request)
+    .filter((section) => section.lines.length > 0)
+    .flatMap((section) => printedSectionLines({ output: request.output, section }));
   return `${[...sectionLines, `verdict: ${verdictOf(request)}`].join("\n")}\n`;
 };

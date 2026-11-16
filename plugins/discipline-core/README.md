@@ -13,7 +13,7 @@ Adding a discipline or a mechanism, and the full list of ESLint native channels,
 Both commands run TypeScript source directly with Node; there is no build step.
 
 ```text
-node <install>/core/check/check-command.ts --repo <dir> [--base-revision <rev>]
+node <install>/core/check/check-command.ts --repo <dir> [--base-revision <rev>] [--report-output <output>]
 node <install>/core/check/project-command.ts --repo <dir>
 ```
 
@@ -28,6 +28,17 @@ node <install>/core/check/project-command.ts --repo <dir>
 A load failure prints one line, `load failure: <kind> <fields>`.
 
 The report lists the excluded paths, findings, exempted findings, uncovered clauses, stale, forfeited, unrecorded and doubly-held exceptions, invalid exception records, unmeasured checks and projection problems, each with its count. The verdict is `pass` only when every list except the excluded paths and exempted findings is empty.
+
+`--report-output` sets how much of the report is printed for one run, overriding `reportOutput` in `disciplines.json`; with neither, the output is `full`.
+
+| Output | Prints |
+| --- | --- |
+| `full` | every non-empty section with its entries, then the verdict |
+| `failures-only` | the same without the `excluded` and `exempted` sections |
+| `counts` | one `<section> (<count>)` line per non-empty section, with ` informational` after `excluded` and `exempted`, then the verdict |
+| `verdict-only` | only the verdict line |
+
+The output changes only what is printed: the verdict and exit code always come from the whole report. An unknown `--report-output` value is a load failure `arguments-invalid`; an unknown `reportOutput` value makes `disciplines.json` `file-malformed`, even when `--report-output` is given. Load failures print the same in every output.
 
 Without `--base-revision`, core cannot tell which files were touched, so a file carve-out cannot be forfeited; if any file carve-out exists the report lists `forfeiture-unmeasured` and the run fails. For the same reason it cannot tell whether an entry with an earlier-contract why-chain is unchanged; if one exists the report lists `legacy-chain-unmeasured` and the run fails.
 
@@ -75,6 +86,7 @@ At the repository root. It selects clauses and the mechanism that checks each on
 - A judgement clause cannot be selected; it is enforced by review.
 - `eslintConfigLookup`, optional, is `"nearest-to-file"` or `"repository-root"` and says which `eslint.config.*` the team's own ESLint run applies to a file; see [Runtime](#runtime). Leave it out to let core detect it.
 - `fileExceptionWhyChains`, optional, is `"required"` (the default) or `"optional"`. `"optional"` lets an `authorised-location` or `file-carve-out` entry give only its `reason`; see [discipline-exceptions.json](#discipline-exceptionsjson).
+- `reportOutput`, optional, is `"full"` (the default), `"failures-only"`, `"counts"` or `"verdict-only"`: the repository's default for how much of the report the check prints. `--report-output` overrides it for one run; see [Commands](#commands).
 - `exclude`, optional, lists repository folders or exact files that no mechanism checks. A folder entry covers everything under it. Globs are refused: an entry containing `*` makes `disciplines.json` malformed. The report lists the active entries under `excluded`. Exclude the core's own install when it is vendored inside the repository.
 
 ## discipline-exceptions.json

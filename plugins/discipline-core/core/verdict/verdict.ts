@@ -1,18 +1,9 @@
 import type { CheckReport } from "./check-report.ts";
+import { sectionsWithRole } from "./section-roles.ts";
 
 export type Verdict = "pass" | "fail";
 
+const FAILING_SECTIONS = sectionsWithRole({ role: "failing" });
+
 export const verdictOf = (request: { readonly report: CheckReport }): Verdict =>
-  [
-    request.report.findings,
-    request.report.uncovered,
-    request.report.stale,
-    request.report.forfeited,
-    request.report.unrecorded,
-    request.report.doublyHeld,
-    request.report.invalidRecords,
-    request.report.unmeasured,
-    request.report.projectionProblems,
-  ].every((list) => list.length === 0)
-    ? "pass"
-    : "fail";
+  FAILING_SECTIONS.every((section) => request.report[section].length === 0) ? "pass" : "fail";

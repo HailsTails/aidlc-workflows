@@ -78,6 +78,49 @@ describe("parseCheckArguments", () => {
       error: { kind: "arguments-invalid" },
     });
   });
+  it("reads no report output when --report-output is not given", () => {
+    expect(parseCheckArguments({ arguments: ["--repo", "/work/repo"] })).toMatchObject({
+      outcome: "ok",
+      value: { reportOutput: undefined },
+    });
+  });
+
+  it.each(["full", "failures-only", "counts", "verdict-only"])("reads --report-output %s", (reportOutput) => {
+    expect(parseCheckArguments({ arguments: ["--repo", "/work/repo", "--report-output", reportOutput] })).toEqual({
+      outcome: "ok",
+      value: { repo: "/work/repo", baseRevision: undefined, reportOutput },
+    });
+  });
+
+  it("names --report-output and its accepted values when its value is not one of them", () => {
+    expect(parseCheckArguments({ arguments: ["--repo", "/work/repo", "--report-output", "summary"] })).toEqual({
+      outcome: "failed",
+      error: {
+        kind: "arguments-invalid",
+        detail: '✖ Invalid option: expected one of "full"|"failures-only"|"counts"|"verdict-only"\n  → at ["--report-output"]',
+      },
+    });
+  });
+
+  it("is arguments-invalid for --report-output with no value", () => {
+    expect(parseCheckArguments({ arguments: ["--repo", "/work/repo", "--report-output"] })).toMatchObject({
+      outcome: "failed",
+      error: { kind: "arguments-invalid" },
+    });
+  });
+
+  it("is arguments-invalid for --report-output given twice", () => {
+    expect(
+      parseCheckArguments({ arguments: ["--repo", "/work/repo", "--report-output", "full", "--report-output", "counts"] }),
+    ).toMatchObject({ outcome: "failed", error: { kind: "arguments-invalid" } });
+  });
+
+  it("is arguments-invalid for the --report-output=<output> form", () => {
+    expect(parseCheckArguments({ arguments: ["--repo", "/work/repo", "--report-output=counts"] })).toMatchObject({
+      outcome: "failed",
+      error: { kind: "arguments-invalid" },
+    });
+  });
 });
 
 describe("parseProjectArguments", () => {
@@ -97,6 +140,13 @@ describe("parseProjectArguments", () => {
 
   it("is arguments-invalid for --base-revision, which only the check command takes", () => {
     expect(parseProjectArguments({ arguments: ["--repo", "/work/repo", "--base-revision", "origin/main"] })).toMatchObject({
+      outcome: "failed",
+      error: { kind: "arguments-invalid" },
+    });
+  });
+
+  it("is arguments-invalid for --report-output, which only the check command takes", () => {
+    expect(parseProjectArguments({ arguments: ["--repo", "/work/repo", "--report-output", "counts"] })).toMatchObject({
       outcome: "failed",
       error: { kind: "arguments-invalid" },
     });
