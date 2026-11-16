@@ -8,10 +8,10 @@ import type { Result } from "../values/result.ts";
 import type { CheckReport } from "../verdict/check-report.ts";
 import { parseCheckArguments } from "./command-arguments-schema.ts";
 import { type CommandOutcome, checkCommandOutcome } from "./command-outcome.ts";
-import { moduleExtensionOf } from "../values/install-layout.ts";
 import { installRootOf } from "./install-root.ts";
 import type { LoadFailure } from "./load-failure.ts";
 import { runCheck } from "./run-check.ts";
+import { moduleExtensionOf } from "../values/install-layout.ts";
 
 export type CommandRequest = {
   readonly process: ProcessPort;
