@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { FileTextPort } from "../core/platform-ports/file-text-port.ts";
 import { createPathPort } from "../core/platform-ports/path-port.ts";
 import type { ProcessPort } from "../core/platform-ports/process-port.ts";
-import { installManifestOf, runWriteInstallManifest, writtenInstallManifest } from "./install-manifest.ts";
+import { installManifestOf, publishManifestOf, runWriteInstallManifest, writtenInstallManifest } from "./install-manifest.ts";
 
 const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/" });
 
@@ -52,6 +52,49 @@ describe("installManifestOf", () => {
 
   it("names the development manifest invalid when it is not JSON", () => {
     expect(installManifestOf({ developmentManifest: "{" })).toMatchObject({ outcome: "failed", error: { kind: "manifest-invalid" } });
+  });
+});
+
+describe("publishManifestOf", () => {
+  const published = (developmentManifest: string) =>
+    publishManifestOf({
+      developmentManifest,
+      identity: { name: "provisional-core", checkBin: "provisional-check", projectBin: "provisional-project" },
+      commands: { check: "core/check/check-command.js", project: "core/check/project-command.js" },
+      files: ["LICENSE", "chunks", "core", "mechanisms"],
+      nodeRange: "^22.13.0 || >=24",
+    });
+
+  it("names the package and its two commands, exposes only its ESLint pieces and its manifest, and carries the optional peers but no dependencies", () => {
+    expect(published(JSON.stringify(DEVELOPMENT_MANIFEST))).toEqual({
+      outcome: "ok",
+      value: `${JSON.stringify(
+        {
+          name: "provisional-core",
+          version: "0.0.0",
+          description: "Runs disciplines.",
+          license: "MIT-0",
+          type: "module",
+          bin: { "provisional-check": "core/check/check-command.js", "provisional-project": "core/check/project-command.js" },
+          exports: { "./package.json": "./package.json", "./mechanisms/eslint/*": "./mechanisms/eslint/*" },
+          files: ["LICENSE", "chunks", "core", "mechanisms"],
+          engines: { node: "^22.13.0 || >=24" },
+          peerDependencies: { eslint: "^9.12.0 || ^10.0.0", typescript: ">=4.8.4 <7.0.0" },
+          peerDependenciesMeta: { eslint: { optional: true } },
+        },
+        null,
+        2,
+      )}\n`,
+    });
+  });
+
+  it("names the development manifest invalid when it lacks the peers", () => {
+    const { peerDependencies: _peers, ...withoutPeers } = DEVELOPMENT_MANIFEST;
+    expect(published(JSON.stringify(withoutPeers))).toMatchObject({ outcome: "failed", error: { kind: "manifest-invalid" } });
+  });
+
+  it("names the development manifest invalid when it is not JSON", () => {
+    expect(published("{")).toMatchObject({ outcome: "failed", error: { kind: "manifest-invalid" } });
   });
 });
 

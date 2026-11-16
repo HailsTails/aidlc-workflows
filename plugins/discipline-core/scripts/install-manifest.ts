@@ -4,6 +4,8 @@ import type { PathPort } from "../core/platform-ports/path-port.ts";
 import type { ProcessPort } from "../core/platform-ports/process-port.ts";
 import { parsedJson } from "../core/rule-set-reader/rule-set-reader.ts";
 import type { Result } from "../core/values/result.ts";
+import type { PackageIdentity } from "./package-identity.ts";
+import type { CommandEntries } from "./package-plan.ts";
 
 export type InstallManifestFailure = { readonly kind: "manifest-invalid"; readonly detail: string };
 
@@ -30,17 +32,79 @@ const installedSectionsSchema = z.object({
   peerDependenciesMeta: z.record(z.string(), z.object({ optional: z.boolean() })),
 });
 
-export const installManifestOf = (request: {
+const publishedSectionsSchema = installedSectionsSchema.pick({
+  version: true,
+  description: true,
+  license: true,
+  peerDependencies: true,
+  peerDependenciesMeta: true,
+});
+
+const peerSectionsSchema = installedSectionsSchema.pick({ peerDependencies: true });
+
+const ESLINT_PIECES_EXPORT = "./mechanisms/eslint/*";
+
+const MANIFEST_EXPORT = "./package.json";
+
+const manifestText = (request: { readonly manifest: object }): string => `${JSON.stringify(request.manifest, null, 2)}\n`;
+
+const sectionsOf = <Sections>(request: {
   readonly developmentManifest: string;
-}): Result<string, InstallManifestFailure> => {
+  readonly schema: z.ZodType<Sections>;
+}): Result<Sections, InstallManifestFailure> => {
   const parsed = parsedJson({ text: request.developmentManifest });
   if (parsed.outcome === "failed") {
     return { outcome: "failed", error: { kind: "manifest-invalid", detail: parsed.error } };
   }
-  const installed = installedSectionsSchema.safeParse(parsed.value);
-  return installed.success
-    ? { outcome: "ok", value: `${JSON.stringify(installed.data, null, 2)}\n` }
-    : { outcome: "failed", error: { kind: "manifest-invalid", detail: installed.error.message } };
+  const sections = request.schema.safeParse(parsed.value);
+  return sections.success
+    ? { outcome: "ok", value: sections.data }
+    : { outcome: "failed", error: { kind: "manifest-invalid", detail: sections.error.message } };
+};
+
+export const installManifestOf = (request: {
+  readonly developmentManifest: string;
+}): Result<string, InstallManifestFailure> => {
+  const installed = sectionsOf({ developmentManifest: request.developmentManifest, schema: installedSectionsSchema });
+  return installed.outcome === "failed" ? installed : { outcome: "ok", value: manifestText({ manifest: installed.value }) };
+};
+
+export const peerNamesOf = (request: {
+  readonly developmentManifest: string;
+}): Result<readonly string[], InstallManifestFailure> => {
+  const peers = sectionsOf({ developmentManifest: request.developmentManifest, schema: peerSectionsSchema });
+  return peers.outcome === "failed" ? peers : { outcome: "ok", value: Object.keys(peers.value.peerDependencies) };
+};
+
+export const publishManifestOf = (request: {
+  readonly developmentManifest: string;
+  readonly identity: PackageIdentity;
+  readonly commands: CommandEntries;
+  readonly files: readonly string[];
+  readonly nodeRange: string;
+}): Result<string, InstallManifestFailure> => {
+  const published = sectionsOf({ developmentManifest: request.developmentManifest, schema: publishedSectionsSchema });
+  if (published.outcome === "failed") {
+    return published;
+  }
+  return {
+    outcome: "ok",
+    value: manifestText({
+      manifest: {
+        name: request.identity.name,
+        version: published.value.version,
+        description: published.value.description,
+        license: published.value.license,
+        type: "module",
+        bin: { [request.identity.checkBin]: request.commands.check, [request.identity.projectBin]: request.commands.project },
+        exports: { [MANIFEST_EXPORT]: MANIFEST_EXPORT, [ESLINT_PIECES_EXPORT]: ESLINT_PIECES_EXPORT },
+        files: request.files,
+        engines: { node: request.nodeRange },
+        peerDependencies: published.value.peerDependencies,
+        peerDependenciesMeta: published.value.peerDependenciesMeta,
+      },
+    }),
+  };
 };
 
 export const writtenInstallManifest = (request: {

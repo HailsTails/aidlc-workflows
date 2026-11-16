@@ -25,6 +25,7 @@ const sourcesOutsideMechanisms = import.meta.glob(
   [
     "./**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./node_modules/**",
+    "!./dist/**",
     "!./*.test.*",
     "!./core/**/*.test.*",
     "!./rules/**/*.test.*",
@@ -39,6 +40,7 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./mechanisms/**",
     "!./vitest.config.ts",
     "!./scripts/install-proof-ports.ts",
+    "!./scripts/esbuild-bundler-port.ts",
     "!./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./tests/probe-rule-set/mechanisms/audit/**",
     "!./tests/probe-rule-set/mechanisms/eslint/**",
@@ -88,6 +90,13 @@ const moduleLoaderPortSources = import.meta.glob(["./core/platform-ports/module-
 });
 
 const installProofPortSources = import.meta.glob(["./scripts/install-proof-ports.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const bundlerPortSources = import.meta.glob(["./scripts/esbuild-bundler-port.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -207,6 +216,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       platformPortSources,
       coreSources,
       installProofPortSources,
+      bundlerPortSources,
       walkerPieceSources,
       eslintPieceSources,
       testSources,
@@ -226,6 +236,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       }),
       coreSources: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
       installProofPortSources: { "./scripts/install-proof-ports.ts": expect.any(String) },
+      bundlerPortSources: { "./scripts/esbuild-bundler-port.ts": expect.any(String) },
       walkerPieceSources: expect.objectContaining({
         "./mechanisms/audit/CD-14/class-syntax.ts": expect.any(String),
         "./tests/probe-rule-set/mechanisms/audit/PD-1/no-tmp-files.ts": expect.any(String),
@@ -279,6 +290,12 @@ describe("Vendor confinement over what this repository's own discipline-core sou
 
   it("finds scripts/install-proof-ports.ts, the install proof's wrapping ports, importing only relative paths and node builtins", () => {
     expect(importsOutside({ sources: installProofPortSources, allowed: [relativeImport, nodeBuiltinImport] })).toEqual([]);
+  });
+
+  it("finds scripts/esbuild-bundler-port.ts, the package build's wrapping port, the only file importing esbuild, beside relative paths and node builtins", () => {
+    expect(
+      importsOutside({ sources: bundlerPortSources, allowed: [relativeImport, nodeBuiltinImport, packageImport({ packageName: "esbuild" })] }),
+    ).toEqual([]);
   });
 
   it("finds typescript-parse.ts the only file loading typescript, by a dynamic import that core can answer with a named failure", () => {
