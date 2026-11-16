@@ -45,7 +45,7 @@ const unresolvedFirst = (request: { readonly packageName: string }): PackageLoca
 
 const shadowedEslint: PackageLocationPort = {
   installRoot: INSTALL_ROOT,
-  locate: (locate) => `${INSTALL_ROOT}/node_modules/${locate.packageName}/lib/api.js`,
+  locate: (locate) => ({ outcome: "ok", value: `${INSTALL_ROOT}/node_modules/${locate.packageName}/lib/api.js` }),
 };
 
 const eslintRunnerLocatingBy = (request: { readonly pieces: ModuleLoaderPort; readonly location: PackageLocationPort }) =>

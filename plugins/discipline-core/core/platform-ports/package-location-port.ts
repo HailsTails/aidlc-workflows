@@ -1,22 +1,22 @@
+import type { Result } from "../values/result.ts";
 import { createDefaultPathPort } from "./path-port.ts";
+
+export type PackageUnlocatable = {
+  readonly kind: "not-a-file-url";
+  readonly url: string;
+  readonly detail: string;
+};
 
 export type PackageLocationPort = {
   readonly installRoot: string;
-  readonly locate: (request: { readonly packageName: string }) => string;
+  readonly locate: (request: { readonly packageName: string }) => Result<string, PackageUnlocatable>;
 };
 
 const path = createDefaultPathPort({});
 
-const fileOf = (request: { readonly url: string }): string => {
-  const file = path.fromFileUrl({ url: request.url });
-  return file.outcome === "ok" ? file.value : request.url;
-};
-
-const INSTALL_ROOT = path.directoryOf({
-  path: path.directoryOf({ path: path.directoryOf({ path: fileOf({ url: import.meta.url }) }) }),
-});
+const INSTALL_ROOT = path.directoryOf({ path: path.directoryOf({ path: import.meta.dirname }) });
 
 export const createDefaultPackageLocationPort = (_options: Record<string, never>): PackageLocationPort => ({
   installRoot: INSTALL_ROOT,
-  locate: (request) => fileOf({ url: import.meta.resolve(request.packageName) }),
+  locate: (request) => path.fromFileUrl({ url: import.meta.resolve(request.packageName) }),
 });

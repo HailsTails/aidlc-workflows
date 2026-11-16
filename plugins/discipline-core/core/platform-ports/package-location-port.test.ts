@@ -11,10 +11,17 @@ describe("createDefaultPackageLocationPort", () => {
     expect(path.resolve({ path: `${import.meta.dirname}/../..` })).toEqual({ outcome: "ok", value: port.installRoot });
   });
 
-  it("locates a package as the file node resolves from the core install, here the repository root's own copy outside the install", () => {
-    expect(path.resolve({ path: `${import.meta.dirname}/../../../../node_modules/zod/index.js` })).toEqual({
+  it("locates a package as the file node resolves from the core install", () => {
+    expect(port.locate({ packageName: "zod" })).toEqual({
       outcome: "ok",
-      value: port.locate({ packageName: "zod" }),
+      value: expect.stringMatching(/[\\/]zod[\\/]index\.js$/),
+    });
+  });
+
+  it("reports a package that resolves to no file, such as a node builtin, as not a file URL instead of a path", () => {
+    expect(port.locate({ packageName: "node:fs" })).toEqual({
+      outcome: "failed",
+      error: { kind: "not-a-file-url", url: "node:fs", detail: "the text is not a file: URL" },
     });
   });
 

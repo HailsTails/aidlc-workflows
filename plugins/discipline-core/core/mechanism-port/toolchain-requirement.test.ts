@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { PackageLocationPort } from "../platform-ports/package-location-port.ts";
 import { loadedPeer, supportedRange, type ToolchainRequirement, versionSupport } from "./toolchain-requirement.ts";
 
 const TWO_MAJORS: ToolchainRequirement = {
@@ -23,10 +24,14 @@ const missingPackage = (request: { readonly packageName: string }): Error =>
     code: "ERR_MODULE_NOT_FOUND",
   });
 
+const locatedAt = (request: { readonly installRoot: string; readonly location: string }): PackageLocationPort => ({
+  installRoot: request.installRoot,
+  locate: () => ({ outcome: "ok", value: request.location }),
+});
 
 const peerAt = (request: { readonly version: string; readonly location?: string }) => ({
   requirement: TWO_MAJORS,
-  location: { installRoot: INSTALL_ROOT, locate: () => request.location ?? REPOSITORY_LOCATION },
+  location: locatedAt({ installRoot: INSTALL_ROOT, location: request.location ?? REPOSITORY_LOCATION }),
   load: () => Promise.resolve({ version: request.version }),
   versionOf: (peer: { readonly version: string }) => peer.version,
 });
@@ -78,10 +83,36 @@ describe("loadedPeer", () => {
   });
 
   it("names the package as not installed when it does not resolve", async () => {
-    await expect(loadedPeer({ ...peerAt({ version: "10.11.0" }), location: { installRoot: INSTALL_ROOT, locate: vi.fn<() => string>().mockThrow(missingPackage({ packageName: "eslint" })) } })).resolves.toEqual({
+    await expect(loadedPeer({ ...peerAt({ version: "10.11.0" }), location: { installRoot: INSTALL_ROOT, locate: vi.fn<PackageLocationPort["locate"]>().mockThrow(missingPackage({ packageName: "eslint" })) } })).resolves.toEqual({
       outcome: "failed",
       error: { kind: "toolchain-unavailable", packageName: "eslint", supported: "^9.12.0 || ^10.0.0", found: "not installed" },
     });
+  });
+
+  it("names the package unloadable, with the URL it resolved to, when that URL is not a file, and never loads it", async () => {
+    const load = vi.fn<() => Promise<{ readonly version: string }>>();
+    await expect(
+      loadedPeer({
+        ...peerAt({ version: "10.11.0" }),
+        load,
+        location: {
+          installRoot: INSTALL_ROOT,
+          locate: () => ({
+            outcome: "failed",
+            error: { kind: "not-a-file-url", url: "node:eslint", detail: "the text is not a file: URL" },
+          }),
+        },
+      }),
+    ).resolves.toEqual({
+      outcome: "failed",
+      error: {
+        kind: "toolchain-unavailable",
+        packageName: "eslint",
+        supported: "^9.12.0 || ^10.0.0",
+        found: "unloadable: node:eslint (the text is not a file: URL)",
+      },
+    });
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("names the package as shadowed, with where it resolved, when it resolves from inside the core install, and never loads it", async () => {
@@ -107,10 +138,10 @@ describe("loadedPeer", () => {
     await expect(
       loadedPeer({
         ...peerAt({ version: "10.11.0" }),
-        location: {
+        location: locatedAt({
           installRoot: "C:\\repo\\tools\\discipline-core",
-          locate: () => "C:\\repo\\tools\\discipline-core\\node_modules\\eslint\\lib\\api.js",
-        },
+          location: "C:\\repo\\tools\\discipline-core\\node_modules\\eslint\\lib\\api.js",
+        }),
       }),
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "toolchain-shadowed" } });
   });

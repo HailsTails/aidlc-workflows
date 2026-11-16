@@ -10,7 +10,7 @@ const REAL_10 = eslintPeersOn({ line: "eslint-10" });
 
 const INSTALL_ROOT = "/repo/tools/discipline-core";
 
-const REPOSITORY_LOCATION = "/repo/node_modules/package/index.js";
+const REPOSITORY_LOCATION: ReturnType<PackageLocationPort["locate"]> = { outcome: "ok", value: "/repo/node_modules/package/index.js" };
 
 const notInstalled = (request: { readonly packageName: string }): Error =>
   Object.assign(new Error(`Cannot find package '${request.packageName}' imported from ${INSTALL_ROOT}/x.ts`), {
@@ -103,7 +103,7 @@ describe("loadEslintToolchain when a peer is missing, unsupported or shadowed", 
     await expect(
       loadEslintToolchain({
         peers: {
-          location: { installRoot: INSTALL_ROOT, locate: () => `${INSTALL_ROOT}/node_modules/eslint/lib/api.js` },
+          location: { installRoot: INSTALL_ROOT, locate: () => ({ outcome: "ok", value: `${INSTALL_ROOT}/node_modules/eslint/lib/api.js` }) },
           modules: { ...REAL_10.modules, eslint },
         },
       }),
