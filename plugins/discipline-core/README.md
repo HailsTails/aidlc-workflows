@@ -35,7 +35,7 @@ The report lists the excluded paths, findings, exempted findings, uncovered clau
 | --- | --- |
 | `full` | every non-empty section with its entries, then the verdict |
 | `failures-only` | the same without the `excluded` and `exempted` sections |
-| `counts` | one `<section> (<count>)` line per non-empty section, then the verdict |
+| `counts` | one `<section> (<count>)` line per non-empty section, with ` informational` after `excluded` and `exempted`, then the verdict |
 | `verdict-only` | only the verdict line |
 
 The output changes only what is printed: the verdict and exit code always come from the whole report. An unknown `--report-output` value is a load failure `arguments-invalid`; an unknown `reportOutput` value makes `disciplines.json` `file-malformed`, even when `--report-output` is given. Load failures print the same in every output.
