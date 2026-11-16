@@ -7,6 +7,7 @@ import {
   installPlacements,
   judgedStep,
   PROOF_CASES,
+  packagedConsumerManifest,
   parsedInstallList,
   type StepExpectation,
   toolchainManifest,
@@ -258,15 +259,52 @@ describe("toolchainManifest, over this package's own package.json read as a buil
   });
 });
 
+const expectationsOf = (consumer: string) =>
+  PROOF_CASES.find((proofCase) => proofCase.consumer === consumer)?.actions.filter((action) => action.kind !== "read");
+
 describe("the proof cases", () => {
-  it("cover an audit-only consumer, an ESLint consumer on each line's floor, one missing eslint and one missing the installed manifest, over three shared toolchains", () => {
-    expect(PROOF_CASES.map((proofCase) => [proofCase.consumer, proofCase.toolchain])).toEqual([
-      ["audit", "typescript-floor"],
-      ["eslint-10", "eslint-10-floor"],
-      ["eslint-9", "eslint-9-floor"],
-      ["eslint-missing", "typescript-floor"],
-      ["no-package-json", "typescript-floor"],
+  it("cover, on the copy route, an audit-only consumer, an ESLint consumer on each line's floor, one missing eslint and one missing the installed manifest, and the same first four on the package route, over three shared toolchains", () => {
+    expect(PROOF_CASES.map((proofCase) => [proofCase.consumer, proofCase.route, proofCase.toolchain])).toEqual([
+      ["audit", "copy", "typescript-floor"],
+      ["eslint-10", "copy", "eslint-10-floor"],
+      ["eslint-9", "copy", "eslint-9-floor"],
+      ["eslint-missing", "copy", "typescript-floor"],
+      ["no-package-json", "copy", "typescript-floor"],
+      ["audit-package", "package", "typescript-floor"],
+      ["eslint-10-package", "package", "eslint-10-floor"],
+      ["eslint-9-package", "package", "eslint-9-floor"],
+      ["eslint-missing-package", "package", "typescript-floor"],
     ]);
+  });
+
+  it("assert the same command expectations on the package route as on the copy route, plus the projection's package import", () => {
+    expect([
+      expectationsOf("audit-package"),
+      expectationsOf("eslint-10-package"),
+      expectationsOf("eslint-9-package"),
+      expectationsOf("eslint-missing-package"),
+      PROOF_CASES.find((proofCase) => proofCase.consumer === "eslint-10-package")?.actions.find((action) => action.kind === "read"),
+    ]).toEqual([
+      expectationsOf("audit"),
+      expectationsOf("eslint-10"),
+      expectationsOf("eslint-9"),
+      expectationsOf("eslint-missing"),
+      {
+        kind: "read",
+        path: "disciplines.eslint.mjs",
+        contains: 'import piece0 from "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";',
+      },
+    ]);
+  });
+
+  it("give a packaged consumer scripts calling the two bins on the repository root", () => {
+    expect(packagedConsumerManifest({ identity: { name: "core", checkBin: "core-check", projectBin: "core-project" } })).toBe(
+      `${JSON.stringify(
+        { private: true, type: "commonjs", scripts: { "discipline:check": "core-check --repo .", "discipline:project": "core-project --repo ." } },
+        null,
+        2,
+      )}\n`,
+    );
   });
 
   it("give each consumer a commonjs manifest with no dependencies of its own", () => {

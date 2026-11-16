@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parsedJson } from "../core/rule-set-reader/rule-set-reader.ts";
 import type { Result } from "../core/values/result.ts";
+import { PACKAGE_IDENTITY, type PackageIdentity } from "./package-identity.ts";
 
 export type InstallList = {
   readonly always: readonly string[];
@@ -38,12 +39,18 @@ export type ProofAction =
   | { readonly kind: "check"; readonly expectation: StepExpectation }
   | { readonly kind: "project"; readonly expectation: StepExpectation }
   | { readonly kind: "remove"; readonly path: string }
-  | { readonly kind: "commit"; readonly message: string };
+  | { readonly kind: "commit"; readonly message: string }
+  | { readonly kind: "read"; readonly path: string; readonly contains: string };
 
 export type ProofToolchain = "typescript-floor" | "eslint-9-floor" | "eslint-10-floor";
 
+export type InstallRoute = "copy" | "package";
+
+export type CommandScript = "check" | "project";
+
 export type ProofCase = {
   readonly consumer: string;
+  readonly route: InstallRoute;
   readonly mechanism: Mechanism;
   readonly toolchain: ProofToolchain;
   readonly disciplineId: string;
@@ -72,23 +79,44 @@ const ESLINT_CONSUMER_ACTIONS: readonly ProofAction[] = [
   { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
 ];
 
+const PACKAGED_ESLINT_CONSUMER_ACTIONS: readonly ProofAction[] = [
+  { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } } },
+  {
+    kind: "read",
+    path: "disciplines.eslint.mjs",
+    contains: `import piece0 from "${PACKAGE_IDENTITY.name}/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";`,
+  },
+  ...ESLINT_CONSUMER_ACTIONS.slice(1),
+];
+
+const AUDIT_CONSUMER_ACTIONS: readonly ProofAction[] = [
+  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  { kind: "remove", path: "src/kept.ts" },
+  { kind: "commit", message: "clean" },
+  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+  { kind: "project", expectation: { exitCode: 0, output: { kind: "empty" } } },
+];
+
+const ESLINT_MISSING_ACTIONS: readonly ProofAction[] = [
+  {
+    kind: "project",
+    expectation: { exitCode: 2, output: { kind: "contains", text: "toolchain-unavailable eslint found not installed" } },
+  },
+];
+
 export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "audit",
+    route: "copy",
     mechanism: "audit",
     toolchain: "typescript-floor",
     disciplineId: "CD-23",
     installedManifest: "kept",
-    actions: [
-      { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
-      { kind: "remove", path: "src/kept.ts" },
-      { kind: "commit", message: "clean" },
-      { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
-      { kind: "project", expectation: { exitCode: 0, output: { kind: "empty" } } },
-    ],
+    actions: AUDIT_CONSUMER_ACTIONS,
   },
   {
     consumer: "eslint-10",
+    route: "copy",
     mechanism: "eslint",
     toolchain: "eslint-10-floor",
     disciplineId: "CD-14",
@@ -97,6 +125,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   },
   {
     consumer: "eslint-9",
+    route: "copy",
     mechanism: "eslint",
     toolchain: "eslint-9-floor",
     disciplineId: "CD-14",
@@ -105,19 +134,16 @@ export const PROOF_CASES: readonly ProofCase[] = [
   },
   {
     consumer: "eslint-missing",
+    route: "copy",
     mechanism: "eslint",
     toolchain: "typescript-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
-    actions: [
-      {
-        kind: "project",
-        expectation: { exitCode: 2, output: { kind: "contains", text: "toolchain-unavailable eslint found not installed" } },
-      },
-    ],
+    actions: ESLINT_MISSING_ACTIONS,
   },
   {
     consumer: "no-package-json",
+    route: "copy",
     mechanism: "audit",
     toolchain: "typescript-floor",
     disciplineId: "CD-23",
@@ -129,7 +155,64 @@ export const PROOF_CASES: readonly ProofCase[] = [
       },
     ],
   },
+  {
+    consumer: "audit-package",
+    route: "package",
+    mechanism: "audit",
+    toolchain: "typescript-floor",
+    disciplineId: "CD-23",
+    installedManifest: "kept",
+    actions: AUDIT_CONSUMER_ACTIONS,
+  },
+  {
+    consumer: "eslint-10-package",
+    route: "package",
+    mechanism: "eslint",
+    toolchain: "eslint-10-floor",
+    disciplineId: "CD-14",
+    installedManifest: "kept",
+    actions: PACKAGED_ESLINT_CONSUMER_ACTIONS,
+  },
+  {
+    consumer: "eslint-9-package",
+    route: "package",
+    mechanism: "eslint",
+    toolchain: "eslint-9-floor",
+    disciplineId: "CD-14",
+    installedManifest: "kept",
+    actions: PACKAGED_ESLINT_CONSUMER_ACTIONS,
+  },
+  {
+    consumer: "eslint-missing-package",
+    route: "package",
+    mechanism: "eslint",
+    toolchain: "typescript-floor",
+    disciplineId: "CD-14",
+    installedManifest: "kept",
+    actions: ESLINT_MISSING_ACTIONS,
+  },
 ];
+
+export const PACKAGED_SCRIPTS: Readonly<Record<CommandScript, string>> = {
+  check: "discipline:check",
+  project: "discipline:project",
+};
+
+export const PACKAGED_CONSUMER_NPMRC = "node-options=--no-experimental-strip-types\n";
+
+export const packagedConsumerManifest = (request: { readonly identity: PackageIdentity }): string =>
+  `${JSON.stringify(
+    {
+      private: true,
+      type: "commonjs",
+      scripts: {
+        [PACKAGED_SCRIPTS.check]: `${request.identity.checkBin} --repo .`,
+        [PACKAGED_SCRIPTS.project]: `${request.identity.projectBin} --repo .`,
+      },
+    },
+    null,
+    2,
+  )}\n`;
 
 const sectionLines = (request: { readonly lines: readonly string[]; readonly heading: string }): readonly string[] => {
   const start = request.lines.indexOf(request.heading);
