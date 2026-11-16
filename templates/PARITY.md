@@ -44,7 +44,7 @@ Each check prints a one-line summary and exits non-zero, naming every file that 
 ## Open items
 
 - Nothing in CI builds the previous-release dist yet, so the install check runs by hand.
-- `tests/gen-coverage-registry.ts --check --base` builds the base commit from `git archive` with no `node_modules`. Against `caea995ae` it passes. Against any base that already has `src/`, the base build stops because `zod` cannot be resolved, so the packager path needs to stay dependency-free or the base build needs an install.
+- The coverage check `bun tests/gen-coverage-registry.ts --check --base <commit>` builds the base commit from `git archive` in a temporary folder with no `node_modules`. With `caea995ae` as the base it passes: `coverage registry: OK (guards green, no unit lost coverage against caea995ae)`. With a base that already contains `src/` (this tree as one commit on `caea995ae`) it exits 1: `COVERAGE BASE FAILED: building the base … stopped at bun scripts/package.ts claude`, followed by 45 identical `command-source-failed` refusals reading `Cannot find package 'zod' from '…/tree/src/cli/adapters/routes/projection/legacy-runner-child.ts'`. A change made on top of this one would meet the same failure.
 - The upstream test runner's tiers and the CI workflows do not run `bun test ./src` yet.
 - The install goldens record 2.11.3 over 2.11.2. The next upstream release needs them re-recorded from that release's commit.
 - The rebuild has two phases. Phase 1 is this branch: the build side runs through `src/`, and every shipped byte stays as it is. Phase 2 moves the runtime owners out of `core/tools/` into `src/`, so they ship in the runtime bundle. That is runtime code, so it is a separate change, and it is what retires every bridge below.
