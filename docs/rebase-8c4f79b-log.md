@@ -110,15 +110,17 @@ All of these rises are upstream code arriving. The records check already admits 
 
 - **Lint boundary** (`bun scripts/gate.ts --full --only lint --record`): 604 rises in 258 files.
   - 246 of the files are byte-equal to `8c4f79b4b`.
-  - The other 12 are tests foundation had already edited before the merge. No commit after the merge touches them, and their rises are upstream's hunks merged into foundation's copy.
+  - The other 12 are tests foundation had already edited before the merge. No commit after the merge touches them. For each, every rule's rise from `965cbec73` to the head equals upstream's own rise from `caea995ae` to `8c4f79b4b` for that file (each file linted at all four revisions); t181 and t239, whose import sets were unioned by hand, included. The measurements are in [Lint boundary rises](#lint-boundary-rises).
   - The one rise a port caused, a `max-lines-per-function` finding in `t-question-options-fit-the-box` from P3, was fixed in the code (`a512e25d7`).
 - **Monoliths:**
 
   | Monolith | Lines (before → after) | Declarations |
   | --- | --- | --- |
-  | `core/tools/aidlc-orchestrate.ts` | 23490 → 24298 | 38 added, 2 gone |
+  | `core/tools/aidlc-orchestrate.ts` | 23490 → 24298 | 36 added, 2 gone |
   | `core/tools/aidlc-init.ts` | 14964 → 15081 | 5 added |
-  | `core/tools/aidlc-lib.ts` | 42322 → 42114 | no change |
+  | `core/tools/aidlc-lib.ts` | 42322 → 42114 | `tests/fixtures/aidlc-lib-declarations.txt` merged cleanly: it carries upstream's 21 removals (87472aa2a #3737, 237a65f1a #3780, 6e8d5c309 #3917, b650965ea #3933) beside foundation's own 21 earlier ones |
+
+  36 + 5 new declarations and the two line growths are the gate's 43 monolith findings. Erratum: the message of `7e586689b` says 38 declarations added to orchestrate; it is 36 (38 was the changed-line count).
 
   All three are byte-equal to `8c4f79b4b`. `--record` can only lower a monolith record, so there is no recorded path for upstream growth. The two growing entries were dropped and re-recorded from their measured shape.
 
@@ -166,8 +168,8 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
 | `bun scripts/parity/dist-goldens.ts --check` | 0 findings |
 | `bun scripts/parity/install-lifecycle.ts --check --previous <v2.11.3 dist>` | 0 findings |
 | `bun run check` | exit 0 |
-| `bun test ./src` | 1580 pass, 0 fail |
-| `bun test ./scripts/parity` | 13 pass, 0 fail |
+| `bun test <candidate>/src` | 1580 pass, 0 fail (run by absolute path, from the foundation checkout's working directory under the machine lock) |
+| `bun test <candidate>/scripts/parity` | 13 pass, 0 fail (same way) |
 | Goldens re-recorded on an unmodified `8c4f79b4b` checkout with the candidate's `scripts/parity/` (`--record` for both) | byte-identical to the candidate's `tests/golden/` |
 | `git diff --name-status 8c4f79b4b 23886338e -- core plugins` | empty |
 
@@ -192,11 +194,11 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 
 | Upstream | PR | Subject | Disposition |
 | --- | --- | --- | --- |
-| `6e4a2e9ef` | #3729 | docs(kiro): one Kiro guide, kiro.md, with Kiro CLI (V2) as its own section | Conflict (C2, C4). kiro-ide.md took upstream's stub; kiro-ide and kiro onboarding.fills stay deleted, their text ported (P6). |
-| `81f084e55` | #3727 | docs(kiro): on Kiro CLI 3.1.0, the guide says what the main chat's approval card offers and what its allow rule covers | Landed, merged cleanly into files foundation had already edited: `docs/guide/harnesses/kiro.md`. |
-| `01b80253f` | #3728 | fix(install): on Windows, the install recipes allow scripts in their window first, and doctor names aidlc.exe for an uninstall retry | Landed, merged cleanly into files foundation had already edited: `docs/guide/harnesses/kiro.md`. |
+| `6e4a2e9ef` | #3729 | docs(kiro): one Kiro guide, kiro.md, with Kiro CLI (V2) as its own section | Conflict (C1, C2; C4 follows). kiro-ide.md took upstream's stub; kiro-ide and kiro onboarding.fills stay deleted, their text ported (P6). |
+| `81f084e55` | #3727 | docs(kiro): on Kiro CLI 3.1.0, the guide says what the main chat's approval card offers and what its allow rule covers | Landed; `docs/guide/harnesses/kiro.md` (new upstream in #3729) differs from upstream only by the line C4 moved into it. |
+| `01b80253f` | #3728 | fix(install): on Windows, the install recipes allow scripts in their window first, and doctor names aidlc.exe for an uninstall retry | Landed; `docs/guide/harnesses/kiro.md` (new upstream in #3729) differs from upstream only by the line C4 moved into it. |
 | `3ca1893e6` | #3726 | fix(kiro): a helper agent lists its knowledge folders with its file tool, not the shell | Conflict (C3). Ported as P1 into Projection's agent persona port. |
-| `87472aa2a` | #3737 | fix(compose): the engine keeps the in-flight compose question itself, so no hidden aidlc/.aidlc-compose-pending file appears in your project | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`, `tests/fixtures/aidlc-lib-declarations.txt`, `tests/smoke/t148-kiro-file-structure.test.ts`. |
+| `87472aa2a` | #3737 | fix(compose): the engine keeps the in-flight compose question itself, so no hidden aidlc/.aidlc-compose-pending file appears in your project | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`, `tests/fixtures/aidlc-lib-declarations.txt`, `tests/smoke/t148-kiro-file-structure.test.ts`. |
 | `9cd212592` | #3735 | fix(kiro): on macOS and Linux, a quote escaped with a backslash in a simple shell command keeps the > or \| after it inside the value | Landed as upstream bytes. |
 | `3bfb58698` | #3739 | test(compose): a setting that needs their words names their message while the compose question is open; comments say what the code does | Landed as upstream bytes. |
 | `fd3ac2345` | #3667 | fix(guards): a team Unit's first record names its start, so its gate never asks you to mark it finished | Landed as upstream bytes. |
@@ -204,36 +206,36 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 | `16b461d94` | #3675 | test(graph): the read-only aidlc-graph subcommands are driven as the CLI and checked against the compiled graph | Landed as upstream bytes. |
 | `f8ed25733` | #3574 | fix(hooks): walk each script once in the runtime-integrity guard | Landed as upstream bytes. |
 | `8647fa952` | #3414 | fix(stages): Delivery Planning plans the mob per Bolt and leaves who builds the Units to the engine's question | Landed as upstream bytes. |
-| `f592d97ee` | #3611 | fix(jump): a unit-major forward jump moves only the Unit in flight on | Landed, merged cleanly into files foundation had already edited: `docs/reference/01-architecture.md`. |
+| `f592d97ee` | #3611 | fix(jump): a unit-major forward jump moves only the Unit in flight on | Landed; merged cleanly into files foundation had already edited: `docs/reference/01-architecture.md`. |
 | `794fcf2b6` | #3646 | fix(review): each review and each build is dispatched as a new subagent, never an earlier one continued (#3549) | Landed as upstream bytes. |
 | `e558d6cfd` | #3612 | fix(orchestrate): name the stored request so a long brief fits one step | Landed as upstream bytes. |
 | `517bafb60` | #3738 | fix(guards): the start-receipt guard never names a unit start the engine then refuses | Landed as upstream bytes. |
 | `a4e663b58` | #3673 | fix(stages): a Code Generation plan names the data-model elements it adds, and the person sees the ones no requirement asks for | Landed as upstream bytes. |
 | `afa704058` | #3730 | feat(version): a pinned project's version answer names the release that runs its work | Landed as upstream bytes. |
 | `ab95815fa` | #3754 | fix(next): over work made from a long request, another request reaches its question | Landed as upstream bytes. |
-| `5e561ab1a` | #3755 | fix(claude): the code plan question box shows each plan's summary lines and its path | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `5e561ab1a` | #3755 | fix(claude): the code plan question box shows each plan's summary lines and its path | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `ce4207b77` | #3756 | fix(review): the Code Generation reviewer is told when the person's approved plan changed mid-build and their setting did not ask again | Landed as upstream bytes. |
 | `47da6ddce` | #3757 | test(units): the lead's checkout fetches the teammate's claim before the cases that need it | Landed as upstream bytes. |
-| `432a50f17` | #3743 | fix(engine): a request pasted after /aidlc that is longer than 8,000 characters reaches the work whole | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `432a50f17` | #3743 | fix(engine): a request pasted after /aidlc that is longer than 8,000 characters reaches the work whole | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `0d69b5c35` | #3758 | fix(plan-approval): turning plan approval on before a plan's build starts asks you about that plan | Landed as upstream bytes. |
-| `92d39a09e` | #3752 | fix(hooks): after a long /aidlc paste, the agent carries on without typing the whole request again | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
-| `a9b4d6dc4` | #3764 | fix(intent): add-repo asks for the address of a repo no repos.json lists, instead of cloning it from github.com under the list's org | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
-| `af3df59dd` | #3742 | fix(kiro): the agent checks a Unit's changed files with an AI-DLC lookup instead of `git status`, which Kiro asks you to approve | Landed, merged cleanly into files foundation had already edited: `tests/smoke/t148-kiro-file-structure.test.ts`. |
+| `92d39a09e` | #3752 | fix(hooks): after a long /aidlc paste, the agent carries on without typing the whole request again | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `a9b4d6dc4` | #3764 | fix(intent): add-repo asks for the address of a repo no repos.json lists, instead of cloning it from github.com under the list's org | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `af3df59dd` | #3742 | fix(kiro): the agent checks a Unit's changed files with an AI-DLC lookup instead of `git status`, which Kiro asks you to approve | Landed; merged cleanly into files foundation had already edited: `tests/smoke/t148-kiro-file-structure.test.ts`. |
 | `451098163` | #3751 | fix(kiro): the aidlc agent's skill is two files, so Kiro's 50,000-character limit on one resource file no longer cuts it | Conflict (C1, C5, C6). Ported as P2 into the Kiro IDE skill inputs; harness-matrix checks the conductor skill files; t181 and t239 import sets unioned. |
 | `71094735d` | #3771 | fix(plan-approval): the code plan question no longer lists a repo just cloned for the work as already changed | Landed as upstream bytes. |
 | `144874088` | #3772 | fix(practices): approving Practices Discovery in a space made by space create saves the practices instead of stopping at a missing heading | Landed as upstream bytes. |
-| `1bc8e7447` | #3774 | fix(engine): a command run from a code repo inside the workspace is recorded in the workspace, not in that repo | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
-| `89610b4b7` | #3776 | fix(knowledge): knowledge onboard adds every document you name, and names any it cannot add with why | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`, `tests/unit/t285-knowledge-skill.test.ts`. |
+| `1bc8e7447` | #3774 | fix(engine): a command run from a code repo inside the workspace is recorded in the workspace, not in that repo | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `89610b4b7` | #3776 | fix(knowledge): knowledge onboard adds every document you name, and names any it cannot add with why | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`, `tests/unit/t285-knowledge-skill.test.ts`. |
 | `ff498c1f4` | #3779 | fix(knowledge): on a copy install, knowledge onboard adds a file from outside documents/ instead of saying the folder does not exist | Landed as upstream bytes. |
 | `237a65f1a` | #3780 | fix(hooks): a background helper's record no longer shows in git status, so git add -A cannot commit it | Conflict (C1). biome.json stays deleted. Rest landed. |
 | `adedc674a` | #3783 | fix(copilot): a stage output saved with apply_patch on Copilot CLI is recorded, so its review starts | Landed as upstream bytes. |
-| `51d4b9aa9` | #3781 | fix(knowledge): onboarding a changed document again updates its copy in place, so it stays the same document | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `51d4b9aa9` | #3781 | fix(knowledge): onboarding a changed document again updates its copy in place, so it stays the same document | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `83638be25` | #3786 | fix(construction): going back to a Unit while the walking skeleton waits asks its own plan, and a stale skeleton is checked again instead of a resume that is refused | Landed as upstream bytes. |
 | `911f52e52` | #3788 | fix(teams): a lead asking to redo their own finished Unit is told it is finished and what the checkout builds | Landed as upstream bytes. |
-| `59b64b0d8` | #3785 | fix(plan-approval): writing the code plan with cat or tee and a heredoc is read as the write it is, not refused as unreadable | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `59b64b0d8` | #3785 | fix(plan-approval): writing the code plan with cat or tee and a heredoc is read as the write it is, not refused as unreadable | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `8624c26a5` | #3789 | fix(kiro): on a Kiro copy install, knowledge onboard adds a file from outside documents/ instead of saying the folder does not exist | Landed as upstream bytes. |
 | `a49739ce5` | #3795 | fix(source): a repo added to work under way no longer stops a parallel build or reads as changed at the review or the build's start | Landed as upstream bytes. |
-| `1102324f9` | #3797 | fix(kiro): on Kiro CLI's V2 engine, a long pasted request AI-DLC kept whole is not handed to the agent to type again | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`, `docs/reference/09-testing.md`. |
+| `1102324f9` | #3797 | fix(kiro): on Kiro CLI's V2 engine, a long pasted request AI-DLC kept whole is not handed to the agent to type again | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`, `docs/reference/09-testing.md`. |
 | `798eceeb4` | #3794 | fix(teams): a lead with no Unit left to build is told their finished Unit is not redone there, not offered a reopen for every unit | Landed as upstream bytes. |
 | `ac4b02b63` | #3798 | fix(engine): a plan question or approval left open in another chat is shown in a new chat before anything is recorded | Landed as upstream bytes. |
 | `986da3a04` | #3799 | fix(guards): on Codex, a file written with the shell's apply_patch is read as the write its patch names | Conflict (C1). harness/opencode/emit.ts stays deleted. Ported as P5 into the OpenCode settings renderer. |
@@ -241,8 +243,8 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 | `4446c9f9e` | #3807 | fix(teams): a team Unit's approval records only that Unit's open decisions, not a teammate's | Landed as upstream bytes. |
 | `2f5537f0d` | #3819 | fix(setup): reopening step 1 of Customize setup keeps the MCP answer instead of setting it back to the harness default | Landed as upstream bytes. |
 | `06a3d5391` | #3823 | fix(swarm): with Units in parallel, a passing test command that prints a lot is no longer reported as failed | Landed as upstream bytes. |
-| `ca2c816cb` | #3817 | docs(kiro): the Kiro CLI (V2) guide says Kiro joins the lines of a request typed after /aidlc, and points to naming a file instead | Landed, merged cleanly into files foundation had already edited: `docs/guide/harnesses/kiro.md`. |
-| `707e50b0a` | #3826 | fix(reviews): a reviewed stage run on its own after the work finished no longer says no reviewer finished its review | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `ca2c816cb` | #3817 | docs(kiro): the Kiro CLI (V2) guide says Kiro joins the lines of a request typed after /aidlc, and points to naming a file instead | Landed; `docs/guide/harnesses/kiro.md` (new upstream in #3729) differs from upstream only by the line C4 moved into it. |
+| `707e50b0a` | #3826 | fix(reviews): a reviewed stage run on its own after the work finished no longer says no reviewer finished its review | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `95fbef09e` | #3827 | fix(construction): a parallel Unit with nothing to change lands and the batch goes on, instead of a hook refusal on every rerun | Landed as upstream bytes. |
 | `56df50a28` | #3820 | fix(kiro): the Default-agent note says nothing when Approve for me is on, and names /agent for Kiro CLI | Conflict (C1). kiro-ide onboarding.fills stays deleted. Ported as P6. |
 | `dfa9d67ff` | #3816 | fix(report): an approval given beside a setting the team locked, or before Practices Discovery's practices are saved, is recorded instead of stopping on an error | Landed as upstream bytes. |
@@ -251,14 +253,14 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 | `47de5005f` | #3818 | fix(teams): the share, push and publish questions name every file of yours they commit, and the results say what they took | Landed as upstream bytes. |
 | `0f826bc1c` | #3812 | fix(claim): a claim typed as the first message in a new clone claims the Unit there, instead of ending on State file not found | Landed as upstream bytes. |
 | `b980a43a7` | #3830 | fix(windows): after an uninstall that stopped and lost its temp record, commands and hooks run again and uninstall or the installer clears what it left | Landed as upstream bytes. |
-| `12a98acfa` | #3828 | fix(plan-approval): the engine writes the code plan's Testing Contract block itself, so a copy that goes wrong no longer stops the plan question | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `12a98acfa` | #3828 | fix(plan-approval): the engine writes the code plan's Testing Contract block itself, so a copy that goes wrong no longer stops the plan question | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `300fbb5dd` | #3840 | fix(sensors): a check whose output passes 1 MiB reports its findings instead of reading as could not run | Landed as upstream bytes. |
 | `aa53a342c` | #3852 | fix(teams): a lead whose teams hold Units can pause main's own work, and "approve, and stop there" stops | Landed as upstream bytes. |
 | `575079bed` | #3863 | fix(reviews): a stage's verdict waits for its reviewer to finish, so a review changed afterwards is flagged again | Conflict (C1). biome.json stays deleted. Rest landed. |
 | `6f9c45db1` | #3868 | docs(guards): the patchUnseen field comments say what the flag covers since the Codex patch mode reading | Landed as upstream bytes. |
 | `8504dd817` | #3842 | fix(teams): moving main on to Build and Test while a team builds a Unit keeps the board, runs Build and Test, and the Unit still lands | Landed as upstream bytes. |
 | `8e6b65e16` | #3846 | fix(engine): the warning about a key in your message is said in the reply that answers it | Landed as upstream bytes. |
-| `de3617916` | #3876 | fix(docs): section links open their section on GitHub, stage links open a page, and Copilot's guide is in the site menu | Landed, merged cleanly into files foundation had already edited: `docs/reference/15-stage-definition.md`. |
+| `de3617916` | #3876 | fix(docs): section links open their section on GitHub, stage links open a page, and Copilot's guide is in the site menu | Landed; merged cleanly into files foundation had already edited: `docs/reference/15-stage-definition.md`. |
 | `d3c4b95b8` | #3869 | fix: the first setup's ending, the models screen, a stage's notes file and unit status say what is so | Landed as upstream bytes. |
 | `741f86646` | #3875 | fix(questions): an answer you gave is taken as given, and how you answer is asked once | Landed as upstream bytes. |
 | `f15d76083` | #3824 | fix(teams): a share or publish after git rm or git mv commits them, instead of stopping on "git add failed" every time | Landed as upstream bytes. |
@@ -273,37 +275,37 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 | `2dd100baf` | #3921 | fix(kiro): a quoted engine command no longer runs, and argument-less Plan Approval writes, the ACP line and the onboarding follow what exists | Conflict (C1). kiro-ide manifest and onboarding.fills stay deleted. Ported as P6 (fills and the ACP line in kiro-ide host data). |
 | `020b9fcdd` | #3845 | fix(sensors): a shipped check's large result is read whole instead of reading as could not run | Landed as upstream bytes. |
 | `165a19c72` | #3888 | fix(stages): stage steps say what the engine does at Reverse Engineering, CI Pipeline, Requirements Analysis and two Operation stages | Landed as upstream bytes. |
-| `eced48f64` | #3843 | fix(plan-approval): a note the person writes under the code plan's Testing Contract heading while editing the plan is kept when the engine writes the contract back | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `eced48f64` | #3843 | fix(plan-approval): a note the person writes under the code plan's Testing Contract heading while editing the plan is kept when the engine writes the contract back | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `6b2ac7d0a` | #3893 | fix(onboarding): the documentation links an installed project shows open the docs site, not a docs folder it does not have | Conflict (C1). Seven manifests and four onboarding.fills stay deleted. Ported as P6 (fills) and P7 (prior hashes). |
 | `ed2c6b04b` | #3895 | fix(uninstall): Kiro IDE's terminal records are no longer reported as files AI-DLC did not install, and --purge removes them | Landed as upstream bytes. |
 | `bf7e0b1cf` | #3887 | fix(runners): gen runners no longer calls the main aidlc skill unmanaged, and --check sees a missing reverse-engineering runner | Landed as upstream bytes. |
 | `486c052da` | #3836 | fix(swarm): a Unit's landing carries its code only, whatever AI-DLC files its Bolt committed | Conflict (C1). Seven manifests stay deleted. Ported as P7 (prior gitignore hashes). |
 | `1d4b76a83` | #3892 | fix(update): an update of the release you already have no longer downloads its binary again | Landed as upstream bytes. |
-| `4c3a662f9` | #3894 | fix(hooks): the runtime graph recompiles after your own approval on a team project | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `4c3a662f9` | #3894 | fix(hooks): the runtime graph recompiles after your own approval on a team project | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `9c1c8ba3c` | #3891 | fix(teams): after going back to change the Unit plan, switching to building the Units alone is refused while teams hold their Units, as before the move | Landed as upstream bytes. |
-| `a12ccbc9f` | #3922 | fix: the plan check's refusal, the config list and two step instructions say where things stand in plain words | Conflict (C5). t239 import set unioned. |
-| `b63bb2061` | #3928 | docs(guide): a second Kiro manual copy keeps the project's saved Kiro CLI settings | Conflict (C5). t239 import set unioned. |
+| `a12ccbc9f` | #3922 | fix: the plan check's refusal, the config list and two step instructions say where things stand in plain words | Touches t239 (C5): its test body merged unchanged into the unioned file. |
+| `b63bb2061` | #3928 | docs(guide): a second Kiro manual copy keeps the project's saved Kiro CLI settings | Touches t239 (C5): its test body merged unchanged into the unioned file. |
 | `4398ec484` | #3904 | fix(kiro-v2): a request with one double quote or a plan's name first gets a first call that runs and is accepted, and the forwarding latch is git-ignored | Conflict (C1). kiro manifest and onboarding.fills stay deleted. Ported as P6 and P7. |
 | `9a62cf9f1` | #3905 | fix(runners): scope runners ask in each harness's own words, native onboarding names the permissions each install has, and test-pro steps land before the approval | Conflict (C3). scripts/package.ts kept foundation's. Ported as P8 (NativePermissions); its tests restored to upstream bytes with the tierFlavor test capability. |
 | `ad8ba858d` | #3931 | fix(kiro): a typed /aidlc --status says the line AI-DLC is keeping for you, on Kiro and on Kiro CLI (V2) | Landed as upstream bytes. |
-| `88a73e5a4` | #3908 | docs(reference): the stage and plugin reference say what infra, support agents and plugin house rules do | Conflict (C5). t239 import set unioned. |
+| `88a73e5a4` | #3908 | docs(reference): the stage and plugin reference say what infra, support agents and plugin house rules do | Touches t239 (C5): its test body merged unchanged into the unioned file. |
 | `7fb6555a0` | #3909 | fix(code-generation): ES modules, Sass, F#, VB, Gradle, Razor and Windows scripts are code by name, so the build's approval does not name them as files you had before | Landed as upstream bytes. |
 | `578a61cad` | #3911 | fix(questions): on opencode, Cursor and Copilot a question from a questions file shows one Other choice, not two | Landed as upstream bytes. |
 | `1fcea463f` | #3915 | fix(jump): a forward jump's phase row no longer says traceability was verified | Landed as upstream bytes. |
 | `359613c3b` | #3920 | fix(rules): the shipped rule files say a team's practice replaces a framework default, give classic no coverage floor, and ask no trace to Ideation on plans that skip it | Landed as upstream bytes. |
-| `d864e729c` | #3910 | docs(guide): the install, harness and troubleshooting pages give the setup steps the product needs | Conflict (C5). t239 import set unioned. |
+| `d864e729c` | #3910 | docs(guide): the install, harness and troubleshooting pages give the setup steps the product needs | Touches t239 (C5): its test body merged unchanged into the unioned file. |
 | `0a3854daf` | #3914 | fix(protocols): the phase-boundary check runs once, in the stage that ends the phase | Landed. Its test reads tierFlavor; the test matrix gained that capability (S3). |
 | `ad4a0ad02` | #3906 | fix: doctor, plugin test, Copilot reviewers and Codex questions work the same on every harness | Conflict (C1, C3, C7, C8). Copilot emitter and Codex manifest stay deleted; porting doc and agent-knowledge kept foundation's. Ported as P3 (Codex letters) and P4 (Copilot absorbed knowledge). |
 | `6cbf16257` | #3913 | fix(requirements): the summary stop before Requirements Analysis writes its document is the same stop every other stage shows | Landed as upstream bytes. |
 | `b72cc6d1d` | #3829 | fix(teams): a project in a folder of a bigger repository is told team work needs it at the repository's top, instead of a share that fails | Landed as upstream bytes. |
 | `c9591e300` | #3885 | fix(teams): once a team has taken a Unit, redoing a Unit stage for every unit reopens only the Units your checkout builds and says which it left | Landed as upstream bytes. |
 | `5f67de0e3` | #3898 | docs(cursor): the guide says a helper is refused a write over its records only where its command names the path | Landed as upstream bytes. |
-| `eb59fe50a` | #3899 | fix(cursor): the checks before each tool call run in one process, so a shell call waits for one engine start, not five | Landed, merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
+| `eb59fe50a` | #3899 | fix(cursor): the checks before each tool call run in one process, so a shell call waits for one engine start, not five | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`. |
 | `3b0a329a2` | #3926 | docs(doctor): the guide says where a waiting gate and cold hooks show in doctor's report | Landed as upstream bytes. |
 | `161ddb823` | #3916 | docs(guide): the scope, approval, knowledge, state, guard and bugfix pages say what the product does | Conflict (C5). t239 import set unioned. |
 | `226b593c1` | #3851 | fix(sensors): the lint check reports a file's thousands of lint errors instead of reading as could not run | Landed as upstream bytes. |
 | `6e8d5c309` | #3917 | fix(commands): a command AI-DLC prints runs as printed on a copy install, on Codex, with a folder that has a space and on Windows | Landed. Bridge characterization test re-pinned (status no longer a dispatcher verb). |
-| `7752f3b6d` | #3925 | docs(guide): the Codex manual copy keeps a project's own .codex settings, hooks and rules | Conflict (C5). t239 import set unioned. |
+| `7752f3b6d` | #3925 | docs(guide): the Codex manual copy keeps a project's own .codex settings, hooks and rules | Touches t239 (C5): its test body merged unchanged into the unioned file. |
 | `d2b117274` | #3932 | fix(teams): the team board says where the Units stand in plain words | Landed as upstream bytes. |
 | `b650965ea` | #3933 | fix(pin): a pinned project checks its release in full once per session, not on every command and hook call | Conflict (C1). biome.json stays deleted. Rest landed. |
 | `91b15fc8d` | #3935 | fix(teams): after moving main on past the Unit stages while teams hold Units, switching to building them alone stays refused | Landed as upstream bytes. |
@@ -311,13 +313,13 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 | `c4960e702` | #3896 | refactor(git): where a project sits in its git repository is read in one place, with nothing a person meets changed | Landed as upstream bytes. |
 | `09f006e4e` | #3919 | fix(construction): the team Unit steps in the stage protocol name the commands as the install runs them | Landed as upstream bytes. |
 | `9a45be65a` | #3961 | chore(release): record v2.11.4 on main | Landed. Bridge characterization tests re-pinned to 2.11.4 and preview 2.11.5. |
-| `7649012be` | #3962 | fix(refined-mockups): Refined Mockups runs for a project with a UI on the classic and workshop plans | Conflict (C5). t239 import set unioned. |
+| `7649012be` | #3962 | fix(refined-mockups): Refined Mockups runs for a project with a UI on the classic and workshop plans | Touches t239 (C5): its test body merged unchanged into the unioned file. |
 | `d8dd27dcf` | #3929 | fix(teams): a claim kept in the project's aidlc/ folder is read and keeps its place, and claim files and Unit results never land on main | Landed as upstream bytes. |
 | `843d995d0` | #3986 | fix(read-boundary): a hardlinked file's refusal says the step in words every shell reads | Landed as upstream bytes. |
-| `50a9e926c` | #3963 | fix(setup): at a terminal with Kiro CLI found, Enter at the harness question sets up Kiro, with Kiro CLI (V2) one number away | Landed, merged cleanly into files foundation had already edited: `docs/guide/harnesses/kiro.md`. |
+| `50a9e926c` | #3963 | fix(setup): at a terminal with Kiro CLI found, Enter at the harness question sets up Kiro, with Kiro CLI (V2) one number away | Landed; `docs/guide/harnesses/kiro.md` (new upstream in #3729) differs from upstream only by the line C4 moved into it. |
 | `8ed977085` | #3997 | fix(state): work set up with a newer AI-DLC offers the update and carries on, instead of a dead end | Landed as upstream bytes. |
-| `445578dc9` | #3976 | fix(kiro): config models, its --check and doctor name an agent model Kiro CLI's model list does not have | Landed, merged cleanly into files foundation had already edited: `docs/guide/harnesses/kiro.md`. |
-| `8c4f79b4b` | #3990 | docs(kiro): a copied Kiro project moves to a newer release with its setup command alone, keeping its plugin choices and setup answers | Conflict (C5). t239 import set unioned. |
+| `445578dc9` | #3976 | fix(kiro): config models, its --check and doctor name an agent model Kiro CLI's model list does not have | Landed; `docs/guide/harnesses/kiro.md` (new upstream in #3729) differs from upstream only by the line C4 moved into it. |
+| `8c4f79b4b` | #3990 | docs(kiro): a copied Kiro project moves to a newer release with its setup command alone, keeping its plugin choices and setup answers | Touches t239 (C5): its test body merged unchanged into the unioned file. |
 
 ## Lint boundary rises
 
@@ -588,3 +590,18 @@ Files foundation had edited before the merge (12), rises by rule as (rule, befor
 - `tests/unit/t248-steering-content-delivery.test.ts`: [('aidlc/no-comments', 138, 139)]
 
 102 per-file rule counts fell.
+
+Each mixed file linted at `caea995ae`, `8c4f79b4b`, `965cbec73` and the head: the recorded rise (head over `965cbec73`) against upstream's own rise (`8c4f79b4b` over `caea995ae`), per rule:
+
+- `tests/smoke/t148-kiro-file-structure.test.ts`: aidlc/no-comments: recorded +6, upstream own +6 COVERED; max-len: recorded +2, upstream own +2 COVERED
+- `tests/unit/t-kiro-hook-exit-code.test.ts`: max-len: recorded +1, upstream own +1 COVERED
+- `tests/unit/t-kiro-typed-harness-names.test.ts`: aidlc/no-comments: recorded +3, upstream own +3 COVERED; max-len: recorded +4, upstream own +4 COVERED
+- `tests/unit/t-skill-body-carriers.test.ts`: max-lines-per-function: recorded +1, upstream own +1 COVERED
+- `tests/unit/t147-kiro-hook-adapter.test.ts`: aidlc/no-comments: recorded +27, upstream own +27 COVERED; max-len: recorded +28, upstream own +28 COVERED; max-lines-per-function: recorded +1, upstream own +1 COVERED
+- `tests/unit/t150-codex-packaging.test.ts`: aidlc/no-comments: recorded +1, upstream own +1 COVERED
+- `tests/unit/t151-onboarding-skeleton.test.ts`: max-len: recorded +3, upstream own +3 COVERED
+- `tests/unit/t181-conductor-skill-parity.test.ts`: max-depth: recorded +1, upstream own +1 COVERED
+- `tests/unit/t221-reviewer-scope-hook.test.ts`: aidlc/no-comments: recorded +3, upstream own +3 COVERED; max-len: recorded +7, upstream own +7 COVERED
+- `tests/unit/t230-dispatcher-routes.test.ts`: max-len: recorded +5, upstream own +5 COVERED
+- `tests/unit/t239-documentation-parity.test.ts`: aidlc/no-comments: recorded +26, upstream own +26 COVERED; complexity: recorded +1, upstream own +1 COVERED; max-len: recorded +78, upstream own +78 COVERED; max-lines-per-function: recorded +1, upstream own +1 COVERED
+- `tests/unit/t248-steering-content-delivery.test.ts`: aidlc/no-comments: recorded +1, upstream own +1 COVERED
