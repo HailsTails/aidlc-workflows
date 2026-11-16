@@ -1,6 +1,5 @@
 // t151: every harness ships complete native onboarding, while harnesses that
 // share root instructions receive exactly the same neutral bytes.
-// covers: file:scripts/onboarding.ts
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -8,11 +7,23 @@ import { join } from "node:path";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 import {
   declaredSlots,
-  renderNeutralOnboarding,
-  renderOnboarding,
-  type OnboardingFills,
-} from "../../scripts/onboarding.ts";
+  renderNeutralOnboarding as renderNeutral,
+  renderOnboarding as renderForHost,
+} from "../../src/projection/domain/onboarding.ts";
+import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
+
+function renderOnboarding(skeleton: string, fills: OnboardingFills): string {
+  const rendered = renderForHost(skeleton, fills);
+  if (!rendered.ok) throw new Error(rendered.refusal);
+  return rendered.value;
+}
+
+function renderNeutralOnboarding(skeleton: string): string {
+  const rendered = renderNeutral(skeleton);
+  if (!rendered.ok) throw new Error(rendered.refusal);
+  return rendered.value;
+}
 
 const NEUTRAL = readFileSync(join(REPO_ROOT, "core", "templates", "onboarding.md"), "utf-8");
 const HARNESS = readFileSync(join(REPO_ROOT, "core", "templates", "onboarding-harness.md"), "utf-8");
@@ -121,9 +132,7 @@ describe("t151 neutral and native onboarding", () => {
 
   test("every harness ships complete onboarding in both invocation channels", () => {
     for (const harness of HARNESS_MATRIX) {
-      // The manifest-owned fills module has the shared renderer contract.
-      const fillsModule = require(harness.onboardingFills) as { default: OnboardingFills };
-      const fills = fillsModule.default;
+      const fills = harness.fills;
       for (const native of [false, true]) {
         const root = readFileSync(native ? releasePath(harness.onboardingDist) : harness.onboardingDist, "utf-8");
         const setup = readFileSync(native ? releasePath(harness.harnessOnboardingDist) : harness.harnessOnboardingDist, "utf-8");

@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EARLIER_SKILL_SCOPE_GRID_BODY } from "../../core/tools/aidlc-init.ts";
-import { EARLIER_RELEASE_REGIONS } from "../../scripts/earlier-release-regions.ts";
+import { EARLIER_RELEASE_REGIONS } from "../../src/projection/domain/skill-regions.ts";
 import { NATIVE_FIXTURE_SETUP_TIMEOUT_MS, NATIVE_STARTUP_TIMEOUT_MS } from "../harness/test-budget.ts";
 import { typedHarnessName } from "../../core/tools/aidlc-runtime-paths.ts";
 
