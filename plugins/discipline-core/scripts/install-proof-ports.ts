@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import type { Result } from "../core/values/result.ts";
@@ -22,6 +23,7 @@ export type ScratchFilesPort = {
     readonly disposition: (entry: CopiedEntry) => EntryDisposition;
   }) => Result<null, EffectFailure>;
   readonly listTree: (request: { readonly path: string }) => Result<readonly ListedEntry[], EffectFailure>;
+  readonly digestOf: (request: { readonly path: string }) => Result<string, EffectFailure>;
 };
 
 export type ScratchFilesSurface = {
@@ -35,6 +37,7 @@ export type ScratchFilesSurface = {
     readonly disposition: (entry: CopiedEntry) => EntryDisposition;
   }) => void;
   readonly listTree: (request: { readonly path: string }) => readonly ListedEntry[];
+  readonly digestOf: (request: { readonly path: string }) => string;
 };
 
 export type ProofCommand = "git" | "npm" | "node";
@@ -94,6 +97,7 @@ export const createScratchFilesPort = (options: { readonly surface: ScratchFiles
         options.surface.copyTree({ from: request.from, to: request.to, disposition: request.disposition }),
     }),
   listTree: (request) => attempted({ action: () => options.surface.listTree({ path: request.path }) }),
+  digestOf: (request) => attempted({ action: () => options.surface.digestOf({ path: request.path }) }),
 });
 
 const launchOf = (request: { readonly command: ProofCommand; readonly platform: string }): Launch => {
@@ -162,6 +166,7 @@ export const defaultScratchFilesSurface: ScratchFilesSurface = {
       name: entry.name,
       entryKind: entry.isDirectory() ? "folder" : "file",
     })),
+  digestOf: (request) => createHash("sha256").update(readFileSync(request.path)).digest("hex"),
 };
 
 const spawnedRun = (request: CommandSpawnRequest): StepRun => {

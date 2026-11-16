@@ -13,6 +13,7 @@ export type PackagePlan = {
   readonly commands: CommandEntries;
   readonly copied: readonly string[];
   readonly pieces: readonly PieceText[];
+  readonly exported: readonly string[];
 };
 
 export type BundledPackage = {
@@ -42,9 +43,18 @@ const PIECE_FILE = /^mechanisms\/([^/]+)\/([^/]+)\/piece\.json$/;
 
 const RUNNER_FOLDER = "runner";
 
-const SHIPPED_DOCUMENTS = new Set(["README.md", "ADOPTING.md", "LICENSE", "docs/why-chain-contract.md"]);
+const SHIPPED_DOCUMENTS = new Set([
+  "README.md",
+  "ADOPTING.md",
+  "MIGRATING.md",
+  "LICENSE",
+  "docs/why-chain-contract.md",
+  "docs/adding-a-discipline-or-mechanism.md",
+]);
 
-const SHIPPED_DATA = [/^rules\/[^/]+\/discipline\.json$/, /^rules\/.+\.md$/, /^methods\/.+\.md$/];
+const SHIPPED_DATA = [/^rules\/[^/]+\/discipline\.json$/, /^rules\/.+\.md$/, /^methods\/.+\.md$/, /^mechanisms\/.+\.md$/];
+
+const PACKAGE_IMPORTED_MECHANISMS: ReadonlySet<string> = new Set(["eslint"]);
 
 const TEST_FOLDERS = new Set(["tests", "test-fixtures"]);
 
@@ -109,21 +119,46 @@ const pieceModuleEntries = (request: ParsedPiece): readonly string[] =>
     modulesNamedIn({ settings: clause.settings }).map((module) => `${pieceFolderOf({ path: request.piece.path })}/${module}`),
   );
 
-const builtValueOf = (request: { readonly key: string; readonly value: unknown }): unknown => {
-  if (typeof request.value === "string") {
-    return PIECE_MODULE_KEYS.has(request.key) ? builtModulePath({ path: request.value }) : request.value;
-  }
-  if (Array.isArray(request.value)) {
-    return request.value.map((value: unknown) => builtValueOf({ key: "", value }));
-  }
-  if (typeof request.value === "object" && request.value !== null) {
-    return Object.fromEntries(Object.entries(request.value).map(([key, value]) => [key, builtValueOf({ key, value })]));
-  }
-  return request.value;
-};
+const importedByPackageName = (request: ParsedPiece): boolean =>
+  PACKAGE_IMPORTED_MECHANISMS.has(PIECE_FILE.exec(request.piece.path)?.[1] ?? "");
+
+const exportedModulesOf = (request: { readonly pieces: readonly ParsedPiece[] }): readonly string[] => [
+  ...new Set(request.pieces.filter(importedByPackageName).flatMap(pieceModuleEntries).map((path) => builtModulePath({ path }))),
+];
+
+type JsonRecord = Readonly<Record<string, unknown>>;
+
+const isRecord = (value: unknown): value is JsonRecord => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const builtSettingsOf = (request: { readonly settings: unknown }): unknown =>
+  isRecord(request.settings)
+    ? Object.fromEntries(
+        Object.entries(request.settings).map(([key, value]) => [
+          key,
+          PIECE_MODULE_KEYS.has(key) && typeof value === "string" ? builtModulePath({ path: value }) : value,
+        ]),
+      )
+    : request.settings;
+
+const builtClauseOf = (request: { readonly clause: unknown }): unknown =>
+  isRecord(request.clause)
+    ? Object.fromEntries(
+        Object.entries(request.clause).map(([key, value]) => [key, key === "settings" ? builtSettingsOf({ settings: value }) : value]),
+      )
+    : request.clause;
+
+const builtPieceOf = (request: { readonly document: unknown }): unknown =>
+  isRecord(request.document)
+    ? Object.fromEntries(
+        Object.entries(request.document).map(([key, value]) => [
+          key,
+          key === "clauses" && Array.isArray(value) ? value.map((clause: unknown) => builtClauseOf({ clause })) : value,
+        ]),
+      )
+    : request.document;
 
 const builtPieceText = (request: { readonly document: unknown }): string =>
-  `${JSON.stringify(builtValueOf({ key: "", value: request.document }), null, 2)}\n`;
+  `${JSON.stringify(builtPieceOf({ document: request.document }), null, 2)}\n`;
 
 const parsedPieces = (request: { readonly pieces: readonly PieceText[] }): Result<readonly ParsedPiece[], PlanFailure> =>
   request.pieces.reduce<Result<readonly ParsedPiece[], PlanFailure>>((sofar, piece) => {
@@ -157,6 +192,7 @@ export const packagePlanOf = (request: {
       },
       copied: copiedPathsIn(request),
       pieces: pieces.value.map(({ piece, document }) => ({ path: piece.path, text: builtPieceText({ document }) })),
+      exported: exportedModulesOf({ pieces: pieces.value }),
     },
   };
 };

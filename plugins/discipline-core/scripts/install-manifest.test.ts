@@ -59,24 +59,33 @@ describe("publishManifestOf", () => {
   const published = (developmentManifest: string) =>
     publishManifestOf({
       developmentManifest,
-      identity: { name: "provisional-core", checkBin: "provisional-check", projectBin: "provisional-project" },
+      identity: {
+        name: "provisional-core",
+        description: "Checks a repository against its disciplines.",
+        checkBin: "provisional-check",
+        projectBin: "provisional-project",
+      },
       commands: { check: "core/check/check-command.js", project: "core/check/project-command.js" },
       files: ["LICENSE", "chunks", "core", "mechanisms"],
+      exported: ["mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js"],
       nodeRange: "^22.13.0 || >=24",
     });
 
-  it("names the package and its two commands, exposes only its ESLint pieces and its manifest, and carries the optional peers but no dependencies", () => {
+  it("names and describes the package for consumers, names its two commands, exposes only its manifest and the modules a projection imports, and carries the optional peers but no dependencies", () => {
     expect(published(JSON.stringify(DEVELOPMENT_MANIFEST))).toEqual({
       outcome: "ok",
       value: `${JSON.stringify(
         {
           name: "provisional-core",
           version: "0.0.0",
-          description: "Runs disciplines.",
+          description: "Checks a repository against its disciplines.",
           license: "MIT-0",
           type: "module",
           bin: { "provisional-check": "core/check/check-command.js", "provisional-project": "core/check/project-command.js" },
-          exports: { "./package.json": "./package.json", "./mechanisms/eslint/*": "./mechanisms/eslint/*" },
+          exports: {
+            "./package.json": "./package.json",
+            "./mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js": "./mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js",
+          },
           files: ["LICENSE", "chunks", "core", "mechanisms"],
           engines: { node: "^22.13.0 || >=24" },
           peerDependencies: { eslint: "^9.12.0 || ^10.0.0", typescript: ">=4.8.4 <7.0.0" },

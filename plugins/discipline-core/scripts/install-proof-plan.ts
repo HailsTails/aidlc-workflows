@@ -48,6 +48,8 @@ export type InstallRoute = "copy" | "package";
 
 export type CommandScript = "check" | "project";
 
+export type ReportExpectation = { readonly kind: "recorded" } | { readonly kind: "same-as"; readonly consumer: string };
+
 export type ProofCase = {
   readonly consumer: string;
   readonly route: InstallRoute;
@@ -55,6 +57,7 @@ export type ProofCase = {
   readonly toolchain: ProofToolchain;
   readonly disciplineId: string;
   readonly installedManifest: "kept" | "removed";
+  readonly reports: ReportExpectation;
   readonly actions: readonly ProofAction[];
 };
 
@@ -112,6 +115,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "typescript-floor",
     disciplineId: "CD-23",
     installedManifest: "kept",
+    reports: { kind: "recorded" },
     actions: AUDIT_CONSUMER_ACTIONS,
   },
   {
@@ -121,6 +125,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "eslint-10-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
+    reports: { kind: "recorded" },
     actions: ESLINT_CONSUMER_ACTIONS,
   },
   {
@@ -130,6 +135,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "eslint-9-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
+    reports: { kind: "recorded" },
     actions: ESLINT_CONSUMER_ACTIONS,
   },
   {
@@ -139,6 +145,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "typescript-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
+    reports: { kind: "recorded" },
     actions: ESLINT_MISSING_ACTIONS,
   },
   {
@@ -148,6 +155,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "typescript-floor",
     disciplineId: "CD-23",
     installedManifest: "removed",
+    reports: { kind: "recorded" },
     actions: [
       {
         kind: "check",
@@ -162,6 +170,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "typescript-floor",
     disciplineId: "CD-23",
     installedManifest: "kept",
+    reports: { kind: "same-as", consumer: "audit" },
     actions: AUDIT_CONSUMER_ACTIONS,
   },
   {
@@ -171,6 +180,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "eslint-10-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
+    reports: { kind: "same-as", consumer: "eslint-10" },
     actions: PACKAGED_ESLINT_CONSUMER_ACTIONS,
   },
   {
@@ -180,6 +190,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "eslint-9-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
+    reports: { kind: "same-as", consumer: "eslint-9" },
     actions: PACKAGED_ESLINT_CONSUMER_ACTIONS,
   },
   {
@@ -189,6 +200,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
     toolchain: "typescript-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
+    reports: { kind: "same-as", consumer: "eslint-missing" },
     actions: ESLINT_MISSING_ACTIONS,
   },
 ];
@@ -469,6 +481,7 @@ export const toolchainManifest = (request: {
     ? versions
     : { outcome: "ok", value: `${JSON.stringify({ private: true, devDependencies: versions.value }, null, 2)}\n` };
 };
+
 export const environmentWithoutGit = (request: {
   readonly environment: Readonly<Record<string, string | undefined>>;
 }): Readonly<Record<string, string | undefined>> =>

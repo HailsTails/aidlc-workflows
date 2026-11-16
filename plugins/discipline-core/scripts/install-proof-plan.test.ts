@@ -297,8 +297,22 @@ describe("the proof cases", () => {
     ]);
   });
 
+  it("record each copy-route report and hold each packaged consumer's reports to the copy-route consumer it mirrors, proved before it", () => {
+    expect(PROOF_CASES.map((proofCase) => [proofCase.consumer, proofCase.reports])).toEqual([
+      ["audit", { kind: "recorded" }],
+      ["eslint-10", { kind: "recorded" }],
+      ["eslint-9", { kind: "recorded" }],
+      ["eslint-missing", { kind: "recorded" }],
+      ["no-package-json", { kind: "recorded" }],
+      ["audit-package", { kind: "same-as", consumer: "audit" }],
+      ["eslint-10-package", { kind: "same-as", consumer: "eslint-10" }],
+      ["eslint-9-package", { kind: "same-as", consumer: "eslint-9" }],
+      ["eslint-missing-package", { kind: "same-as", consumer: "eslint-missing" }],
+    ]);
+  });
+
   it("give a packaged consumer scripts calling the two bins on the repository root", () => {
-    expect(packagedConsumerManifest({ identity: { name: "core", checkBin: "core-check", projectBin: "core-project" } })).toBe(
+    expect(packagedConsumerManifest({ identity: { name: "core", description: "Core.", checkBin: "core-check", projectBin: "core-project" } })).toBe(
       `${JSON.stringify(
         { private: true, type: "commonjs", scripts: { "discipline:check": "core-check --repo .", "discipline:project": "core-project --repo ." } },
         null,

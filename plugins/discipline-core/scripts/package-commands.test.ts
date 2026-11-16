@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createPathPort } from "../core/platform-ports/path-port.ts";
 import type { ProcessPort } from "../core/platform-ports/process-port.ts";
 import { type InMemoryFiles, inMemoryFiles } from "../tests/in-memory-files.ts";
-import type { Bundle, BundlerPort } from "./esbuild-bundler-port.ts";
+import type { Bundle, BundledOutput, BundlerPort } from "./esbuild-bundler-port.ts";
 import type { StepRun } from "./install-proof-plan.ts";
 import type { CommandRunPort } from "./install-proof-ports.ts";
 import {
@@ -27,12 +27,33 @@ const SOURCE: Readonly<Record<string, string>> = {
     peerDependencies: { typescript: ">=4.8.4 <7.0.0" },
     peerDependenciesMeta: { typescript: { optional: true } },
   }),
+  "/package/tsconfig.json": "{}\n",
+  "/package/install/package.json": "{}\n",
+  "/package/install/package-lock.json": '{ "lockfileVersion": 3, "packages": {} }',
   "/package/README.md": "# Discipline core\n",
   "/package/core/check/check-command.ts": "await run();\n",
   "/package/core/check/project-command.ts": "await project();\n",
 };
 
-const BUNDLE: Bundle = { files: [{ path: "core/check/check-command.js", text: "await run();\n" }], packageRoots: [] };
+const entryOutput = (request: { readonly source: string; readonly text: string }): BundledOutput => ({
+  path: request.source.replace(/\.ts$/, ".js"),
+  text: request.text,
+  entryPoint: request.source,
+  inputs: [request.source],
+  externalImports: [],
+});
+
+const PROJECT_OUTPUT = entryOutput({ source: "core/check/project-command.ts", text: "await project();\n" });
+
+const BUNDLE: Bundle = {
+  outputs: [entryOutput({ source: "core/check/check-command.ts", text: "await run();\n" }), PROJECT_OUTPUT],
+  packageRoots: [],
+};
+
+const DRIFTED: Bundle = {
+  ...BUNDLE,
+  outputs: [entryOutput({ source: "core/check/check-command.ts", text: "drifted\n" }), PROJECT_OUTPUT],
+};
 
 const steadyBundler = (): BundlerPort => ({ bundle: vi.fn<BundlerPort["bundle"]>().mockResolvedValue({ outcome: "ok", value: BUNDLE }) });
 
@@ -40,14 +61,26 @@ const driftingBundler = (): BundlerPort => ({
   bundle: vi
     .fn<BundlerPort["bundle"]>()
     .mockResolvedValueOnce({ outcome: "ok", value: BUNDLE })
-    .mockResolvedValue({ outcome: "ok", value: { ...BUNDLE, files: [{ path: "core/check/check-command.js", text: "drifted\n" }] } }),
+    .mockResolvedValue({ outcome: "ok", value: DRIFTED }),
 });
 
-const packingInto = (request: { readonly files: InMemoryFiles; readonly run: StepRun }): CommandRunPort => ({
+const EXITED: StepRun = { outcome: "exited", exitCode: 0, output: "" };
+
+const tarballTexts = (request: { readonly differing: "same" | "different" }): (() => string) => {
+  const packed = { count: 0 };
+  return () => {
+    packed.count += 1;
+    return request.differing === "same" ? "tarball" : `tarball ${packed.count}`;
+  };
+};
+
+const npmFaking = (request: { readonly files: InMemoryFiles; readonly tarballText: () => string }): CommandRunPort => ({
   run: vi.fn<CommandRunPort["run"]>((run) => {
     const destination = run.arguments[run.arguments.indexOf("--pack-destination") + 1];
-    request.files.fileText.write({ path: `${destination}/discipline-core-0.0.0.tgz`, text: "tarball" });
-    return request.run;
+    if (run.arguments[0] === "pack" && destination !== undefined) {
+      request.files.fileText.write({ path: `${destination}/discipline-core-0.0.0.tgz`, text: request.tarballText() });
+    }
+    return EXITED;
   }),
 });
 
@@ -76,18 +109,21 @@ const reportOf = (request: { readonly process: ProcessPort }) => ({
   exits: vi.mocked(request.process.exitWith).mock.calls,
 });
 
-const EXITED: StepRun = { outcome: "exited", exitCode: 0, output: "discipline-core-0.0.0.tgz\n" };
+const temporaryPaths = (request: { readonly files: InMemoryFiles }): readonly string[] =>
+  Object.keys(request.files.texts()).filter((path) => path.startsWith("/tmp/"));
+
+const NPM_CI = ["ci", "--ignore-scripts", "--no-audit", "--no-fund", "--prefer-offline"];
 
 describe("createTarballPacker", () => {
-  it("builds into the work root, packs that build with npm into the work root's tarball folder, and names the one tarball", async () => {
+  it("builds into the work root from the given installed packages, packs that build with npm into the work root's tarball folder, and names the one tarball", async () => {
     const files = inMemoryFiles({ initial: SOURCE });
-    const commands = packingInto({ files, run: EXITED });
+    const commands = npmFaking({ files, tarballText: tarballTexts({ differing: "same" }) });
     const packer = createTarballPacker({
       ports: { path: posixPath, fileText: files.fileText, scratch: files.scratch, bundler: steadyBundler() },
       commands,
     });
 
-    const tarball = await packer.pack({ packageRoot: "/package", workRoot: "/work" });
+    const tarball = await packer.pack({ packageRoot: "/package", workRoot: "/work", dependencies: "/deps" });
 
     expect({ tarball, runs: vi.mocked(commands.run).mock.calls, built: files.texts()["/work/package-build/package.json"] }).toEqual({
       tarball: { outcome: "ok", value: "/work/package-tarball/discipline-core-0.0.0.tgz" },
@@ -111,7 +147,7 @@ describe("createTarballPacker", () => {
       commands: { run: vi.fn<CommandRunPort["run"]>().mockReturnValue({ outcome: "exited", exitCode: 1, output: "npm ERR! pack" }) },
     });
 
-    expect(await packer.pack({ packageRoot: "/package", workRoot: "/work" })).toEqual({
+    expect(await packer.pack({ packageRoot: "/package", workRoot: "/work", dependencies: "/deps" })).toEqual({
       outcome: "failed",
       error: 'FAIL: npm pack /work/package-build: {"outcome":"exited","exitCode":1,"output":"npm ERR! pack"}',
     });
@@ -119,15 +155,43 @@ describe("createTarballPacker", () => {
 });
 
 describe("runBuildPackage", () => {
-  it("builds into the package's dist folder and prints how many files it wrote", async () => {
+  it("installs core's own packages from its install lock into a temporary folder, builds into dist from them, and removes the folder", async () => {
     const files = inMemoryFiles({ initial: SOURCE });
-    const request = commandRequest({ files, bundler: steadyBundler(), commands: packingInto({ files, run: EXITED }) });
+    const commands = npmFaking({ files, tarballText: tarballTexts({ differing: "same" }) });
+    const request = commandRequest({ files, bundler: steadyBundler(), commands });
 
     await runBuildPackage(request);
 
-    expect(reportOf(request)).toEqual({
-      writes: [[{ text: "build package: wrote 4 files to /package/dist\n" }]],
-      exits: [[{ code: 0 }]],
+    expect({ report: reportOf(request), runs: vi.mocked(commands.run).mock.calls, left: temporaryPaths({ files }) }).toEqual({
+      report: { writes: [[{ text: "build package: wrote 5 files to /package/dist\n" }]], exits: [[{ code: 0 }]] },
+      runs: [[{ command: "npm", arguments: NPM_CI, directory: "/tmp/discipline-core-package-dependencies-1" }]],
+      left: [],
+    });
+  });
+
+  it("fails with npm's output when core's own packages do not install, building nothing", async () => {
+    const files = inMemoryFiles({ initial: SOURCE });
+    const bundler = steadyBundler();
+    const request = commandRequest({
+      files,
+      bundler,
+      commands: { run: vi.fn<CommandRunPort["run"]>().mockReturnValue({ outcome: "exited", exitCode: 1, output: "npm ERR! network" }) },
+    });
+
+    await runBuildPackage(request);
+
+    expect({ report: reportOf(request), bundles: vi.mocked(bundler.bundle).mock.calls.length }).toEqual({
+      report: {
+        writes: [
+          [
+            {
+              text: 'FAIL: npm ci core\'s own packages from install/package-lock.json: {"outcome":"exited","exitCode":1,"output":"npm ERR! network"}\n',
+            },
+          ],
+        ],
+        exits: [[{ code: 1 }]],
+      },
+      bundles: 0,
     });
   });
 });
@@ -135,7 +199,11 @@ describe("runBuildPackage", () => {
 describe("runPackPackage", () => {
   it("clears the artefacts folder, packs the dist build into it and prints the tarball", async () => {
     const files = inMemoryFiles({ initial: { ...SOURCE, "/package/artefacts/old-0.0.0.tgz": "old" } });
-    const request = commandRequest({ files, bundler: steadyBundler(), commands: packingInto({ files, run: EXITED }) });
+    const request = commandRequest({
+      files,
+      bundler: steadyBundler(),
+      commands: npmFaking({ files, tarballText: tarballTexts({ differing: "same" }) }),
+    });
 
     await runPackPackage(request);
 
@@ -147,18 +215,19 @@ describe("runPackPackage", () => {
 });
 
 describe("runPackageDeterminism", () => {
-  it("passes when two builds into separate temporary roots are identical, and removes the roots", async () => {
+  it("passes when two builds into separate temporary roots and their packed tarballs are identical, and removes every temporary folder", async () => {
     const files = inMemoryFiles({ initial: SOURCE });
-    const request = commandRequest({ files, bundler: steadyBundler(), commands: packingInto({ files, run: EXITED }) });
+    const request = commandRequest({
+      files,
+      bundler: steadyBundler(),
+      commands: npmFaking({ files, tarballText: tarballTexts({ differing: "same" }) }),
+    });
 
     await runPackageDeterminism(request);
 
-    expect({
-      report: reportOf(request),
-      left: Object.keys(files.texts()).filter((path) => path.startsWith("/tmp/")),
-    }).toEqual({
+    expect({ report: reportOf(request), left: temporaryPaths({ files }) }).toEqual({
       report: {
-        writes: [[{ text: "package determinism: pass, 4 files byte-identical across two builds\n" }]],
+        writes: [[{ text: "package determinism: pass, 5 files and the packed tarball byte-identical across two builds\n" }]],
         exits: [[{ code: 0 }]],
       },
       left: [],
@@ -167,12 +236,32 @@ describe("runPackageDeterminism", () => {
 
   it("fails naming each file the two builds wrote differently", async () => {
     const files = inMemoryFiles({ initial: SOURCE });
-    const request = commandRequest({ files, bundler: driftingBundler(), commands: packingInto({ files, run: EXITED }) });
+    const request = commandRequest({
+      files,
+      bundler: driftingBundler(),
+      commands: npmFaking({ files, tarballText: tarballTexts({ differing: "same" }) }),
+    });
 
     await runPackageDeterminism(request);
 
     expect(reportOf(request)).toEqual({
       writes: [[{ text: "FAIL: package determinism: two builds differ in core/check/check-command.js\n" }]],
+      exits: [[{ code: 1 }]],
+    });
+  });
+
+  it("fails when identical builds pack into tarballs that differ", async () => {
+    const files = inMemoryFiles({ initial: SOURCE });
+    const request = commandRequest({
+      files,
+      bundler: steadyBundler(),
+      commands: npmFaking({ files, tarballText: tarballTexts({ differing: "different" }) }),
+    });
+
+    await runPackageDeterminism(request);
+
+    expect(reportOf(request)).toEqual({
+      writes: [[{ text: "FAIL: package determinism: the two builds' packed tarballs differ\n" }]],
       exits: [[{ code: 1 }]],
     });
   });

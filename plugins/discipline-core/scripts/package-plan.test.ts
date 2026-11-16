@@ -86,15 +86,19 @@ describe("packagePlanOf", () => {
     });
   });
 
-  it("copies the documents, rule pages, rule data and review methods, and nothing the check never reads or a test owns", () => {
+  it("copies the documents, mechanism and rule pages, rule data and review methods, and nothing the check never reads or a test owns", () => {
     expect(plan).toMatchObject({
       outcome: "ok",
       value: {
         copied: [
           "README.md",
           "ADOPTING.md",
+          "MIGRATING.md",
           "LICENSE",
           "docs/why-chain-contract.md",
+          "docs/adding-a-discipline-or-mechanism.md",
+          "mechanisms/audit/runner/README.md",
+          "mechanisms/eslint/CD-14/README.md",
           "rules/README.md",
           "rules/CD-14/README.md",
           "rules/CD-14/discipline.json",
@@ -126,6 +130,52 @@ describe("packagePlanOf", () => {
           {
             path: "mechanisms/eslint/CD-14/piece.json",
             text: expect.stringContaining('"pluginModule": "cd14/cd14.eslint-plugin.js",\n        "rule": "no-class"'),
+          },
+        ],
+      },
+    });
+  });
+
+  it("exports only the built plugin modules of shipped ESLint pieces, the modules a projection imports by package name", () => {
+    expect(plan).toMatchObject({ outcome: "ok", value: { exported: ["mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js"] } });
+  });
+
+  it("rewrites only the module keys of each clause's settings, leaving a rule option or top-level field of that name alone", () => {
+    const piece = {
+      path: "mechanisms/eslint/CD-14/piece.json",
+      text: JSON.stringify({
+        version: 1,
+        module: "top.ts",
+        clauses: [
+          {
+            clause: "class-syntax",
+            module: "clause.ts",
+            settings: { pluginNamespace: "discipline", pluginModule: "cd14/cd14.eslint-plugin.ts", rule: "no-class", options: [{ module: "option.ts" }] },
+          },
+        ],
+      }),
+    };
+    expect(packagePlanOf({ sourcePaths: SOURCE_PATHS, pieces: [piece] })).toMatchObject({
+      outcome: "ok",
+      value: {
+        pieces: [
+          {
+            path: piece.path,
+            text: `${JSON.stringify(
+              {
+                version: 1,
+                module: "top.ts",
+                clauses: [
+                  {
+                    clause: "class-syntax",
+                    module: "clause.ts",
+                    settings: { pluginNamespace: "discipline", pluginModule: "cd14/cd14.eslint-plugin.js", rule: "no-class", options: [{ module: "option.ts" }] },
+                  },
+                ],
+              },
+              null,
+              2,
+            )}\n`,
           },
         ],
       },

@@ -2,7 +2,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Runs a project's selected disciplines against its own files. Self-contained so it builds and tests from this directory alone.",
+  "description": "Runs a project's selected disciplines against its own files.",
   "license": "MIT-0",
   "engines": {
     "node": ">=22.18.0"
@@ -46,9 +46,9 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
     "@types/node": "25.9.1",
-    "esbuild": "0.25.12",
     "@typescript-eslint/eslint-plugin": "8.71.2",
     "@typescript-eslint/parser": "8.71.2",
+    "esbuild": "0.25.12",
     "eslint": "10.11.0",
     "eslint-10-floor": "npm:eslint@10.0.0",
     "eslint-9": "npm:eslint@9.39.5",

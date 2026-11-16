@@ -37,6 +37,7 @@ const EXPECTING_PASS: ProofCase = {
   toolchain: "typescript-floor",
   disciplineId: "CD-14",
   installedManifest: "kept",
+  reports: { kind: "recorded" },
   actions: [{ kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } }],
 };
 
@@ -111,6 +112,7 @@ const scratchPort = (overrides: Partial<ScratchFilesPort>): ScratchFilesPort => 
   makeDirectory: vi.fn<ScratchFilesPort["makeDirectory"]>().mockReturnValue({ outcome: "ok", value: null }),
   copyTree: vi.fn<ScratchFilesPort["copyTree"]>().mockReturnValue({ outcome: "ok", value: null }),
   listTree: vi.fn<ScratchFilesPort["listTree"]>().mockReturnValue({ outcome: "ok", value: [] }),
+  digestOf: vi.fn<ScratchFilesPort["digestOf"]>().mockReturnValue({ outcome: "ok", value: "digest" }),
   ...overrides,
 });
 
@@ -382,12 +384,14 @@ describe("runInstallProof over the packaged route", () => {
       ...overrides,
     });
 
-  it("packs the package once inside the temporary root, from the package root", async () => {
+  it("packs the package once inside the temporary root, from the package root, bundling core's own packages staged from its lock", async () => {
     const packer = packerReturning({ outcome: "ok", value: TARBALL });
 
     await runInstallProof(packagedRequest({ packer, proofCases: [PACKAGED_PASS, { ...PACKAGED_PASS, consumer: "second", actions: [] }] }));
 
-    expect(vi.mocked(packer.pack).mock.calls).toEqual([[{ packageRoot: "/package", workRoot: "/scratch" }]]);
+    expect(vi.mocked(packer.pack).mock.calls).toEqual([
+      [{ packageRoot: "/package", workRoot: "/scratch", dependencies: "/scratch/core-packages/node_modules" }],
+    ]);
   });
 
   it("writes the consumer's commonjs manifest with scripts calling the installed bins, its ignore file, and npm config running scripts without type stripping", async () => {
@@ -521,7 +525,7 @@ describe("runInstallProof over the packaged route", () => {
     ]);
   });
 
-  it("exits 1 with the packer's failure, running no consumer and removing the temporary root", async () => {
+  it("exits 1 with the packer's failure after staging core's own packages, running no consumer and removing the temporary root", async () => {
     const proofProcess = processPort();
     const scratch = scratchPort({});
     const commands = commandsReturning(EXITED_PASSING);
@@ -541,8 +545,90 @@ describe("runInstallProof over the packaged route", () => {
       removed: vi.mocked(scratch.removeTree).mock.calls,
     }).toEqual({
       report: { writes: [[{ text: "FAIL: bundle: Could not resolve\n" }]], exits: [[{ code: 1 }]] },
-      runs: [],
+      runs: [[{ command: "npm", arguments: ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], directory: "/scratch/core-packages" }]],
       removed: [[{ path: "/scratch" }]],
+    });
+  });
+
+  describe("held to a copy-route consumer's reports", () => {
+    const TWIN: ProofCase = { ...EXPECTING_PASS, actions: [EXPECTING_PASS.actions[0], EXPECTING_PASS.actions[0]] };
+
+    const MIRROR: ProofCase = {
+      ...PACKAGED_PASS,
+      reports: { kind: "same-as", consumer: "audit" },
+      actions: TWIN.actions,
+    };
+
+    const commandsByRoute = (request: { readonly copied: readonly string[]; readonly packaged: readonly string[] }): CommandRunPort => {
+      const outputs = { node: [...request.copied], npm: [...request.packaged] };
+      return {
+        run: vi.fn<CommandRunPort["run"]>((run) => {
+          if (run.command === "node") {
+            return { outcome: "exited", exitCode: 0, output: outputs.node.shift() ?? "" };
+          }
+          return run.arguments[0] === "run"
+            ? { outcome: "exited", exitCode: 0, output: outputs.npm.shift() ?? "" }
+            : EXITED_PASSING;
+        }),
+      };
+    };
+
+    const mirroredRequest = (commands: CommandRunPort, proofProcess: ProcessPort): InstallProofRequest =>
+      packagedRequest({
+        process: proofProcess,
+        commands,
+        scratch: scratchPort({
+          listTree: vi
+            .fn<ScratchFilesPort["listTree"]>()
+            .mockReturnValueOnce({ outcome: "ok", value: [] })
+            .mockReturnValue({ outcome: "ok", value: INSTALLED_PACKAGE }),
+        }),
+        proofCases: [TWIN, MIRROR],
+      });
+
+    it("passes noting each packaged report that equals the copy-route consumer's report at the same step", async () => {
+      const proofProcess = processPort();
+      const reports = ["findings (1)\nverdict: pass", "verdict: pass"];
+
+      await runInstallProof(mirroredRequest(commandsByRoute({ copied: reports, packaged: reports }), proofProcess));
+
+      expect(reportOf({ process: proofProcess }).writes.slice(-3)).toEqual([
+        [{ text: 'ok: audit-package check -> exit 0, "verdict: pass", and the same report as audit\n' }],
+        [{ text: 'ok: audit-package check -> exit 0, "verdict: pass", and the same report as audit\n' }],
+        [{ text: "install proof: pass\n" }],
+      ]);
+    });
+
+    it("fails showing both reports when a packaged report differs from the copy-route consumer's", async () => {
+      const proofProcess = processPort();
+
+      await runInstallProof(
+        mirroredRequest(
+          commandsByRoute({ copied: ["verdict: pass", "verdict: pass"], packaged: ["verdict: pass", "excluded (1)\nverdict: pass"] }),
+          proofProcess,
+        ),
+      );
+
+      expect(reportOf({ process: proofProcess })).toMatchObject({
+        writes: expect.arrayContaining([
+          [
+            {
+              text: "FAIL: audit-package check: its report differs from audit's\n--- audit\nverdict: pass\n--- audit-package check\nexcluded (1)\nverdict: pass\n",
+            },
+          ],
+        ]),
+        exits: [[{ code: 1 }]],
+      });
+    });
+
+    it("fails before running a packaged consumer whose copy-route consumer was not proved first", async () => {
+      const proofProcess = processPort();
+
+      await runInstallProof(packagedRequest({ process: proofProcess, proofCases: [MIRROR] }));
+
+      expect(reportOf({ process: proofProcess }).writes.at(-1)).toEqual([
+        { text: "FAIL: audit-package: no report of audit was recorded to compare with; prove audit first\n" },
+      ]);
     });
   });
 });

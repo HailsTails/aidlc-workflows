@@ -34,7 +34,6 @@ const installedSectionsSchema = z.object({
 
 const publishedSectionsSchema = installedSectionsSchema.pick({
   version: true,
-  description: true,
   license: true,
   peerDependencies: true,
   peerDependenciesMeta: true,
@@ -42,9 +41,9 @@ const publishedSectionsSchema = installedSectionsSchema.pick({
 
 const peerSectionsSchema = installedSectionsSchema.pick({ peerDependencies: true });
 
-const ESLINT_PIECES_EXPORT = "./mechanisms/eslint/*";
-
 const MANIFEST_EXPORT = "./package.json";
+
+const exportPathOf = (path: string): string => `./${path}`;
 
 const manifestText = (request: { readonly manifest: object }): string => `${JSON.stringify(request.manifest, null, 2)}\n`;
 
@@ -81,6 +80,7 @@ export const publishManifestOf = (request: {
   readonly identity: PackageIdentity;
   readonly commands: CommandEntries;
   readonly files: readonly string[];
+  readonly exported: readonly string[];
   readonly nodeRange: string;
 }): Result<string, InstallManifestFailure> => {
   const published = sectionsOf({ developmentManifest: request.developmentManifest, schema: publishedSectionsSchema });
@@ -93,11 +93,11 @@ export const publishManifestOf = (request: {
       manifest: {
         name: request.identity.name,
         version: published.value.version,
-        description: published.value.description,
+        description: request.identity.description,
         license: published.value.license,
         type: "module",
         bin: { [request.identity.checkBin]: request.commands.check, [request.identity.projectBin]: request.commands.project },
-        exports: { [MANIFEST_EXPORT]: MANIFEST_EXPORT, [ESLINT_PIECES_EXPORT]: ESLINT_PIECES_EXPORT },
+        exports: Object.fromEntries([MANIFEST_EXPORT, ...request.exported.map(exportPathOf)].map((path) => [path, path])),
         files: request.files,
         engines: { node: request.nodeRange },
         peerDependencies: published.value.peerDependencies,

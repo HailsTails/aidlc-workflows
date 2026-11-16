@@ -1,5 +1,6 @@
 import type { FileTextPort } from "../core/platform-ports/file-text-port.ts";
-import type { ListedEntry, ScratchFilesPort } from "../scripts/install-proof-ports.ts";
+import type { EntryDisposition } from "../scripts/install-proof-plan.ts";
+import type { CopiedEntry, ListedEntry, ScratchFilesPort } from "../scripts/install-proof-ports.ts";
 
 export type InMemoryFiles = {
   readonly fileText: FileTextPort;
@@ -10,7 +11,17 @@ export type InMemoryFiles = {
 const isUnder = (request: { readonly path: string; readonly folder: string }): boolean =>
   request.path === request.folder || request.path.startsWith(`${request.folder}/`);
 
-const listedUnder = (request: { readonly files: ReadonlyMap<string, string>; readonly folder: string }): readonly ListedEntry[] =>
+const keptInCopy = (request: {
+  readonly relative: string;
+  readonly disposition: (entry: CopiedEntry) => EntryDisposition;
+}): boolean => {
+  const segments = request.relative.split("/");
+  return segments.every(
+    (name, index) => request.disposition({ name, entryKind: index === segments.length - 1 ? "file" : "folder" }) === "kept",
+  );
+};
+
+const listedUnder =(request: { readonly files: ReadonlyMap<string, string>; readonly folder: string }): readonly ListedEntry[] =>
   [...request.files.keys()]
     .filter((path) => path.startsWith(`${request.folder}/`))
     .sort()
@@ -54,13 +65,21 @@ export const inMemoryFiles = (request: { readonly initial: Readonly<Record<strin
         return { outcome: "ok", value: null };
       },
       makeDirectory: () => ({ outcome: "ok", value: null }),
-      copyTree: ({ from, to }) => {
-        for (const [path, text] of [...files.entries()].filter(([candidate]) => isUnder({ path: candidate, folder: from }))) {
+      copyTree: ({ from, to, disposition }) => {
+        for (const [path, text] of [...files.entries()].filter(
+          ([candidate]) => isUnder({ path: candidate, folder: from }) && keptInCopy({ relative: candidate.slice(from.length + 1), disposition }),
+        )) {
           files.set(`${to}${path.slice(from.length)}`, text);
         }
         return { outcome: "ok", value: null };
       },
       listTree: ({ path }) => ({ outcome: "ok", value: listedUnder({ files, folder: path }) }),
+      digestOf: ({ path }) => {
+        const text = files.get(path);
+        return text === undefined
+          ? { outcome: "failed", error: { kind: "effect-failed", detail: `ENOENT ${path}` } }
+          : { outcome: "ok", value: `digest of ${text}` };
+      },
     },
   };
 };

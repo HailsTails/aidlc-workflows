@@ -2,7 +2,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Runs a project's selected disciplines against its own files. Self-contained so it builds and tests from this directory alone.",
+  "description": "Runs a project's selected disciplines against its own files.",
   "license": "MIT-0",
   "engines": {
     "node": ">=22.18.0"
