@@ -8,7 +8,7 @@ const routes = (): NativeCommandRoutes => ({ prefix: "aidlc engine", namespace: 
   delegates: ["doctor", "utility"], adapterHooks: new Set(["known-adapter"]),
   trusted: (suffix) => `aidlc engine ${suffix}`, unresolvable: () => [] });
 const identity = host({ name: "fixture", directory: ".fixture" });
-const release = { copyOnly: [], replacements: [], permissionsLine: "prefix-only" as const };
+const release = { copyOnly: [], replacements: [], permissions: { kind: "authored" as const } };
 const file = (relative: string, text: string) => ({ path: path(relative), content: { kind: "text" as const, text },
   mode: "regular" as const, origin: { kind: "rendered" as const, concept: "settings" as const, name: "fixture" } });
 

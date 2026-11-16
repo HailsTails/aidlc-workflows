@@ -64,7 +64,7 @@ export const claudeDistribution = (): Result<HostDistribution, KernelRefusal> =>
       } },
     ],
     listing: {},
-    native: { replacements: [], copyOnly: [], permissionsLine: "exact-reads" },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "authored" } },
     plugin: {
       format: "store", manifestDir: ".claude-plugin", marketplaceDir: ".claude-plugin", catalogue: "written",
       installRoots: [".claude", ".gitignore", ".mcp.json", "aidlc"],

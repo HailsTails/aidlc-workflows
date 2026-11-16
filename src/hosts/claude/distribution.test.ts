@@ -38,7 +38,7 @@ test("Claude declares its exact layout, prior signatures and plugin/native relea
       } },
     ],
     listing: {},
-    native: { replacements: [], copyOnly: [], permissionsLine: "exact-reads" },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "authored" } },
     plugin: { format: "store", manifestDir: ".claude-plugin", marketplaceDir: ".claude-plugin",
       catalogue: "written", installRoots: [".claude", ".gitignore", ".mcp.json", "aidlc"] },
   } });

@@ -141,7 +141,7 @@ export const kiroIdeDistribution = ({ delegateShellFacts }: {
       { integration: agents.value, wholeFileHashes: agentsHashes.value, entryHashes: {} },
     ],
     listing: LISTING,
-    native: { replacements: nativeReplacements(delegateShellFacts), copyOnly: [], permissionsLine: "exact-reads" },
+    native: { replacements: nativeReplacements(delegateShellFacts), copyOnly: [], permissions: { kind: "exact-reads" } },
     plugin: {
       format: "kiro-ide", manifestDir: ".kiro-plugin", marketplaceDir: ".kiro-plugin", catalogue: "none",
       installRoots: [".gitignore", ".kiro", "AGENTS.md", "aidlc"],

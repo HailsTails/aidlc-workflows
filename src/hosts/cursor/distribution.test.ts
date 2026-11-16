@@ -45,7 +45,7 @@ test("Cursor declares the exact roots, prior shapes, listing and plugin distribu
         from: "run `bun .cursor/tools/aidlc.ts doctor` (after installing Bun from https://bun.sh/install if `bun` is not found),",
         to: "run `aidlc doctor`,",
       }],
-      copyOnly: [path("install.ts")], permissionsLine: "exact-reads",
+      copyOnly: [path("install.ts")], permissions: { kind: "authored" },
     },
     plugin: {
       format: "cursor", manifestDir: ".cursor-plugin", marketplaceDir: ".cursor-plugin", catalogue: "written",

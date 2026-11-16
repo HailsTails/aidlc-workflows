@@ -68,7 +68,7 @@ export const kiroDistribution = (): Result<HostDistribution, KernelRefusal> => {
       { integration: agents.value, wholeFileHashes: agentsHashes.value, entryHashes: {} },
     ],
     listing: { choiceName: "Kiro CLI (V2)" },
-    native: { replacements: [], copyOnly: [], permissionsLine: "exact-reads" },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "exact-reads" } },
     plugin: {
       format: "kiro", manifestDir: ".kiro-plugin", marketplaceDir: ".kiro-plugin", catalogue: "none",
       installRoots: [".gitignore", ".kiro", "AGENTS.md", "aidlc"],

@@ -67,7 +67,7 @@ export const cursorDistribution = (): Result<HostDistribution, KernelRefusal> =>
         from: "run `bun .cursor/tools/aidlc.ts doctor` (after installing Bun from https://bun.sh/install if `bun` is not found),",
         to: "run `aidlc doctor`,",
       }],
-      copyOnly: [installer.value], permissionsLine: "exact-reads",
+      copyOnly: [installer.value], permissions: { kind: "authored" },
     },
     plugin: {
       format: "cursor", manifestDir: ".cursor-plugin", marketplaceDir: ".cursor-plugin", catalogue: "written",

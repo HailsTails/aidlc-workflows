@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { hash, path } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
-import { codexDistribution } from "./distribution.ts";
+import { codexDistribution, codexNativePermissionsLine } from "./distribution.ts";
 
 test("Codex declares its exact roots, authored history and native plugin discovery", () => {
   expect(codexDistribution()).toEqual(accepted({
@@ -53,7 +53,7 @@ test("Codex declares its exact roots, authored history and native plugin discove
       ], entryHashes: {} },
     ],
     listing: {},
-    native: { replacements: [], copyOnly: [], permissionsLine: "prefix-only" },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "host-line", line: codexNativePermissionsLine } },
     plugin: {
       format: "store", manifestDir: ".codex-plugin", marketplaceDir: ".agents/plugins", catalogue: "written",
       installRoots: [".agents", ".codex", ".gitignore", "AGENTS.md", "aidlc"],
@@ -69,4 +69,12 @@ test("Codex declares the same three managed top-level directories as its verifie
     distribution.layout.managedDirectories[1]?.path,
     distribution.layout.managedDirectories[2]?.path,
   ]).toEqual([path(".agents"), path(".codex"), path("aidlc")]);
+});
+
+test("Codex's native onboarding names its own rules file and sandbox, not an aidlc agent", () => {
+  expect(codexNativePermissionsLine("aidlc engine")).toBe(
+    "- **Permissions**: `.codex/rules/default.rules` (Starlark prefix rules) pre-allows AI-DLC's workflow commands " +
+    "as it runs them, so Codex runs them without asking, outside its sandbox: `aidlc engine ...` and " +
+    "`git worktree`/`commit`/`add`. Everything else runs inside the `workspace-write` sandbox, so a command that " +
+    "writes `.git` or `.codex/` (a `config` change, for one) needs your approval to run outside it.");
 });

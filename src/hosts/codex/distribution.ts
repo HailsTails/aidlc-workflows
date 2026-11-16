@@ -36,6 +36,12 @@ const AGENTS_PRIOR_HASHES = [
   "sha256:6d3bf5865f1836575715ea93d0042b9d08bcab918cc9a17a142848fe44e88bc7",
 ];
 
+export const codexNativePermissionsLine = (nativePrefix: string): string =>
+  "- **Permissions**: `.codex/rules/default.rules` (Starlark prefix rules) pre-allows AI-DLC's workflow commands " +
+  `as it runs them, so Codex runs them without asking, outside its sandbox: \`${nativePrefix} ...\` and ` +
+  "`git worktree`/`commit`/`add`. Everything else runs inside the `workspace-write` sandbox, so a command that " +
+  "writes `.git` or `.codex/` (a `config` change, for one) needs your approval to run outside it.";
+
 const priorHashes = (values: readonly string[]): Result<readonly ContentHash[], KernelRefusal> =>
   values.reduce<Result<readonly ContentHash[], KernelRefusal>>((hashes, raw) => {
     if (!hashes.ok) return hashes;
@@ -75,7 +81,7 @@ export const codexDistribution = (): Result<HostDistribution, KernelRefusal> => 
       { integration: agents.value, wholeFileHashes: agentsHashes.value, entryHashes: {} },
     ],
     listing: {},
-    native: { replacements: [], copyOnly: [], permissionsLine: "prefix-only" },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "host-line", line: codexNativePermissionsLine } },
     plugin: {
       format: "store", manifestDir: ".codex-plugin", marketplaceDir: ".agents/plugins", catalogue: "written",
       installRoots: [".agents", ".codex", ".gitignore", "AGENTS.md", "aidlc"],

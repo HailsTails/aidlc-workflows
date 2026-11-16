@@ -58,7 +58,7 @@ test("Copilot declares its exact roots, prior shapes and plugin discovery", () =
       ], entryHashes: {} },
     ],
     listing: {},
-    native: { replacements: [], copyOnly: [], permissionsLine: "prefix-only" },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "authored" } },
     plugin: {
       format: "store", manifestDir: ".plugin", marketplaceDir: ".plugin", catalogue: "written",
       installRoots: [".aidlc", ".github", ".gitignore", ".vscode", "AGENTS.md", "aidlc"],

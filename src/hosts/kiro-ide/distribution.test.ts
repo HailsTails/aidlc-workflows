@@ -98,7 +98,7 @@ const EXPECTED_DISTRIBUTION: HostDistribution = {
     "from": "    - capability: shell\n      effect: deny\n      match:\n        - \"bun .kiro/tools/aidlc-*\"\n        - \"bun .kiro/tools/aidlc.ts engine *\"\n      exclude:\n    - capability: shell\n      effect: deny\n      match:\n        - \"bun .kiro/tools/aidlc*$*\"\n        - \"bun .kiro/tools/aidlc*`*\"\n        - \"bun .kiro/tools/aidlc*>*\"\n        - \"bun .kiro/tools/aidlc*<*\"\n        - \"bun .kiro/tools/aidlc*&*\"\n        - \"bun .kiro/tools/aidlc*@(*\"\n        - \"bun .kiro/tools/aidlc*@{*\"\n        - \"bun .kiro/tools/aidlc*\\n*\"",
     "to": "    - capability: shell\n      effect: deny\n      match:\n        - \"aidlc engine *\"\n      exclude:\n    - capability: shell\n      effect: deny\n      match:\n        - \"aidlc*$*\"\n        - \"aidlc*`*\"\n        - \"aidlc*>*\"\n        - \"aidlc*<*\"\n        - \"aidlc*&*\"\n        - \"aidlc*@(*\"\n        - \"aidlc*@{*\"\n        - \"aidlc*\\n*\""
   }
-], copyOnly: [], permissionsLine: "exact-reads" },
+], copyOnly: [], permissions: { kind: "exact-reads" } },
     plugin: {
       format: "kiro-ide", manifestDir: ".kiro-plugin", marketplaceDir: ".kiro-plugin", catalogue: "none",
       installRoots: [".gitignore", ".kiro", "AGENTS.md", "aidlc"],

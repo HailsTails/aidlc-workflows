@@ -59,10 +59,17 @@ export type NativeReplacement = {
   readonly to: string;
 };
 
+export type NativePermissionsLine = (nativePrefix: string) => string;
+
+export type NativePermissions =
+  | { readonly kind: "authored" }
+  | { readonly kind: "exact-reads" }
+  | { readonly kind: "host-line"; readonly line: NativePermissionsLine };
+
 export type NativeRelease = {
   readonly replacements: readonly NativeReplacement[];
   readonly copyOnly: readonly ProjectPath[];
-  readonly permissionsLine: "exact-reads" | "prefix-only";
+  readonly permissions: NativePermissions;
 };
 
 export type HostDistribution = {

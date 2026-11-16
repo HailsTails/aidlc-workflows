@@ -70,7 +70,7 @@ export const nativeLayoutFiles = (request: NativeLayoutRequest)
   if (!replaced.ok) return replaced;
   const files = replaced.value.map((file): ProjectedFile => nativeFileTreatment(file) === "rewrite-text" ? { ...file, content: { kind: "text",
     text: nativeOnboardingText({ text: nativeInvocationText({ text: textOf(file.content),
-      host: request.host, routes: request.routes }), permissionsLine: request.release.permissionsLine,
+      host: request.host, routes: request.routes }), permissions: request.release.permissions,
     prefix: request.routes.prefix }),
   } } : file);
   const failures = files.toSorted(payloadTreeOrder).flatMap((file) => nativeFailures(file, request));

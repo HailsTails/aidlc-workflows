@@ -44,7 +44,7 @@ test("OpenCode declares its exact roots, authored history and native plugin disc
       ], entryHashes: {} },
     ],
     listing: {},
-    native: { replacements: [], copyOnly: [], permissionsLine: "prefix-only" },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "authored" } },
     plugin: {
       format: "store", manifestDir: ".opencode-plugin", marketplaceDir: ".opencode-plugin", catalogue: "none",
       installRoots: [".aidlc", ".gitignore", ".opencode", "AGENTS.md", "aidlc", "opencode.json"],

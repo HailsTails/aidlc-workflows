@@ -82,7 +82,7 @@ export const copilotDistribution = (): Result<HostDistribution, KernelRefusal> =
       { integration: agents.value, wholeFileHashes: agentsHashes.value, entryHashes: {} },
     ],
     listing: {},
-    native: { replacements: [], copyOnly: [], permissionsLine: "prefix-only" },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "authored" } },
     plugin: {
       format: "store", manifestDir: ".plugin", marketplaceDir: ".plugin", catalogue: "written",
       installRoots: [".aidlc", ".github", ".gitignore", ".vscode", "AGENTS.md", "aidlc"],

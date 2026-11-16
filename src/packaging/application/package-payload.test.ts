@@ -10,7 +10,7 @@ import { createPackagePayload } from "./package-payload.ts";
 
 const nativeRoutes = { prefix: "aidlc engine", namespace: "engine", delegates: [], adapterHooks: new Set<string>(),
   trusted: (suffix: string) => `aidlc engine ${suffix}`, unresolvable: () => [] };
-const nativeReleases = { release: () => accepted({ replacements: [], copyOnly: [], permissionsLine: "prefix-only" as const }) };
+const nativeReleases = { release: () => accepted({ replacements: [], copyOnly: [], permissions: { kind: "authored" as const } }) };
 
 const fixture = claudeCopyPayloadFixture;
 const ZERO_HASH = hash("sha256:0000000000000000000000000000000000000000000000000000000000000000");
@@ -165,7 +165,7 @@ test("the bundler receives the projection host instead of inferring its director
 test("native layout runs before hashing and removes copy-only root declarations", async () => {
   const hasher = mock(() => accepted(ZERO_HASH));
   const native = createPackagePayload({ bundler: { bundle: async () => accepted([]) }, hasher: { hash: hasher }, stamp: stampedText,
-    routes: nativeRoutes, releases: { release: () => accepted({ permissionsLine: "prefix-only",
+    routes: nativeRoutes, releases: { release: () => accepted({ permissions: { kind: "authored" },
       replacements: [], copyOnly: [path(".vscode/settings.json")] }) },
     layouts: { layout: () => accepted({ ...fixture.descriptor.layout, rootIntegrations: [{
       path: path(".vscode/settings.json"), policy: "jsonc-settings", presence: "required" }] }) },
