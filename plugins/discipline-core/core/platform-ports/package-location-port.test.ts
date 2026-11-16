@@ -6,7 +6,7 @@ const path = createDefaultPathPort({});
 
 const SOURCE_INSTALL_ROOT = path.resolve({ path: `${import.meta.dirname}/../..` });
 
-const port = createDefaultPackageLocationPort({ installRoot: "/given/install" });
+const port = createDefaultPackageLocationPort({ installRoot: "/given/install", installForm: "package" });
 
 describe("installRootOfRunnerEntry", () => {
   it("is the folder holding mechanisms/ above a built runner entry, wherever the code reading it was bundled", () => {
@@ -23,8 +23,8 @@ describe("installRootOfRunnerEntry", () => {
 });
 
 describe("createDefaultPackageLocationPort", () => {
-  it("names the install root it is given", () => {
-    expect(port.installRoot).toBe("/given/install");
+  it("names the install root and form it is given", () => {
+    expect({ installRoot: port.installRoot, installForm: port.installForm }).toEqual({ installRoot: "/given/install", installForm: "package" });
   });
 
   it("locates a package as the file node resolves from the core install", () => {

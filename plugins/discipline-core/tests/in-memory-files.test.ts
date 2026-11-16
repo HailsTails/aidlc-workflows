@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type EntryDisposition, entryDisposition } from "../scripts/install-proof-plan.ts";
+import type { EntryDisposition } from "../scripts/install-proof-plan.ts";
 import type { CopiedEntry } from "../scripts/install-proof-ports.ts";
 import { inMemoryFiles } from "./in-memory-files.ts";
 
-const leaveOutSecrets = (entry: CopiedEntry): EntryDisposition =>
-  entryDisposition({ rules: [{ kind: "folder", name: "secrets" }], name: entry.name, entryKind: entry.entryKind });
+const LEFT_OUT_NAMES: Readonly<Record<string, EntryDisposition>> = { secrets: "left-out" };
+
+const leaveOutSecrets = (entry: CopiedEntry): EntryDisposition => LEFT_OUT_NAMES[entry.name] ?? "kept";
 
 describe("inMemoryFiles fileText", () => {
   it("reads a held file and reports a missing one as unreadable", () => {

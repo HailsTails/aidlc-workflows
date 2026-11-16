@@ -28,7 +28,7 @@ const withEslintVersion = (request: { readonly version: string }): EslintToolcha
 
 const locatedBy = (locate: PackageLocationPort["locate"]): EslintToolchainPeers => ({
   ...REAL_10,
-  location: { installRoot: INSTALL_ROOT, locate },
+  location: { installRoot: INSTALL_ROOT, installForm: "package", locate },
 });
 
 describe("loadEslintToolchain over the development install", () => {
@@ -103,7 +103,7 @@ describe("loadEslintToolchain when a peer is missing, unsupported or shadowed", 
     await expect(
       loadEslintToolchain({
         peers: {
-          location: { installRoot: INSTALL_ROOT, locate: () => ({ outcome: "ok", value: `${INSTALL_ROOT}/node_modules/eslint/lib/api.js` }) },
+          location: { installRoot: INSTALL_ROOT, installForm: "package", locate: () => ({ outcome: "ok", value: `${INSTALL_ROOT}/node_modules/eslint/lib/api.js` }) },
           modules: { ...REAL_10.modules, eslint },
         },
       }),

@@ -24,6 +24,8 @@ type VersionParts = readonly [major: number, minor: number, patch: number];
 
 type Placement = "inside-install" | "outside-install";
 
+type Shadowing = "shadowed" | "unshadowed";
+
 const RELEASE_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
 
 const NOT_INSTALLED = "not installed";
@@ -102,6 +104,12 @@ const placementOf = (request: { readonly location: string; readonly installRoot:
     ? "inside-install"
     : "outside-install";
 
+const shadowingOf = (request: { readonly resolved: string; readonly location: PackageLocationPort }): Shadowing =>
+  request.location.installForm === "package" &&
+  placementOf({ location: request.resolved, installRoot: request.location.installRoot }) === "inside-install"
+    ? "shadowed"
+    : "unshadowed";
+
 type PeerRequest<Module> = {
   readonly requirement: ToolchainRequirement;
   readonly location: PackageLocationPort;
@@ -133,7 +141,7 @@ const versionedPeer = <Module>(request: PeerRequest<Module>): Promise<Result<Mod
     );
 
 const placedPeer = <Module>(request: PeerRequest<Module> & { readonly resolved: string }): Promise<Result<Module, RunnerFailure>> =>
-  placementOf({ location: request.resolved, installRoot: request.location.installRoot }) === "inside-install"
+  shadowingOf({ resolved: request.resolved, location: request.location }) === "shadowed"
     ? Promise.resolve({
         outcome: "failed",
         error: {

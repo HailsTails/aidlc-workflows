@@ -1061,14 +1061,35 @@ describe("project", () => {
     ]);
   });
 
-  it("keeps relative imports for a core run from source whose copied install's package.json names a package", async () => {
+  it("keeps relative imports for a core run from source, even when the install root's package.json names a package", async () => {
     const fileText = fileTextOver({
       ...SOURCE_FILES,
       [PROJECTION_PATH]: ABSENT_FILE,
-      "/repo/node_modules/discipline-core/package.json": presentFile({ text: '{ "name": "tools-discipline-core" }' }),
+      "/repo/node_modules/discipline-core/package.json": presentFile({ text: '{ "name": "discipline-core" }' }),
     });
     await runnerOver({ fileText, moduleExtension: ".ts" }).project({ repoRoot: REPO_ROOT, installRoot: INSTALL_ROOT, clauses: [CLASS_CLAUSE], records: [] });
     expect(vi.mocked(fileText.write).mock.calls).toEqual([[{ path: PROJECTION_PATH, text: ENABLING_PROJECTION }]]);
+  });
+
+  it("fails as tool-failed and writes nothing when built core's package.json names no package", async () => {
+    const fileText = fileTextOver({
+      ...SOURCE_FILES,
+      [PROJECTION_PATH]: ABSENT_FILE,
+      "/repo/node_modules/discipline-core/package.json": presentFile({ text: '{ "private": true }' }),
+    });
+    const write = await runnerOver({ fileText, moduleExtension: ".js" }).project({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      clauses: [CLASS_CLAUSE],
+      records: [],
+    });
+    expect({ write, fileWrites: vi.mocked(fileText.write).mock.calls }).toEqual({
+      write: {
+        outcome: "failed",
+        error: { kind: "tool-failed", detail: "the core install's /repo/node_modules/discipline-core/package.json names no package" },
+      },
+      fileWrites: [],
+    });
   });
 
   it("fails as tool-failed and writes nothing when the core install's package.json cannot be read", async () => {

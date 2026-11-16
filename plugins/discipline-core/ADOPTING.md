@@ -19,9 +19,10 @@ Core ships as one npm package tarball: built JavaScript with its own packages bu
 To build the tarball yourself, at a pinned commit of `https://github.com/HailsTails/aidlc-workflows` with [bun](https://bun.sh) installed:
 
 ```bash
-git clone -c core.longpaths=true https://github.com/HailsTails/aidlc-workflows.git /tmp/discipline-core-source
+git clone -c core.longpaths=true --filter=blob:none --no-checkout https://github.com/HailsTails/aidlc-workflows.git /tmp/discipline-core-source
+git -C /tmp/discipline-core-source sparse-checkout set plugins/discipline-core
 git -C /tmp/discipline-core-source checkout <pinned-sha>
-cd /tmp/discipline-core-source && bun install --frozen-lockfile && bun run --cwd plugins/discipline-core pack-package && cd -
+cd /tmp/discipline-core-source/plugins/discipline-core && bun install --frozen-lockfile && bun run pack-package && cd -
 ```
 
 The last command prints `pack package: wrote <path>/plugins/discipline-core/artefacts/discipline-core-0.0.0.tgz`. Copy that file into `<repo>/vendor/discipline-core/` and commit it with a message naming the pinned SHA, so every teammate and CI runner installs the same bytes. The commands in this guide are POSIX shell; on Windows run them in Git Bash.
@@ -260,30 +261,9 @@ To use an agent, give it the lens file, the rule pages it names, the change and 
 
 ## 10. Update and remove
 
-To update, repeat step 2 on a branch with a tarball built from a newer pinned SHA, compare the installed rule pages under `node_modules/discipline-core/rules/` with the old ones, re-run `discipline:project` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages. Before updating to a pin that has the causal why-chain contract, follow [MIGRATING.md section 8](MIGRATING.md#8-moving-to-causal-why-chains): pass `--base-revision` first, or the update's check reports `legacy-chain-unmeasured`. Before updating to a pin that ships `install/package.json`, follow [MIGRATING.md section 9](MIGRATING.md#9-moving-core-onto-the-repositorys-toolchain).
+To update, repeat step 2 on a branch with a tarball built from a newer pinned SHA, compare the installed rule pages under `node_modules/discipline-core/rules/` with the old ones, re-run `discipline:project` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages. Before updating to a pin that has the causal why-chain contract, follow [MIGRATING.md section 8](MIGRATING.md#8-moving-to-causal-why-chains): pass `--base-revision` first, or the update's check reports `legacy-chain-unmeasured`.
 
 To remove, run `npm uninstall discipline-core`, delete the two `discipline:` scripts, the tarball, `disciplines.json`, `discipline-exceptions.json` and, with `eslint` clauses, `disciplines.eslint.mjs` and its spread in the flat config, and take the check out of the validation script.
-
-## Deprecated: copying the source
-
-Before the package, core was installed by copying its TypeScript source into the repository. That route still works but is deprecated; new adopters use step 2, and [MIGRATING.md](MIGRATING.md#10-moving-from-a-copied-core-to-the-package) moves an existing copy onto the package. It needs Node 22.18.0 or later, which runs the `.ts` source by stripping types, and the copy must not sit under any `node_modules` folder:
-
-```bash
-git clone -c core.longpaths=true --filter=blob:none --no-checkout https://github.com/HailsTails/aidlc-workflows.git /tmp/discipline-core-source
-git -C /tmp/discipline-core-source sparse-checkout set plugins/discipline-core
-git -C /tmp/discipline-core-source checkout <pinned-sha>
-SRC=/tmp/discipline-core-source/plugins/discipline-core
-DEST=tools/discipline-core
-mkdir -p "$DEST/docs"
-cp "$SRC/install/package.json" "$SRC/install/package-lock.json" "$SRC/README.md" "$DEST/"
-cp "$SRC/docs/why-chain-contract.md" "$DEST/docs/"
-cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
-find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
-find "$DEST" -name '*.test.ts' -delete
-(cd "$DEST" && npm ci --no-audit --no-fund --ignore-scripts)
-```
-
-Add `tools/discipline-core/node_modules/` to `.gitignore`, commit `tools/discipline-core/` naming the pinned SHA, and add `"exclude": ["tools/discipline-core"]` to `disciplines.json`. The commands are then `node tools/discipline-core/core/check/check-command.ts --repo .` and `node tools/discipline-core/core/check/project-command.ts --repo .`, with the same flags and exit codes. [README.md](README.md#installing) lists the smaller set of paths a selection strictly needs.
 
 ## Worked example
 

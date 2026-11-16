@@ -1,7 +1,7 @@
 import type { CommandOutput, SyncCommandInput } from "./rin-gates/review-process-port.ts";
 import type { PathOperations } from "./rin-harness-path-operations.ts";
 import type { FileKindPort } from "./rin-harness-sidecar-file-reader.ts";
-import { DISCIPLINE_CORE_INSTALL } from "./rin-disciplines-report.ts";
+import { DISCIPLINE_CORE_PACKAGE, PACKAGED_CORE_INSTALL, VENDORED_CORE_INSTALL } from "./rin-disciplines-report.ts";
 
 type DisciplinesCheckOutcome =
   | { readonly kind: "passed" }
@@ -30,15 +30,33 @@ const FAILING_VERDICT = /verdict: fail\s*$/;
 
 const OUTPUT_SHOWN_LENGTH = 2000;
 
-const checkCommandPathOf = ({
+type CoreInstallForm = "packaged" | "vendored";
+
+type CoreInstall = {
+  readonly form: CoreInstallForm;
+  readonly root: string;
+  readonly checkCommandPath: string;
+};
+
+const CORE_INSTALL_PLACES: readonly { readonly form: CoreInstallForm; readonly location: string; readonly checkCommand: string }[] = [
+  { form: "packaged", location: PACKAGED_CORE_INSTALL, checkCommand: "check-command.js" },
+  { form: "vendored", location: VENDORED_CORE_INSTALL, checkCommand: "check-command.ts" },
+];
+
+const coreInstallsOf = ({
   checkoutRoot,
   pathOperations,
 }: {
   readonly checkoutRoot: string;
   readonly pathOperations: PathOperations;
-}): string =>
-  pathOperations.join({
-    segments: [checkoutRoot, ...DISCIPLINE_CORE_INSTALL.split("/"), "core", "check", "check-command.ts"],
+}): readonly CoreInstall[] =>
+  CORE_INSTALL_PLACES.map((place) => {
+    const root = pathOperations.join({ segments: [checkoutRoot, ...place.location.split("/")] });
+    return {
+      form: place.form,
+      root,
+      checkCommandPath: pathOperations.join({ segments: [root, "core", "check", place.checkCommand] }),
+    };
   });
 
 const checkArgumentsOf = ({
@@ -85,6 +103,11 @@ const disciplinesCheckOutcomeOf = ({
   return noVerdictOf({ output, timeoutMilliseconds });
 };
 
+const unverifiedVendoredPassOf = ({ install }: { readonly install: CoreInstall }): DisciplinesCheckOutcome => ({
+  kind: "unverified",
+  reason: `the vendored copy at ${install.root} passed, but a vendored copy is not a verified install: move it to the ${DISCIPLINE_CORE_PACKAGE} package as ${VENDORED_CORE_INSTALL}/MIGRATING.md says`,
+});
+
 const runDisciplinesCheck = ({
   request,
   ports,
@@ -92,25 +115,24 @@ const runDisciplinesCheck = ({
   readonly request: DisciplinesCheckRequest;
   readonly ports: DisciplinesCheckPorts;
 }): DisciplinesCheckOutcome => {
-  const checkCommandPath = checkCommandPathOf({
-    checkoutRoot: request.checkoutRoot,
-    pathOperations: ports.pathOperations,
-  });
-  if (!ports.fileKind.isFile(checkCommandPath)) {
+  const installs = coreInstallsOf({ checkoutRoot: request.checkoutRoot, pathOperations: ports.pathOperations });
+  const install = installs.find((candidate) => ports.fileKind.isFile(candidate.checkCommandPath));
+  if (install === undefined) {
     return {
       kind: "unverified",
-      reason: `discipline-core is not installed: ${checkCommandPath} does not exist`,
+      reason: `discipline-core is not installed: neither ${installs.map((candidate) => candidate.checkCommandPath).join(" nor ")} exists`,
     };
   }
-  return disciplinesCheckOutcomeOf({
+  const outcome = disciplinesCheckOutcomeOf({
     output: ports.runSync({
       program: "node",
-      args: checkArgumentsOf({ checkCommandPath, request }),
+      args: checkArgumentsOf({ checkCommandPath: install.checkCommandPath, request }),
       cwd: request.checkoutRoot,
       timeoutMilliseconds: ports.timeoutMilliseconds,
     }),
     timeoutMilliseconds: ports.timeoutMilliseconds,
   });
+  return install.form === "vendored" && outcome.kind === "passed" ? unverifiedVendoredPassOf({ install }) : outcome;
 };
 
 export type { DisciplinesCheckOutcome, DisciplinesCheckPorts, DisciplinesCheckRequest };

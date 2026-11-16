@@ -13,7 +13,6 @@
     "test": "vitest run --config vitest.config.ts",
     "check": "tsc --noEmit -p tsconfig.json && biome check --error-on-warnings --config-path=lint.biome.json . && vitest run --config vitest.config.ts",
     "install-proof": "node scripts/install-proof.ts",
-    "install-manifest": "node scripts/write-install-manifest.ts && cd install && npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
     "build-package": "node scripts/build-package.ts",
     "pack-package": "node scripts/pack-package.ts",
     "package-determinism": "node scripts/check-package-determinism.ts"

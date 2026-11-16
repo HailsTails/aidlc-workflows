@@ -167,8 +167,6 @@ const CLASS_FINDING = {
   mechanism: "eslint",
 };
 
-const WALKER_EXCLUDED = ["tools/discipline-core"];
-
 const CLEAN_REPORT = {
   excluded: [],
   findings: [],
@@ -187,7 +185,7 @@ describe("a consumer with no harness directory selecting CD-23 through the audit
   it("passes when every tracked unit has its test sibling, exiting 0", async () => {
     const ports = observedPorts();
     const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: SIBLINGED_TRACKED, ports });
-    expect(checked).toEqual({ outcome: "ok", value: { ...CLEAN_REPORT, excluded: WALKER_EXCLUDED } });
+    expect(checked).toEqual({ outcome: "ok", value: CLEAN_REPORT });
     expect(fullReportExitCode({ checked })).toBe(0);
   });
 
@@ -196,7 +194,7 @@ describe("a consumer with no harness directory selecting CD-23 through the audit
     const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: UNSIBLINGED_TRACKED, ports });
     expect(checked).toEqual({
       outcome: "ok",
-      value: { ...CLEAN_REPORT, excluded: WALKER_EXCLUDED, findings: [UNSIBLINGED_FINDING] },
+      value: { ...CLEAN_REPORT, findings: [UNSIBLINGED_FINDING] },
     });
     expect(fullReportExitCode({ checked })).toBe(1);
   });

@@ -28,11 +28,15 @@ type DisciplinesFinding = {
   readonly snippet: string;
 };
 
-const DISCIPLINE_CORE_INSTALL = "tools/discipline-core";
+const DISCIPLINE_CORE_PACKAGE = "discipline-core";
 
-const CHECK_COMMAND_TEXT = `node ${DISCIPLINE_CORE_INSTALL}/core/check/check-command.ts --repo .`;
+const PACKAGED_CORE_INSTALL = `node_modules/${DISCIPLINE_CORE_PACKAGE}`;
 
-const PROJECT_COMMAND_TEXT = `node ${DISCIPLINE_CORE_INSTALL}/core/check/project-command.ts --repo .`;
+const VENDORED_CORE_INSTALL = "tools/discipline-core";
+
+const CHECK_COMMAND_TEXT = "npm run --silent discipline:check";
+
+const PROJECT_COMMAND_TEXT = "npm run --silent discipline:project";
 
 const SECTION_HEADER = /^([A-Za-z]+) \(\d+\)$/;
 
@@ -42,7 +46,7 @@ const FINDING_LINE = /^(\S+) (\S+) (.+?):(\d+):(\d+)(?: (.*))?$/;
 
 const SECTION_REMEDIES: Readonly<Record<FailingSectionName, string>> = {
   findings:
-    `change the code, or record an exception in discipline-exceptions.json with a whyChain written to ${DISCIPLINE_CORE_INSTALL}/docs/why-chain-contract.md: five whys chained cause to cause, a rootCause, its rootCheck, a readback and an owner.`,
+    `change the code, or record an exception in discipline-exceptions.json with a whyChain written to ${PACKAGED_CORE_INSTALL}/docs/why-chain-contract.md: five whys chained cause to cause, a rootCause, its rootCheck, a readback and an owner.`,
   uncovered:
     "select every mechanical clause of each adopted discipline in disciplines.json.",
   stale:
@@ -148,9 +152,11 @@ export type {
 };
 export {
   CHECK_COMMAND_TEXT,
-  DISCIPLINE_CORE_INSTALL,
+  DISCIPLINE_CORE_PACKAGE,
   disciplinesReportSectionsOf,
   failingSectionsOf,
   findingsOf,
+  PACKAGED_CORE_INSTALL,
   remedyOf,
+  VENDORED_CORE_INSTALL,
 };

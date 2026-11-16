@@ -15,7 +15,7 @@ import {
 
 const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/" });
 
-const SOURCE: Readonly<Record<string, string>> = {
+const SOURCE_WITHOUT_LOCK: Readonly<Record<string, string>> = {
   "/package/package.json": JSON.stringify({
     version: "0.0.0",
     description: "Runs disciplines.",
@@ -28,12 +28,12 @@ const SOURCE: Readonly<Record<string, string>> = {
     peerDependenciesMeta: { typescript: { optional: true } },
   }),
   "/package/tsconfig.json": "{}\n",
-  "/package/install/package.json": "{}\n",
-  "/package/install/package-lock.json": '{ "lockfileVersion": 3, "packages": {} }',
   "/package/README.md": "# Discipline core\n",
   "/package/core/check/check-command.ts": "await run();\n",
   "/package/core/check/project-command.ts": "await project();\n",
 };
+
+const SOURCE: Readonly<Record<string, string>> = { ...SOURCE_WITHOUT_LOCK, "/package/bun.lock": '{ "lockfileVersion": 1, "packages": {}, }' };
 
 const entryOutput = (request: { readonly source: string; readonly path: string; readonly text: string }): BundledOutput => ({
   path: request.path,
@@ -98,8 +98,6 @@ const reportOf = (request: { readonly process: ProcessPort }) => ({
   exits: vi.mocked(request.process.exitWith).mock.calls,
 });
 
-const NPM_CI = ["ci", "--ignore-scripts", "--no-audit", "--no-fund", "--prefer-offline"];
-
 describe("createTarballPacker", () => {
   it("builds into the work root from the given installed packages, packs that build with npm into the work root's tarball folder, and names the one tarball", async () => {
     const files = inMemoryFiles({ initial: SOURCE });
@@ -109,7 +107,7 @@ describe("createTarballPacker", () => {
       commands: npm.commands,
     });
 
-    const tarball = await packer.pack({ packageRoot: "/package", workRoot: "/work", dependencies: "/deps" });
+    const tarball = await packer.pack({ packageRoot: "/package", workRoot: "/work" });
 
     expect({ tarball, runs: npm.runs(), built: files.texts()["/work/package-build/package.json"] }).toEqual({
       tarball: { outcome: "ok", value: "/work/package-tarball/discipline-core-0.0.0.tgz" },
@@ -131,7 +129,7 @@ describe("createTarballPacker", () => {
       commands: { run: vi.fn<CommandRunPort["run"]>().mockReturnValue({ outcome: "exited", exitCode: 1, output: "npm ERR! pack" }) },
     });
 
-    expect(await packer.pack({ packageRoot: "/package", workRoot: "/work", dependencies: "/deps" })).toEqual({
+    expect(await packer.pack({ packageRoot: "/package", workRoot: "/work" })).toEqual({
       outcome: "failed",
       error: 'FAIL: npm pack /work/package-build: {"outcome":"exited","exitCode":1,"output":"npm ERR! pack"}',
     });
@@ -139,7 +137,7 @@ describe("createTarballPacker", () => {
 });
 
 describe("runBuildPackage", () => {
-  it("installs core's own packages from its install lock into a temporary folder, builds into dist from them, and removes the folder", async () => {
+  it("builds into dist from core's own installed packages, running no command", async () => {
     const files = inMemoryFiles({ initial: SOURCE });
     const npm = npmFaking({ files, tarballText: SAME_TARBALL });
     const request = commandRequest({ files, bundler: steadyBundler(), commands: npm.commands });
@@ -148,38 +146,23 @@ describe("runBuildPackage", () => {
 
     expect({ report: reportOf(request), runs: npm.runs(), left: files.pathsUnder({ folder: "/tmp" }) }).toEqual({
       report: { writes: [[{ text: "build package: wrote 5 files to /package/dist\n" }]], exits: [[{ code: 0 }]] },
-      runs: [{ command: "npm", arguments: NPM_CI, directory: "/tmp/discipline-core-package-dependencies-1" }],
+      runs: [],
       left: [],
     });
   });
 
-  it("fails with npm's output when core's own packages do not install, building nothing", async () => {
-    const files = inMemoryFiles({ initial: SOURCE });
-    const bundler = steadyBundler();
-    const request = commandRequest({
-      files,
-      bundler,
-      commands: { run: vi.fn<CommandRunPort["run"]>().mockReturnValue({ outcome: "exited", exitCode: 1, output: "npm ERR! network" }) },
-    });
+  it("fails naming core's lock when it cannot be read, writing nothing to dist", async () => {
+    const files = inMemoryFiles({ initial: { ...SOURCE_WITHOUT_LOCK } });
+    const request = commandRequest({ files, bundler: steadyBundler(), commands: npmFaking({ files, tarballText: SAME_TARBALL }).commands });
 
     await runBuildPackage(request);
 
-    expect({ report: reportOf(request), bundles: vi.mocked(bundler.bundle).mock.calls.length }).toEqual({
-      report: {
-        writes: [
-          [
-            {
-              text: 'FAIL: npm ci core\'s own packages from install/package-lock.json: {"outcome":"exited","exitCode":1,"output":"npm ERR! network"}\n',
-            },
-          ],
-        ],
-        exits: [[{ code: 1 }]],
-      },
-      bundles: 0,
+    expect({ report: reportOf(request), built: files.pathsUnder({ folder: "/package/dist" }) }).toEqual({
+      report: { writes: [[{ text: expect.stringContaining("/package/bun.lock") }]], exits: [[{ code: 1 }]] },
+      built: [],
     });
   });
 });
-
 describe("runPackPackage", () => {
   it("clears the artefacts folder, packs the dist build into it and prints the tarball", async () => {
     const files = inMemoryFiles({ initial: { ...SOURCE, "/package/artefacts/old-0.0.0.tgz": "old" } });

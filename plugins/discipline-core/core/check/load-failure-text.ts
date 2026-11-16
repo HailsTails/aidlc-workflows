@@ -21,7 +21,7 @@ const runnerFailureFields = (request: { readonly failure: RunnerFailure }): read
       return [
         request.failure.kind,
         request.failure.packageName,
-        `resolved from ${request.failure.location} inside the core install ${request.failure.installRoot}: delete ${request.failure.installRoot}/node_modules, then reinstall core, a copied folder with npm ci inside it or the package with the repository's package manager, so the repository's own copy is used`,
+        `resolved from ${request.failure.location} inside the core install ${request.failure.installRoot}: delete ${request.failure.installRoot}/node_modules, then reinstall the package with the repository's package manager, so the repository's own copy is used`,
       ];
     case "tool-failed":
     case "plugin-conflict":

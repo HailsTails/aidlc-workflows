@@ -37,15 +37,17 @@ export const createJsoncParsePort = (options: {
   },
 });
 
-const defaultProviderCall: JsoncProviderCall = (request) => {
-  const errors: ParseError[] = [];
-  const parsedValue: unknown = parse(request.source, errors);
-  return { value: parsedValue, errors };
-};
+export type TrailingCommas = "allowed" | "refused";
 
-export const createDefaultJsoncParsePort = (
-  _options: Record<string, never>,
-): JsoncParsePort =>
+const defaultProviderCallOf =
+  (options: { readonly trailingCommas: TrailingCommas }): JsoncProviderCall =>
+  (request) => {
+    const errors: ParseError[] = [];
+    const parsedValue: unknown = parse(request.source, errors, { allowTrailingComma: options.trailingCommas === "allowed" });
+    return { value: parsedValue, errors };
+  };
+
+export const createDefaultJsoncParsePort = (options: { readonly trailingCommas: TrailingCommas }): JsoncParsePort =>
   createJsoncParsePort({
-    parseProvider: defaultProviderCall,
+    parseProvider: defaultProviderCallOf(options),
   });

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { disciplinesReportSectionsOf, failingSectionsOf, findingsOf, remedyOf } from "./rin-disciplines-report.ts";
+import {
+  CHECK_COMMAND_TEXT,
+  disciplinesReportSectionsOf,
+  type FailingSection,
+  failingSectionsOf,
+  findingsOf,
+  remedyOf,
+} from "./rin-disciplines-report.ts";
 
 const FAILING_REPORT = [
   "excluded (1)",
@@ -41,6 +48,17 @@ describe("discipline-core report text", () => {
     expect(remedyOf({ section: forfeited })).toBe(
       "To fix forfeited: the carved-out file was touched, so make the whole file comply and delete its carve-out (CD-46).",
     );
+  });
+
+  test("names the installed package's project script as the remedy for projection problems", () => {
+    const projectionProblems: FailingSection = { name: "projectionProblems", header: "projectionProblems (1)", lines: [] };
+    expect(remedyOf({ section: projectionProblems })).toBe(
+      "To fix projectionProblems: run `npm run --silent discipline:project` and commit disciplines.eslint.mjs.",
+    );
+  });
+
+  test("names the installed package's check script as the command to run the check", () => {
+    expect(CHECK_COMMAND_TEXT).toBe("npm run --silent discipline:check");
   });
 
   test("reads a CRLF report the same as an LF one", () => {

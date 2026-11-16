@@ -23,14 +23,14 @@ const DEVELOPMENT_MANIFEST = JSON.stringify({
   devDependencies: { esbuild: "0.25.12" },
 });
 
-const LOCK = JSON.stringify({ lockfileVersion: 3, packages: { "": { version: "0.0.0" }, "node_modules/zod": { version: "4.4.3" } } });
+const LOCK = '{ "lockfileVersion": 1, "packages": { "zod": ["zod@4.4.3", "", {}, "sha512-a"], }, }';
 
 const SOURCE_WITHOUT_ZOD_LICENCE: Readonly<Record<string, string>> = {
   "/package/package.json": DEVELOPMENT_MANIFEST,
   "/package/tsconfig.json": "{}\n",
   "/package/README.md": "# Discipline core\n\n[Rules](rules/CD-15/README.md)\n",
   "/package/LICENSE": "MIT No Attribution\n",
-  "/package/install/package-lock.json": LOCK,
+  "/package/bun.lock": LOCK,
   "/package/core/check/check-command.ts": "await run();\n",
   "/package/core/check/project-command.ts": "await project();\n",
   "/package/core/check/run-check.test.ts": "test\n",
@@ -239,7 +239,7 @@ describe("buildPackage", () => {
     });
   });
 
-  it("fails naming a bundled package whose version is not the one core's install lock holds, writing nothing", async () => {
+  it("fails naming a bundled package whose version is not the one core's bun lock holds, writing nothing", async () => {
     const { files, built } = builtWith({
       source: { ...SOURCE, "/deps/zod/package.json": '{ "name": "zod", "version": "4.4.2", "license": "MIT" }' },
       bundler: bundlerReturning({ outcome: "ok", value: BUNDLE }),
@@ -248,7 +248,29 @@ describe("buildPackage", () => {
     expect({ result: await built, written: files.textsUnder({ folder: "/out" }) }).toEqual({
       result: {
         outcome: "failed",
-        error: "FAIL: bundle: a bundled package is not the one install/package-lock.json locks: zod 4.4.2 at node_modules/zod, but the lock holds 4.4.3",
+        error: "FAIL: bundle: a bundled package is not the one bun.lock locks: zod 4.4.2 at node_modules/zod, but the lock holds 4.4.3",
+      },
+      written: NOTHING_WRITTEN,
+    });
+  });
+
+  it("fails naming a bundled package the lock holds only for development, outside the closure of core's dependencies, writing nothing", async () => {
+    const { files, built } = builtWith({
+      source: {
+        ...SOURCE,
+        "/package/bun.lock":
+          '{ "lockfileVersion": 1, "packages": { "is-glob": ["is-glob@4.0.3", "", {}, "sha512-b"], "zod": ["zod@4.4.3", "", {}, "sha512-a"], }, }',
+        "/deps/is-glob/package.json": '{ "name": "is-glob", "version": "4.0.3", "license": "MIT" }',
+        "/deps/is-glob/LICENSE": "MIT License\n",
+      },
+      bundler: bundlerReturning({ outcome: "ok", value: { ...BUNDLE, packageRoots: ["node_modules/zod", "node_modules/is-glob"] } }),
+    });
+
+    expect({ result: await built, written: files.textsUnder({ folder: "/out" }) }).toEqual({
+      result: {
+        outcome: "failed",
+        error:
+          "FAIL: bundle: a bundled package is not the one bun.lock locks: is-glob 4.0.3 at node_modules/is-glob, which is not in the closure of core's dependencies in the lock",
       },
       written: NOTHING_WRITTEN,
     });

@@ -32,7 +32,7 @@ const floorTypeScriptSchema = z.object({
   ),
 });
 
-const DEVELOPMENT_PEERS: TypeScriptPeers = defaultTypeScriptPeers({ installRoot: `${import.meta.dirname}/..` });
+const DEVELOPMENT_PEERS: TypeScriptPeers = defaultTypeScriptPeers({ installRoot: `${import.meta.dirname}/..`, installForm: "source" });
 
 export const typeScriptPeersOn = (request: { readonly line: TypeScriptLine }): TypeScriptPeers => {
   switch (request.line) {

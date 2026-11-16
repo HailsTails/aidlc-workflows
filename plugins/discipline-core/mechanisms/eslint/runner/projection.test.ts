@@ -30,7 +30,7 @@ const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
 const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
 const windowsPath = createPathPort({ flavour: "windows", workingDirectory: () => "C:\\repo" });
 
-const FOLDER_INSTALL: CoreInstall = { form: "folder" };
+const SOURCE_INSTALL: CoreInstall = { form: "source" };
 
 const PACKAGED_INSTALL: CoreInstall = {
   form: "package",
@@ -317,7 +317,7 @@ describe("pluginImportOf", () => {
     pluginImportOf({
       path,
       repoRoot,
-      install: FOLDER_INSTALL,
+      install: SOURCE_INSTALL,
       pieceRoot: "/repo/node_modules/dc/mechanisms/eslint/CD-14",
       pluginModule: "cd14/cd14.eslint-plugin.ts",
     });
@@ -349,7 +349,7 @@ describe("pluginImportOf", () => {
       pluginImportOf({
         path,
         repoRoot,
-        install: FOLDER_INSTALL,
+        install: SOURCE_INSTALL,
         pieceRoot: "/repo/node_modules/dc/mechanisms/eslint/CD-14",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),
@@ -374,7 +374,7 @@ describe("pluginImportOf", () => {
       pluginImportOf({
         path,
         repoRoot,
-        install: FOLDER_INSTALL,
+        install: SOURCE_INSTALL,
         pieceRoot: "/team-rules/mechanisms/eslint/PD-1",
         pluginModule: "plugin.ts",
       }),
@@ -386,7 +386,7 @@ describe("pluginImportOf", () => {
       pluginImportOf({
         path: windowsPath,
         repoRoot: windowsRepoRoot,
-        install: FOLDER_INSTALL,
+        install: SOURCE_INSTALL,
         pieceRoot: "C:\\repo\\tools\\discipline\\mechanisms\\eslint\\CD-14",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),
@@ -401,7 +401,7 @@ describe("pluginImportOf", () => {
       pluginImportOf({
         path: windowsPath,
         repoRoot: windowsRepoRoot,
-        install: FOLDER_INSTALL,
+        install: SOURCE_INSTALL,
         pieceRoot: "D:\\dc\\mechanisms\\eslint\\CD-14",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),

@@ -2,6 +2,7 @@ import type typescriptEslintPlugin from "@typescript-eslint/eslint-plugin";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import { loadedPeer, type PeerToolchain, type ToolchainRequirement } from "../../../core/mechanism-port/toolchain-requirement.ts";
 import { createDefaultPackageLocationPort } from "../../../core/platform-ports/package-location-port.ts";
+import type { InstallForm } from "../../../core/values/install-layout.ts";
 import type { Result } from "../../../core/values/result.ts";
 import { createEslintOn, type EslintModule, type EslintToolchain, type TypescriptParser } from "./eslint-instance.ts";
 
@@ -47,7 +48,7 @@ export const defaultEslintToolchainModules: EslintToolchainModules = {
   typescriptEslintPlugin: () => import("@typescript-eslint/eslint-plugin"),
 };
 
-export const defaultEslintToolchainPeers = (options: { readonly installRoot: string }): EslintToolchainPeers => ({
+export const defaultEslintToolchainPeers = (options: { readonly installRoot: string; readonly installForm: InstallForm }): EslintToolchainPeers => ({
   location: createDefaultPackageLocationPort(options),
   modules: defaultEslintToolchainModules,
 });

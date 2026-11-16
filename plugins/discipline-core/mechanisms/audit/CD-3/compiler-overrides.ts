@@ -60,4 +60,4 @@ export const createCompilerOverridesCheck = (options: { readonly jsonc: JsoncPar
   },
 });
 
-export const check = createCompilerOverridesCheck({ jsonc: createDefaultJsoncParsePort({}) });
+export const check = createCompilerOverridesCheck({ jsonc: createDefaultJsoncParsePort({ trailingCommas: "refused" }) });
