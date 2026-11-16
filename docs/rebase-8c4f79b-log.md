@@ -1,6 +1,6 @@
 # Rebase of the rebuild foundation onto upstream 8c4f79b4b
 
-This is the record of how the 126 upstream commits from `caea995ae` to `8c4f79b4b77c5a64738b01b350be2bf72c357dae` landed in the rebuild foundation's shape. It covers every conflict, how each was resolved, and every place where the shape had to change. Each upstream commit has a disposition in the [per-commit table](#every-upstream-commit).
+This is the record of how the 126 upstream commits from `caea995ae` to `8c4f79b4b77c5a64738b01b350be2bf72c357dae` landed in the rebuild foundation's shape. It covers every conflict, how each was resolved, and every place where the shape had to change. Each upstream commit has a disposition in the [per-commit table](#every-upstream-commit). The [route ledger](rebase-8c4f79b-ledger.md) routes each commit's paths to their receiving owners and records where each replaced or mixed outcome landed.
 
 ## Refs
 
@@ -9,10 +9,10 @@ This is the record of how the 126 upstream commits from `caea995ae` to `8c4f79b4
 | Upstream pin | `awslabs/aidlc-workflows` `main` | `8c4f79b4b77c5a64738b01b350be2bf72c357dae` (AIDLC_VERSION 2.11.4) |
 | Previous pin | | `caea995ae` |
 | Foundation before | `rebuild/foundation` | `965cbec73` (613 commits over `caea995ae`) |
-| Rebased foundation | `study/foundation-8c4f79b` | `8e310c44dd97342782ded657673a371c677a0c6e` |
+| Rebased foundation | `study/foundation-8c4f79b` | `eb126c7be534890d88778388a442f8a76be708ab` |
 | Tooling | `study/upstream-shape-tooling-8c4f79b` | this branch |
-| Candidate on foundation | `study/upstream-shape-8c4f79b` | `5622701a58510169b6d124978806cf6eba7c883e` |
-| Candidate on the pin | `ci-proof/upstream-shape-8c4f79b` | `2d9a859e11f34828659aca41c0963e64e4a308fb` (same tree `b706b30ac`) |
+| Candidate on foundation | `study/upstream-shape-8c4f79b` | `9efb4b826d6336353b1cfb476c6b449afd8f08a0` |
+| Candidate on the pin | `ci-proof/upstream-shape-8c4f79b` | `b085d715a666313399d0eaf4951b5d6da1348cd0` (same tree `19e5a4542`) |
 | Previous release | `v2.11.3` | `a8721be3631e6a254cf524ea57e5932aa56b4149` |
 
 ## Method
@@ -50,7 +50,7 @@ Goldens were re-recorded from `8c4f79b4b`'s own build (`b1b93e8fa`). After that,
 
 | Port | Upstream | Receiver | Foundation commit |
 | --- | --- | --- | --- |
-| P1 | 3ca1893e6 #3726: Kiro helpers list knowledge folders with the file tool | `src/projection` agent persona (S1) | `3bf9e622c` |
+| P1 | 3ca1893e6 #3726: Kiro helpers list knowledge folders with the file tool | First landed in shared Projection (S1, `3bf9e622c`), which was the wrong owner. Now `src/hosts/kiro/projection/knowledge-reading.ts` and `src/hosts/kiro-ide/projection/knowledge-reading.ts`, through the `KnowledgeReading` port (S7) | `3bf9e622c`, `eb126c7be` |
 | P2 | 451098163 #3751: the Kiro skill is SKILL.md plus workflow.md | `src/hosts/kiro-ide/projection/skill-renderer.ts` `KIRO_IDE_SKILL_INPUTS` gains `skills/aidlc/workflow.md` after SKILL.md, and `tests/harness/harness-matrix.ts` checks `CONDUCTOR_SKILL_FILES` against the registered host's skill inputs (S4). Kiro CLI (V2) keeps one file. | `a55b09eea` |
 | P3 | ad4a0ad02 #3906: Codex questions lettered A-C | `src/hosts/codex/host-data.ts` `OPTION_LETTERS: "A-C"`. In `t-question-options-fit-the-box`, the Codex cases read the host token instead of the retired `questionOptions` field. | `dbc15fbe8`, `a512e25d7` |
 | P4 | ad4a0ad02 #3906: Copilot reviewers carry their checklist | The Copilot native agent document asks for knowledge `"absorbed"` instead of `"preflight-only"`. No host uses `"preflight-only"` now; the variant is kept and recorded here. | `f79da925a` |
@@ -66,11 +66,13 @@ Bridge characterisation re-pins (`6b59a8efa`) change no code. Three `src/` adapt
 
 4397f483d #3805 changed only a comment in the retired Codex emitter, so it needs no port.
 
+One port was found by fork CI rather than by the merge. ad4a0ad02 #3906 added the t294 case "a Harness CLI row and setup's runtime issue show the CLI's version alone, on every harness". It lists the harnesses whose `harness/<name>/manifest.ts` exists. The file merged cleanly, but with the manifests retired the list was empty, and the case failed on CI (unit-9, 1 of 199). `7aac16444` reads the same seven names from `tests/harness/harness-matrix.ts`, as the other ported per-harness tests do. No other foundation test still reads a retired manifest (`git grep` over `tests/` for `manifest.ts`, `onboarding.fills` and `emit.ts` finds only comments, fixtures and the retired Copilot monolith records).
+
 ## Shape changes
 
-Each of these changes a type, a port or a test seam in the foundation's shape. None adds a host-name branch to shared code.
+Each of these changes a type, a port or a test seam in the foundation's shape. S1 put a Kiro rule in shared Projection, and S7 moves it to the Kiro host owners. After S7, none puts a host choice in shared code.
 
-- **S1 Projection's knowledge reading (P1).** Upstream's runtime now owns the Kiro preflight clause (`core/tools/aidlc-inline-context.ts` `kiroKnowledgePreflightClause`). Foundation's projection domain had its own copy of the older sentence, which would have made it a second owner of that wording. The changes:
+- **S1 Projection's knowledge reading (P1), superseded by S7.** S1 put a Kiro rule in shared Projection, which is the wrong owner. `3bf9e622c`'s message says "no new bridge module and no host-name branch in shared projection". The first half held. The second did not in substance: the adapter's function read the Kiro clause, and `core-root.ts` wired it for every host. What S1 changed: upstream's runtime now owns the Kiro preflight clause (`core/tools/aidlc-inline-context.ts` `kiroKnowledgePreflightClause`). Foundation's projection domain had its own copy of the older sentence, which would have made it a second owner of that wording. The changes:
   - `injectDelegatedKnowledgePreflight` takes a resolved `readingGuide: string` instead of a reading choice, and holds no Kiro wording.
   - `src/projection/application/ports/agents.ts` adds `KnowledgeReading = "whole-files" | "in-parts"` and `KnowledgeReadingGuides`.
   - `agent-persona.ts` takes `readingGuides` and picks the guide for the persona's reading.
@@ -97,12 +99,31 @@ Each of these changes a type, a port or a test seam in the foundation's shape. N
   - `src/` has no `tierFlavor`.
   - A first attempt rewrote the two tests to select `harnessDir === ".kiro"`. The zones check refused it as new debt-zone code, so the change moved into the test matrix.
 - **S4 Conductor skill files check (P2).** `harness-matrix.ts` gains `validateConductorSkillFiles`, called in `fullHostView`. It checks every file `CONDUCTOR_SKILL_FILES` names against `member.projection.skills.inputs`, where the retired manifest's `harnessFiles` used to be checked.
-- **S5 Glossary.** `src/glossary.json` names `NativePermissions` and `NativePermissionsLine` (packaging) and `KnowledgeReading` and `KnowledgeReadingGuides` (projection). The definitions of `NativeRelease` and `AgentPersonaRequest` are updated to match.
+- **S5 Glossary.** `src/glossary.json` names `NativePermissions` and `NativePermissionsLine` (packaging) and `KnowledgeReading` and `KnowledgeReadingGuides` (projection). S7 removes `KnowledgeReadingGuides` and redefines `KnowledgeReading`. The definitions of `NativeRelease` and `AgentPersonaRequest` are updated to match.
 - **S6 Previous release.** `lint/gate/previous-release.json` moves from 2.11.2 to 2.11.3 (`a8721be36`), with its dist at `aidlc-study-release-v2.11.3/dist`.
   - Rule: `8c4f79b4b`'s AIDLC_VERSION is 2.11.4, and the install lifecycle upgrades from the release before the one being built. The same rule gave 2.11.3 over 2.11.2 at `caea995ae`.
   - Upstream CI upgrades from the latest published release, which today is v2.11.4, the version being built.
   - The upgrade step exits 0 on all seven harnesses.
   - The seven release stamps are unchanged.
+- **S7 Kiro's knowledge reading belongs to the Kiro hosts (P1 fix, `eb126c7be`).** The route ledger found S1 as the one wrong landing of the rebase. The fix keeps one owner of the wording, the runtime's `kiroKnowledgePreflightClause`, and one owner of the choice to read in parts, each Kiro host. They meet at a named boundary:
+
+  ```ts
+  type KnowledgeReading =
+    | { readonly kind: "whole-files" }
+    | { readonly kind: "in-parts"; readonly guide: string };
+  ```
+
+  - `src/hosts/kiro/projection/knowledge-reading.ts` (`kiroKnowledgeReading`) and `src/hosts/kiro-ide/projection/knowledge-reading.ts` (`kiroIdeKnowledgeReading`) read the clause.
+    - Each is registered as an `aidlc-inline-context` host bridge in `lint/context-map.ts`, beside the Copilot launcher and Codex TOML host bridges.
+    - The two are separate because no host folder imports another's.
+  - The Kiro CLI and Kiro IDE agent renderers ask for `kiroKnowledgeReading(inputs.host.directory)` and `kiroIdeKnowledgeReading(inputs.host.directory)`. The other five hosts ask for `{ kind: "whole-files" }`.
+  - `agent-persona.ts` only places the guide the request carries. `KnowledgeReadingGuides` and the preparer's `readingGuides` input are gone.
+  - `legacy-format-docs.ts` and `core-root.ts` return to their `965cbec73` bytes.
+  - The domain's `injectDelegatedKnowledgePreflight` (a resolved string, no host wording) and the thin entry `scripts/agent-knowledge.ts` are unchanged.
+  - Test-first:
+    - Changed first: the two host tests (the clause's literal text moved here from the adapter test), the seven agent renderer tests, the persona test and the bridge list test.
+    - Red before the code: 22 failures and 4 missing modules across 13 files.
+    - After the code: `bun test ./src` gives 1581 pass, and the gate's nine checks are green with goldens at 0 findings and no baseline rise.
 
 ## Zod uses
 
@@ -161,35 +182,37 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
   - It keeps foundation's tip dates and adds no `Co-Authored-By` trailer.
   - The repository-local identity is `rin-author[bot]`, so `--reset-author` would have resolved to the bot. The global identity is a personal address and is not used either.
   - A first regeneration (`c6b67ac64` and `23886338e`, pushed to the two candidate refs and since replaced) read the global identity and so carried the personal address. Those two commits are no longer on any branch but stay reachable on the public fork by SHA and from run 43812083339 (cancelled).
+- `src/route-ledger.ts` routes each upstream commit's paths to their receiving owners and renders [the route ledger](rebase-8c4f79b-ledger.md) from hand-made judgements in `docs/rebase-8c4f79b-judgements.json`. It exits 1 while any commit that needs a judgement has none.
 - **Patch redone:** in `patches/scripts~parity~install-lifecycle.ts.patch`, the usage line said `v2.11.2` and now says `<previous release tag>`. A hard-coded release would go stale at every pin.
 - All 16 patches and the optional gitleaks patch apply to the rebased foundation unchanged.
   - The kiro README patch's sentence about the packager at `caea995ae` is kept. It is a historical fact about that packager, not the pin.
 
 ## Re-prove
 
-**Foundation gate.** On `study/foundation-8c4f79b` at `8e310c44d` (and before the Zod commit at `7e586689b`), `bun scripts/gate.ts --full --only zones,records,lint,disciplines,typecheck,monolith,kernel,isolation,goldens` is green with 0 findings in every check.
+**Foundation gate.** On `study/foundation-8c4f79b` at `eb126c7be`, `bun scripts/gate.ts --full --only zones,records,lint,disciplines,typecheck,monolith,kernel,isolation,goldens` is green with 0 findings in every check. It was also green at `8e310c44d`.
 
 - The goldens check counts files per harness: claude 818, codex 934, copilot 846, cursor 836, kiro 853, kiro-ide 859, opencode 848, plugin-marketplaces 4.
 - `tests` was not run. It runs the legacy suites, which is the full suite.
 - `ownership` needs a lane, and no lane was given.
 - No sweep is recorded for this commit.
 - The touched legacy test files ran on their own and gave 159 pass, 0 fail: t181, t239, t-question-options-fit-the-box, t-generated-text-names-what-the-harness-has, t-phase-check-has-one-owner and t-aidlc-lib-only-shrinks.
-- `bun test ./src` gives 1580 pass, 0 fail.
+- `bun test ./src` gives 1581 pass, 0 fail.
+- The lint total is 177992 against a recorded 177993, so nothing rose.
 - The candidate's local runs below used `bun --cwd <candidate>` (never a shell `cd`) under the machine lock.
 
-**Candidate.** The candidate is `5622701a5`, with the same tree as `2d9a859e1`. All of these checks ran in a clean worktree after `bun scripts/package.ts`:
+**Candidate.** The candidate is `9efb4b826`, with the same tree as `b085d715a`. All of these checks ran in a clean worktree after `bun scripts/package.ts`:
 
 | Check | Result |
 | --- | --- |
 | `bun scripts/parity/dist-goldens.ts --check` | 0 findings |
 | `bun scripts/parity/install-lifecycle.ts --check --previous <v2.11.3 dist>` | 0 findings |
 | `bun run check` | exit 0 |
-| `bun test ./src` | 1580 pass, 0 fail |
+| `bun test ./src` | 1581 pass, 0 fail |
 | `bun test ./scripts/parity` | 13 pass, 0 fail |
-| Goldens re-recorded on an unmodified `8c4f79b4b` checkout with the candidate's `scripts/parity/` (`--record` for both) | byte-identical to the candidate's `tests/golden/` (recorded against `c6b67ac64`; the later regeneration changed only `PARITY.md` and the plugin emitter adapter and its test, not `scripts/parity/` or `tests/golden/`) |
-| `git diff --name-status 8c4f79b4b 2d9a859e1 -- core plugins` | empty |
+| Goldens re-recorded on an unmodified `8c4f79b4b` checkout with the candidate's `scripts/parity/` (`--record` for both) | byte-identical to the candidate's `tests/golden/` (recorded against `c6b67ac64`; no later regeneration changed `scripts/parity/` or `tests/golden/`) |
+| `git diff --name-status 8c4f79b4b b085d715a -- core plugins` | empty |
 
-`git diff --name-status 8c4f79b4b 2d9a859e1 -- harness` lists 18 deletions and nothing else:
+`git diff --name-status 8c4f79b4b b085d715a -- harness` lists 18 deletions and nothing else:
 
 - `harness/<host>/manifest.ts` for all 7 hosts
 - `harness/<host>/onboarding.fills.ts` for all 7 hosts
@@ -202,7 +225,22 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 
 ## CI
 
-{{ci}}
+The fork's standard GitHub runners ran each candidate on the pin, `ci-proof/upstream-shape-8c4f79b`. CI was dispatched with `platform_regressions=false`, and Markdownlint and Security Scanners alongside it. The reference is `8c4f79b4b`'s own run on the same workflows:
+
+- CI run 43807098520: 26 of 26 jobs green, 1266 test files (1225 pass, 41 skip).
+- Markdownlint run 43807101908: green.
+- Security Scanners run 43807105016: green.
+
+The candidate's per-file results are compared with that reference's parsed results (`aidlc-ci-proof-20261116/parsed/ci-8c4f79b.tsv`, ref `base`), using `parse_summaries.py` and `compare.py` from `aidlc-ci-proof-20261116/scripts/`.
+
+| Candidate on the pin | CI | Markdownlint | Security Scanners | Against `8c4f79b4b` |
+| --- | --- | --- | --- | --- |
+| `23886338e` | 43812083339, cancelled | | | Replaced: it carried the personal identity. |
+| `2d9a859e1` | 43817932139, red | 43817936577, green | 43817940761, green | 1266 files and 41 skip on both. The one difference: unit-9 t294 failed 1 of 199. ad4a0ad02 #3906's case listed the retired manifests, fixed in `7aac16444`. |
+| `1fcb108a9` | 43827242879, 26 of 26 green | 43827247248, green | 43827251965, green | 1266 files, 41 skip, 0 fail on both; no file differs. |
+| `b085d715a` | {{ci-final}} | 43835317308, green | 43835323478, green | {{ci-final-compare}} |
+
+`1fcb108a9` and `b085d715a` differ only by S7, the P1 fix.
 
 ## Every upstream commit
 
@@ -213,7 +251,7 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 | `6e4a2e9ef` | #3729 | docs(kiro): one Kiro guide, kiro.md, with Kiro CLI (V2) as its own section | Conflict (C1, C2; C4 follows). kiro-ide.md took upstream's stub; kiro-ide and kiro onboarding.fills stay deleted, their text ported (P6). |
 | `81f084e55` | #3727 | docs(kiro): on Kiro CLI 3.1.0, the guide says what the main chat's approval card offers and what its allow rule covers | Landed; `docs/guide/harnesses/kiro.md` (new upstream in #3729) differs from upstream only by the line C4 moved into it. |
 | `01b80253f` | #3728 | fix(install): on Windows, the install recipes allow scripts in their window first, and doctor names aidlc.exe for an uninstall retry | Landed; `docs/guide/harnesses/kiro.md` (new upstream in #3729) differs from upstream only by the line C4 moved into it. |
-| `3ca1893e6` | #3726 | fix(kiro): a helper agent lists its knowledge folders with its file tool, not the shell | Conflict (C3). Ported as P1 into Projection's agent persona port. |
+| `3ca1893e6` | #3726 | fix(kiro): a helper agent lists its knowledge folders with its file tool, not the shell | Conflict (C3). Ported as P1. It first landed in shared Projection and was moved to the Kiro host owners (S7). |
 | `87472aa2a` | #3737 | fix(compose): the engine keeps the in-flight compose question itself, so no hidden aidlc/.aidlc-compose-pending file appears in your project | Landed; merged cleanly into files foundation had already edited: `docs/reference/06-hooks-and-tools.md`, `tests/fixtures/aidlc-lib-declarations.txt`, `tests/smoke/t148-kiro-file-structure.test.ts`. |
 | `9cd212592` | #3735 | fix(kiro): on macOS and Linux, a quote escaped with a backslash in a simple shell command keeps the > or \| after it inside the value | Landed as upstream bytes. |
 | `3bfb58698` | #3739 | test(compose): a setting that needs their words names their message while the compose question is open; comments say what the code does | Landed as upstream bytes. |
@@ -311,7 +349,7 @@ None of these is in a shipped asset folder (`hooks/`, `skills/`, `agents/`, `set
 | `359613c3b` | #3920 | fix(rules): the shipped rule files say a team's practice replaces a framework default, give classic no coverage floor, and ask no trace to Ideation on plans that skip it | Landed as upstream bytes. |
 | `d864e729c` | #3910 | docs(guide): the install, harness and troubleshooting pages give the setup steps the product needs | Touches t239 (C5): its test body merged unchanged into the unioned file. |
 | `0a3854daf` | #3914 | fix(protocols): the phase-boundary check runs once, in the stage that ends the phase | Landed. Its test reads tierFlavor; the test matrix gained that capability (S3). |
-| `ad4a0ad02` | #3906 | fix: doctor, plugin test, Copilot reviewers and Codex questions work the same on every harness | Conflict (C1, C3, C7, C8). Copilot emitter and Codex manifest stay deleted; porting doc and agent-knowledge kept foundation's. Ported as P3 (Codex letters) and P4 (Copilot absorbed knowledge). |
+| `ad4a0ad02` | #3906 | fix: doctor, plugin test, Copilot reviewers and Codex questions work the same on every harness | Conflict (C1, C3, C7, C8). Copilot emitter and Codex manifest stay deleted; porting doc and agent-knowledge kept foundation's. Ported as P3 (Codex letters) and P4 (Copilot absorbed knowledge). Its new t294 case is re-pointed at the test matrix (`7aac16444`). |
 | `6cbf16257` | #3913 | fix(requirements): the summary stop before Requirements Analysis writes its document is the same stop every other stage shows | Landed as upstream bytes. |
 | `b72cc6d1d` | #3829 | fix(teams): a project in a folder of a bigger repository is told team work needs it at the repository's top, instead of a share that fails | Landed as upstream bytes. |
 | `c9591e300` | #3885 | fix(teams): once a team has taken a Unit, redoing a Unit stage for every unit reopens only the Units your checkout builds and says which it left | Landed as upstream bytes. |
