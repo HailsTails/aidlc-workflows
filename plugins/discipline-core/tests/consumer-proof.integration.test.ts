@@ -8,6 +8,10 @@ import { createDefaultModuleLoaderPort, type ModuleLoaderPort } from "../core/pl
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
+import type { LoadFailure } from "../core/check/load-failure.ts";
+import type { ExitCode } from "../core/platform-ports/process-port.ts";
+import type { Result } from "../core/values/result.ts";
+import type { CheckReport } from "../core/verdict/check-report.ts";
 import { createEslintRunner } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import { createDefaultEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
 import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
@@ -16,6 +20,10 @@ import { type PathCallsOutside, pathCallsOutside } from "./confinement.ts";
 
 const path = createDefaultPathPort({});
 
+const fullReportExitCode = (request: { readonly checked: Result<CheckReport, LoadFailure> }): ExitCode => {
+  assert(request.checked.outcome === "ok", "the check loads");
+  return checkCommandOutcome({ result: { outcome: "ok", value: { report: request.checked.value, output: "full" } } }).code;
+};
 const resolvedPath = (request: { readonly path: string }): AbsolutePath => {
   const resolved = path.resolve(request);
   assert(resolved.outcome === "ok", `${request.path} resolves to an absolute path`);
@@ -186,7 +194,7 @@ describe("a consumer with no harness directory selecting CD-23 through the audit
     const ports = observedPorts();
     const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: SIBLINGED_TRACKED, ports });
     expect(checked).toEqual({ outcome: "ok", value: { ...CLEAN_REPORT, excluded: WALKER_EXCLUDED } });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(0);
+    expect(fullReportExitCode({ checked })).toBe(0);
   });
 
   it("fails when a tracked unit has no test sibling, exiting 1 with the unit as an audit finding", async () => {
@@ -196,7 +204,7 @@ describe("a consumer with no harness directory selecting CD-23 through the audit
       outcome: "ok",
       value: { ...CLEAN_REPORT, excluded: WALKER_EXCLUDED, findings: [UNSIBLINGED_FINDING] },
     });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(1);
+    expect(fullReportExitCode({ checked })).toBe(1);
   });
 
   it("reads, probes and loads only paths in the audit mechanism's install path list or the consumer repo", async () => {
@@ -232,7 +240,7 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
     const ports = observedPorts();
     const checked = await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLEAN_TRACKED, ports });
     expect(checked).toEqual({ outcome: "ok", value: CLEAN_REPORT });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(0);
+    expect(fullReportExitCode({ checked })).toBe(0);
   });
 
   it("fails when a tracked file holds a class, exiting 1 with the class as an ESLint finding", async () => {
@@ -242,7 +250,7 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
       outcome: "ok",
       value: { ...CLEAN_REPORT, findings: [CLASS_FINDING] },
     });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(1);
+    expect(fullReportExitCode({ checked })).toBe(1);
   });
 
   it("reads, probes and loads only paths in the ESLint install path list or the consumer repo, check and project alike", async () => {

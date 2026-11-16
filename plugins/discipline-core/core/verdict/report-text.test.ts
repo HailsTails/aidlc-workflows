@@ -5,6 +5,7 @@ import type { Finding } from "../governance/governance.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
+import { REPORT_OUTPUTS } from "../values/report-output.ts";
 import type { CheckReport } from "./check-report.ts";
 import { renderReportText } from "./report-text.ts";
 
@@ -67,13 +68,14 @@ const emptyReport: CheckReport = {
 describe("renderReportText entry lines", () => {
   it("renders a finding as clause, mechanism, file:line:column and snippet", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, findings: [finding] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, findings: [finding] } }),
     ).toContain("\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {}\n");
   });
 
   it("renders the excluded paths first, one per line, before any finding", () => {
     expect(
       renderReportText({
+        output: "full",
         report: { ...emptyReport, excluded: [repoPathSchema.parse("generated"), repoPathSchema.parse("src/legacy.ts")], findings: [finding] },
       }),
     ).toBe(
@@ -84,6 +86,7 @@ describe("renderReportText entry lines", () => {
   it("renders an exempted finding followed by the kind of each crediting record", () => {
     expect(
       renderReportText({
+        output: "full",
         report: { ...emptyReport, exempted: [{ finding, by: [carved, carvedEverywhere] }] },
       }),
     ).toContain(
@@ -93,31 +96,32 @@ describe("renderReportText entry lines", () => {
 
   it("renders an uncovered clause as its address text", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, uncovered: [probeNoTmp] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, uncovered: [probeNoTmp] } }),
     ).toContain("\nprobe/PD-1#no-tmp-files\n");
   });
 
   it("renders a stale authorised location as clause, mechanism, kind and file", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, stale: [located] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, stale: [located] } }),
     ).toContain("\nCD-14#no-class-syntax audit authorised-location src/a.ts\n");
   });
 
   it("renders a stale clause-wide carve-out with * for its file", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, stale: [carvedEverywhere] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, stale: [carvedEverywhere] } }),
     ).toContain("\nCD-14#no-class-syntax audit clause-wide-carve-out *\n");
   });
 
   it("renders a forfeited file carve-out as clause, mechanism, kind and file", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, forfeited: [carved] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, forfeited: [carved] } }),
     ).toContain("\nCD-14#no-class-syntax audit file-carve-out src/a.ts\n");
   });
 
   it("renders a doubly-held entry as clause, mechanism, doubly-held and file", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           doublyHeld: [{ clause: noClass, file: fileA, mechanism: audit }],
@@ -129,6 +133,7 @@ describe("renderReportText entry lines", () => {
   it("renders an unrecorded ignore as clause, mechanism, kind and file", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unrecorded: [{ kind: "ignore", clause: noClass, file: fileA, mechanism: eslint }],
@@ -140,6 +145,7 @@ describe("renderReportText entry lines", () => {
   it("renders an unrecorded config override as clause, mechanism, kind and file", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unrecorded: [
@@ -153,6 +159,7 @@ describe("renderReportText entry lines", () => {
   it("renders an unrecorded suppression entry with its location", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unrecorded: [
@@ -172,6 +179,7 @@ describe("renderReportText entry lines", () => {
   it("renders a finding whose snippet holds line breaks on one line with each break escaped", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           findings: [{ ...finding, snippet: "class A {\n}\r\nclass B {}" }],
@@ -185,6 +193,7 @@ CD-14#no-class-syntax audit src/a.ts:3:5 class A {\n}\r\nclass B {}
   it("renders an unrecorded inline disable whose text holds line breaks on one line with each break escaped", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unrecorded: [
@@ -207,6 +216,7 @@ CD-14#no-class-syntax eslint inline-disable src/a.ts:7 /* eslint-disable\nno-cla
   it("renders a command-line option whose script and option hold line breaks on one line with each break escaped", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unrecorded: [
@@ -229,6 +239,7 @@ CD-14#no-class-syntax eslint command-line-option package.json lint\r\nfix --rule
   it("renders an invalid record whose detail holds line breaks on one line with each break escaped", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           invalidRecords: [
@@ -247,6 +258,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders an unrecorded inline disable with its line and text", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unrecorded: [
@@ -267,6 +279,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders an unrecorded inline rule config with its line and text", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unrecorded: [
@@ -287,6 +300,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders an unrecorded command-line option as its location, script and option", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unrecorded: [
@@ -307,6 +321,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders an invalid record that carries a detail as its index, problem kind and detail", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           invalidRecords: [
@@ -323,6 +338,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders a refused why chain as its index, problem kind and detail", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           invalidRecords: [
@@ -339,6 +355,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders a clause-not-selected invalid record with the clause's address text", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           invalidRecords: [
@@ -352,6 +369,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders a file-not-repo-path invalid record with the refused file", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           invalidRecords: [
@@ -365,6 +383,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders a duplicate invalid record with the index it duplicates", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           invalidRecords: [{ index: 3, problem: { kind: "duplicate", ofIndex: 1 } }],
@@ -376,6 +395,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders a forfeiture-unmeasured entry as its kind", () => {
     expect(
       renderReportText({
+        output: "full",
         report: { ...emptyReport, unmeasured: [{ kind: "forfeiture-unmeasured" }] },
       }),
     ).toContain("\nforfeiture-unmeasured\n");
@@ -384,6 +404,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders a legacy-chain-unmeasured entry as its kind", () => {
     expect(
       renderReportText({
+        output: "full",
         report: { ...emptyReport, unmeasured: [{ kind: "legacy-chain-unmeasured" }] },
       }),
     ).toContain("\nlegacy-chain-unmeasured\n");
@@ -392,6 +413,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders a mechanism-not-run entry as its kind, mechanism and projection", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           unmeasured: [{ kind: "mechanism-not-run", mechanism: eslint, projection: "missing" }],
@@ -403,6 +425,7 @@ exceptions[4] why-chain-refused why 2\nis empty\r
   it("renders a projection problem as its mechanism and out-of-date", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           projectionProblems: [{ mechanism: eslint, state: "out-of-date" }],
@@ -415,13 +438,13 @@ exceptions[4] why-chain-refused why 2\nis empty\r
 describe("renderReportText sections", () => {
   it("heads a section with its field name and its count", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, stale: [located, carvedEverywhere] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, stale: [located, carvedEverywhere] } }),
     ).toMatch(/^stale \(2\)$/m);
   });
 
   it("renders a section's entries in the list's order beneath its header", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, stale: [located, carvedEverywhere] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, stale: [located, carvedEverywhere] } }),
     ).toContain(
       "stale (2)\nCD-14#no-class-syntax audit authorised-location src/a.ts\nCD-14#no-class-syntax audit clause-wide-carve-out *\n",
     );
@@ -430,6 +453,7 @@ describe("renderReportText sections", () => {
   it("orders sections as the report's fields are ordered", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           projectionProblems: [{ mechanism: eslint, state: "out-of-date" }],
@@ -442,13 +466,13 @@ describe("renderReportText sections", () => {
 
   it("leaves out the section of an empty list", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, findings: [finding] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, findings: [finding] } }),
     ).not.toMatch(/^stale \(/m);
   });
 
   it("renders a report with one finding and one stale record exactly, ending with verdict: fail", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, findings: [finding], stale: [located] } }),
+      renderReportText({ output: "full", report: { ...emptyReport, findings: [finding], stale: [located] } }),
     ).toBe(
       "findings (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {}\nstale (1)\nCD-14#no-class-syntax audit authorised-location src/a.ts\nverdict: fail\n",
     );
@@ -457,6 +481,7 @@ describe("renderReportText sections", () => {
   it("renders a report whose only entries are exempted exactly, ending with verdict: pass", () => {
     expect(
       renderReportText({
+        output: "full",
         report: { ...emptyReport, exempted: [{ finding, by: [located] }] },
       }),
     ).toBe(
@@ -469,18 +494,20 @@ describe("renderReportText sections", () => {
 
     expect(
       renderReportText({
+        output: "full",
         report: { ...emptyReport, exempted: [{ finding, by: [reasoned] }] },
       }),
     ).toBe("exempted (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {} exempted by authorised-location\nverdict: pass\n");
   });
 
   it("renders an empty report as exactly the pass verdict line", () => {
-    expect(renderReportText({ report: emptyReport })).toBe("verdict: pass\n");
+    expect(renderReportText({ output: "full", report: emptyReport })).toBe("verdict: pass\n");
   });
 
   it("renders a refused file holding a forged verdict line as one escaped line", () => {
     expect(
       renderReportText({
+        output: "full",
         report: {
           ...emptyReport,
           invalidRecords: [
@@ -492,5 +519,56 @@ describe("renderReportText sections", () => {
 exceptions[0] file-not-repo-path /x\nverdict: pass
 verdict: fail
 `);
+  });
+});
+
+const mixedReport: CheckReport = {
+  ...emptyReport,
+  excluded: [repoPathSchema.parse("generated")],
+  findings: [finding],
+  exempted: [{ finding, by: [carved] }],
+  stale: [located, carvedEverywhere],
+};
+
+describe("renderReportText outputs", () => {
+  it("renders every section of a failing report for the full output", () => {
+    expect(renderReportText({ output: "full", report: mixedReport })).toBe(
+      "excluded (1)\ngenerated\nfindings (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {}\nexempted (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {} exempted by file-carve-out\nstale (2)\nCD-14#no-class-syntax audit authorised-location src/a.ts\nCD-14#no-class-syntax audit clause-wide-carve-out *\nverdict: fail\n",
+    );
+  });
+
+  it("renders the failing sections and the verdict without excluded or exempted for the failures-only output", () => {
+    expect(renderReportText({ output: "failures-only", report: mixedReport })).toBe(
+      "findings (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {}\nstale (2)\nCD-14#no-class-syntax audit authorised-location src/a.ts\nCD-14#no-class-syntax audit clause-wide-carve-out *\nverdict: fail\n",
+    );
+  });
+
+  it("renders one count line per non-empty section and the verdict for the counts output", () => {
+    expect(renderReportText({ output: "counts", report: mixedReport })).toBe(
+      "excluded (1)\nfindings (1)\nexempted (1)\nstale (2)\nverdict: fail\n",
+    );
+  });
+
+  it("renders only the verdict line for the verdict-only output", () => {
+    expect(renderReportText({ output: "verdict-only", report: mixedReport })).toBe("verdict: fail\n");
+  });
+
+  it("renders only the pass verdict for the failures-only output of a report whose only entries are informational", () => {
+    expect(
+      renderReportText({
+        output: "failures-only",
+        report: { ...emptyReport, excluded: [repoPathSchema.parse("generated")], exempted: [{ finding, by: [carved] }] },
+      }),
+    ).toBe("verdict: pass\n");
+  });
+
+  it.each(REPORT_OUTPUTS)("ends the %s output of a failing report with the fail verdict", (output) => {
+    expect(renderReportText({ output, report: mixedReport })).toMatch(/(?:^|\n)verdict: fail\n$/);
+  });
+
+  it.each(REPORT_OUTPUTS)("ends the %s output of a passing report with the pass verdict", (output) => {
+    expect(renderReportText({ output, report: { ...emptyReport, exempted: [{ finding, by: [carved] }] } })).toMatch(
+      /(?:^|\n)verdict: pass\n$/,
+    );
   });
 });

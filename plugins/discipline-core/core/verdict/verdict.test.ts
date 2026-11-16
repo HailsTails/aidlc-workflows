@@ -5,7 +5,7 @@ import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import type { CheckReport } from "./check-report.ts";
-import { verdictOf } from "./verdict.ts";
+import { sectionRoleOf, verdictOf } from "./verdict.ts";
 
 const noClass = clauseAddressSchema.parse("CD-14#no-class-syntax");
 const fileA = repoPathSchema.parse("src/a.ts");
@@ -89,5 +89,25 @@ describe("verdictOf", () => {
     ],
   ])("fails a report with one %s entry", (_list, report) => {
     expect(verdictOf({ report })).toBe("fail");
+  });
+});
+
+describe("sectionRoleOf", () => {
+  it.each(["excluded", "exempted"] as const)("is informational for %s, which never fails the run", (section) => {
+    expect(sectionRoleOf({ section })).toBe("informational");
+  });
+
+  it.each([
+    "findings",
+    "uncovered",
+    "stale",
+    "forfeited",
+    "unrecorded",
+    "doublyHeld",
+    "invalidRecords",
+    "unmeasured",
+    "projectionProblems",
+  ] as const)("is failing for %s, which fails the run when it has an entry", (section) => {
+    expect(sectionRoleOf({ section })).toBe("failing");
   });
 });

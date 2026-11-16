@@ -7,9 +7,17 @@ import { createDefaultModuleLoaderPort } from "../core/platform-ports/module-loa
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
+import type { LoadFailure } from "../core/check/load-failure.ts";
+import type { ExitCode } from "../core/platform-ports/process-port.ts";
+import type { Result } from "../core/values/result.ts";
+import type { CheckReport } from "../core/verdict/check-report.ts";
 
 const path = createDefaultPathPort({});
 
+const fullReportExitCode = (request: { readonly checked: Result<CheckReport, LoadFailure> }): ExitCode => {
+  assert(request.checked.outcome === "ok", "the check loads");
+  return checkCommandOutcome({ result: { outcome: "ok", value: { report: request.checked.value, output: "full" } } }).code;
+};
 const resolvedPath = (request: { readonly path: string }): AbsolutePath => {
   const resolved = path.resolve(request);
   assert(resolved.outcome === "ok", `${request.path} resolves to an absolute path`);
@@ -98,12 +106,12 @@ describe("adopting a repository whose legacy file holds CD-1 debt beside another
         ]),
       },
     });
-    expect(checkCommandOutcome({ result: cascadeReport }).code).toBe(0);
+    expect(fullReportExitCode({ checked: cascadeReport })).toBe(0);
   });
 
   it("forfeits all three carve-outs once the file is touched, the ordinary touch-and-own for any discipline", async () => {
     const cascadeReport = await cascadeCheck({ changed: [LEGACY_FILE] });
     expect(cascadeReport).toMatchObject({ outcome: "ok", value: { forfeited: [{}, {}, {}] } });
-    expect(checkCommandOutcome({ result: cascadeReport }).code).toBe(1);
+    expect(fullReportExitCode({ checked: cascadeReport })).toBe(1);
   });
 });
