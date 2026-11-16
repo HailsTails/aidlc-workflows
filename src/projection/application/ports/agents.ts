@@ -20,9 +20,9 @@ export type AgentModelPolicy = (request: {
   readonly model: TieredModel;
 }) => Result<string | undefined, ProjectionRefusal>;
 
-export type KnowledgeReading = "whole-files" | "in-parts";
-
-export type KnowledgeReadingGuides = Readonly<Record<KnowledgeReading, string>>;
+export type KnowledgeReading =
+  | { readonly kind: "whole-files" }
+  | { readonly kind: "in-parts"; readonly guide: string };
 
 export type AgentPersonaRequest = {
   readonly agent: Agent;

@@ -112,7 +112,7 @@ test("agent composition exposes a missing captured source refusal without recons
     displayName: "Example", description: "Role", examples: [], owner: { kind: "core" }, model: { kind: "tier", tier: "balanced" },
     tools: { disallowed: [] }, maxTurns: null, persona: { text: "No fallback", headings: [] },
     additions: { afterPreflight: [], endOfBody: [] },
-  }, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+  }, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
     frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
       removeKeys: [], afterProjectionLines: [] } }))
     .toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
@@ -138,7 +138,7 @@ test("agent composition absorbs knowledge for a core agent appointed only by the
     displayName: "Product Agent", description: "Role", examples: [], owner: { kind: "core" }, model: { kind: "tier", tier: "judgment" },
     tools: { disallowed: [] }, maxTurns: null, persona: { text: "No fallback", headings: [] },
     additions: { afterPreflight: [], endOfBody: [] },
-  }, text: "authored-file", knowledge: "absorbed", reading: "whole-files" }))
+  }, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" } }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\nPersona\n\n---\n\n<!-- Absorbed at build time from knowledge/aidlc-product-agent/check.md - edit that file, not this generated copy. -->\n\nPlugin reviewer knowledge\n"));
 });
 

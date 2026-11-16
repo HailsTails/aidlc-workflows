@@ -21,7 +21,7 @@ import { prepareLegacySkillTables, prepareCapturedLegacyFormatting } from "./ada
 import { projectMethodSkills } from "./application/project-method-skills.ts";
 import { createCommandRenderers, collectCommandRenderings } from "./application/command-renderers.ts";
 import type { SessionSkillTreeReader } from "./application/ports/skills.ts";
-import { shippedFormatDocuments, delegatedSharedKnowledge, knowledgeReadingGuides } from "./adapters/legacy-format-docs.ts";
+import { shippedFormatDocuments, delegatedSharedKnowledge } from "./adapters/legacy-format-docs.ts";
 import { projectMethodAgents } from "./application/project-method-agents.ts";
 import { createHostSurfaceReader } from "./application/host-source-files.ts";
 import { prepareLegacyRunners } from "./adapters/legacy-runners.ts";
@@ -47,8 +47,7 @@ const agentInputs = ({ agents, allows, facts }: {
 }): AgentRenderingInputs => {
   const persona = createAgentPersonaPreparer({ sources: agents.sources, tokens: agents.tokens,
     directory: agents.host.directory, rulesFolder: agents.rulesFolder, reviewerAgents: agents.reviewerAgents,
-    sharedKnowledge: delegatedSharedKnowledge(agents.host.directory),
-    readingGuides: knowledgeReadingGuides(agents.host.directory) });
+    sharedKnowledge: delegatedSharedKnowledge(agents.host.directory) });
   const markdown = legacyMarkdownAgentSurface({ host: agents.host, cap: agents.modelCap });
   return { host: agents.host, files: agents.files, prepare: agents.prepare, tokens: agents.tokens, persona,
     documents: (request) => {

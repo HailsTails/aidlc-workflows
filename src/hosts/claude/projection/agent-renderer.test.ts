@@ -20,7 +20,7 @@ const markdown = "---\nmodel: sonnet\neffort: high\ndisallowedTools: Task\nmaxTu
 
 test("Claude's native Markdown uses the frozen effort surface without rewriting its persona", () => {
   const renderer = claudeAgents({ ...SCRATCH_AGENT_INPUTS, documents: (request) => {
-    expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
       frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
         removeKeys: [], afterProjectionLines: [] } });
     return accepted(markdown);

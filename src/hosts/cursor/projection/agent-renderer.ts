@@ -6,7 +6,7 @@ import { projectActiveMemoryReferences } from "../../../projection/domain/active
 
 const renderAgent = (inputs: AgentRenderingInputs): Harness["renderAgent"] => ({ agent }) => {
   const surfaced = inputs.documents({
-    agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
     frontmatter: {
       model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
       removeKeys: [], afterProjectionLines: [],

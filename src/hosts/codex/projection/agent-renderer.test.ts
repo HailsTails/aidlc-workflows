@@ -27,13 +27,13 @@ const refusal: ProjectionRefusal = { kind: "render-failed", concept: "agent",
 test("the registered Codex factory supplies exact Markdown and persona requests and writes native TOML", () => {
   const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex,
     documents: (request) => {
-      expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+      expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
         frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
           removeKeys: [], afterProjectionLines: [] } });
       return accepted("Markdown persona\n");
     },
     persona: (request) => {
-      expect(request).toEqual({ agent, text: "persona-body", knowledge: "absorbed", reading: "whole-files" });
+      expect(request).toEqual({ agent, text: "persona-body", knowledge: "absorbed", reading: { kind: "whole-files" } });
       return accepted(" Prepared persona ");
     },
   });

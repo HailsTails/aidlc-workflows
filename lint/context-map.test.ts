@@ -118,6 +118,16 @@ const EXPECTED_BRIDGES = [
     retiresWhen: OWNER_MOVES,
   },
   {
+    module: "core/tools/aidlc-inline-context.ts",
+    readBy: "src/hosts/kiro/projection/knowledge-reading.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-inline-context.ts",
+    readBy: "src/hosts/kiro-ide/projection/knowledge-reading.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
     module: "core/tools/aidlc-plugin-emit.ts",
     readBy: "src/projection/adapters/legacy-plugin-emit.ts",
     retiresWhen:

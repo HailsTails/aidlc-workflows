@@ -39,12 +39,12 @@ test("native and inline personas request distinct frontmatters and retain exact 
         "aidlc/active-memory/project.md aidlc/active-memory/org.md aidlc/active-memory/team.md " +
         "aidlc/active-memory/project.md aidlc/active-memory/other.md\n" } },
   ]));
-  expect(documents).toHaveBeenNthCalledWith(1, { agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+  expect(documents).toHaveBeenNthCalledWith(1, { agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
     frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
       removeKeys: ["disallowedTools", "maxTurns"], afterProjectionLines: [
         "mode: subagent", "steps: 12", "permission:", "  task: deny",
       ] } });
-  expect(documents).toHaveBeenNthCalledWith(2, { agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+  expect(documents).toHaveBeenNthCalledWith(2, { agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
     frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
       removeKeys: [], afterProjectionLines: [] } });
   expect(documents).toHaveBeenCalledTimes(2);
@@ -55,7 +55,7 @@ test("the registered factory keeps optional cap and denial lines absent", () => 
   const uncapped = { ...agent, maxTurns: null, tools: { disallowed: [] } };
   expect(openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent: uncapped, knowledge: [] }).ok)
     .toBe(true);
-  expect(documents).toHaveBeenNthCalledWith(1, { agent: uncapped, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+  expect(documents).toHaveBeenNthCalledWith(1, { agent: uncapped, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
     frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
       removeKeys: ["disallowedTools", "maxTurns"], afterProjectionLines: ["mode: subagent"] } });
 });
@@ -94,7 +94,7 @@ test("the native factory retains mixed Task denial translation", () => {
     agent: mixed, knowledge: [],
   }).ok).toBe(true);
   expect(documents).toHaveBeenNthCalledWith(1, { agent: mixed, text: "authored-file", knowledge: "absorbed",
-    reading: "whole-files", frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain",
+    reading: { kind: "whole-files" }, frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain",
       insertBeforeKeys: [], removeKeys: ["disallowedTools", "maxTurns"],
       afterProjectionLines: ["mode: subagent", "steps: 12", "permission:", "  task: deny"] } });
 });

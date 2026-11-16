@@ -7,7 +7,7 @@ export const claudeAgents: HostAgentRenderer = (inputs) => ({
     const path = projectPath(`.claude/agents/${agent.slug}.md`);
     if (!path.ok) return refused({ kind: "render-failed", concept: "agent", name: agent.slug,
       reason: "The native agent destination must be a project-relative path." });
-    const rendered = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    const rendered = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
       frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
         removeKeys: [], afterProjectionLines: [] } });
     return rendered.ok ? accepted([{ path: path.value,

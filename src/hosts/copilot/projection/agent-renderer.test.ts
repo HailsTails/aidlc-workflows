@@ -53,7 +53,7 @@ describe("copilotAgents", () => {
     const documents = surfaces();
     render(delivery, documents);
     expect(documents).toHaveBeenCalledWith({
-      agent: delivery, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+      agent: delivery, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
       frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
         removeKeys: ["disallowedTools"],
         afterProjectionLines: ['tools: ["read", "edit", "search", "execute", "web", "todo"]'] },
@@ -64,7 +64,7 @@ describe("copilotAgents", () => {
     const documents = surfaces();
     render(delivery, documents);
     expect(documents).toHaveBeenCalledWith({
-      agent: delivery, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+      agent: delivery, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
       frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
         removeKeys: [], afterProjectionLines: [] },
     });

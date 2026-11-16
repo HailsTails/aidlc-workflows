@@ -24,13 +24,13 @@ const workerTools = (denial: TaskDenial): readonly string[] =>
   denial === "task-only" ? [`tools: [${COPILOT_WORKER_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`] : [];
 
 const nativeDocument = (inputs: AgentRenderingInputs, request: { readonly agent: Agent; readonly denial: TaskDenial }) => inputs.documents({
-  agent: request.agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+  agent: request.agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
   frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
     removeKeys: ["disallowedTools"], afterProjectionLines: workerTools(request.denial) },
 });
 
 const runtimeDocument = (inputs: AgentRenderingInputs, agent: Agent) => inputs.documents({
-  agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+  agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
   frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
     removeKeys: [], afterProjectionLines: [] },
 });

@@ -12,6 +12,7 @@ import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import type { AgentSlug } from "../../../workflow-definition/domain/identities.ts";
 import type { MethodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
 import { kiroJsonAgentRenderer, createKiroJsonAgentRenderer, kiroAgents } from "./json-agent-renderer.ts";
+import { kiroKnowledgeReading } from "./knowledge-reading.ts";
 
 const agent: Agent = {
   slug: brand<AgentSlug>("aidlc-architect-agent"),
@@ -189,7 +190,7 @@ test("Kiro's native factory returns JSON then Markdown with the exact in-parts r
       origin: { kind: "method-source", path: agent.source } },
   ]));
   expect(documents).toHaveBeenCalledTimes(1);
-  expect(documents).toHaveBeenCalledWith({ agent, text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+  expect(documents).toHaveBeenCalledWith({ agent, text: "authored-file", knowledge: "absorbed", reading: kiroKnowledgeReading(".kiro"),
     frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
       insertBeforeKeys: [], removeKeys: ["disallowedTools"], afterProjectionLines: [] } });
   expect(prepare).toHaveBeenCalledTimes(2);

@@ -15,7 +15,7 @@ export const openCodeAgents: HostAgentRenderer = (inputs) => ({
       && !agent.tools.disallowed.some((tool) => /\bTask\b/i.test(tool));
     if (unsupported) return refused({ kind: "render-failed", concept: "agent", name: agent.slug,
       reason: `OpenCode cannot translate disallowedTools without Task: ${agent.tools.disallowed.join(", ")}.` });
-    const native = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    const native = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
       frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
         removeKeys: ["disallowedTools", "maxTurns"], afterProjectionLines: ["mode: subagent",
           ...(agent.maxTurns === null ? [] : [`steps: ${agent.maxTurns}`]),
@@ -25,7 +25,7 @@ export const openCodeAgents: HostAgentRenderer = (inputs) => ({
     const nativePath = projectPath(`.opencode/agents/${agent.slug}.md`);
     if (!nativePath.ok) return refused({ kind: "render-failed", concept: "agent", name: agent.slug,
       reason: "The native agent destination must be a project-relative path." });
-    const inline = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    const inline = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
       frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
         removeKeys: [], afterProjectionLines: [] } });
     if (!inline.ok) return inline;

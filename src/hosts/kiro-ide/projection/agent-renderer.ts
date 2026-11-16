@@ -9,6 +9,7 @@ import { inlineAgentSet } from "../../../workflow-definition/domain/method-parti
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import { kiroIdeDelegateShellPolicy, type DelegateShellPolicy } from "./delegate-shell-deny.ts";
+import { kiroIdeKnowledgeReading } from "./knowledge-reading.ts";
 
 export type KiroIdePersonaProfile = {
   readonly modelSurface: (request: { readonly agent: AgentDocumentRequest["agent"]; readonly removeKeys: readonly string[] }) =>
@@ -77,7 +78,7 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
   return {
     renderAgent: personas({
       modelSurface: ({ agent, removeKeys }) => inputs.documents({
-        agent, text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+        agent, text: "authored-file", knowledge: "absorbed", reading: kiroIdeKnowledgeReading(inputs.host.directory),
         frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
           insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
       }),

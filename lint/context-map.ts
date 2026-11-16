@@ -144,6 +144,8 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   shippedOwner("aidlc-launcher-voucher", "src/hosts/copilot/projection/launcher.ts"),
   shippedOwner("aidlc-includes", "src/projection/adapters/legacy-includes.ts"),
   shippedOwner("aidlc-inline-context", "src/projection/adapters/legacy-format-docs.ts"),
+  shippedOwner("aidlc-inline-context", "src/hosts/kiro/projection/knowledge-reading.ts"),
+  shippedOwner("aidlc-inline-context", "src/hosts/kiro-ide/projection/knowledge-reading.ts"),
   {
     module: "core/tools/aidlc-plugin-emit.ts",
     readBy: "src/projection/adapters/legacy-plugin-emit.ts",

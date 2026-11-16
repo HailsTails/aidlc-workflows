@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createKiroIdeAgents, kiroIdePermissionLines, type KiroIdePersonaRendering } from "./agent-renderer.ts";
+import { kiroIdeKnowledgeReading } from "./knowledge-reading.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { brand } from "../../../kernel/brand.ts";
 import type { Method } from "../../../workflow-definition/domain/method.ts";
@@ -32,7 +33,7 @@ test("Kiro IDE gives its persona port the exact in-parts model and native policy
   const profile = personas.mock.calls[0]?.[0];
   expect(profile?.modelSurface({ agent: architect, removeKeys: ["disallowedTools"] })).toEqual(accepted(surfaced));
   expect(documents).toHaveBeenCalledWith({ agent: architect,
-    text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+    text: "authored-file", knowledge: "absorbed", reading: kiroIdeKnowledgeReading(".kiro"),
     frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
       insertBeforeKeys: [], removeKeys: ["disallowedTools"], afterProjectionLines: [] },
   });

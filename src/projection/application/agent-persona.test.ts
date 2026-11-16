@@ -16,19 +16,18 @@ const personaAgent = (): CoreAgent => ({ slug: agent("aidlc-example-agent"),
   additions: { afterPreflight: [], endOfBody: [] } });
 
 const inputs = () => ({ sources: [], reviewerAgents: new Set<string>(), directory: ".claude", rulesFolder: null, sharedKnowledge: "shared",
-  readingGuides: { ["whole-files"]: "", ["in-parts"]: "Read each in parts. " },
   tokens: tokenBindingsFixture({ harnessDir: ".claude" }) });
 
 test("captured authored bytes retain their formatting and bind tokens rather than reconstructing the persona", () => {
   const agent = personaAgent();
   const prepare = createAgentPersonaPreparer({ ...inputs(), sources: [{ owner: { kind: "core" }, path: agent.source,
     content: { kind: "text", text: "<!-- aidlc-delegated-knowledge-preflight -->\r\nAuthored {{HARNESS_DIR}}\r\n" } }] });
-  expect(prepare({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files" }))
+  expect(prepare({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" } }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\r\nAuthored .claude\r\n"));
 });
 
 test("a missing authored source refuses its actual agent without falling back to persona text", () => {
-  expect(createAgentPersonaPreparer(inputs())({ agent: personaAgent(), text: "authored-file", knowledge: "absorbed", reading: "whole-files" }))
+  expect(createAgentPersonaPreparer(inputs())({ agent: personaAgent(), text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" } }))
     .toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
       reason: "The accepted agent's authored source was not captured." } });
 });
@@ -38,12 +37,12 @@ test("captured source identity includes the plugin owner rather than path alone"
   const prepare = createAgentPersonaPreparer({ ...inputs(), sources: [{ owner: { kind: "plugin", plugin: accept(pluginId("other")) },
     path: core.source, content: { kind: "text", text: "Wrong plugin bytes" } }] });
   expect(prepare({ agent: { ...core, owner: { kind: "plugin", plugin: accept(pluginId("wanted")) } }, text: "authored-file",
-    knowledge: "preflight-only", reading: "whole-files" })).toEqual({ ok: false, refusal: { kind: "render-failed",
+    knowledge: "preflight-only", reading: { kind: "whole-files" } })).toEqual({ ok: false, refusal: { kind: "render-failed",
     concept: "agent", name: "aidlc-example-agent", reason: "The accepted agent's authored source was not captured." } });
 });
 
 test("persona-body is an explicit source-independent request", () => {
-  expect(createAgentPersonaPreparer(inputs())({ agent: personaAgent(), text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
+  expect(createAgentPersonaPreparer(inputs())({ agent: personaAgent(), text: "persona-body", knowledge: "preflight-only", reading: { kind: "whole-files" } }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\nBody .claude"));
 });
 
@@ -51,7 +50,7 @@ test("reviewer knowledge is absorbed from the same captured snapshot before toke
   const prepare = createAgentPersonaPreparer({ ...inputs(), reviewerAgents: new Set(["aidlc-example-agent"]), sources: [{
     owner: { kind: "core" }, path: methodSource({ kind: "knowledge", within: "aidlc-example-agent/a.md" }),
     content: { kind: "text", text: "Knowledge {{HARNESS_DIR}}\n" } }] });
-  expect(prepare({ agent: personaAgent(), text: "persona-body", knowledge: "absorbed", reading: "whole-files" }))
+  expect(prepare({ agent: personaAgent(), text: "persona-body", knowledge: "absorbed", reading: { kind: "whole-files" } }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\nBody .claude\n\n---\n\n<!-- Absorbed at build time from knowledge/aidlc-example-agent/a.md - edit that file, not this generated copy. -->\n\nKnowledge .claude\n"));
 });
 
@@ -59,7 +58,7 @@ test("preflight-only requests do not absorb captured reviewer knowledge", () => 
   const prepare = createAgentPersonaPreparer({ ...inputs(), reviewerAgents: new Set(["aidlc-example-agent"]), sources: [{
     owner: { kind: "core" }, path: methodSource({ kind: "knowledge", within: "aidlc-example-agent/a.md" }),
     content: { kind: "text", text: "This reviewer checklist must not enter the native worker persona." } }] });
-  expect(prepare({ agent: personaAgent(), text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
+  expect(prepare({ agent: personaAgent(), text: "persona-body", knowledge: "preflight-only", reading: { kind: "whole-files" } }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\nBody .claude"));
 });
 
@@ -68,7 +67,7 @@ test("a null rules folder leaves bound persona paths unchanged", () => {
     tokens: tokenBindingsFixture({ harnessDir: ".kiro" }) });
   const agent = { ...personaAgent(), persona: { headings: [],
     text: "<!-- aidlc-delegated-knowledge-preflight -->\n{{HARNESS_DIR}}/rules/overview.md and {{HARNESS_DIR}}/rules/default.rules" } };
-  expect(prepare({ agent, text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
+  expect(prepare({ agent, text: "persona-body", knowledge: "preflight-only", reading: { kind: "whole-files" } }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\n.kiro/rules/overview.md and .kiro/rules/default.rules"));
 });
 
@@ -77,7 +76,7 @@ test("the host rules folder is renamed after tokens while the native default.rul
     tokens: tokenBindingsFixture({ harnessDir: ".kiro" }) });
   const agent = { ...personaAgent(), persona: { headings: [],
     text: "<!-- aidlc-delegated-knowledge-preflight -->\n{{HARNESS_DIR}}/rules/overview.md and {{HARNESS_DIR}}/rules/default.rules" } };
-  expect(prepare({ agent, text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
+  expect(prepare({ agent, text: "persona-body", knowledge: "preflight-only", reading: { kind: "whole-files" } }))
     .toEqual(accepted("<!-- aidlc-delegated-knowledge-preflight -->\n.kiro/steering/overview.md and .kiro/rules/default.rules"));
 });
 
@@ -85,7 +84,7 @@ test("captured text drops only the leading BOM before persona preparation", () =
   const agent = personaAgent();
   const prepare = createAgentPersonaPreparer({ ...inputs(), sources: [{ owner: { kind: "core" }, path: agent.source,
     content: { kind: "text", text: "\uFEFF---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody \uFEFF inside" } }] });
-  expect(prepare({ agent, text: "authored-file", knowledge: "preflight-only", reading: "whole-files" }))
+  expect(prepare({ agent, text: "authored-file", knowledge: "preflight-only", reading: { kind: "whole-files" } }))
     .toEqual(accepted("---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody \uFEFF inside"));
 });
 
@@ -94,15 +93,15 @@ test("captured UTF-8 bytes drop their leading BOM before persona preparation", (
   const prepare = createAgentPersonaPreparer({ ...inputs(), sources: [{ owner: { kind: "core" }, path: agent.source,
     content: { kind: "bytes", bytes: new TextEncoder().encode(
       "\uFEFF---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody") } }] });
-  expect(prepare({ agent, text: "authored-file", knowledge: "preflight-only", reading: "whole-files" }))
+  expect(prepare({ agent, text: "authored-file", knowledge: "preflight-only", reading: { kind: "whole-files" } }))
     .toEqual(accepted("---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody"));
 });
 
-test("a host that reads in parts gets the supplied in-parts guide, and one that reads whole files gets none", () => {
+test("a host that reads in parts gets its own guide, and one that reads whole files gets none", () => {
   const preflight = { ...personaAgent(), persona: { headings: [], text: "Body" } };
   const prepare = createAgentPersonaPreparer(inputs());
-  expect(prepare({ agent: preflight, text: "persona-body", knowledge: "preflight-only", reading: "in-parts" }))
+  expect(prepare({ agent: preflight, text: "persona-body", knowledge: "preflight-only", reading: { kind: "in-parts", guide: "Read each in parts. " } }))
     .toEqual(accepted(expect.stringContaining("otherwise read the files now. Read each in parts. The dispatch brief")));
-  expect(prepare({ agent: preflight, text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
+  expect(prepare({ agent: preflight, text: "persona-body", knowledge: "preflight-only", reading: { kind: "whole-files" } }))
     .toEqual(accepted(expect.stringContaining("otherwise read the files now. The dispatch brief")));
 });

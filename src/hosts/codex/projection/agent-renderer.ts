@@ -24,11 +24,11 @@ export const codexAgents: HostAgentRenderer = (inputs) => ({
       kind: "render-failed", concept: "agent", name: agent.slug,
       reason: "Codex agent destinations must be project-relative paths.",
     });
-    const markdown = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    const markdown = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
       frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
         removeKeys: [], afterProjectionLines: [] } });
     if (!markdown.ok) return markdown;
-    const persona = inputs.persona({ agent, text: "persona-body", knowledge: "absorbed", reading: "whole-files" });
+    const persona = inputs.persona({ agent, text: "persona-body", knowledge: "absorbed", reading: { kind: "whole-files" } });
     if (!persona.ok) return persona;
     const codex = renderCodexToml({ agent, content: nativeRole(agent, persona.value),
       host: inputs.host, modelCap: inputs.modelCap });

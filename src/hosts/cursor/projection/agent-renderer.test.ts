@@ -81,7 +81,7 @@ test("Cursor's agent factory requests the exact authored effort surface before i
     }]),
   );
   expect(documents).toHaveBeenCalledWith({
-    agent: quality, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
+    agent: quality, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
     frontmatter: {
       model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
       removeKeys: [], afterProjectionLines: [],

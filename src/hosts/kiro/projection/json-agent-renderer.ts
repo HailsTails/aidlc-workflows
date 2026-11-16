@@ -1,4 +1,5 @@
 import { kiroCliAgentRenderer } from "./agent-renderer.ts";
+import { kiroKnowledgeReading } from "./knowledge-reading.ts";
 import { prepareKiroAgentBatch, expandKiroAgentAllows } from "./tool-allows.ts";
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
@@ -115,7 +116,7 @@ export const createKiroJsonAgentRenderer = (profile: {
 export const kiroAgents: HostAgentRenderer = (inputs) => {
   const json = createKiroJsonAgentRenderer({ host: inputs.host, formatDocuments: inputs.formatDocuments })(inputs);
   const markdown = kiroCliAgentRenderer(({ agent, removeKeys }) => inputs.documents({
-    agent, text: "authored-file", knowledge: "absorbed", reading: "in-parts",
+    agent, text: "authored-file", knowledge: "absorbed", reading: kiroKnowledgeReading(inputs.host.directory),
     frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
       insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
   }));
