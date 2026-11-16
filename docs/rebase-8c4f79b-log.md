@@ -182,7 +182,10 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
   - It keeps foundation's tip dates and adds no `Co-Authored-By` trailer.
   - The repository-local identity is `rin-author[bot]`, so `--reset-author` would have resolved to the bot. The global identity is a personal address and is not used either.
   - A first regeneration (`c6b67ac64` and `23886338e`, pushed to the two candidate refs and since replaced) read the global identity and so carried the personal address. Those two commits are no longer on any branch but stay reachable on the public fork by SHA and from run 43812083339 (cancelled).
-- `src/route-ledger.ts` routes each upstream commit's paths to their receiving owners and renders [the route ledger](rebase-8c4f79b-ledger.md) from hand-made judgements in `docs/rebase-8c4f79b-judgements.json`. It exits 1 while any commit that needs a judgement has none.
+- `src/route-ledger.ts` routes each upstream commit's paths to their receiving owners and renders [the route ledger](rebase-8c4f79b-ledger.md) from hand-made judgements in `docs/rebase-8c4f79b-judgements.json`.
+  - It demands a judgement for every replaced or mixed commit.
+  - It also demands one for any commit touching a dual-use core module, a legacy script, a build file added in the range, a conflicted path, or a path that differs from upstream at head beyond the change foundation already had.
+  - It exits 1 while any of those commits has no judgement.
 - **Patch redone:** in `patches/scripts~parity~install-lifecycle.ts.patch`, the usage line said `v2.11.2` and now says `<previous release tag>`. A hard-coded release would go stale at every pin.
 - All 16 patches and the optional gitleaks patch apply to the rebased foundation unchanged.
   - The kiro README patch's sentence about the packager at `caea995ae` is kept. It is a historical fact about that packager, not the pin.

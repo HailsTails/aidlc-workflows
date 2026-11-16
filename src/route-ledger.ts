@@ -19,8 +19,10 @@ type RoutedPath = {
   readonly scrutiny: Scrutiny;
   readonly bridgedReadsTouched: readonly string[];
   readonly conflicted: boolean;
-  readonly atHead: "upstream bytes" | "differs from upstream" | "absent";
+  readonly atHead: HeadState;
 };
+
+type HeadState = "upstream bytes" | "upstream bytes plus foundation's unchanged delta" | "differs from upstream" | "absent";
 
 type RoutedCommit = {
   readonly sha: string;
@@ -164,7 +166,8 @@ const routePath = (request: {
 
 const demandsJudgement = (commit: RoutedCommit): boolean =>
   commit.route === "replaced" || commit.route === "mixed"
-  || commit.paths.some((path) => path.scrutiny !== "routine");
+  || commit.paths.some((path) => path.scrutiny !== "routine" || path.conflicted || path.atHead === "differs from upstream"
+    || path.atHead === "absent");
 
 const commitRoute = (paths: readonly RoutedPath[]): CommitRoute => {
   const replaced = paths.some((path) => path.kind === "replaced");
@@ -179,9 +182,28 @@ const headState = (request: {
   readonly path: string;
   readonly presentAtHead: ReadonlySet<string>;
   readonly differsAtHead: ReadonlySet<string>;
-}): RoutedPath["atHead"] => {
+  readonly keepsFoundationDelta: (path: string) => boolean;
+}): HeadState => {
   if (!request.presentAtHead.has(request.path)) return "absent";
-  return request.differsAtHead.has(request.path) ? "differs from upstream" : "upstream bytes";
+  if (!request.differsAtHead.has(request.path)) return "upstream bytes";
+  return request.keepsFoundationDelta(request.path) ? "upstream bytes plus foundation's unchanged delta" : "differs from upstream";
+};
+
+const deltaLines = (diff: string): string =>
+  lineSeparated(diff).filter((line) => (line.startsWith("+") || line.startsWith("-"))
+    && !line.startsWith("+++") && !line.startsWith("---")).join("\n");
+
+const foundationDeltaCheck = (request: { readonly git: Git; readonly options: Options }): ((path: string) => boolean) => {
+  const { git, options } = request;
+  const known = new Map<string, boolean>();
+  return (path) => {
+    const remembered = known.get(path);
+    if (remembered !== undefined) return remembered;
+    const kept = deltaLines(git(["diff", "--no-renames", options.from, options.foundationBefore, "--", path]))
+      === deltaLines(git(["diff", "--no-renames", options.to, options.head, "--", path]));
+    known.set(path, kept);
+    return kept;
+  };
 };
 
 const IMPORT_CLAUSE = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*"([^"]+)"/g;
@@ -211,8 +233,11 @@ const bridgedReadsTouchedBy = (request: {
   const readers = request.bridges.filter((bridge) => bridge.module === request.path);
   if (readers.length === 0) return [];
   const changed = changedText(request.git(["show", "-U0", "--no-renames", "--format=", request.sha, "--", request.path]));
-  return readers.flatMap((bridge) => importedNames(request.git(["show", `${request.head}:${bridge.readBy}`]), request.path)
-    .filter((name) => mentions(changed, name)).map((name) => `${name} (${bridge.readBy})`));
+  return readers.flatMap((bridge) => {
+    const names = importedNames(request.git(["show", `${request.head}:${bridge.readBy}`]), request.path);
+    if (names.length === 0) return [`no named import, so the whole module (${bridge.readBy} loads, runs or type-checks against it)`];
+    return names.filter((name) => mentions(changed, name)).map((name) => `${name} (${bridge.readBy})`);
+  });
 };
 
 const routedCommits = (options: Options): readonly RoutedCommit[] => {
@@ -228,6 +253,7 @@ const routedCommits = (options: Options): readonly RoutedCommit[] => {
   const merged = lineSeparated(git(["merge-tree", "--write-tree", "--name-only", "--no-messages", "-X", "no-renames",
     options.foundationBefore, options.to], [0, CONFLICTED_MERGE_EXIT]));
   const conflicted = new Set(merged.slice(1));
+  const keepsFoundationDelta = foundationDeltaCheck({ git, options });
   const log = nulSeparated(git(["log", "--reverse", "-z", "--format=%h%x09%s", `${options.from}..${options.to}`]));
   return log.map((line) => {
     const [sha = "", subject = ""] = line.split("\t");
@@ -237,7 +263,7 @@ const routedCommits = (options: Options): readonly RoutedCommit[] => {
       path, ...routePath({ path, deletedOwners, added, bridges }),
       bridgedReadsTouched: bridgedReadsTouchedBy({ git, head: options.head, bridges, sha, path }),
       conflicted: conflicted.has(path),
-      atHead: headState({ path, presentAtHead, differsAtHead }),
+      atHead: headState({ path, presentAtHead, differsAtHead, keepsFoundationDelta }),
     }));
     return { sha, pullRequest: pullRequest === undefined ? "-" : `#${pullRequest}`,
       subject: subject.replace(/\s*\(#\d+\)\s*$/, ""), route: commitRoute(paths), paths };
@@ -258,9 +284,10 @@ const landingOf = (commit: RoutedCommit, judgements: Judgements): string => {
   const judged = judgements[commit.sha];
   if (judged !== undefined) return judged;
   if (demandsJudgement(commit)) return "UNJUDGED";
-  return commit.paths.every((path) => path.atHead === "upstream bytes" || path.kind === "outside-build")
-    ? "Landed as upstream bytes in its retained owner."
-    : "Landed; see the differing paths.";
+  const where = commit.route === "outside-build" ? "outside the build" : "in its retained owner";
+  return commit.paths.some((path) => path.atHead === "upstream bytes plus foundation's unchanged delta")
+    ? `Landed as upstream bytes ${where}; where foundation already changed a file, its change is kept unchanged.`
+    : `Landed as upstream bytes ${where}.`;
 };
 
 const ledgerMarkdown = (commits: readonly RoutedCommit[], judgements: Judgements): string => {
