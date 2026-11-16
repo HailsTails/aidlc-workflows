@@ -3,7 +3,7 @@ import { createHermeticGitRepository, type HermeticGitRepository } from "./herme
 import { type DisciplinesCheckOutcome, runDisciplinesCheck } from "./rin-disciplines-check.ts";
 import { defaultReviewProcessPort } from "./rin-gates/review-process-port.ts";
 import { defaultPathOperations } from "./rin-harness-path-operations.ts";
-import { defaultFileKindPort, defaultFileTextPort } from "./rin-harness-sidecar-file-reader.ts";
+import { defaultFileKindPort, defaultFileTextPort, defaultSidecarFileReader } from "./rin-harness-sidecar-file-reader.ts";
 
 const CHECK_TIMEOUT_MILLISECONDS = 100_000;
 
@@ -13,6 +13,10 @@ const pathOperations = defaultPathOperations();
 
 const files = defaultFileTextPort();
 
+const fileKinds = defaultFileKindPort();
+
+const reader = defaultSidecarFileReader();
+
 const insideRepository = ({
   repository,
   segments,
@@ -21,7 +25,8 @@ const insideRepository = ({
   readonly segments: readonly string[];
 }): string => pathOperations.join({ segments: [repository.path, ...segments] });
 
-const INSTALLED_HONED = pathOperations.resolve({ segments: [import.meta.dirname, "..", "..", "..", "node_modules", "honed"] });
+const installedPackage = ({ name }: { readonly name: string }): string =>
+  pathOperations.resolve({ segments: [import.meta.dirname, "..", "..", "..", "node_modules", name] });
 
 const CLOCK_SELECTED = `${JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-17#clock-sources": "audit" } }, null, 2)}\n`;
 
@@ -40,9 +45,26 @@ const consumerWith = ({ clockSource }: { readonly clockSource: string }): Hermet
   return repository;
 };
 
-const linkInstalledHoned = ({ repository }: { readonly repository: HermeticGitRepository }): void => {
-  files.mkdir(insideRepository({ repository, segments: ["node_modules"] }));
-  files.linkDirectory(INSTALLED_HONED, insideRepository({ repository, segments: ["node_modules", "honed"] }));
+const copyTree = ({ from, to }: { readonly from: string; readonly to: string }): void => {
+  files.mkdir(to, { recursive: true });
+  (reader.listDirectory(from) ?? []).forEach((name) => {
+    const source = pathOperations.join({ segments: [from, name] });
+    const destination = pathOperations.join({ segments: [to, name] });
+    if (fileKinds.isDirectory(source)) {
+      copyTree({ from: source, to: destination });
+      return;
+    }
+    files.write(destination, files.read(source));
+  });
+};
+
+const installPackage = ({ repository, name }: { readonly repository: HermeticGitRepository; readonly name: string }): void => {
+  copyTree({ from: installedPackage({ name }), to: insideRepository({ repository, segments: ["node_modules", name] }) });
+};
+
+const installHoned = ({ repository }: { readonly repository: HermeticGitRepository }): void => {
+  installPackage({ repository, name: "honed" });
+  installPackage({ repository, name: "typescript" });
 };
 
 const writeVendoredCopy = ({ repository }: { readonly repository: HermeticGitRepository }): void => {
@@ -77,7 +99,7 @@ describe("rin's disciplines check against the installed honed release package (C
     "runs hone check from node_modules/honed and carries its failing report",
     () => {
       const repository = consumerWith({ clockSource: "export const startedAt = Date.now();\n" });
-      linkInstalledHoned({ repository });
+      installHoned({ repository });
 
       expect(checkedOutcome({ repository })).toEqual({
         kind: "failed",
@@ -91,7 +113,7 @@ describe("rin's disciplines check against the installed honed release package (C
     "passes once the code complies",
     () => {
       const repository = consumerWith({ clockSource: "export const startedAt = 0;\n" });
-      linkInstalledHoned({ repository });
+      installHoned({ repository });
 
       expect(checkedOutcome({ repository })).toEqual({ kind: "passed" });
     },
@@ -102,7 +124,7 @@ describe("rin's disciplines check against the installed honed release package (C
     "prefers the honed package to a vendored copy beside it",
     () => {
       const repository = consumerWith({ clockSource: "export const startedAt = Date.now();\n" });
-      linkInstalledHoned({ repository });
+      installHoned({ repository });
       writeVendoredCopy({ repository });
 
       expect(checkedOutcome({ repository })).toMatchObject({ kind: "failed" });

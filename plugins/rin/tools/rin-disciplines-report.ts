@@ -38,7 +38,7 @@ const LEGACY_PACKAGED_INSTALL = `node_modules/${LEGACY_PACKAGE}`;
 
 const VENDORED_CORE_INSTALL = "tools/discipline-core";
 
-const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/main/MIGRATING.md";
+const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/v0.1.0-pre.1/MIGRATING.md";
 
 const CHECK_COMMAND_TEXT = "npm run --silent hone:check";
 

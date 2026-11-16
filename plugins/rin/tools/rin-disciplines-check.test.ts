@@ -9,7 +9,7 @@ const PACKAGED_CHECK = "/repo/node_modules/honed/core/check/tool-command.js";
 
 const LEGACY_PACKAGED_CHECK = "/repo/node_modules/discipline-core/core/check/check-command.js";
 
-const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/main/MIGRATING.md";
+const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/v0.1.0-pre.1/MIGRATING.md";
 
 const VENDORED_CHECK = "/repo/tools/discipline-core/core/check/check-command.ts";
 

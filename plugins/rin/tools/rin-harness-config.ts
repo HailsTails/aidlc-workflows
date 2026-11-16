@@ -652,7 +652,7 @@ const validateConstitutionEngine = ({
     default:
       return {
         ok: false,
-        error: `"constitution.engine" must be "rin-walker" or "discipline-core"`,
+        error: `"constitution.engine" must be "rin-walker" or "discipline-core" (the value that selects Hone)`,
       };
   }
 };

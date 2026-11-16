@@ -65,7 +65,7 @@ describe("resolveConstitutionEngine", () => {
   test("an unknown engine fails instead of falling back to the walker", () => {
     expect(
       resolveConstitutionEngine({ projectDir: projectWithConstitution({ constitution: { engine: "discipline-cor" } }) }),
-    ).toEqual({ outcome: "failed", reason: '"constitution.engine" must be "rin-walker" or "discipline-core"' });
+    ).toEqual({ outcome: "failed", reason: '"constitution.engine" must be "rin-walker" or "discipline-core" (the value that selects Hone)' });
   });
 
   test("a blank base revision fails", () => {
