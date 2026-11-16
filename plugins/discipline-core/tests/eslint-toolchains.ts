@@ -10,13 +10,13 @@ import type { Result } from "../core/values/result.ts";
 import { createEslintRunner, ESLINT_PROJECTED_KINDS } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import {
   createEslintPort,
+  type EslintClass,
   type EslintPort,
   type EslintToolchain,
   type TypescriptParser,
 } from "../mechanisms/eslint/runner/eslint-instance.ts";
 import {
   defaultEslintToolchainPeers,
-  type EslintClass,
   type EslintToolchainModules,
   type EslintToolchainPeers,
   loadEslintToolchain,
@@ -37,18 +37,30 @@ const DEVELOPMENT_PEERS: EslintToolchainPeers = defaultEslintToolchainPeers({ in
 
 const RUNNER_MODULE_SUFFIX = "mechanisms/eslint/runner/runner.ts";
 
-const exportOf = (request: { readonly value: unknown; readonly name: string; readonly type: "function" | "string" }): boolean =>
-  (typeof request.value === "object" || typeof request.value === "function") &&
-  request.value !== null &&
-  typeof Reflect.get(request.value, request.name) === request.type;
+type ExportPresence = "present" | "absent";
+
+const exportPresence = (request: {
+  readonly exporter: unknown;
+  readonly name: string;
+  readonly type: "function" | "string";
+}): ExportPresence =>
+  (typeof request.exporter === "object" || typeof request.exporter === "function") &&
+  request.exporter !== null &&
+  typeof Reflect.get(request.exporter, request.name) === request.type
+    ? "present"
+    : "absent";
 
 const floorEslintSchema = z.object({
-  ESLint: z.custom<EslintClass>((value) => typeof value === "function" && exportOf({ value, name: "version", type: "string" })),
+  ESLint: z.custom<EslintClass>(
+    (eslintClass) =>
+      typeof eslintClass === "function" && exportPresence({ exporter: eslintClass, name: "version", type: "string" }) === "present",
+  ),
 });
 
 const floorParserSchema = z.custom<TypescriptParser>(
-  (value) =>
-    exportOf({ value, name: "parseForESLint", type: "function" }) && exportOf({ value, name: "version", type: "string" }),
+  (parserModule) =>
+    exportPresence({ exporter: parserModule, name: "parseForESLint", type: "function" }) === "present" &&
+    exportPresence({ exporter: parserModule, name: "version", type: "string" }) === "present",
 );
 
 const floorPluginSchema = z.object({
@@ -96,13 +108,13 @@ const LINES: Readonly<Record<EslintLine, LineDefinition>> = {
   },
 };
 
-const ruleObjectSchema = z.custom<object>((value) => typeof value === "object" && value !== null);
+const ruleObjectSchema = z.custom<object>((ruleModule) => typeof ruleModule === "object" && ruleModule !== null);
 
 const nativeRulePieceSchema = z.object({
   createPlugin: z.function({
     input: [
       z.object({
-        eslintCore: z.custom<ReadonlyMap<string, object>>((value) => value instanceof Map),
+        eslintCore: z.custom<ReadonlyMap<string, object>>((coreRules) => coreRules instanceof Map),
         typescriptEslint: z.record(z.string(), ruleObjectSchema),
       }),
     ],
@@ -159,14 +171,18 @@ export const eslintRunnerOn = (request: { readonly line: EslintLine }): Embedded
       }),
   });
 
-export const runnerModulesOn = (request: { readonly line: EslintLine; readonly base: ModuleLoaderPort }): ModuleLoaderPort => {
-  const runner = eslintRunnerOn({ line: request.line });
-  return {
-    load: (load) =>
-      load.path.replaceAll("\\", "/").endsWith(RUNNER_MODULE_SUFFIX)
-        ? Promise.resolve({ outcome: "ok", value: { runner } })
-        : request.base.load(load),
-  };
-};
+export const modulesServingRunner = (request: {
+  readonly runnerSuffix: string;
+  readonly runner: unknown;
+  readonly base: ModuleLoaderPort;
+}): ModuleLoaderPort => ({
+  load: (load) =>
+    load.path.replaceAll("\\", "/").endsWith(request.runnerSuffix)
+      ? Promise.resolve({ outcome: "ok", value: { runner: request.runner } })
+      : request.base.load(load),
+});
+
+export const runnerModulesOn = (request: { readonly line: EslintLine; readonly base: ModuleLoaderPort }): ModuleLoaderPort =>
+  modulesServingRunner({ runnerSuffix: RUNNER_MODULE_SUFFIX, runner: eslintRunnerOn({ line: request.line }), base: request.base });
 
 export const defaultEslintPort: EslintPort = await eslintPortOn({ line: "eslint-10" });

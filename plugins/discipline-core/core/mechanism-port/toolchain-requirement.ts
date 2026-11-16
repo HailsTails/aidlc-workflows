@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PackageLocationPort } from "../platform-ports/package-location-port.ts";
+import type { PackageLocationPort, PackageUnlocatable } from "../platform-ports/package-location-port.ts";
 import type { Result } from "../values/result.ts";
 import type { RunnerFailure } from "./runner-failure.ts";
 
@@ -145,11 +145,23 @@ const placedPeer = <Module>(request: PeerRequest<Module> & { readonly resolved: 
       })
     : versionedPeer(request);
 
+const locatedPeer = <Module>(
+  request: PeerRequest<Module> & { readonly located: Result<string, PackageUnlocatable> },
+): Promise<Result<Module, RunnerFailure>> =>
+  request.located.outcome === "ok"
+    ? placedPeer({ ...request, resolved: request.located.value })
+    : Promise.resolve(
+        toolchainUnavailable({
+          requirement: request.requirement,
+          found: `unloadable: ${request.located.error.url} (${request.located.error.detail})`,
+        }),
+      );
+
 export const loadedPeer = <Module>(request: PeerRequest<Module>): Promise<Result<Module, RunnerFailure>> =>
   Promise.resolve()
     .then(() => request.location.locate({ packageName: request.requirement.packageName }))
     .then(
-      (resolved) => placedPeer({ ...request, resolved }),
+      (located) => locatedPeer({ ...request, located }),
       (thrown: unknown) =>
         toolchainUnavailable({
           requirement: request.requirement,

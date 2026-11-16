@@ -3,7 +3,7 @@ id: linter
 kind: deterministic
 command: {{INVOKE}} engine sensor-linter
 default_severity: advisory
-description: Runs the project's package.json lint script when present, with a pinned ESLint fallback; fires on TS/JS code outputs
+description: Runs the project's package.json lint script when present, otherwise the project's installed ESLint; fires on TS/JS code outputs
 category: code-quality
 matches: "**/*.{ts,js}"
 input_schema:
@@ -33,12 +33,20 @@ lockfiles without an explicit manager refuse selection. npm, pnpm, Yarn and
 Bun are supported; the manager and the consumer's lint dependencies must
 already be available. The sensor does not install a manager or change config.
 
-With no lint script, default `--runner auto` retains the existing pinned
-ESLint path. `--runner project` requires the script: a missing manifest or
-script exits 127 with `no-lint-script`, an unavailable check rather than a
-verified lint pass. An empty or malformed script/manifest, or unsupported
-manager, is a script error. `--runner eslint` explicitly selects the legacy
-wrapper even when a lint script is present.
+With no lint script, default `--runner auto` runs the ESLint the project
+itself installed, resolved from the nearest `node_modules` at or above the
+package directory, never from `PATH` and never downloaded. It requires ESLint 9
+or later; ESLint 8 is not supported, even with a flat config. When ESLint is
+not installed, or the installed version is older than 9, the sensor exits 127
+with `eslint-unavailable` or `eslint-unsupported` and writes a message naming
+what to install to its stderr, which you see when you run the sensor directly.
+The dispatcher records only a `tool-unavailable` note for that fire, an
+unavailable check rather than a verified lint pass. Install `eslint` 9 or later
+as a devDependency of the repository to enable it.
+`--runner project` requires the script: a missing manifest or script exits 127
+with `no-lint-script`. An empty or malformed script/manifest, or unsupported
+manager, is a script error. `--runner eslint` explicitly selects the installed
+ESLint even when a lint script is present.
 
 ## Adoption and workspace directory
 

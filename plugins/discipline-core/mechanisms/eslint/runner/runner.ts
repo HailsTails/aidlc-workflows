@@ -10,7 +10,7 @@ import { defaultEslintToolchainPeers, loadEslintToolchain } from "./eslint-toolc
 
 export const runner = toolchainBoundEmbeddedRunner({
   toolchain: loadEslintToolchain({
-    peers: defaultEslintToolchainPeers({ installRoot: installRootOfRunnerEntry({ entryUrl: import.meta.url }) }),
+    peers: defaultEslintToolchainPeers({ installRoot: installRootOfRunnerEntry({ entryFile: import.meta.filename }) }),
   }),
   projectedKinds: ESLINT_PROJECTED_KINDS,
   runnerOf: (toolchain) =>

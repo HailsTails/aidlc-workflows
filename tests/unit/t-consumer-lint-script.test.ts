@@ -58,7 +58,7 @@ describe("consumer lint-script selection", () => {
 		expect(selectProjectLint({ manifest: {}, runner: "project" }))
 			.toEqual({ kind: "error", reason: "no-lint-script" });
 	});
-	test("explicit ESLint mode preserves the pinned fallback", () => {
+	test("explicit ESLint mode selects the installed ESLint", () => {
 		expect(selectProjectLint({ manifest: { scripts: { lint: "check" } }, runner: "eslint" }))
 			.toEqual({ kind: "eslint" });
 	});

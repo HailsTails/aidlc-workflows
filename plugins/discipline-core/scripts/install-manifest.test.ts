@@ -116,10 +116,10 @@ describe("writtenInstallManifest", () => {
       write,
     };
     const written = writtenInstallManifest({ fileText, path: posixPath, packageRoot: "/core" });
-    expect({ written, reads: vi.mocked(fileText.read).mock.calls, writes: write.mock.calls.map(([call]) => call.path) }).toEqual({
+    expect({ written, reads: vi.mocked(fileText.read).mock.calls, writes: write.mock.calls }).toEqual({
       written: { outcome: "ok", value: "/core/install/package.json" },
       reads: [[{ path: "/core/package.json" }]],
-      writes: ["/core/install/package.json"],
+      writes: [[{ path: "/core/install/package.json", text: expect.stringContaining('"type": "module"') }]],
     });
   });
 });

@@ -147,11 +147,9 @@ const reportOf = (request: { readonly process: ProcessPort }) => ({
   exits: vi.mocked(request.process.exitWith).mock.calls,
 });
 
-const copiesOf = (request: { readonly scratch: ScratchFilesPort }) =>
-  vi.mocked(request.scratch.copyTree).mock.calls.map(([copy]) => ({ from: copy.from, to: copy.to }));
+const copied = (request: { readonly from: string; readonly to: string }) => [{ ...request, disposition: expect.any(Function) }];
 
-const npmRunsOf = (request: { readonly commands: CommandRunPort }) =>
-  vi.mocked(request.commands.run).mock.calls.filter(([run]) => run.command === "npm");
+const ran = (request: { readonly command: string; readonly directory: string }) => [expect.objectContaining(request)];
 
 describe("runInstallProof", () => {
   it("exits 0 printing each ok line and the pass line when every step meets its expectation", async () => {
@@ -207,13 +205,13 @@ describe("runInstallProof", () => {
 
     await runInstallProof(proofRequest({ scratch }));
 
-    expect(copiesOf({ scratch })).toEqual([
-      { from: "/package/install/package.json", to: "/scratch/core-packages/package.json" },
-      { from: "/package/tests/test-fixtures/consumer-proof/audit", to: CONSUMER },
-      { from: "/package/core", to: `${INSTALL}/core` },
-      { from: "/package/install/package.json", to: `${INSTALL}/package.json` },
-      { from: "/package/rules/CD-14", to: `${INSTALL}/rules/CD-14` },
-      { from: "/scratch/core-packages/node_modules", to: `${INSTALL}/node_modules` },
+    expect(vi.mocked(scratch.copyTree).mock.calls).toEqual([
+      copied({ from: "/package/install/package.json", to: "/scratch/core-packages/package.json" }),
+      copied({ from: "/package/tests/test-fixtures/consumer-proof/audit", to: CONSUMER }),
+      copied({ from: "/package/core", to: `${INSTALL}/core` }),
+      copied({ from: "/package/install/package.json", to: `${INSTALL}/package.json` }),
+      copied({ from: "/package/rules/CD-14", to: `${INSTALL}/rules/CD-14` }),
+      copied({ from: "/scratch/core-packages/node_modules", to: `${INSTALL}/node_modules` }),
     ]);
   });
 
@@ -230,7 +228,18 @@ describe("runInstallProof", () => {
 
     await runInstallProof(proofRequest({ commands, proofCases: [EXPECTING_PASS, SECOND_CONSUMER] }));
 
-    expect(npmRunsOf({ commands }).map(([run]) => run.directory)).toEqual(["/scratch/core-packages", "/scratch/typescript-floor"]);
+    expect(vi.mocked(commands.run).mock.calls).toEqual([
+      ran({ command: "npm", directory: "/scratch/core-packages" }),
+      ran({ command: "npm", directory: "/scratch/typescript-floor" }),
+      ran({ command: "git", directory: CONSUMER }),
+      ran({ command: "git", directory: CONSUMER }),
+      ran({ command: "git", directory: CONSUMER }),
+      ran({ command: "node", directory: CONSUMER }),
+      ran({ command: "git", directory: "/scratch/typescript-floor/no-package-json" }),
+      ran({ command: "git", directory: "/scratch/typescript-floor/no-package-json" }),
+      ran({ command: "git", directory: "/scratch/typescript-floor/no-package-json" }),
+      ran({ command: "node", directory: "/scratch/typescript-floor/no-package-json" }),
+    ]);
   });
 
   it("copies the install with a disposition that leaves out the README's excluded entries", async () => {
@@ -238,8 +247,8 @@ describe("runInstallProof", () => {
 
     await runInstallProof(proofRequest({ scratch }));
 
-    const coreCopy = vi.mocked(scratch.copyTree).mock.calls.find(([copy]) => copy.to === `${INSTALL}/core`);
-    expect(coreCopy?.[0].disposition({ name: "a.test.ts", entryKind: "file" })).toBe("left-out");
+    expect(vi.mocked(scratch.copyTree).mock.calls[2][0]).toMatchObject({ to: `${INSTALL}/core` });
+    expect(vi.mocked(scratch.copyTree).mock.calls[2][0].disposition({ name: "a.test.ts", entryKind: "file" })).toBe("left-out");
   });
 
   it("exits 1 with the FAIL line when a step's exit code does not meet its expectation", async () => {

@@ -24,11 +24,11 @@ const LINE_VERSIONS: Readonly<Record<TypeScriptLine, RegExp>> = { typescript: /^
 
 const floorTypeScriptSchema = z.object({
   default: z.custom<SyntaxApi>(
-    (value) =>
-      typeof value === "object" &&
-      value !== null &&
-      typeof Reflect.get(value, "createSourceFile") === "function" &&
-      typeof Reflect.get(value, "version") === "string",
+    (syntaxApi) =>
+      typeof syntaxApi === "object" &&
+      syntaxApi !== null &&
+      typeof Reflect.get(syntaxApi, "createSourceFile") === "function" &&
+      typeof Reflect.get(syntaxApi, "version") === "string",
   ),
 });
 
@@ -69,3 +69,15 @@ export const auditRunnerOn = (request: { readonly line: TypeScriptLine }): Stand
   });
 
 export const defaultParsePort: TypeScriptParsePort = await parsePortOn({ line: "typescript" });
+
+export const syntaxErrorsOn = async (request: {
+  readonly line: TypeScriptLine;
+  readonly sources: Readonly<Record<string, string>>;
+}): Promise<readonly string[]> => {
+  const syntaxApi = (await parsePortOn({ line: request.line })).syntaxApi;
+  return Object.entries(request.sources).flatMap(([fileName, source]) =>
+    (syntaxApi.transpileModule(source, { fileName, reportDiagnostics: true }).diagnostics ?? []).map(
+      (diagnostic) => `${fileName}: ${syntaxApi.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`,
+    ),
+  );
+};

@@ -8,7 +8,7 @@ import { defaultTypeScriptPeers, loadParsePort } from "./typescript-parse.ts";
 
 export const runner = toolchainBoundStandaloneRunner({
   toolchain: loadParsePort({
-    peers: defaultTypeScriptPeers({ installRoot: installRootOfRunnerEntry({ entryUrl: import.meta.url }) }),
+    peers: defaultTypeScriptPeers({ installRoot: installRootOfRunnerEntry({ entryFile: import.meta.filename }) }),
   }),
   runnerOf: (parse) =>
     createWalkerRunner({

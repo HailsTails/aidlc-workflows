@@ -13,7 +13,7 @@ Adding a discipline or a mechanism, and the full list of ESLint native channels,
 A copied install runs both commands from TypeScript source directly with Node; the package ships them built, as the commands `discipline-core-check` and `discipline-core-project`, which take the same flags, run through a `package.json` script as [ADOPTING.md](ADOPTING.md#2-install-the-core-package) shows.
 
 ```text
-node <install>/core/check/check-command.ts --repo <dir> [--base-revision <rev>]
+node <install>/core/check/check-command.ts --repo <dir> [--base-revision <rev>] [--report-output <output>]
 node <install>/core/check/project-command.ts --repo <dir>
 ```
 
@@ -28,6 +28,17 @@ node <install>/core/check/project-command.ts --repo <dir>
 A load failure prints one line, `load failure: <kind> <fields>`.
 
 The report lists the excluded paths, findings, exempted findings, uncovered clauses, stale, forfeited, unrecorded and doubly-held exceptions, invalid exception records, unmeasured checks and projection problems, each with its count. The verdict is `pass` only when every list except the excluded paths and exempted findings is empty.
+
+`--report-output` sets how much of the report is printed for one run, overriding `reportOutput` in `disciplines.json`; with neither, the output is `full`.
+
+| Output | Prints |
+| --- | --- |
+| `full` | every non-empty section with its entries, then the verdict |
+| `failures-only` | the same without the `excluded` and `exempted` sections |
+| `counts` | one `<section> (<count>)` line per non-empty section, with ` informational` after `excluded` and `exempted`, then the verdict |
+| `verdict-only` | only the verdict line |
+
+The output changes only what is printed: the verdict and exit code always come from the whole report. An unknown `--report-output` value is a load failure `arguments-invalid`; an unknown `reportOutput` value makes `disciplines.json` `file-malformed`, even when `--report-output` is given. Load failures print the same in every output.
 
 Without `--base-revision`, core cannot tell which files were touched, so a file carve-out cannot be forfeited; if any file carve-out exists the report lists `forfeiture-unmeasured` and the run fails. For the same reason it cannot tell whether an entry with an earlier-contract why-chain is unchanged; if one exists the report lists `legacy-chain-unmeasured` and the run fails.
 
@@ -74,6 +85,8 @@ At the repository root. It selects clauses and the mechanism that checks each on
 - Selecting a clause adopts its discipline. Mechanical clauses of an adopted discipline that are not selected are reported as uncovered, and fail the run.
 - A judgement clause cannot be selected; it is enforced by review.
 - `eslintConfigLookup`, optional, is `"nearest-to-file"` or `"repository-root"` and says which `eslint.config.*` the team's own ESLint run applies to a file; see [Runtime](#runtime). Leave it out to let core detect it.
+- `fileExceptionWhyChains`, optional, is `"required"` (the default) or `"optional"`. `"optional"` lets an `authorised-location` or `file-carve-out` entry give only its `reason`; see [discipline-exceptions.json](#discipline-exceptionsjson).
+- `reportOutput`, optional, is `"full"` (the default), `"failures-only"`, `"counts"` or `"verdict-only"`: the repository's default for how much of the report the check prints. `--report-output` overrides it for one run; see [Commands](#commands).
 - `exclude`, optional, lists repository folders or exact files that no mechanism checks. A folder entry covers everything under it. Globs are refused: an entry containing `*` makes `disciplines.json` malformed. The report lists the active entries under `excluded`. Exclude the core's own install when it is vendored inside the repository.
 
 ## discipline-exceptions.json
@@ -94,7 +107,7 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 - An `authorised-location` says the clause does not apply to that file.
 - A `file-carve-out` is debt in one file. It is forfeited once the file is touched.
 - A `clause-wide-carve-out` exempts the clause everywhere.
-- Every entry needs a `whyChain` that follows the [why-chain contract](docs/why-chain-contract.md): exactly five `{ "why", "because", "evidence" }` steps chained cause to cause, then `rootCause`, `rootCheck`, `readback` and `owner`. The contract lists what core refuses and what review still judges:
+- Every entry needs a `whyChain` (an `authorised-location` or `file-carve-out` may leave it out when `fileExceptionWhyChains` is `"optional"`; see below) that follows the [why-chain contract](docs/why-chain-contract.md): exactly five `{ "why", "because", "evidence" }` steps chained cause to cause, then `rootCause`, `rootCheck`, `readback` and `owner`. The contract lists what core refuses and what review still judges:
 
   ```json
   "whyChain": {
@@ -113,6 +126,7 @@ At the repository root; absent means no exceptions. Each entry names a selected 
   ```
 - A chain with neither `rootCheck` nor `readback` was written to the earlier contract. It is accepted only while the `--base-revision` holds its entry unchanged; a new or edited one is refused as `why-chain-refused`, and a run with such a chain and no `--base-revision` is `legacy-chain-unmeasured`.
 - An entry carried over from an earlier system may give `provenance` instead of a `whyChain`: `{ "kind": "inherited-debt", "source", "decision" }` on a file carve-out, `{ "kind": "existing-authorisation", "source" }` on an authorised location. `source` names the old record entry as `<directory>/cd-<id>.json#<index>`: `.constitution-carve-outs` for inherited debt, `.constitution-authorised-locations` for an existing authorisation, the old file for the record's discipline, and the entry's position in its array. Such an entry is imported, and is accepted only while the `--base-revision` already holds it unchanged, or, when the base holds no record for that kind, clause and file, while the `source` entry at that revision lists the file in its `files`. A new or edited entry without a `whyChain` is refused as `import-unverified`, and a run with imported entries and no `--base-revision` is `import-unmeasured`. The report names each imported entry it exempts by.
+- With `"fileExceptionWhyChains": "optional"` in `disciplines.json`, an `authorised-location` or `file-carve-out` entry may give only its `reason`, which then carries why the exception exists and must not be blank. The entry itself is not checked against `--base-revision`, but a run with any file carve-out still needs `--base-revision`: without it the report lists `forfeiture-unmeasured` and the run fails, and with it a file carve-out is forfeited once its file is touched. A `whyChain` or `provenance` the entry gives anyway is still judged as above. A `clause-wide-carve-out` still needs its `whyChain`.
 - A clause whose `discipline.json` declares `"exceptions": "refused"` cannot be exempted. No shipped discipline declares it, so every shipped clause can be.
 - Files are exact repository paths, never globs.
 - An entry that exempts nothing is stale, a file both authorised and carved for one clause is doubly held, and an entry that cannot be parsed is invalid. Each fails the run.

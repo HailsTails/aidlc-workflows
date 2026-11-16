@@ -1,5 +1,4 @@
 import { assert, describe, expect, it, vi } from "vitest";
-import { checkCommandOutcome } from "../core/check/command-outcome.ts";
 import { runCheck } from "../core/check/run-check.ts";
 import { createDefaultFileTextPort } from "../core/platform-ports/file-text-port.ts";
 import type { GitPort } from "../core/platform-ports/git-port.ts";
@@ -7,6 +6,7 @@ import { createDefaultModuleLoaderPort } from "../core/platform-ports/module-loa
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
+import { fullReportExitCode } from "./full-report-exit-code.ts";
 
 const path = createDefaultPathPort({});
 
@@ -100,12 +100,12 @@ describe("adopting a repository whose legacy file holds CD-1 debt beside another
         ]),
       },
     });
-    expect(checkCommandOutcome({ result: cascadeReport }).code).toBe(0);
+    expect(fullReportExitCode({ checked: cascadeReport })).toBe(0);
   });
 
   it("forfeits all three carve-outs once the file is touched, the ordinary touch-and-own for any discipline", async () => {
     const cascadeReport = await cascadeCheck({ changed: [LEGACY_FILE] });
     expect(cascadeReport).toMatchObject({ outcome: "ok", value: { forfeited: [{}, {}, {}] } });
-    expect(checkCommandOutcome({ result: cascadeReport }).code).toBe(1);
+    expect(fullReportExitCode({ checked: cascadeReport })).toBe(1);
   });
 });

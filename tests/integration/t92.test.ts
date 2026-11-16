@@ -1,5 +1,5 @@
 // covers: subcommand:aidlc-sensor:fire, audit:SENSOR_FAILED
-// covers: function:localEslintPath, function:invokeEslint
+// covers: function:selectInstalledEslint, function:invokeEslint
 //
 // CLI-contract port of tests/integration/t92-sensor-fire.sh (TAP plan 43),
 // mechanism = cli. Equal-fidelity migration: every .sh assertion that
@@ -50,7 +50,7 @@
 //     `fire` WRITES audit rows (SENSOR_FIRED + terminal); a shared dir
 //     would cross-contaminate event counts. Cleaned in afterAll.
 
-import { setDefaultTimeout, afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { setDefaultTimeout, afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
 import {
   copyFileSync,
@@ -80,7 +80,7 @@ import {
 } from "../harness/test-budget.ts";
 import { auditLockDir, readAllAuditShards } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { resolveSensorScriptPath } from "../../dist/claude/.claude/tools/aidlc-sensor.ts";
-import { localEslintPath } from "../../dist/claude/.claude/tools/aidlc-sensor-linter.ts";
+import { resolveProjectTool } from "../../dist/claude/.claude/tools/aidlc-project-tool.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -191,7 +191,12 @@ beforeAll(() => {
   );
 });
 
+beforeAll(async () => {
+  Object.assign(registryWatch, await watchRegistry());
+});
+
 afterAll(() => {
+  registryWatch.stop();
   for (const d of tempDirs) rmSync(d, { recursive: true, force: true });
 });
 
@@ -514,12 +519,12 @@ function runPassedMdReal(
   };
 }
 
-/** Reject a missing dependency before a real linter fire can fetch from bunx. */
+/** Reject a missing dependency before a real linter fire reports tool-unavailable. */
 function requireLocalSensorDependency(id: string, cwd: string): void {
   if (id !== "linter") return;
   expect(
-    localEslintPath(cwd),
-    "t92 requires the lockfile-installed ESLint 10 dependency; install development dependencies before running deterministic sensors",
+    resolveProjectTool({ projectRoot: cwd, packageName: "eslint", binName: "eslint" }),
+    "t92 requires the lockfile-installed ESLint dependency; install development dependencies before running deterministic sensors",
   ).not.toBeNull();
 }
 
@@ -538,7 +543,51 @@ function realSensorEnv(id: string, proj: string): Record<string, string> {
     // Keep the shipped command, script, and local tool invocation; no stub
     // or warm-up fire is used.
     AIDLC_SENSOR_SCRIPT_DIR: TOOLS_DIR,
+    ...packageFetchBlockedEnv(),
   };
+}
+
+function packageFetchBlockedEnv(): Record<string, string> {
+  const emptyCache = mkdtempSync(join(tmpdir(), "aidlc-t92-no-fetch-cache-"));
+  tempDirs.push(emptyCache);
+  return {
+    BUN_CONFIG_REGISTRY: registryWatch.url,
+    NPM_CONFIG_REGISTRY: registryWatch.url,
+    npm_config_registry: registryWatch.url,
+    BUN_INSTALL_CACHE_DIR: emptyCache,
+  };
+}
+
+interface RegistryWatch {
+  url: string;
+  log: string;
+  stop: () => void;
+}
+
+const registryWatch: RegistryWatch = { url: "http://127.0.0.1:9/", log: "", stop: () => {} };
+
+async function watchRegistry(): Promise<RegistryWatch> {
+  const log = join(STUB_SCRIPT_DIR, "registry-requests.log");
+  writeFileSync(log, "");
+  const listener = join(STUB_SCRIPT_DIR, "registry-listener.ts");
+  writeFileSync(listener, [
+    'import { appendFileSync } from "node:fs";',
+    "const server = Bun.serve({ hostname: \"127.0.0.1\", port: 0, fetch(request) {",
+    `  appendFileSync(${JSON.stringify(log)}, \`\${request.method} \${request.url}\\n\`);`,
+    '  return new Response("", { status: 404 });',
+    "} });",
+    "console.log(server.port);",
+  ].join("\n"));
+  const child = spawn(BUN, [listener], { stdio: ["ignore", "pipe", "inherit"] });
+  const port = await new Promise<string>((resolve, reject) => {
+    child.on("error", reject);
+    child.stdout.setEncoding("utf-8").once("data", (chunk: string) => resolve(chunk.trim()));
+  });
+  return { url: `http://127.0.0.1:${port}/`, log, stop: () => child.kill() };
+}
+
+function registryRequests(): string[] {
+  return readFileSync(registryWatch.log, "utf-8").split("\n").filter(Boolean);
 }
 
 /** run_passed_ts_real (t92-sensor-fire.sh:356-386). */
@@ -802,18 +851,88 @@ describe("t92 Group C: FAILED real round-trip per sensor", () => {
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });
 
-describe("t92 local ESLint resolution", () => {
-  test.each(["10.11.0", "9.39.5"])("accepts only the pinned major from local eslint %s", (version) => {
-    const proj = mkdtempSync(join(tmpdir(), "aidlc-t92-local-eslint-"));
-    tempDirs.push(proj);
-    const pkg = join(proj, "node_modules", "eslint");
-    mkdirSync(join(pkg, "bin"), { recursive: true });
-    writeFileSync(join(proj, "package.json"), '{"private":true}\n');
-    writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "eslint", version }));
-    const cli = join(pkg, "bin", "eslint.js");
-    writeFileSync(cli, "// resolver fixture; never executed\n");
-    expect(localEslintPath(proj)).toBe(version.startsWith("10.") ? cli : null);
+function makeProjInstalling(installed: Record<string, string>): string {
+  const proj = toPortablePath(mkdtempSync(join(tmpdir(), "aidlc-t92-own-tools-")));
+  tempDirs.push(proj);
+  mkdirSync(join(proj, "aidlc-docs"), { recursive: true });
+  for (const [packageName, sourceDirectory] of Object.entries(installed)) {
+    mkdirSync(join(proj, "node_modules"), { recursive: true });
+    symlinkSync(
+      join(REPO_ROOT, "node_modules", sourceDirectory),
+      join(proj, "node_modules", packageName),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  }
+  return proj;
+}
+
+function fireOnFixture(id: string, proj: string, fixture: string, extraEnv: Record<string, string> = {}): SpawnResult {
+  cpSync(join(FIXTURES_ROOT, fixture), join(proj, fixture), { recursive: true });
+  return fire(
+    [id, "--stage", "code-generation", "--output-path", join(proj, fixture, "sample.ts")],
+    { ...realSensorEnv(id, proj), ...extraEnv },
+  );
+}
+
+describe("t92 Group R: sensors run the project's own installed tools", () => {
+  beforeEach(() => {
+    writeFileSync(registryWatch.log, "");
   });
+
+  test("49: a repo on ESLint 9 with no lint script is linted by its own ESLint 9", () => {
+    const proj = makeProjInstalling({ eslint: "eslint-9" });
+    const result = fireOnFixture("linter", proj, "failing-linter");
+    const diagnostic = `${result.out}\n${readAudit(proj)}`;
+    expect(auditEventCount(proj, "SENSOR_FAILED"), diagnostic).toBe(1);
+    expect(auditField(proj, "SENSOR_FAILED", "Findings count"), diagnostic).toBe("1");
+    expect(registryRequests()).toEqual([]);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("50: a repo without ESLint reports tool-unavailable and fetches nothing", () => {
+    const proj = makeProjInstalling({});
+    fireOnFixture("linter", proj, "failing-linter");
+    expect(auditEventCount(proj, "SENSOR_FAILED")).toBe(0);
+    expect(auditField(proj, "SENSOR_PASSED", "Note")).toBe("tool-unavailable");
+    expect(registryRequests()).toEqual([]);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("51: a repo without TypeScript reports tool-unavailable and fetches nothing", () => {
+    const proj = makeProjInstalling({});
+    fireOnFixture("type-check", proj, "failing-type-check");
+    expect(auditEventCount(proj, "SENSOR_FAILED")).toBe(0);
+    expect(auditField(proj, "SENSOR_PASSED", "Note")).toBe("tool-unavailable");
+    expect(registryRequests()).toEqual([]);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("52: a repo with ESLint but no ESLint config reports tool-unavailable", () => {
+    const proj = makeProjInstalling({ eslint: "eslint" });
+    cpSync(join(FIXTURES_ROOT, "failing-linter"), join(proj, "unconfigured"), { recursive: true });
+    rmSync(join(proj, "unconfigured", "eslint.config.js"));
+    fire(
+      ["linter", "--stage", "code-generation", "--output-path", join(proj, "unconfigured", "sample.ts")],
+      realSensorEnv("linter", proj),
+    );
+    expect(auditEventCount(proj, "SENSOR_FAILED")).toBe(0);
+    expect(auditField(proj, "SENSOR_PASSED", "Note")).toBe("tool-unavailable");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test.each([
+    ["53", "linter", "eslint", "failing-linter"],
+    ["54", "type-check", "tsc", "failing-type-check"],
+  ])("%s: a %s on PATH named %s is never adopted in place of the project's", (_number, id, binName, fixture) => {
+    const proj = makeProjInstalling({});
+    const shadowBin = join(proj, "shadow-bin");
+    const marker = join(proj, `shadow-${binName}-ran`);
+    mkdirSync(shadowBin, { recursive: true });
+    writeFileSync(join(shadowBin, binName), `#!/bin/sh\necho ran > "${toPortablePath(marker)}"\necho "[]"\n`, { mode: 0o755 });
+    writeFileSync(join(shadowBin, `${binName}.cmd`), `@echo ran> "${marker}"\r\n@echo []\r\n`);
+    const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
+    const separator = process.platform === "win32" ? ";" : ":";
+    fireOnFixture(id, proj, fixture, { [pathKey]: `${shadowBin}${separator}${process.env[pathKey] ?? ""}` });
+    expect(existsSync(marker)).toBe(false);
+    expect(auditField(proj, "SENSOR_PASSED", "Note")).toBe("tool-unavailable");
+    expect(registryRequests()).toEqual([]);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });
 
 // ============================================================

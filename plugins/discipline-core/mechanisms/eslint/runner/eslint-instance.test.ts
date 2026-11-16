@@ -8,6 +8,7 @@ import {
   type EslintPort,
   type EslintSurface,
   type EslintToolchain,
+  eslintOptionsOf,
   governanceConfig,
   type LintedFile,
 } from "./eslint-instance.ts";
@@ -635,5 +636,36 @@ describe("lintSourceCases", () => {
         detail: "case class was not linted as a rule source: Parsing error: '{' expected.",
       },
     });
+  });
+});
+
+const OPTIONS_CWD = absolutePathSchema.parse("/repo");
+
+describe("eslintOptionsOf, which asks every supported ESLint for the configuration nearest each file", () => {
+  it.each(["10.0.0", "10.11.0"])("passes the options through unchanged on ESLint %s, whose default is the nearest-to-file lookup", (version) => {
+    expect(eslintOptionsOf({ version, options: { cwd: OPTIONS_CWD } })).toEqual({ cwd: OPTIONS_CWD });
+  });
+
+  it.each(["9.30.0", "9.39.5"])("asks ESLint %s for the lookup by its v10 flag, which these releases name", (version) => {
+    expect(eslintOptionsOf({ version, options: { cwd: OPTIONS_CWD } })).toEqual({
+      cwd: OPTIONS_CWD,
+      flags: ["v10_config_lookup_from_file"],
+    });
+  });
+
+  it.each(["9.12.0", "9.29.0"])("asks ESLint %s for the lookup by its unstable flag, the only name these releases accept", (version) => {
+    expect(eslintOptionsOf({ version, options: { cwd: OPTIONS_CWD } })).toEqual({
+      cwd: OPTIONS_CWD,
+      flags: ["unstable_config_lookup_from_file"],
+    });
+  });
+
+  it.each(["9.12.0", "9.39.5", "10.11.0"])("names no lookup flag for ESLint %s when a configuration file is named", (version) => {
+    expect(
+      eslintOptionsOf({
+        version,
+        options: { cwd: OPTIONS_CWD, overrideConfigFile: true, ignore: false, allowInlineConfig: false },
+      }),
+    ).toEqual({ cwd: OPTIONS_CWD, overrideConfigFile: true, ignore: false, allowInlineConfig: false });
   });
 });

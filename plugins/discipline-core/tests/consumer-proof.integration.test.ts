@@ -1,5 +1,4 @@
 import { assert, describe, expect, it, type MockInstance, vi } from "vitest";
-import { checkCommandOutcome } from "../core/check/command-outcome.ts";
 import { runCheck } from "../core/check/run-check.ts";
 import { runProject } from "../core/check/run-project.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../core/platform-ports/file-text-port.ts";
@@ -13,6 +12,7 @@ import { defaultEslintPort } from "./eslint-toolchains.ts";
 import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
 import { defaultParsePort } from "./typescript-parse-port.ts";
 import { type PathCallsOutside, pathCallsOutside } from "./confinement.ts";
+import { fullReportExitCode } from "./full-report-exit-code.ts";
 
 const path = createDefaultPathPort({});
 
@@ -188,7 +188,7 @@ describe("a consumer with no harness directory selecting CD-23 through the audit
     const ports = observedPorts();
     const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: SIBLINGED_TRACKED, ports });
     expect(checked).toEqual({ outcome: "ok", value: { ...CLEAN_REPORT, excluded: WALKER_EXCLUDED } });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(0);
+    expect(fullReportExitCode({ checked })).toBe(0);
   });
 
   it("fails when a tracked unit has no test sibling, exiting 1 with the unit as an audit finding", async () => {
@@ -198,7 +198,7 @@ describe("a consumer with no harness directory selecting CD-23 through the audit
       outcome: "ok",
       value: { ...CLEAN_REPORT, excluded: WALKER_EXCLUDED, findings: [UNSIBLINGED_FINDING] },
     });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(1);
+    expect(fullReportExitCode({ checked })).toBe(1);
   });
 
   it("reads, probes and loads only paths in the audit mechanism's install path list or the consumer repo", async () => {
@@ -234,7 +234,7 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
     const ports = observedPorts();
     const checked = await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLEAN_TRACKED, ports });
     expect(checked).toEqual({ outcome: "ok", value: CLEAN_REPORT });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(0);
+    expect(fullReportExitCode({ checked })).toBe(0);
   });
 
   it("fails when a tracked file holds a class, exiting 1 with the class as an ESLint finding", async () => {
@@ -244,7 +244,7 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
       outcome: "ok",
       value: { ...CLEAN_REPORT, findings: [CLASS_FINDING] },
     });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(1);
+    expect(fullReportExitCode({ checked })).toBe(1);
   });
 
   it("reads, probes and loads only paths in the ESLint install path list or the consumer repo, check and project alike", async () => {

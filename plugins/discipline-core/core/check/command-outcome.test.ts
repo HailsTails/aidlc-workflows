@@ -3,6 +3,7 @@ import type { Finding } from "../governance/governance.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
+import { reportOutputSchema } from "../values/report-output.ts";
 import type { CheckReport } from "../verdict/check-report.ts";
 import { checkCommandOutcome, projectCommandOutcome } from "./command-outcome.ts";
 
@@ -32,14 +33,14 @@ const CLASS_IN_A: Finding = {
 
 describe("checkCommandOutcome", () => {
   it("exits 0 and prints the report when the verdict is pass", () => {
-    expect(checkCommandOutcome({ result: { outcome: "ok", value: EMPTY_REPORT } })).toEqual({
+    expect(checkCommandOutcome({ result: { outcome: "ok", value: { report: EMPTY_REPORT, output: "full" } } })).toEqual({
       code: 0,
       text: "verdict: pass\n",
     });
   });
 
   it("exits 1 and prints the report when the verdict is fail", () => {
-    expect(checkCommandOutcome({ result: { outcome: "ok", value: { ...EMPTY_REPORT, findings: [CLASS_IN_A] } } })).toEqual({
+    expect(checkCommandOutcome({ result: { outcome: "ok", value: { report: { ...EMPTY_REPORT, findings: [CLASS_IN_A] }, output: "full" } } })).toEqual({
       code: 1,
       text: "findings (1)\nCD-14#class-syntax audit src/a.ts:3:0 class A {}\nverdict: fail\n",
     });
@@ -48,9 +49,49 @@ describe("checkCommandOutcome", () => {
   it("exits 1 when the only entry is forfeiture-unmeasured", () => {
     expect(
       checkCommandOutcome({
-        result: { outcome: "ok", value: { ...EMPTY_REPORT, unmeasured: [{ kind: "forfeiture-unmeasured" }] } },
+        result: {
+          outcome: "ok",
+          value: { report: { ...EMPTY_REPORT, unmeasured: [{ kind: "forfeiture-unmeasured" }] }, output: "full" },
+        },
       }),
     ).toEqual({ code: 1, text: "unmeasured (1)\nforfeiture-unmeasured\nverdict: fail\n" });
+  });
+
+  it.each(reportOutputSchema.options)("exits 1 for a failing report whatever the %s output prints", (output) => {
+    expect(
+      checkCommandOutcome({ result: { outcome: "ok", value: { report: { ...EMPTY_REPORT, findings: [CLASS_IN_A] }, output } } })
+        .code,
+    ).toBe(1);
+  });
+
+  it.each(reportOutputSchema.options)("exits 0 for a passing report whatever the %s output prints", (output) => {
+    expect(
+      checkCommandOutcome({
+        result: { outcome: "ok", value: { report: { ...EMPTY_REPORT, excluded: [repoPathSchema.parse("generated")] }, output } },
+      }).code,
+    ).toBe(0);
+  });
+
+  it("exits 1 printing only the failing sections and the verdict for the failures-only output", () => {
+    expect(
+      checkCommandOutcome({
+        result: {
+          outcome: "ok",
+          value: {
+            report: { ...EMPTY_REPORT, excluded: [repoPathSchema.parse("generated")], findings: [CLASS_IN_A] },
+            output: "failures-only",
+          },
+        },
+      }),
+    ).toEqual({ code: 1, text: "findings (1)\nCD-14#class-syntax audit src/a.ts:3:0 class A {}\nverdict: fail\n" });
+  });
+
+  it("exits 1 printing only the verdict for the verdict-only output", () => {
+    expect(
+      checkCommandOutcome({
+        result: { outcome: "ok", value: { report: { ...EMPTY_REPORT, findings: [CLASS_IN_A] }, output: "verdict-only" } },
+      }),
+    ).toEqual({ code: 1, text: "verdict: fail\n" });
   });
 
   it("exits 2 and prints the load failure line when an input could not be loaded", () => {

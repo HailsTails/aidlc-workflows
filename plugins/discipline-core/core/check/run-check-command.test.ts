@@ -8,6 +8,7 @@ import type { PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
+import { reportOutputSchema } from "../values/report-output.ts";
 import { type CommandRequest, runCheckCommand } from "./run-check-command.ts";
 
 const ENTRY_URL = "file:///install/core/check/check-command.ts";
@@ -44,9 +45,9 @@ const NOTHING_SELECTED: Readonly<Record<string, FakeFile>> = {
   "/repo/discipline-exceptions.json": ABSENT_FILE,
 };
 
-const CLASS_SYNTAX_SELECTED: Readonly<Record<string, FakeFile>> = {
+const classSyntaxSelectedWith = (settings: Readonly<Record<string, unknown>>): Readonly<Record<string, FakeFile>> => ({
   "/repo/disciplines.json": presentFile({
-    text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } }),
+    text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" }, ...settings }),
   }),
   "/repo/discipline-exceptions.json": ABSENT_FILE,
   "/install/rules/CD-14/discipline.json": presentFile({
@@ -62,7 +63,9 @@ const CLASS_SYNTAX_SELECTED: Readonly<Record<string, FakeFile>> = {
   }),
   "/install/mechanisms/audit/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
   "/repo/src/a.ts": presentFile({ text: "class A {}\n" }),
-};
+});
+
+const CLASS_SYNTAX_SELECTED = classSyntaxSelectedWith({});
 
 const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort => ({
   read: ({ path }) => files[path].read,
@@ -206,5 +209,113 @@ describe("runCheckCommand", () => {
     );
 
     expect(vi.mocked(git.changedSince).mock.calls).toEqual([[{ repoRoot: "/repo", baseRevision: "main" }]]);
+  });
+});
+
+const checkedWith = async (request: {
+  readonly arguments: readonly string[];
+  readonly settings: Readonly<Record<string, unknown>>;
+}) => {
+  const processPort = processWith({ arguments: request.arguments });
+  await runCheckCommand(
+    commandRequest({
+      process: processPort,
+      fileText: fileTextOver(classSyntaxSelectedWith(request.settings)),
+      modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [HIT_IN_A] } }) }),
+      git: gitTracking([repoPathSchema.parse("src/a.ts")]),
+    }),
+  );
+  return outputOf({ process: processPort });
+};
+
+const FAILING_FULL_REPORT = "findings (1)\nCD-14#class-syntax audit src/a.ts:3:0 class A {}\nverdict: fail\n";
+
+describe("runCheckCommand report output", () => {
+  it("prints the full report when neither --report-output nor disciplines.json sets an output", async () => {
+    expect(await checkedWith({ arguments: ["--repo", "/repo"], settings: {} })).toEqual({
+      writes: [[{ text: FAILING_FULL_REPORT }]],
+      exits: [[{ code: 1 }]],
+    });
+  });
+
+  it("prints the output disciplines.json sets when --report-output is not given", async () => {
+    expect(await checkedWith({ arguments: ["--repo", "/repo"], settings: { reportOutput: "counts" } })).toEqual({
+      writes: [[{ text: "findings (1)\nverdict: fail\n" }]],
+      exits: [[{ code: 1 }]],
+    });
+  });
+
+  it("prints the output --report-output requests over the one disciplines.json sets", async () => {
+    expect(
+      await checkedWith({
+        arguments: ["--repo", "/repo", "--report-output", "full"],
+        settings: { reportOutput: "verdict-only" },
+      }),
+    ).toEqual({ writes: [[{ text: FAILING_FULL_REPORT }]], exits: [[{ code: 1 }]] });
+  });
+
+  it.each(reportOutputSchema.options)("exits 1 for a failing run requested as %s", async (output) => {
+    expect((await checkedWith({ arguments: ["--repo", "/repo", "--report-output", output], settings: {} })).exits).toEqual(
+      [[{ code: 1 }]],
+    );
+  });
+
+  it.each(reportOutputSchema.options)("exits 1 for a failing run configured as %s", async (reportOutput) => {
+    expect((await checkedWith({ arguments: ["--repo", "/repo"], settings: { reportOutput } })).exits).toEqual([
+      [{ code: 1 }],
+    ]);
+  });
+
+  it.each(reportOutputSchema.options)("exits 0 printing the pass verdict for a clean run requested as %s", async (output) => {
+    const processPort = processWith({ arguments: ["--repo", "/repo", "--report-output", output] });
+
+    await runCheckCommand(commandRequest({ process: processPort }));
+
+    expect(outputOf({ process: processPort })).toEqual({ writes: [[{ text: "verdict: pass\n" }]], exits: [[{ code: 0 }]] });
+  });
+
+  it("exits 2 with the arguments-invalid line naming --report-output when its value is not an output", async () => {
+    expect(await checkedWith({ arguments: ["--repo", "/repo", "--report-output", "summary"], settings: {} })).toEqual({
+      writes: [[{ text: expect.stringMatching(/^load failure: arguments-invalid .*--report-output/) }]],
+      exits: [[{ code: 2 }]],
+    });
+  });
+
+  it("exits 2 with the file-malformed line when disciplines.json sets an output that is not one", async () => {
+    expect(await checkedWith({ arguments: ["--repo", "/repo"], settings: { reportOutput: "summary" } })).toEqual({
+      writes: [[{ text: expect.stringMatching(/^load failure: file-malformed \/repo\/disciplines\.json .*reportOutput/) }]],
+      exits: [[{ code: 2 }]],
+    });
+  });
+
+  it("exits 2 with the file-malformed line for an invalid disciplines.json output even when --report-output is given", async () => {
+    expect(
+      await checkedWith({ arguments: ["--repo", "/repo", "--report-output", "full"], settings: { reportOutput: "summary" } }),
+    ).toEqual({
+      writes: [[{ text: expect.stringMatching(/^load failure: file-malformed \/repo\/disciplines\.json /) }]],
+      exits: [[{ code: 2 }]],
+    });
+  });
+
+  it("exits 2 with the file-unreadable line when disciplines.json cannot be read, whatever --report-output requests", async () => {
+    const processPort = processWith({ arguments: ["--repo", "/repo", "--report-output", "verdict-only"] });
+
+    await runCheckCommand(
+      commandRequest({
+        process: processPort,
+        fileText: fileTextOver({
+          ...NOTHING_SELECTED,
+          "/repo/disciplines.json": {
+            presence: "present",
+            read: { outcome: "failed", error: { kind: "unreadable", path: "/repo/disciplines.json", detail: "EACCES" } },
+          },
+        }),
+      }),
+    );
+
+    expect(outputOf({ process: processPort })).toEqual({
+      writes: [[{ text: "load failure: file-unreadable /repo/disciplines.json EACCES\n" }]],
+      exits: [[{ code: 2 }]],
+    });
   });
 });

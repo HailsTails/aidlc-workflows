@@ -1,4 +1,6 @@
 import { eslintConfigLookupSchema } from "../values/eslint-config-lookup.ts";
+import { fileExceptionWhyChainsSchema } from "../values/file-exception-why-chains.ts";
+import { type ReportOutput, reportOutputSchema } from "../values/report-output.ts";
 import { z } from "zod";
 import type { LoadFailure } from "../check/load-failure.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../platform-ports/file-text-port.ts";
@@ -101,6 +103,8 @@ const consumerSelectionFileSchema = z.strictObject({
     )
     .default([]),
   eslintConfigLookup: eslintConfigLookupSchema.optional(),
+  fileExceptionWhyChains: fileExceptionWhyChainsSchema.default("required"),
+  reportOutput: reportOutputSchema.default("full"),
 });
 
 type ConsumerSelectionFile = z.infer<typeof consumerSelectionFileSchema>;
@@ -393,7 +397,7 @@ const parsedSelectionFile = (request: {
 
 const selectionReadingOf = (request: {
   readonly resolved: readonly ResolvedClause[];
-  readonly excluded: readonly RepoPath[];
+  readonly file: ConsumerSelectionFile;
 }): SelectionReading => ({
   selection: {
     selected: request.resolved.map(({ binding, exceptions }) => ({
@@ -404,8 +408,24 @@ const selectionReadingOf = (request: {
     uncovered: uncoveredClauses(request),
   },
   bindings: request.resolved.map(({ binding }) => binding),
-  excluded: request.excluded,
+  excluded: request.file.exclude,
+  fileExceptionWhyChains: request.file.fileExceptionWhyChains,
 });
+
+const selectionFilePath = (request: { readonly path: PathPort; readonly repoRoot: AbsolutePath }): string =>
+  request.path.join({ segments: [request.repoRoot, "disciplines.json"] });
+
+export const readReportOutput = (request: {
+  readonly fileText: FileTextPort;
+  readonly path: PathPort;
+  readonly repoRoot: AbsolutePath;
+}): Result<ReportOutput, LoadFailure> => {
+  const file = parsedSelectionFile({ fileText: request.fileText, path: selectionFilePath(request) });
+  if (file.outcome === "failed") {
+    return file;
+  }
+  return { outcome: "ok", value: file.value.reportOutput };
+};
 
 export const readSelection = (request: {
   readonly fileText: FileTextPort;
@@ -414,10 +434,7 @@ export const readSelection = (request: {
   readonly installRoot: AbsolutePath;
   readonly moduleExtension: ModuleExtension;
 }): Result<SelectionReading, LoadFailure> => {
-  const file = parsedSelectionFile({
-    fileText: request.fileText,
-    path: request.path.join({ segments: [request.repoRoot, "disciplines.json"] }),
-  });
+  const file = parsedSelectionFile({ fileText: request.fileText, path: selectionFilePath(request) });
   if (file.outcome === "failed") {
     return file;
   }
@@ -425,5 +442,5 @@ export const readSelection = (request: {
   if (resolved.outcome === "failed") {
     return resolved;
   }
-  return { outcome: "ok", value: selectionReadingOf({ resolved: resolved.value, excluded: file.value.exclude }) };
+  return { outcome: "ok", value: selectionReadingOf({ resolved: resolved.value, file: file.value }) };
 };
