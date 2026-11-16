@@ -1,12 +1,12 @@
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
 import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-} from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+  defaultFileKindPort,
+  defaultFileTextPort,
+} from "../tools/rin-harness-sidecar-file-reader.ts";
+
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const fileKinds = defaultFileKindPort();
 
 // The wire field names (tool_name / tool_input) are the harness's, and they stop
 // at the parse seam below: this internal shape is our own vocabulary, so the
@@ -108,12 +108,13 @@ const denyCall = ({ reason }: { readonly reason: string }): never => {
   process.exit(0);
 };
 
-const hooksDirectory = dirname(fileURLToPath(import.meta.url));
+const hooksDirectory = paths.dirname({
+  path: paths.fromFileUrl({ url: import.meta.url }),
+});
 
-const manifestRelativePath = join(
-  ".constitution-authorised-locations",
-  "inline-exec.json",
-);
+const manifestRelativePath = paths.join({
+  segments: [".constitution-authorised-locations", "inline-exec.json"],
+});
 
 const MAX_MANIFEST_SEARCH_DEPTH = 8;
 
@@ -129,9 +130,11 @@ const readManifestWalkingUp = ({
 }): string | null => {
   if (remainingDepth === 0) return null;
   try {
-    return readFileSync(join(directory, manifestRelativePath), "utf8");
+    return files.read(
+      paths.join({ segments: [directory, manifestRelativePath] }),
+    );
   } catch {
-    const parent = dirname(directory);
+    const parent = paths.dirname({ path: directory });
     if (parent === directory) return null;
     return readManifestWalkingUp({
       directory: parent,
@@ -254,11 +257,17 @@ const segmentTargetsAuthorisedLocation = ({
 const installedHarnessToolPrefix = (): string | null => {
   try {
     const metadata: unknown = JSON.parse(
-      readFileSync(join(hooksDirectory, "..", "tools", "data", "harness.json"), "utf8"),
+      files.read(
+        paths.join({
+          segments: [hooksDirectory, "..", "tools", "data", "harness.json"],
+        }),
+      ),
     );
     if (typeof metadata !== "object" || metadata === null) return null;
     if (!("harnessDir" in metadata)) return null;
-    const harnessDir = basename(dirname(hooksDirectory));
+    const harnessDir = paths.basename({
+      path: paths.dirname({ path: hooksDirectory }),
+    });
     if (metadata.harnessDir !== harnessDir) return null;
     return `${harnessDir}/tools/`;
   } catch {
@@ -307,13 +316,11 @@ const segmentIsArbitraryExecution = ({
   );
 };
 
-// Guard-relaxation trial (record 260904-guard-relaxation-trial-2). Deliberately
-// INLINED rather than imported from guard-trial.ts: this hook must run when
-// spawned as a standalone copy at an arbitrary path (mutant-detection.test.ts
-// asserts exactly that), and a relative import cannot resolve from a temp dir.
-// guard-navigation.mjs carries the same logic for the same reason. The shared
-// module remains the tested specification of these semantics, and
-// guard-trial-scope.test.ts holds every copy to the same safety property.
+// Guard-relaxation trial (record 260904-guard-relaxation-trial-2). INLINED
+// rather than imported from guard-trial.ts, as guard-navigation.mjs also
+// carries it. The shared module remains the tested specification of these
+// semantics, and guard-trial-scope.test.ts holds every copy to the same safety
+// property.
 //
 // The token names guards individually and this hook answers only to its own
 // name, so no value of it reaches a safety-critical guard. Fails closed: the
@@ -337,25 +344,29 @@ const thisGuardIsRelaxed = (): boolean =>
 const primaryGitDirectoryFrom = (
   startDirectory: string,
 ): string | undefined => {
-  const gitPath = join(startDirectory, ".git");
-  if (!existsSync(gitPath)) {
-    const parent = dirname(startDirectory);
+  const gitPath = paths.join({ segments: [startDirectory, ".git"] });
+  if (!files.exists(gitPath)) {
+    const parent = paths.dirname({ path: startDirectory });
     return parent === startDirectory
       ? undefined
       : primaryGitDirectoryFrom(parent);
   }
-  if (statSync(gitPath).isDirectory()) return gitPath;
-  const pointer = readFileSync(gitPath, "utf8").match(/^gitdir:\s*(.+?)\s*$/m);
+  if (fileKinds.isDirectory(gitPath)) return gitPath;
+  const pointer = files.read(gitPath).match(/^gitdir:\s*(.+?)\s*$/m);
   const pointerTarget = pointer?.[1];
   if (pointerTarget === undefined) return undefined;
-  const worktreeGitDir = isAbsolute(pointerTarget)
+  const worktreeGitDir = paths.isAbsolute({ path: pointerTarget })
     ? pointerTarget
-    : resolve(startDirectory, pointerTarget);
-  const commonDirPointer = join(worktreeGitDir, "commondir");
-  if (!existsSync(commonDirPointer)) return worktreeGitDir;
-  const commonDir = readFileSync(commonDirPointer, "utf8").trim();
+    : paths.resolve({ segments: [startDirectory, pointerTarget] });
+  const commonDirPointer = paths.join({
+    segments: [worktreeGitDir, "commondir"],
+  });
+  if (!files.exists(commonDirPointer)) return worktreeGitDir;
+  const commonDir = files.read(commonDirPointer).trim();
   if (commonDir === "") return worktreeGitDir;
-  return isAbsolute(commonDir) ? commonDir : resolve(worktreeGitDir, commonDir);
+  return paths.isAbsolute({ path: commonDir })
+    ? commonDir
+    : paths.resolve({ segments: [worktreeGitDir, commonDir] });
 };
 
 const shadowLogPath = (): string => {
@@ -364,8 +375,12 @@ const shadowLogPath = (): string => {
   const startDirectory = process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
   const gitDirectory = primaryGitDirectoryFrom(startDirectory);
   if (gitDirectory !== undefined)
-    return join(gitDirectory, "rin-guard-trial-shadow.jsonl");
-  return join(startDirectory, ".claude", "guard-trial-shadow.jsonl");
+    return paths.join({
+      segments: [gitDirectory, "rin-guard-trial-shadow.jsonl"],
+    });
+  return paths.join({
+    segments: [startDirectory, ".claude", "guard-trial-shadow.jsonl"],
+  });
 };
 
 // Written on the SAME branch the deny would have taken, so the shadow set is
@@ -387,8 +402,8 @@ const recordDenyShadow = ({
   };
   const path = shadowLogPath();
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+    files.mkdir(paths.dirname({ path }), { recursive: true });
+    files.append(path, `${JSON.stringify(entry)}\n`);
   } catch {
     // An unwritable log must not turn an allowed command into a failure.
   }

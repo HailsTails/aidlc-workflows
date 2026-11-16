@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
 import { defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
+import { installHookWithPorts } from "./inline-exec-hook-layout.ts";
 import {
   bashInvocationPayload,
   permissionDecisionFrom,
@@ -32,12 +33,14 @@ const mutantOf = (input: {
     paths.join({ segments: [files.temporaryRoot(), "hook-mutant-"] }),
   );
   mutantRoots.push(root);
-  const mutantPath = paths.join({ segments: [root, input.hookFileName] });
   const original = files.read(paths.join({ segments: [hooksDirectory, input.hookFileName] }));
   const mutated = original.replace(input.find, input.replace);
-  files.write(mutantPath, mutated);
   return {
-    path: mutantPath,
+    path: installHookWithPorts({
+      harnessDirectory: root,
+      hookFileName: input.hookFileName,
+      hookText: mutated,
+    }),
     anchorFound: original.includes(input.find),
     textChanged: mutated !== original,
   };
