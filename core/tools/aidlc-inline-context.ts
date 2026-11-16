@@ -77,7 +77,7 @@ export function markdownFilesUnder(
 // dispatched), none on fully-dispatched subagent/pipeline topologies. Shared
 // by the roster builder and the deliver-once derivation so both agree on
 // "who is inline here".
-export function inlineAgentsFor(node: GraphStage): string[] {
+export function inlineAgentsFor(node: Pick<GraphStage, "mode" | "lead_agent" | "support_agents">): string[] {
   const inlineAgents = node.mode === "inline"
     ? [node.lead_agent, ...(node.support_agents ?? [])]
     : node.mode === "mob"

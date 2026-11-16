@@ -82,9 +82,9 @@ import {
   type Harness,
   readEnvCap,
   readMemoryCap,
-  type Tier,
 } from "../core/tools/aidlc-tiers.ts";
 import {
+  type AgentTiers,
   agentTiersFromAuthoredDirectory,
   modelAgentName,
   resolveModelPolicy,
@@ -253,30 +253,19 @@ function applyRulesRename(s: string, harnessDir: string, rulesRename: string | n
   );
 }
 
-// Read the authored `tier:` from an agent .md's YAML FRONTMATTER (scoped to
-// the block between the `---` fences - a `tier:` token in body prose never
-// matches). Fails loudly when the frontmatter or the key is missing: every
-// shipped agent must carry a tier, and a silent pass-through would ship an
-// unprojected agent (no model/effort keys at all) without failing the build.
-function agentTierFromMd(s: string, srcPath: string): string {
-  // Strip a UTF-8 BOM before anchoring - macOS/Windows editors occasionally
-  // save .md with one, and the ^--- anchor would otherwise miss (same
-  // tolerance as the rule-frontmatter parser).
-  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
-  const m = s.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) throw new Error(`${srcPath}: agent .md has no YAML frontmatter block.`);
-  const tierMatch = m[1].match(/^tier:\s*(\S+)\s*$/m);
-  if (!tierMatch) {
-    throw new Error(`${srcPath}: agent frontmatter has no tier: line (the authored contract).`);
-  }
-  return tierMatch[1];
+let cachedCoreAgentTiers: AgentTiers | undefined;
+
+function coreAgentTiers(): AgentTiers {
+  cachedCoreAgentTiers ??= agentTiersFromAuthoredDirectory(join(CORE_ROOT, "agents"));
+  return cachedCoreAgentTiers;
 }
 
 // Rewrite an agent .md's frontmatter `tier: <t>` line into the harness-native
 // keys (Claude: `model:` + optional `effort:`; Kiro: optional `model:`; Codex
 // .md copies mirror Claude's shape - the TOMLs emit.ts writes are the binding
 // surface there). Called AFTER the token substitution + rules-rename pass.
-// A missing tier: on an agent file fails the build (agentTierFromMd). A null
+// A missing tier: on an agent file fails the build
+// (agentTiersFromAuthoredDirectory). A null
 // projected model/effort means the harness-native key is OMITTED: the
 // harness's own session/config default applies for that harness/tier
 // combination. When every key is omitted the `tier:` line is dropped without
@@ -291,7 +280,7 @@ function projectTierFrontmatter(
   // legitimately talks about "tier:" in prose.
   const posixPath = srcPath.split(sep).join("/");
   if (!posixPath.includes("/agents/") || !posixPath.endsWith("-agent.md")) return s;
-  const tier = agentTierFromMd(s, srcPath);
+  const agentName = modelAgentName(srcPath);
   const m = s.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   if (!m) throw new Error(`${srcPath}: agent .md has no closed frontmatter block.`);
   const fm = m[1];
@@ -320,8 +309,8 @@ function projectTierFrontmatter(
   }
   const effective = resolveModelPolicy(
     null,
-    modelAgentName(srcPath),
-    tier as Tier,
+    agentName,
+    coreAgentTiers()[agentName],
     harness,
     TIER_CAP,
   );
@@ -347,11 +336,11 @@ function projectKiroAgentJson(srcPath: string, content: Buffer): Buffer {
   if (!name.endsWith("-agent.json")) return content;
   const coreMd = join(CORE_ROOT, "agents", name.replace(/\.json$/, ".md"));
   if (!existsSync(coreMd)) return content;
-  const tier = agentTierFromMd(readFileSync(coreMd, "utf-8"), coreMd);
+  const agentName = modelAgentName(name);
   const effective = resolveModelPolicy(
     null,
-    modelAgentName(name),
-    tier as Tier,
+    agentName,
+    coreAgentTiers()[agentName],
     "kiro",
     TIER_CAP,
   );
@@ -671,7 +660,7 @@ function writeAgentTiersData(treeRoot: string): void {
   mkdirSync(dirname(dst), { recursive: true });
   writeFileSync(
     dst,
-    serializeAgentTiers(agentTiersFromAuthoredDirectory(join(CORE_ROOT, "agents"))),
+    serializeAgentTiers(coreAgentTiers()),
   );
 }
 
