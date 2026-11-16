@@ -16,5 +16,5 @@ test("Codex onboarding retains the native agent identity and guide", () => {
       "run through Codex subagent roles.");
   expect(CODEX_ONBOARDING_FILLS.slots["sections_before_resumption"])
     .toEndWith("The Codex-specific guide (prerequisites, trust pre-seed, provider config, the git-repo requirement) " +
-      "is `docs/guide/harnesses/codex-cli.md`.\n");
+      "is https://awslabs.github.io/aidlc-workflows/guide/harnesses/codex-cli/.\n");
 });

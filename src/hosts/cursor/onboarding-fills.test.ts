@@ -14,3 +14,11 @@ test("Cursor onboarding preserves its identity and native shortcut instructions"
   expect(CURSOR_ONBOARDING_FILLS.slots["title_block"]).toStartWith("# AI-DLC on Cursor\n\nThis project uses AI-DLC");
   expect(CURSOR_ONBOARDING_FILLS.slots["title_block"]).toContain("`/aidlc-status`, `/aidlc-jump --stage <slug>`");
 });
+
+test("Cursor onboarding links its guide on the documentation site and names no fixed delegated stages", () => {
+  expect(CURSOR_ONBOARDING_FILLS.slots["sections_before_resumption"])
+    .toContain("The Cursor-specific guide (install, what differs, verification) " +
+      "is https://awslabs.github.io/aidlc-workflows/guide/harnesses/cursor/.");
+  expect(CURSOR_ONBOARDING_FILLS.slots["agents_note"])
+    .toContain("the `/aidlc` session takes on those roles itself for most stages and hands work off via the `task` tool. ");
+});

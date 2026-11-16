@@ -14,3 +14,9 @@ test("Copilot onboarding retains its dual-surface identity and native memory imp
   expect(COPILOT_ONBOARDING_FILLS.slots["sections_after_resumption"])
     .toEndWith("@aidlc/active-memory/phases/construction.md\n@aidlc/active-memory/phases/operation.md\n");
 });
+
+test("Copilot onboarding links its guide on the documentation site", () => {
+  expect(COPILOT_ONBOARDING_FILLS.slots["sections_before_resumption"])
+    .toContain("The Copilot-specific guide (install, what differs, verification) " +
+      "is https://awslabs.github.io/aidlc-workflows/guide/harnesses/copilot/.");
+});

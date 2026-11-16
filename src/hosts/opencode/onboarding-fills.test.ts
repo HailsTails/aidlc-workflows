@@ -13,5 +13,10 @@ test("OpenCode onboarding retains its separate engine directory and guide", () =
     .toContain("The workspace shell ships in `.aidlc/` (no setup command)");
   expect(OPENCODE_ONBOARDING_FILLS.slots["sections_before_resumption"])
     .toEndWith("The opencode-specific guide (install, what differs, verification) " +
-      "is `docs/guide/harnesses/opencode.md`.\n");
+      "is https://awslabs.github.io/aidlc-workflows/guide/harnesses/opencode/.\n");
+});
+
+test("OpenCode says its session hands work off without naming fixed delegated stages", () => {
+  expect(OPENCODE_ONBOARDING_FILLS.slots["agents_note"])
+    .toEndWith("the `/aidlc` session takes on those roles itself for most stages and hands work off via the `task` tool.");
 });
