@@ -25,17 +25,9 @@ const PACKED_TARBALL_FOLDER = "package-tarball";
 
 const DETERMINISM_PREFIX = "discipline-core-package-determinism-";
 
-const DEPENDENCIES_PREFIX = "discipline-core-package-dependencies-";
-
-const INSTALL_FOLDER = "install";
-
-const INSTALL_FILES: readonly string[] = ["package.json", "package-lock.json"];
-
 const NODE_MODULES = "node_modules";
 
 const NPM_PACK = ["pack", "--ignore-scripts", "--pack-destination"];
-
-const NPM_CI = ["ci", "--ignore-scripts", "--no-audit", "--no-fund", "--prefer-offline"];
 
 const FIRST_BUILD = "first";
 
@@ -58,49 +50,8 @@ const succeeded = (request: { readonly label: string; readonly run: ReturnType<C
     ? { outcome: "failed", error: `FAIL: ${request.label}: ${JSON.stringify(request.run)}` }
     : { outcome: "ok", value: null };
 
-const copiedInstallFile = (request: CommandPorts & {
-  readonly packageRoot: string;
-  readonly folder: string;
-  readonly name: string;
-}): Done<null> => {
-  const from = request.ports.path.join({ segments: [request.packageRoot, INSTALL_FOLDER, request.name] });
-  const text = request.ports.fileText.read({ path: from });
-  if (text.outcome === "failed") {
-    return { outcome: "failed", error: `FAIL: read ${from}: ${text.error.detail}` };
-  }
-  const written = request.ports.fileText.write({ path: request.ports.path.join({ segments: [request.folder, request.name] }), text: text.value });
-  return written.outcome === "failed" ? { outcome: "failed", error: `FAIL: stage ${request.name}: ${written.error.detail}` } : { outcome: "ok", value: null };
-};
-
-const installedDependenciesIn = (request: CommandPorts & { readonly packageRoot: string; readonly folder: string }): Done<string> => {
-  const copied = INSTALL_FILES.map((name) => copiedInstallFile({ ...request, name })).find((staged) => staged.outcome === "failed");
-  if (copied !== undefined) {
-    return copied;
-  }
-  const installed = succeeded({
-    label: "npm ci core's own packages from install/package-lock.json",
-    run: request.commands.run({ command: "npm", arguments: NPM_CI, directory: request.folder }),
-  });
-  return installed.outcome === "failed"
-    ? installed
-    : { outcome: "ok", value: request.ports.path.join({ segments: [request.folder, NODE_MODULES] }) };
-};
-
-const withDependencies = async <Value>(request: CommandPorts & {
-  readonly packageRoot: string;
-  readonly use: (dependencies: string) => Promise<Done<Value>>;
-}): Promise<Done<Value>> => {
-  const folder = request.ports.scratch.createTemporaryDirectory({ prefix: DEPENDENCIES_PREFIX });
-  if (folder.outcome === "failed") {
-    return { outcome: "failed", error: `FAIL: create a folder for core's own packages: ${folder.error.detail}` };
-  }
-  const dependencies = installedDependenciesIn({ ...request, folder: folder.value });
-  const used = dependencies.outcome === "failed" ? dependencies : await request.use(dependencies.value);
-  const removed = request.ports.scratch.removeTree({ path: folder.value });
-  return used.outcome === "ok" && removed.outcome === "failed"
-    ? { outcome: "failed", error: `FAIL: remove ${folder.value}: ${removed.error.detail}` }
-    : used;
-};
+const installedDependenciesOf = (request: { readonly ports: PackageBuildPorts; readonly packageRoot: string }): string =>
+  request.ports.path.join({ segments: [request.packageRoot, NODE_MODULES] });
 
 const packedBuild = (request: CommandPorts & {
   readonly packageRoot: string;
@@ -146,11 +97,11 @@ const buildOutcome = async (request: PackageCommandRequest): Promise<Done<string
     return packageRoot;
   }
   const outputRoot = request.path.join({ segments: [packageRoot.value, BUILD_FOLDER] });
-  const built = await withDependencies({
+  const built = await buildPackage({
     ports: request,
-    commands: request.commands,
     packageRoot: packageRoot.value,
-    use: (dependencies) => buildPackage({ ports: request, packageRoot: packageRoot.value, outputRoot, dependencies }),
+    outputRoot,
+    dependencies: installedDependenciesOf({ ports: request, packageRoot: packageRoot.value }),
   });
   return built.outcome === "failed"
     ? built
@@ -167,19 +118,13 @@ const packOutcome = async (request: PackageCommandRequest): Promise<Done<string>
   if (cleared.outcome === "failed") {
     return { outcome: "failed", error: `FAIL: clear ${packDestination}: ${cleared.error.detail}` };
   }
-  const tarball = await withDependencies({
+  const tarball = await packedTarball({
     ports: request,
     commands: request.commands,
     packageRoot: packageRoot.value,
-    use: (dependencies) =>
-      packedTarball({
-        ports: request,
-        commands: request.commands,
-        packageRoot: packageRoot.value,
-        outputRoot: request.path.join({ segments: [packageRoot.value, BUILD_FOLDER] }),
-        packDestination,
-        dependencies,
-      }),
+    outputRoot: request.path.join({ segments: [packageRoot.value, BUILD_FOLDER] }),
+    packDestination,
+    dependencies: installedDependenciesOf({ ports: request, packageRoot: packageRoot.value }),
   });
   return tarball.outcome === "failed" ? tarball : { outcome: "ok", value: `pack package: wrote ${tarball.value}` };
 };
@@ -273,12 +218,12 @@ const determinismOutcome = async (request: PackageCommandRequest): Promise<Done<
   if (temporaryRoot.outcome === "failed") {
     return { outcome: "failed", error: `FAIL: create a temporary root: ${temporaryRoot.error.detail}` };
   }
-  const compared = await withDependencies({
+  const compared = await determinismIn({
     ports: request,
     commands: request.commands,
     packageRoot: packageRoot.value,
-    use: (dependencies) =>
-      determinismIn({ ports: request, commands: request.commands, packageRoot: packageRoot.value, temporaryRoot: temporaryRoot.value, dependencies }),
+    temporaryRoot: temporaryRoot.value,
+    dependencies: installedDependenciesOf({ ports: request, packageRoot: packageRoot.value }),
   });
   const removed = request.scratch.removeTree({ path: temporaryRoot.value });
   return compared.outcome === "ok" && removed.outcome === "failed"
@@ -299,7 +244,6 @@ export type TarballPackerPort = {
   readonly pack: (request: {
     readonly packageRoot: string;
     readonly workRoot: string;
-    readonly dependencies: string;
   }) => Promise<Done<string>>;
 };
 
@@ -311,6 +255,6 @@ export const createTarballPacker = (options: CommandPorts): TarballPackerPort =>
       packageRoot: request.packageRoot,
       outputRoot: options.ports.path.join({ segments: [request.workRoot, PACKED_BUILD_FOLDER] }),
       packDestination: options.ports.path.join({ segments: [request.workRoot, PACKED_TARBALL_FOLDER] }),
-      dependencies: request.dependencies,
+      dependencies: installedDependenciesOf({ ports: options.ports, packageRoot: request.packageRoot }),
     }),
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPathPort } from "../platform-ports/path-port.ts";
 import {
+  installFormOf,
   installRootAboveEntry,
   moduleExtensionOf,
   moduleFileForm,
@@ -32,6 +33,16 @@ describe("moduleExtensionOf", () => {
 
   it("is .ts for a module run from source", () => {
     expect(moduleExtensionOf({ moduleUrl: "file:///repo/tools/discipline-core/core/values/install-layout.ts" })).toBe(".ts");
+  });
+});
+
+describe("installFormOf", () => {
+  it("is a package for a module of a built install", () => {
+    expect(installFormOf({ moduleUrl: "file:///project/node_modules/core/mechanisms/audit/runner/runner.js" })).toBe("package");
+  });
+
+  it("is a source checkout for a module run from source", () => {
+    expect(installFormOf({ moduleUrl: "file:///core/mechanisms/audit/runner/runner.ts" })).toBe("source");
   });
 });
 

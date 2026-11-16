@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, vi } from "vitest";
-import { createJsoncParsePort, type JsoncProviderCall } from "./jsonc-parse.ts";
+import { createDefaultJsoncParsePort, createJsoncParsePort, type JsoncProviderCall } from "./jsonc-parse.ts";
 
 describe("createJsoncParsePort", () => {
   it("forwards the exact source once and preserves the provider value with no diagnostics", () => {
@@ -48,5 +48,18 @@ describe("createJsoncParsePort", () => {
     const parseOutcome = createJsoncParsePort({ parseProvider }).parse({ source: "provider input" });
 
     expect(parseOutcome).toEqual({ outcome: "failed", error: { detail: "provider failed" } });
+  });
+});
+
+describe("createDefaultJsoncParsePort", () => {
+  it("refuses a trailing comma unless told to allow one, as a lock file written with them needs", () => {
+    const source = '{ "packages": { "zod": ["zod@4.4.3"], }, }';
+    expect({
+      refused: createDefaultJsoncParsePort({ trailingCommas: "refused" }).parse({ source }),
+      allowed: createDefaultJsoncParsePort({ trailingCommas: "allowed" }).parse({ source }),
+    }).toEqual({
+      refused: { outcome: "failed", error: { detail: expect.stringContaining("JSONC parse error") } },
+      allowed: { outcome: "ok", value: { packages: { zod: ["zod@4.4.3"] } } },
+    });
   });
 });

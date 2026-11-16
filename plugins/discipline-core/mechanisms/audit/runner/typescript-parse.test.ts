@@ -12,6 +12,7 @@ const typescriptAt = (request: { readonly version: string }): TypeScriptModules 
 
 const locatedAt = (request: { readonly location: string }): PackageLocationPort => ({
   installRoot: INSTALL_ROOT,
+  installForm: "package",
   locate: () => ({ outcome: "ok", value: request.location }),
 });
 

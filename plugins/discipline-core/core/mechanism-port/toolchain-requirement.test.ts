@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PackageLocationPort } from "../platform-ports/package-location-port.ts";
+import type { InstallForm } from "../values/install-layout.ts";
 import { loadedPeer, supportedRange, type ToolchainRequirement, versionSupport } from "./toolchain-requirement.ts";
 
 const TWO_MAJORS: ToolchainRequirement = {
@@ -24,8 +25,13 @@ const missingPackage = (request: { readonly packageName: string }): Error =>
     code: "ERR_MODULE_NOT_FOUND",
   });
 
-const locatedAt = (request: { readonly installRoot: string; readonly location: string }): PackageLocationPort => ({
+const locatedAt = (request: {
+  readonly installRoot: string;
+  readonly location: string;
+  readonly installForm?: InstallForm;
+}): PackageLocationPort => ({
   installRoot: request.installRoot,
+  installForm: request.installForm ?? "package",
   locate: () => ({ outcome: "ok", value: request.location }),
 });
 
@@ -83,7 +89,7 @@ describe("loadedPeer", () => {
   });
 
   it("names the package as not installed when it does not resolve", async () => {
-    await expect(loadedPeer({ ...peerAt({ version: "10.11.0" }), location: { installRoot: INSTALL_ROOT, locate: vi.fn<PackageLocationPort["locate"]>().mockThrow(missingPackage({ packageName: "eslint" })) } })).resolves.toEqual({
+    await expect(loadedPeer({ ...peerAt({ version: "10.11.0" }), location: { installRoot: INSTALL_ROOT, installForm: "package", locate: vi.fn<PackageLocationPort["locate"]>().mockThrow(missingPackage({ packageName: "eslint" })) } })).resolves.toEqual({
       outcome: "failed",
       error: { kind: "toolchain-unavailable", packageName: "eslint", supported: "^9.12.0 || ^10.0.0", found: "not installed" },
     });
@@ -97,6 +103,7 @@ describe("loadedPeer", () => {
         load,
         location: {
           installRoot: INSTALL_ROOT,
+          installForm: "package",
           locate: () => ({
             outcome: "failed",
             error: { kind: "not-a-file-url", url: "node:eslint", detail: "the text is not a file: URL" },
@@ -132,6 +139,19 @@ describe("loadedPeer", () => {
       },
     });
     expect(load).not.toHaveBeenCalled();
+  });
+
+  it("loads a peer that resolves inside a source checkout of core, whose dependencies are the checkout's own development install", async () => {
+    await expect(
+      loadedPeer({
+        ...peerAt({ version: "10.11.0" }),
+        location: locatedAt({
+          installRoot: INSTALL_ROOT,
+          location: `${INSTALL_ROOT}/node_modules/eslint/lib/api.js`,
+          installForm: "source",
+        }),
+      }),
+    ).resolves.toEqual({ outcome: "ok", value: { version: "10.11.0" } });
   });
 
   it("reads Windows separators when deciding the package resolves from inside the install", async () => {

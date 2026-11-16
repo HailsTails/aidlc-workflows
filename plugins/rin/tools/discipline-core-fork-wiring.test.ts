@@ -18,10 +18,17 @@ const trackedText = (request: { readonly path: string }): string => {
   return read.value;
 };
 
-const DISCIPLINE_CORE_STEPS = `      - uses: actions/setup-node@v4
+const NODE_SETUP_STEP = `      - uses: actions/setup-node@v4
         with:
           node-version: 22.18.0
-      - name: Install dependencies
+`;
+
+const FORK_INSTALL_STEP = `      - name: Install dependencies
+        run: bun install --frozen-lockfile
+`;
+
+const DISCIPLINE_CORE_STEPS = `      - name: Install discipline core's own dependencies
+        working-directory: plugins/discipline-core
         run: bun install --frozen-lockfile
       - name: Check discipline core
         run: bun run --cwd plugins/discipline-core check
@@ -39,7 +46,7 @@ const WINDOWS_JOB_STEPS = `  discipline-core-windows:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: '1.4.2'
-${DISCIPLINE_CORE_STEPS}`;
+${NODE_SETUP_STEP}${DISCIPLINE_CORE_STEPS}`;
 
 const SOURCE_CHECKS_JOB_STEPS = `  source-checks:
     name: Source checks
@@ -53,14 +60,14 @@ const SOURCE_CHECKS_JOB_STEPS = `  source-checks:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: '1.4.2'
-${DISCIPLINE_CORE_STEPS}`;
+${NODE_SETUP_STEP}${FORK_INSTALL_STEP}${DISCIPLINE_CORE_STEPS}`;
 
 describe("the fork's CI and audit wiring for discipline core (CD-47: what this repository's own CI workflow and harness config say is the assertion's subject, and no fake can stand in for it, so the test reads those two tracked files read-only)", () => {
-  it("sets up Node 22.18.0, then checks discipline core and proves an install, in the Windows job", () => {
+  it("sets up Node 22.18.0, then installs, checks and proves discipline core from its own lock alone, in the Windows job", () => {
     expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(WINDOWS_JOB_STEPS);
   });
 
-  it("sets up Node 22.18.0, then checks discipline core and proves an install, in the source-checks job", () => {
+  it("sets up Node 22.18.0, then installs the fork and discipline core from their own locks, checks core and proves an install, in the source-checks job", () => {
     expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(SOURCE_CHECKS_JOB_STEPS);
   });
 

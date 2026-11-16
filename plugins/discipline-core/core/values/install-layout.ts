@@ -24,6 +24,11 @@ const SOURCE_MODULE_EXTENSION: ModuleExtension = ".ts";
 export const moduleExtensionOf = (request: { readonly moduleUrl: string }): ModuleExtension =>
   new URL(request.moduleUrl).pathname.endsWith(BUILT_MODULE_EXTENSION) ? BUILT_MODULE_EXTENSION : SOURCE_MODULE_EXTENSION;
 
+export type InstallForm = "package" | "source";
+
+export const installFormOf = (request: { readonly moduleUrl: string }): InstallForm =>
+  moduleExtensionOf(request) === BUILT_MODULE_EXTENSION ? "package" : "source";
+
 export const runnerModuleSegmentsOf = (request: {
   readonly installRoot: string;
   readonly mechanism: string;

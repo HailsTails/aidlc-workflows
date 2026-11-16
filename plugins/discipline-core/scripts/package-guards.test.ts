@@ -83,22 +83,28 @@ describe("misplacedEntriesOf", () => {
   });
 });
 
-const LOCK = JSON.stringify({
-  lockfileVersion: 3,
-  packages: {
-    "": { version: "0.0.0" },
-    "node_modules/zod": { version: "4.4.3" },
-    "node_modules/levn": { version: "0.4.1" },
+const LOCK = `{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": { "dependencies": { "zod": "4.4.3" } },
   },
-});
+  "packages": {
+    "@eslint/plugin-kit": ["@eslint/plugin-kit@0.7.3", "", { "dependencies": { "levn": "^0.4.1" } }, "sha512-a"],
+    "@eslint/plugin-kit/@eslint/core": ["@eslint/core@1.2.1", "", {}, "sha512-b"],
+    "levn": ["levn@0.4.1", "", {}, "sha512-c"],
+    "zod": ["zod@4.4.3", "", {}, "sha512-d"],
+  }
+}
+`;
 
 describe("unlockedPackagesOf", () => {
-  it("accepts packages bundled from core's own install at the versions its lock holds", () => {
+  it("accepts packages bundled from core's own install, nested ones included, at the versions its bun lock holds", () => {
     expect(
       unlockedPackagesOf({
         bundled: [
           { root: "node_modules/zod", name: "zod", version: "4.4.3" },
           { root: "node_modules/levn", name: "levn", version: "0.4.1" },
+          { root: "node_modules/@eslint/plugin-kit/node_modules/@eslint/core", name: "@eslint/core", version: "1.2.1" },
         ],
         lockText: LOCK,
       }),
@@ -125,7 +131,7 @@ describe("unlockedPackagesOf", () => {
     });
   });
 
-  it("fails when the lock is not an npm lock", () => {
+  it("fails when the lock is not a bun lock", () => {
     expect(unlockedPackagesOf({ bundled: [], lockText: "{}" })).toMatchObject({ outcome: "failed" });
   });
 });

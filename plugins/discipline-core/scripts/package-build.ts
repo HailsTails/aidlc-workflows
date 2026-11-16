@@ -6,7 +6,7 @@ import type { Result } from "../core/values/result.ts";
 import type { Bundle, BundlerPort } from "./esbuild-bundler-port.ts";
 import type { CopiedEntry, ScratchFilesPort } from "./install-proof-ports.ts";
 import type { EntryDisposition } from "./install-proof-plan.ts";
-import { peerNamesOf, publishManifestOf } from "./install-manifest.ts";
+import { peerNamesOf, publishManifestOf } from "./published-manifest.ts";
 import { deadLinksOf, misplacedEntriesOf, unbundledImportsOf, unlockedPackagesOf } from "./package-guards.ts";
 import { PACKAGE_IDENTITY } from "./package-identity.ts";
 import {
@@ -58,7 +58,7 @@ const ROOT_FILES: readonly string[] = ["README.md", "ADOPTING.md", "MIGRATING.md
 
 const MANIFEST = "package.json";
 
-const INSTALL_LOCK: readonly string[] = ["install", "package-lock.json"];
+const INSTALL_LOCK: readonly string[] = ["bun.lock"];
 
 const NODE_MODULES = "node_modules";
 

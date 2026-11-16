@@ -40,11 +40,13 @@ const pieceLoads = (): ModuleLoaderPort => ({
 
 const unresolvedFirst = (request: { readonly packageName: string }): PackageLocationPort => ({
   installRoot: INSTALL_ROOT,
+  installForm: "package",
   locate: vi.fn<PackageLocationPort["locate"]>().mockThrow(notInstalled(request)),
 });
 
 const shadowedEslint: PackageLocationPort = {
   installRoot: INSTALL_ROOT,
+  installForm: "package",
   locate: (locate) => ({ outcome: "ok", value: `${INSTALL_ROOT}/node_modules/${locate.packageName}/lib/api.js` }),
 };
 

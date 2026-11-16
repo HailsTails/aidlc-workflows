@@ -3,12 +3,16 @@ import { createDefaultFileTextPort } from "../../../core/platform-ports/file-tex
 import { createDefaultModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import { installRootOfRunnerEntry } from "../../../core/platform-ports/package-location-port.ts";
 import { createDefaultPathPort } from "../../../core/platform-ports/path-port.ts";
+import { installFormOf } from "../../../core/values/install-layout.ts";
 import { createWalkerRunner } from "./create-walker-runner.ts";
 import { defaultTypeScriptPeers, loadParsePort } from "./typescript-parse.ts";
 
 export const runner = toolchainBoundStandaloneRunner({
   toolchain: loadParsePort({
-    peers: defaultTypeScriptPeers({ installRoot: installRootOfRunnerEntry({ entryFile: import.meta.filename }) }),
+    peers: defaultTypeScriptPeers({
+      installRoot: installRootOfRunnerEntry({ entryFile: import.meta.filename }),
+      installForm: installFormOf({ moduleUrl: import.meta.url }),
+    }),
   }),
   runnerOf: (parse) =>
     createWalkerRunner({

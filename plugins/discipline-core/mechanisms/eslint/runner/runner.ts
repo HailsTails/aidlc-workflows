@@ -3,14 +3,17 @@ import { createDefaultFileTextPort } from "../../../core/platform-ports/file-tex
 import { createDefaultModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import { installRootOfRunnerEntry } from "../../../core/platform-ports/package-location-port.ts";
 import { createDefaultPathPort } from "../../../core/platform-ports/path-port.ts";
-import { moduleExtensionOf } from "../../../core/values/install-layout.ts";
+import { installFormOf, moduleExtensionOf } from "../../../core/values/install-layout.ts";
 import { createEslintRunner, ESLINT_PROJECTED_KINDS } from "./create-eslint-runner.ts";
 import { createEslintPort } from "./eslint-instance.ts";
 import { defaultEslintToolchainPeers, loadEslintToolchain } from "./eslint-toolchain.ts";
 
 export const runner = toolchainBoundEmbeddedRunner({
   toolchain: loadEslintToolchain({
-    peers: defaultEslintToolchainPeers({ installRoot: installRootOfRunnerEntry({ entryFile: import.meta.filename }) }),
+    peers: defaultEslintToolchainPeers({
+      installRoot: installRootOfRunnerEntry({ entryFile: import.meta.filename }),
+      installForm: installFormOf({ moduleUrl: import.meta.url }),
+    }),
   }),
   projectedKinds: ESLINT_PROJECTED_KINDS,
   runnerOf: (toolchain) =>

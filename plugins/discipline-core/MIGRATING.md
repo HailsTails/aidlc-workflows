@@ -40,7 +40,7 @@ Map each chosen discipline to its clauses with this table. A discipline is adopt
 | CD-46 | nothing to select: it applies to every file carve-out once the check runs with `--base-revision` |
 | CD-16, CD-20, CD-24 | select their owners, CD-15, CD-19 and CD-23 |
 | CD-35, CD-36, CD-37, CD-38 | not in core; keep their current handling |
-| any other CD | every mechanical clause in `tools/discipline-core/rules/<ID>/README.md`'s Clauses table, with a mechanism that table lists |
+| any other CD | every mechanical clause in `node_modules/discipline-core/rules/<ID>/README.md`'s Clauses table, with a mechanism that table lists |
 
 Clauses whose mechanism is `review` are judgement clauses: do not put them in `disciplines.json`; list them in the agent instructions instead (step 6).
 
@@ -51,7 +51,7 @@ Stop and ask the human if a chosen CD is one of CD-35 to CD-38, or if selecting 
 Run the check once with no exceptions file, to see what core finds:
 
 ```bash
-node tools/discipline-core/core/check/check-command.ts --repo .
+npm run --silent discipline:check
 ```
 
 CD-3 findings on `tsconfig.json` are fixed in step 4, not recorded. Then write `discipline-exceptions.json` from the old records, using the format in [README.md](README.md#discipline-exceptionsjson):
@@ -105,8 +105,8 @@ The ESLint projection from step 2 now carries every `eslint` clause. Remove only
 Then re-run `project-command` and the check. With any `file-carve-out` recorded, pass `--base-revision`: without it core cannot tell whether a carved file was touched, reports `forfeiture-unmeasured` and fails. Locally, `HEAD` measures what is already committed:
 
 ```bash
-node tools/discipline-core/core/check/project-command.ts --repo .
-node tools/discipline-core/core/check/check-command.ts --repo . --base-revision HEAD
+npm run --silent discipline:project
+npm run --silent discipline:check -- --base-revision HEAD
 ```
 
 Stop and ask the human if a rule you are about to remove was there before the trial, or if you cannot tell which rules the trial added (the adoption record or `git log -p -- biome.json` usually says).
@@ -133,7 +133,7 @@ export const probeValue: any = 1;
 
 ```bash
 git add src/discipline-probe-loop.ts src/discipline-probe-any.ts
-node tools/discipline-core/core/check/check-command.ts --repo . --base-revision HEAD
+npm run --silent discipline:check -- --base-revision HEAD
 ```
 
 It must print a `CD-15#loops audit` finding and a `CD-1#explicit-any eslint` finding, then `verdict: fail`, and exit `1`. Use a selected clause in place of either if the repository did not adopt CD-15 or CD-1. Then remove both files (`git rm -f src/discipline-probe-loop.ts src/discipline-probe-any.ts`) and run the check again: it must print `verdict: pass` and exit `0`.
@@ -150,7 +150,7 @@ Only after step 5 passes:
 2. Delete the copied tools tree and `harness.config.json`, unless anything else in the repository uses them. A repository that also runs the rin AIDLC plugin keeps `harness.config.json`, and in this same change sets `"constitution": { "engine": "discipline-core", "baseRevision": "origin/main" }` in it. Otherwise rin's stage gate, sensors and review lenses keep running the old walker over the old records, and they refuse what this check passes. Set `baseRevision` whenever a file carve-out or an imported entry exists.
 3. Delete `.constitution-carve-outs/` and `.constitution-authorised-locations/`: their content now lives in `discipline-exceptions.json`.
 4. In `package.json` scripts, CI and the pre-push hook, replace the old tool commands with the core check, as [ADOPTING.md](ADOPTING.md#5-run-the-check) step 5 shows. Every run needs `--base-revision` while a file carve-out exists: in local scripts and the pre-push hook use the branch's base (`origin/main`, or `HEAD` to measure only uncommitted changes); in CI use the pull request's base commit.
-5. Rewrite the agent instructions to point at `tools/discipline-core/rules/` and the judgement rules, as ADOPTING step 5 and step 9 say, and remove any instruction to read the old copied files.
+5. Rewrite the agent instructions to point at `node_modules/discipline-core/rules/` and the judgement rules, as ADOPTING step 5 and step 9 say, and remove any instruction to read the old copied files.
 6. Run the check and the repository's own validation command again, then commit everything in one change.
 
 Stop and ask the human if anything outside the old trial uses the copied tools or `harness.config.json`.
@@ -159,7 +159,7 @@ Stop and ask the human if anything outside the old trial uses the copied tools o
 
 | | Old route | Discipline core |
 | --- | --- | --- |
-| What is installed | rule text only; checks were the repository's own linters, plus an optional copied tools tree | one folder that runs every selected check |
+| What is installed | rule text only; checks were the repository's own linters, plus an optional copied tools tree | one package that runs every selected check |
 | Selection | whole CD files, read by an agent; a check ran only if wired by hand | clauses in `disciplines.json`; every mechanical clause of an adopted discipline must be selected |
 | First-adoption debt | inherited debt could be recorded without a why-chain | imported with `provenance` and no `whyChain`, accepted only while unchanged since `--base-revision`; new or edited exceptions need a causal five-step `whyChain` ([contract](docs/why-chain-contract.md)), unless `disciplines.json` sets `"fileExceptionWhyChains": "optional"`, which lets file-level exceptions give only a `reason` |
 | CD-1 | no exemptions | exempted like every other discipline, so existing `any` debt can be recorded |
@@ -181,20 +181,13 @@ A core install from before the [why-chain contract](docs/why-chain-contract.md) 
 3. **Rewrite each chain when you next touch its entry.** An edited entry with a legacy chain is refused until the chain follows the contract. Write the chain from the symptom down: ask why the exception exists, then ask why that answer is true, four more times. Add the `rootCheck` you ran today and the `readback`.
 4. **Queue a rewrite of the rest.** Nothing ends the grace period: a legacy chain whose entry is never touched stays accepted. To make every chain causal, rewrite the remaining ones as tracked work. Rewriting a chain is an edit, so each rewritten chain must pass the contract in that change.
 
-## 9. Moving core onto the repository's toolchain
+## 9. Moving from a copied core to the package
 
-An install from before core declared `peerDependencies` carries its own `eslint` 10, `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin` and `typescript` in `tools/discipline-core/node_modules`, and core's own ESLint run used that copy whatever the repository ran. From this version core uses the repository's own copies. To move:
+Core is no longer installed by copying its source into the repository: this version ships no install files for that route. A core copied into `tools/discipline-core/` moves to the package, which gives the same reports from the same `disciplines.json` and `discipline-exceptions.json`, and runs on the repository's own toolchain. To move:
 
 1. **Make sure the toolchain resolves from the repository root**, in the ranges [ADOPTING.md](ADOPTING.md#2-install-the-core-package) step 2 lists: TypeScript 4.8.4 up to 6.x, ESLint 9.12.0 or later on 9 or any 10, and typescript-eslint 8.56.0 or later on 8. Keep the versions the repository already uses.
-2. **Refresh core** as [ADOPTING.md](ADOPTING.md#10-update-and-remove) step 10 says. Copy `install/package.json` and `install/package-lock.json` to the top of `tools/discipline-core/` in place of the old `package.json` and `package-lock.json`, and install with `npm ci`: it removes the old `tools/discipline-core/node_modules`, whose `eslint` would otherwise shadow the repository's. If a stale copy is left there, the check stops with `toolchain-shadowed` and names it.
-3. **Run the check.** It gives the same report as before on ESLint 9 or 10: core picks the configuration lookup the same way, and its governance run behaves the same on both lines. A `toolchain-unavailable` load failure names a package to install.
-
-## 10. Moving from a copied core to the package
-
-A core copied into `tools/discipline-core/` keeps working, but that route is deprecated. The package gives the same reports from the same `disciplines.json` and `discipline-exceptions.json`. To move:
-
-1. **Install the package** as [ADOPTING.md](ADOPTING.md#2-install-the-core-package) step 2 says, including the two `discipline:` scripts.
-2. **Repoint every command.** In scripts, CI and the pre-push hook, replace `node tools/discipline-core/core/check/check-command.ts --repo .` with `npm run --silent discipline:check` (pass flags after `--`, as in `npm run --silent discipline:check -- --base-revision origin/main`), and `project-command.ts` with `npm run --silent discipline:project`. Point agent instructions at `node_modules/discipline-core/rules/`.
-3. **Remove the copy.** Delete `tools/discipline-core/`, its line in `.gitignore`, and its entry in `disciplines.json`'s `exclude`.
-4. **Re-project** if any clause is `eslint`: run `npm run --silent discipline:project`. The projection now imports each piece by package name instead of by a path into `tools/discipline-core/`, so it changes once; commit it.
-5. **Run the check.** It must give the same report as the last run on the copy.
+2. **Install the package** as [ADOPTING.md](ADOPTING.md#2-install-the-core-package) step 2 says, including the two `discipline:` scripts.
+3. **Repoint every command.** In scripts, CI and the pre-push hook, replace `node tools/discipline-core/core/check/check-command.ts --repo .` with `npm run --silent discipline:check` (pass flags after `--`, as in `npm run --silent discipline:check -- --base-revision origin/main`), and `project-command.ts` with `npm run --silent discipline:project`. Point agent instructions at `node_modules/discipline-core/rules/`.
+4. **Remove the copy.** Delete `tools/discipline-core/`, its line in `.gitignore`, and its entry in `disciplines.json`'s `exclude`.
+5. **Re-project** if any clause is `eslint`: run `npm run --silent discipline:project`. The projection now imports each piece by package name instead of by a path into `tools/discipline-core/`, so it changes once; commit it.
+6. **Run the check.** It must give the same report as the last run on the copy. A `toolchain-unavailable` load failure names a package to install at the repository root.

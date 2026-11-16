@@ -33,7 +33,7 @@ type LineDefinition = {
   readonly nativeRuleSources: () => Promise<NativeRuleSources>;
 };
 
-const DEVELOPMENT_PEERS: EslintToolchainPeers = defaultEslintToolchainPeers({ installRoot: `${import.meta.dirname}/..` });
+const DEVELOPMENT_PEERS: EslintToolchainPeers = defaultEslintToolchainPeers({ installRoot: `${import.meta.dirname}/..`, installForm: "source" });
 
 const RUNNER_MODULE_SUFFIX = "mechanisms/eslint/runner/runner.ts";
 

@@ -2,6 +2,7 @@ import type typescript from "typescript";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import { loadedPeer, type PeerToolchain, type ToolchainRequirement } from "../../../core/mechanism-port/toolchain-requirement.ts";
 import { createDefaultPackageLocationPort } from "../../../core/platform-ports/package-location-port.ts";
+import type { InstallForm } from "../../../core/values/install-layout.ts";
 import type { Result } from "../../../core/values/result.ts";
 
 export type SyntaxApi = typeof typescript;
@@ -26,7 +27,7 @@ export const TYPESCRIPT_REQUIREMENT: ToolchainRequirement = {
 
 export const defaultTypeScriptModules: TypeScriptModules = { typescript: () => import("typescript") };
 
-export const defaultTypeScriptPeers = (options: { readonly installRoot: string }): TypeScriptPeers => ({
+export const defaultTypeScriptPeers = (options: { readonly installRoot: string; readonly installForm: InstallForm }): TypeScriptPeers => ({
   location: createDefaultPackageLocationPort(options),
   modules: defaultTypeScriptModules,
 });

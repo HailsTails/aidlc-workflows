@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { parsedJson } from "../core/rule-set-reader/rule-set-reader.ts";
 import type { Result } from "../core/values/result.ts";
+import { createDefaultJsoncParsePort } from "../mechanisms/audit/runner/jsonc-parse.ts";
 import type { BundledOutput } from "./esbuild-bundler-port.ts";
 import { builtModulePath } from "./package-plan.ts";
 
@@ -20,9 +20,19 @@ const PACKAGE_BASE = `file://${PACKAGE_PATH}`;
 
 const NOT_RELATIVE =/^(?:[a-z][a-z0-9+.-]*:|#)/i;
 
+const NODE_MODULES_SEGMENT = /(?:^|\/)node_modules\//g;
+
 const lockSchema = z.object({
-  packages: z.record(z.string(), z.looseObject({ version: z.string().optional() })),
+  packages: z.record(z.string(), z.tuple([z.string()]).rest(z.unknown())),
 });
+
+const jsonc = createDefaultJsoncParsePort({ trailingCommas: "allowed" });
+
+const lockKeyOf = (request: { readonly root: string }): string =>
+  request.root.replace(NODE_MODULES_SEGMENT, (segment) => (segment.startsWith("/") ? "/" : ""));
+
+const versionOfResolution = (request: { readonly resolution: string }): string =>
+  request.resolution.slice(request.resolution.lastIndexOf("@") + 1);
 
 type ExternalImport = "builtin" | "peer" | "unbundled";
 
@@ -65,10 +75,11 @@ export const misplacedEntriesOf = (request: {
 
 const lockProblemOf = (request: {
   readonly bundled: BundledPackageVersion;
-  readonly locked: Readonly<Record<string, { readonly version?: string | undefined }>>;
+  readonly locked: Readonly<Record<string, readonly [string, ...unknown[]]>>;
 }): readonly string[] => {
   const label = `${request.bundled.name} ${request.bundled.version} at ${request.bundled.root}`;
-  const locked = request.locked[request.bundled.root]?.version;
+  const resolution = request.locked[lockKeyOf({ root: request.bundled.root })]?.[0];
+  const locked = resolution === undefined ? undefined : versionOfResolution({ resolution });
   if (locked === undefined) {
     return [`${label}, which the lock does not hold`];
   }
@@ -79,9 +90,9 @@ export const unlockedPackagesOf = (request: {
   readonly bundled: readonly BundledPackageVersion[];
   readonly lockText: string;
 }): Result<readonly string[], string> => {
-  const document = parsedJson({ text: request.lockText });
+  const document = jsonc.parse({ source: request.lockText });
   if (document.outcome === "failed") {
-    return document;
+    return { outcome: "failed", error: document.error.detail };
   }
   const lock = lockSchema.safeParse(document.value);
   return lock.success

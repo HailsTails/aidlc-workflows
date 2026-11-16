@@ -3,27 +3,9 @@ import { parsedJson } from "../core/rule-set-reader/rule-set-reader.ts";
 import type { Result } from "../core/values/result.ts";
 import { PACKAGE_IDENTITY, type PackageIdentity } from "./package-identity.ts";
 
-export type InstallList = {
-  readonly always: readonly string[];
-  readonly intoRoot: readonly string[];
-  readonly perSharedClause: readonly string[];
-  readonly leftOut: readonly string[];
-};
-
-export type InstallListFailure =
-  | { readonly kind: "section-missing"; readonly heading: string }
-  | { readonly kind: "line-missing"; readonly prefix: string };
-
-export type InstallPathFailure = { readonly kind: "unresolved-placeholder"; readonly path: string };
-
-export type InstallPlacement = { readonly from: string; readonly to: string };
-
-export type ExclusionRule =
-  | { readonly kind: "folder"; readonly name: string }
-  | { readonly kind: "file-suffix"; readonly suffix: string }
-  | { readonly kind: "file-name"; readonly name: string };
-
 export type EntryKind = "folder" | "file";
+
+export type EntryDisposition = "left-out" | "kept";
 
 export type ExpectedOutput = { readonly kind: "contains"; readonly text: string } | { readonly kind: "empty" };
 
@@ -44,52 +26,29 @@ export type ProofAction =
 
 export type ProofToolchain = "typescript-floor" | "eslint-9-floor" | "eslint-10-floor";
 
-export type InstallRoute = "copy" | "package";
-
 export type CommandScript = "check" | "project";
-
-export type ReportExpectation = { readonly kind: "recorded" } | { readonly kind: "same-as"; readonly consumer: string };
 
 export type ProofCase = {
   readonly consumer: string;
-  readonly route: InstallRoute;
   readonly mechanism: Mechanism;
   readonly toolchain: ProofToolchain;
-  readonly disciplineId: string;
-  readonly installedManifest: "kept" | "removed";
-  readonly reports: ReportExpectation;
   readonly actions: readonly ProofAction[];
 };
 
 export type ManifestFailure = { readonly kind: "manifest-invalid"; readonly detail: string };
 
-const INSTALLING_HEADING = "## Installing";
-const ALWAYS_PREFIX = "- always: ";
-const INTO_ROOT_PREFIX = "- into the install root: ";
-const SHARED_CLAUSE_PREFIX = "- for each selected clause in the shared rule set: ";
-const LEFT_OUT_PREFIX = "Leave out ";
-const DISCIPLINE_PLACEHOLDER = "<DisciplineId>";
-const MECHANISM_PLACEHOLDER = "<MechanismId>";
-const PLACEHOLDER_PATTERN = /<[^>]+>/;
-const CODE_SPAN_PATTERN = /`([^`]+)`/g;
-
 const ESLINT_CONSUMER_ACTIONS: readonly ProofAction[] = [
-  { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } } },
-  { kind: "commit", message: "project" },
-  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
-  { kind: "remove", path: "src/kept.ts" },
-  { kind: "commit", message: "clean" },
-  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
-];
-
-const PACKAGED_ESLINT_CONSUMER_ACTIONS: readonly ProofAction[] = [
   { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } } },
   {
     kind: "read",
     path: "disciplines.eslint.mjs",
     contains: `import piece0 from "${PACKAGE_IDENTITY.name}/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";`,
   },
-  ...ESLINT_CONSUMER_ACTIONS.slice(1),
+  { kind: "commit", message: "project" },
+  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  { kind: "remove", path: "src/kept.ts" },
+  { kind: "commit", message: "clean" },
+  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
 ];
 
 const AUDIT_CONSUMER_ACTIONS: readonly ProofAction[] = [
@@ -108,103 +67,11 @@ const ESLINT_MISSING_ACTIONS: readonly ProofAction[] = [
 ];
 
 export const PROOF_CASES: readonly ProofCase[] = [
-  {
-    consumer: "audit",
-    route: "copy",
-    mechanism: "audit",
-    toolchain: "typescript-floor",
-    disciplineId: "CD-23",
-    installedManifest: "kept",
-    reports: { kind: "recorded" },
-    actions: AUDIT_CONSUMER_ACTIONS,
-  },
-  {
-    consumer: "eslint-10",
-    route: "copy",
-    mechanism: "eslint",
-    toolchain: "eslint-10-floor",
-    disciplineId: "CD-14",
-    installedManifest: "kept",
-    reports: { kind: "recorded" },
-    actions: ESLINT_CONSUMER_ACTIONS,
-  },
-  {
-    consumer: "eslint-9",
-    route: "copy",
-    mechanism: "eslint",
-    toolchain: "eslint-9-floor",
-    disciplineId: "CD-14",
-    installedManifest: "kept",
-    reports: { kind: "recorded" },
-    actions: ESLINT_CONSUMER_ACTIONS,
-  },
-  {
-    consumer: "eslint-missing",
-    route: "copy",
-    mechanism: "eslint",
-    toolchain: "typescript-floor",
-    disciplineId: "CD-14",
-    installedManifest: "kept",
-    reports: { kind: "recorded" },
-    actions: ESLINT_MISSING_ACTIONS,
-  },
-  {
-    consumer: "no-package-json",
-    route: "copy",
-    mechanism: "audit",
-    toolchain: "typescript-floor",
-    disciplineId: "CD-23",
-    installedManifest: "removed",
-    reports: { kind: "recorded" },
-    actions: [
-      {
-        kind: "check",
-        expectation: { exitCode: 1, output: { kind: "contains", text: "Cannot use import statement outside a module" } },
-      },
-    ],
-  },
-  {
-    consumer: "audit-package",
-    route: "package",
-    mechanism: "audit",
-    toolchain: "typescript-floor",
-    disciplineId: "CD-23",
-    installedManifest: "kept",
-    reports: { kind: "same-as", consumer: "audit" },
-    actions: AUDIT_CONSUMER_ACTIONS,
-  },
-  {
-    consumer: "eslint-10-package",
-    route: "package",
-    mechanism: "eslint",
-    toolchain: "eslint-10-floor",
-    disciplineId: "CD-14",
-    installedManifest: "kept",
-    reports: { kind: "same-as", consumer: "eslint-10" },
-    actions: PACKAGED_ESLINT_CONSUMER_ACTIONS,
-  },
-  {
-    consumer: "eslint-9-package",
-    route: "package",
-    mechanism: "eslint",
-    toolchain: "eslint-9-floor",
-    disciplineId: "CD-14",
-    installedManifest: "kept",
-    reports: { kind: "same-as", consumer: "eslint-9" },
-    actions: PACKAGED_ESLINT_CONSUMER_ACTIONS,
-  },
-  {
-    consumer: "eslint-missing-package",
-    route: "package",
-    mechanism: "eslint",
-    toolchain: "typescript-floor",
-    disciplineId: "CD-14",
-    installedManifest: "kept",
-    reports: { kind: "same-as", consumer: "eslint-missing" },
-    actions: ESLINT_MISSING_ACTIONS,
-  },
+  { consumer: "audit", mechanism: "audit", toolchain: "typescript-floor", actions: AUDIT_CONSUMER_ACTIONS },
+  { consumer: "eslint-10", mechanism: "eslint", toolchain: "eslint-10-floor", actions: ESLINT_CONSUMER_ACTIONS },
+  { consumer: "eslint-9", mechanism: "eslint", toolchain: "eslint-9-floor", actions: ESLINT_CONSUMER_ACTIONS },
+  { consumer: "eslint-missing", mechanism: "eslint", toolchain: "typescript-floor", actions: ESLINT_MISSING_ACTIONS },
 ];
-
 export const PACKAGED_SCRIPTS: Readonly<Record<CommandScript, string>> = {
   check: "discipline:check",
   project: "discipline:project",
@@ -225,143 +92,6 @@ export const packagedConsumerManifest = (request: { readonly identity: PackageId
     null,
     2,
   )}\n`;
-
-const sectionLines = (request: { readonly lines: readonly string[]; readonly heading: string }): readonly string[] => {
-  const start = request.lines.indexOf(request.heading);
-  const following = request.lines.slice(start + 1);
-  const nextHeading = following.findIndex((line) => line.startsWith("## "));
-  return nextHeading === -1 ? following : following.slice(0, nextHeading);
-};
-
-const codeSpans = (request: { readonly text: string }): readonly string[] =>
-  [...request.text.matchAll(CODE_SPAN_PATTERN)].map((match) => match[1]);
-
-const firstSentence = (request: { readonly line: string }): string => {
-  const segments = request.line.split("`");
-  const proseEnd = segments.findIndex(
-    (segment, index) => index % 2 === 0 && (segment.includes(". ") || segment.endsWith(".")),
-  );
-  return proseEnd === -1 ? request.line : segments.slice(0, proseEnd + 1).join("`");
-};
-
-const lineStartingWith = (request: {
-  readonly lines: readonly string[];
-  readonly prefix: string;
-}): Result<string, InstallListFailure> => {
-  const found = request.lines.find((line) => line.startsWith(request.prefix));
-  return found === undefined
-    ? { outcome: "failed", error: { kind: "line-missing", prefix: request.prefix } }
-    : { outcome: "ok", value: found };
-};
-
-export const parsedInstallList = (request: { readonly readme: string }): Result<InstallList, InstallListFailure> => {
-  const lines = request.readme.split(/\r?\n/);
-  if (!lines.includes(INSTALLING_HEADING)) {
-    return { outcome: "failed", error: { kind: "section-missing", heading: INSTALLING_HEADING } };
-  }
-  const section = sectionLines({ lines, heading: INSTALLING_HEADING });
-  const always = lineStartingWith({ lines: section, prefix: ALWAYS_PREFIX });
-  if (always.outcome === "failed") {
-    return always;
-  }
-  const intoRoot = lineStartingWith({ lines: section, prefix: INTO_ROOT_PREFIX });
-  if (intoRoot.outcome === "failed") {
-    return intoRoot;
-  }
-  const perSharedClause = lineStartingWith({ lines: section, prefix: SHARED_CLAUSE_PREFIX });
-  if (perSharedClause.outcome === "failed") {
-    return perSharedClause;
-  }
-  const leftOut = lineStartingWith({ lines: section, prefix: LEFT_OUT_PREFIX });
-  if (leftOut.outcome === "failed") {
-    return leftOut;
-  }
-  return {
-    outcome: "ok",
-    value: {
-      always: codeSpans({ text: always.value }),
-      intoRoot: codeSpans({ text: intoRoot.value }),
-      perSharedClause: codeSpans({ text: perSharedClause.value }),
-      leftOut: codeSpans({ text: firstSentence({ line: leftOut.value }) }),
-    },
-  };
-};
-
-const withoutTrailingSlash = (request: { readonly path: string }): string =>
-  request.path.endsWith("/") ? request.path.slice(0, -1) : request.path;
-
-const inPlace = (request: { readonly path: string }): InstallPlacement => {
-  const path = withoutTrailingSlash(request);
-  return { from: path, to: path };
-};
-
-const atInstallRoot = (request: { readonly path: string }): InstallPlacement => ({
-  from: request.path,
-  to: request.path.slice(request.path.lastIndexOf("/") + 1),
-});
-
-export const intoRootPlacements = (request: { readonly installList: InstallList }): readonly InstallPlacement[] =>
-  request.installList.intoRoot.map((path) => atInstallRoot({ path }));
-
-export const installPlacements = (request: {
-  readonly installList: InstallList;
-  readonly disciplineId: string;
-  readonly mechanism: Mechanism;
-}): Result<readonly InstallPlacement[], InstallPathFailure> => {
-  const substituted = request.installList.perSharedClause.map((path) =>
-    path.replaceAll(DISCIPLINE_PLACEHOLDER, request.disciplineId).replaceAll(MECHANISM_PLACEHOLDER, request.mechanism),
-  );
-  const unresolved = substituted.find((path) => PLACEHOLDER_PATTERN.test(path));
-  return unresolved === undefined
-    ? {
-        outcome: "ok",
-        value: [
-          ...request.installList.always.map((path) => inPlace({ path })),
-          ...intoRootPlacements(request),
-          ...substituted.map((path) => inPlace({ path })),
-        ],
-      }
-    : { outcome: "failed", error: { kind: "unresolved-placeholder", path: unresolved } };
-};
-
-export const exclusionRules = (request: { readonly leftOut: readonly string[] }): readonly ExclusionRule[] =>
-  request.leftOut.map((name): ExclusionRule => {
-    if (name.endsWith("/")) {
-      return { kind: "folder", name: name.slice(0, -1) };
-    }
-    if (name.startsWith("*")) {
-      return { kind: "file-suffix", suffix: name.slice(1) };
-    }
-    return { kind: "file-name", name };
-  });
-
-export type EntryDisposition = "left-out" | "kept";
-
-const ruleDisposition = (request: {
-  readonly rule: ExclusionRule;
-  readonly name: string;
-  readonly entryKind: EntryKind;
-}): EntryDisposition => {
-  switch (request.rule.kind) {
-    case "folder":
-      return request.entryKind === "folder" && request.name === request.rule.name ? "left-out" : "kept";
-    case "file-suffix":
-      return request.entryKind === "file" && request.name.endsWith(request.rule.suffix) ? "left-out" : "kept";
-    case "file-name":
-      return request.entryKind === "file" && request.name === request.rule.name ? "left-out" : "kept";
-  }
-};
-
-export const entryDisposition = (request: {
-  readonly rules: readonly ExclusionRule[];
-  readonly name: string;
-  readonly entryKind: EntryKind;
-}): EntryDisposition =>
-  request.rules.some(
-    (rule) => ruleDisposition({ rule, name: request.name, entryKind: request.entryKind }) === "left-out",
-  )
-    ? "left-out"
-    : "kept";
 
 const describedOutput = (request: { readonly output: ExpectedOutput }): string => {
   switch (request.output.kind) {
@@ -426,8 +156,6 @@ const FLOOR_PINS: Readonly<Record<ProofToolchain, FloorPins>> = {
   "eslint-9-floor": { ...TYPESCRIPT_ESLINT_FLOOR, eslint: "eslint-9-floor" },
   "eslint-10-floor": { ...TYPESCRIPT_ESLINT_FLOOR, eslint: "eslint-10-floor" },
 };
-
-export const CONSUMER_MANIFEST = `${JSON.stringify({ private: true, type: "commonjs" }, null, 2)}\n`;
 
 const manifestInvalid = (request: { readonly detail: string }): Result<never, ManifestFailure> => ({
   outcome: "failed",
