@@ -23,13 +23,6 @@ const missingPackage = (request: { readonly packageName: string }): Error =>
     code: "ERR_MODULE_NOT_FOUND",
   });
 
-const unreadableVersion = (): string => {
-  throw new Error("no version export");
-};
-
-const unresolvable = (): string => {
-  throw missingPackage({ packageName: "eslint" });
-};
 
 const peerAt = (request: { readonly version: string; readonly location?: string }) => ({
   requirement: TWO_MAJORS,
@@ -85,7 +78,7 @@ describe("loadedPeer", () => {
   });
 
   it("names the package as not installed when it does not resolve", async () => {
-    await expect(loadedPeer({ ...peerAt({ version: "10.11.0" }), location: { installRoot: INSTALL_ROOT, locate: unresolvable } })).resolves.toEqual({
+    await expect(loadedPeer({ ...peerAt({ version: "10.11.0" }), location: { installRoot: INSTALL_ROOT, locate: vi.fn<() => string>().mockThrow(missingPackage({ packageName: "eslint" })) } })).resolves.toEqual({
       outcome: "failed",
       error: { kind: "toolchain-unavailable", packageName: "eslint", supported: "^9.12.0 || ^10.0.0", found: "not installed" },
     });
@@ -146,7 +139,7 @@ describe("loadedPeer", () => {
 
   it("names the package unloadable when its version cannot be read", async () => {
     await expect(
-      loadedPeer({ ...peerAt({ version: "10.11.0" }), versionOf: vi.fn<(peer: object) => string>().mockImplementation(unreadableVersion) }),
+      loadedPeer({ ...peerAt({ version: "10.11.0" }), versionOf: vi.fn<(peer: object) => string>().mockThrow(new Error("no version export")) }),
     ).resolves.toMatchObject({ outcome: "failed", error: { found: "unloadable: no version export" } });
   });
 });

@@ -260,12 +260,12 @@ describe("toolchainManifest, over this package's own package.json read as a buil
 
 describe("the proof cases", () => {
   it("cover an audit-only consumer, an ESLint consumer on each line's floor, one missing eslint and one missing the installed manifest, over three shared toolchains", () => {
-    expect(PROOF_CASES.map((proofCase) => [proofCase.consumer, proofCase.toolchain])).toEqual([
-      ["audit", "typescript-floor"],
-      ["eslint-10", "eslint-10-floor"],
-      ["eslint-9", "eslint-9-floor"],
-      ["eslint-missing", "typescript-floor"],
-      ["no-package-json", "typescript-floor"],
+    expect(PROOF_CASES).toEqual([
+      expect.objectContaining({ consumer: "audit", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "eslint-10", toolchain: "eslint-10-floor" }),
+      expect.objectContaining({ consumer: "eslint-9", toolchain: "eslint-9-floor" }),
+      expect.objectContaining({ consumer: "eslint-missing", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "no-package-json", toolchain: "typescript-floor" }),
     ]);
   });
 

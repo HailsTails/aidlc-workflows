@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type * as TypescriptParserModule from "@typescript-eslint/parser";
+import type { ESLint } from "eslint";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { CaseVerdict } from "../../../core/mechanism-port/runner-result-schema.ts";
+import { type ToolchainRequirement, versionSupport } from "../../../core/mechanism-port/toolchain-requirement.ts";
 import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import type { AbsolutePath } from "../../../core/values/absolute-path.ts";
 import type { RepoPath } from "../../../core/values/repo-path.ts";
@@ -500,3 +502,76 @@ export const createEslintPort = (options: { readonly toolchain: EslintToolchain 
   },
   lintSourceCases: (request) => sourceCaseVerdicts({ ...request, toolchain: options.toolchain }),
 });
+
+type EslintEngine = Pick<ESLint, "isPathIgnored" | "calculateConfigForFile" | "lintFiles" | "lintText">;
+
+export type EslintClass = Pick<typeof ESLint, "version"> &
+  (new (...options: ConstructorParameters<typeof ESLint>) => EslintEngine);
+
+export type EslintModule = { readonly ESLint: EslintClass };
+
+type ConfigLookup = { readonly releases: ToolchainRequirement; readonly flags: readonly string[] };
+
+const NEAREST_CONFIG_LOOKUPS: readonly ConfigLookup[] = [
+  { releases: { packageName: "eslint", lines: [{ floor: "9.12.0", below: "9.30.0" }] }, flags: ["unstable_config_lookup_from_file"] },
+  { releases: { packageName: "eslint", lines: [{ floor: "9.30.0", below: "10.0.0" }] }, flags: ["v10_config_lookup_from_file"] },
+];
+
+const lookupFlagsOf = (request: { readonly version: string }): readonly string[] =>
+  NEAREST_CONFIG_LOOKUPS.find((lookup) => versionSupport({ requirement: lookup.releases, version: request.version }) === "supported")
+    ?.flags ?? [];
+
+const lintedMessageOf = (message: ESLint.LintResult["messages"][number]): LintedMessage => ({
+  ruleId: message.ruleId,
+  ...(message.messageId === undefined ? {} : { messageId: message.messageId }),
+  line: message.line,
+  column: message.column,
+  message: message.message,
+  ...(message.fatal === true ? { fatal: true } : {}),
+});
+
+const lintedFileOf = (lintResult: ESLint.LintResult): LintedFile => ({
+  filePath: lintResult.filePath,
+  messages: lintResult.messages.map(lintedMessageOf),
+});
+
+const overrideConfigOf = (request: {
+  readonly overrideConfig: NonNullable<EslintSurfaceOptions["overrideConfig"]>;
+}): ESLint.Options["overrideConfig"] => ({
+  ...request.overrideConfig,
+  files: [...request.overrideConfig.files],
+  rules: Object.fromEntries(
+    Object.entries(request.overrideConfig.rules).map(([ruleId, entry]) => [
+      ruleId,
+      typeof entry === "string" ? entry : [...entry],
+    ]),
+  ),
+});
+
+const lookupOptionsOf = (request: { readonly version: string; readonly options: EslintSurfaceOptions }): ESLint.Options => {
+  const flags = lookupFlagsOf(request);
+  return request.options.overrideConfigFile === undefined && flags.length > 0 ? { flags: [...flags] } : {};
+};
+
+export const eslintOptionsOf = (request: {
+  readonly version: string;
+  readonly options: EslintSurfaceOptions;
+}): ESLint.Options => {
+  const { overrideConfig, ...sharedOptions } = request.options;
+  return {
+    ...sharedOptions,
+    ...lookupOptionsOf(request),
+    ...(overrideConfig === undefined ? {} : { overrideConfig: overrideConfigOf({ overrideConfig }) }),
+  };
+};
+
+export const createEslintOn = (request: { readonly eslintClass: EslintClass }): CreateEslint => (create) => {
+  const eslint = new request.eslintClass(eslintOptionsOf({ version: request.eslintClass.version, options: create.options }));
+  return {
+    isPathIgnored: (query) => eslint.isPathIgnored(query.filePath),
+    calculateConfigForFile: (query) => eslint.calculateConfigForFile(query.filePath),
+    lintFiles: (lint) => eslint.lintFiles([...lint.filePaths]).then((results) => results.map(lintedFileOf)),
+    lintText: (lint) =>
+      eslint.lintText(lint.code, { filePath: lint.filePath }).then((results) => results.map(lintedFileOf)),
+  };
+};

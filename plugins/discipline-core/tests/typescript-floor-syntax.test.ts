@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePortOn } from "./typescript-parse-port.ts";
+import { syntaxErrorsOn } from "./typescript-parse-port.ts";
 
 declare global {
   interface ImportMeta {
@@ -15,19 +15,12 @@ const shippedSources = import.meta.glob(
   { base: "../", query: "?raw", import: "default", eager: true },
 );
 
-const floor = await parsePortOn({ line: "typescript-floor" });
-
-const syntaxErrorsIn = (request: { readonly fileName: string; readonly source: string }): readonly string[] =>
-  (floor.syntaxApi.transpileModule(request.source, { fileName: request.fileName, reportDiagnostics: true }).diagnostics ?? []).map(
-    (diagnostic) => `${request.fileName}: ${floor.syntaxApi.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`,
-  );
-
 describe("core's shipped source under the oldest supported TypeScript, read as build-time raw modules (CD-47: the shipped source is the assertion's subject; nothing is spawned or written)", () => {
   it("reads a known file, so the scanned set is not silently empty", () => {
     expect(shippedSources).toEqual(expect.objectContaining({ "./mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts": expect.any(String) }));
   });
 
-  it("parses every shipped file without a syntax error, since a repository whose ESLint lints the install parses it with its own TypeScript", () => {
-    expect(Object.entries(shippedSources).flatMap(([fileName, source]) => syntaxErrorsIn({ fileName, source }))).toEqual([]);
+  it("parses every shipped file without a syntax error, since a repository whose ESLint lints the install parses it with its own TypeScript", async () => {
+    expect(await syntaxErrorsOn({ line: "typescript-floor", sources: shippedSources })).toEqual([]);
   });
 });

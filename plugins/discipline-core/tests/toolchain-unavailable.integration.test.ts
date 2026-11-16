@@ -14,7 +14,7 @@ import { defaultTypeScriptPeers, loadParsePort } from "../mechanisms/audit/runne
 import { createEslintRunner, ESLINT_PROJECTED_KINDS } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import { createEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
 import { loadEslintToolchain } from "../mechanisms/eslint/runner/eslint-toolchain.ts";
-import { eslintPeersOn } from "./eslint-toolchains.ts";
+import { eslintPeersOn, modulesServingRunner } from "./eslint-toolchains.ts";
 
 const INSTALL_ROOT = absolutePathSchema.parse(`${import.meta.dirname}/..`);
 
@@ -35,17 +35,12 @@ const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPor
 });
 
 const pieceLoads = (): ModuleLoaderPort => ({
-  load: vi.fn<ModuleLoaderPort["load"]>((request) => createDefaultModuleLoaderPort({}).load(request)),
+  load: vi.fn<ModuleLoaderPort["load"]>(),
 });
 
-const unresolvedAs = (request: { readonly packageName: string }): PackageLocationPort => ({
+const unresolvedFirst = (request: { readonly packageName: string }): PackageLocationPort => ({
   installRoot: INSTALL_ROOT,
-  locate: (locate) => {
-    if (locate.packageName === request.packageName) {
-      throw notInstalled(request);
-    }
-    return `/repo/node_modules/${locate.packageName}/index.js`;
-  },
+  locate: vi.fn<PackageLocationPort["locate"]>().mockThrow(notInstalled(request)),
 });
 
 const shadowedEslint: PackageLocationPort = {
@@ -63,7 +58,7 @@ const eslintRunnerLocatingBy = (request: { readonly pieces: ModuleLoaderPort; re
 
 const auditRunnerWithoutTypescript = (request: { readonly pieces: ModuleLoaderPort }) =>
   toolchainBoundStandaloneRunner({
-    toolchain: loadParsePort({ peers: { ...defaultTypeScriptPeers, location: unresolvedAs({ packageName: "typescript" }) } }),
+    toolchain: loadParsePort({ peers: { ...defaultTypeScriptPeers, location: unresolvedFirst({ packageName: "typescript" }) } }),
     runnerOf: (parse) => createWalkerRunner({ fileText, modules: request.pieces, path, parse }),
   });
 
@@ -73,12 +68,7 @@ const checkWith = (request: { readonly fixture: string; readonly runner: unknown
     installRoot: INSTALL_ROOT,
     baseRevision: undefined,
     fileText,
-    modules: {
-      load: (load) =>
-        load.path.replaceAll("\\", "/").endsWith("/runner/runner.ts")
-          ? Promise.resolve({ outcome: "ok", value: { runner: request.runner } })
-          : createDefaultModuleLoaderPort({}).load(load),
-    },
+    modules: modulesServingRunner({ runnerSuffix: "/runner/runner.ts", runner: request.runner, base: createDefaultModuleLoaderPort({}) }),
     path,
     git: gitTracking({ tracked: request.tracked }),
   });
@@ -88,7 +78,7 @@ describe("a check whose adopter has not installed a toolchain peer the selected 
     const pieces = pieceLoads();
     const checked = await checkWith({
       fixture: "tests/test-fixtures/consumer-proof/eslint",
-      runner: eslintRunnerLocatingBy({ pieces, location: unresolvedAs({ packageName: "eslint" }) }),
+      runner: eslintRunnerLocatingBy({ pieces, location: unresolvedFirst({ packageName: "eslint" }) }),
       tracked: [repoPathSchema.parse("src/plain.ts")],
     });
     expect({ checked, pieceLoads: vi.mocked(pieces.load).mock.calls }).toEqual({
@@ -107,7 +97,7 @@ describe("a check whose adopter has not installed a toolchain peer the selected 
   it("prints that failure as one load-failure line telling the adopter what to add, never a stack trace", async () => {
     const checked = await checkWith({
       fixture: "tests/test-fixtures/consumer-proof/eslint",
-      runner: eslintRunnerLocatingBy({ pieces: pieceLoads(), location: unresolvedAs({ packageName: "eslint" }) }),
+      runner: eslintRunnerLocatingBy({ pieces: pieceLoads(), location: unresolvedFirst({ packageName: "eslint" }) }),
       tracked: [repoPathSchema.parse("src/plain.ts")],
     });
     assert(checked.outcome === "failed", "the check fails to load");
