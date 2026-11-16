@@ -43,12 +43,20 @@ Each check prints a one-line summary and exits non-zero, naming every file that 
 
 ## Open items
 
-- Pending decision: `.gitleaks.toml` allowlists `tests/golden/*.json` and `tests/golden/install/*.json` by path. The sha256 values in them sit under keys whose paths contain `api`, and gitleaks' `generic-api-key` rule reports them (21 findings). The alternative is a golden file format that rule does not match.
+{{pending-decisions}}
 - Nothing in CI builds the previous-release dist yet, so the install check runs by hand.
 - The coverage check `bun tests/gen-coverage-registry.ts --check --base <commit>` builds the base commit from `git archive` in a temporary folder with no `node_modules`. With `caea995ae` as the base it passes: `coverage registry: OK (guards green, no unit lost coverage against caea995ae)`. With a base that already contains `src/` (this tree as one commit on `caea995ae`) it exits 1: `COVERAGE BASE FAILED: building the base … stopped at bun scripts/package.ts claude`, followed by 45 identical `command-source-failed` refusals reading `Cannot find package 'zod' from '…/tree/src/cli/adapters/routes/projection/legacy-runner-child.ts'`. A change made on top of this one would meet the same failure.
 - The upstream test runner's tiers and the CI workflows do not run `bun test ./src` yet.
 - The install goldens record 2.11.3 over 2.11.2. The next upstream release needs them re-recorded from that release's commit.
 - The rebuild has two phases. Phase 1 is this branch: the build side runs through `src/`, and every shipped byte stays as it is. Phase 2 moves the runtime owners out of `core/tools/` into `src/`, so they ship in the runtime bundle. That is runtime code, so it is a separate change, and it is what retires every bridge below.
+
+## Foundation tests not on this branch
+
+- The 62 test files of the lint and process layer that this branch leaves out: 61 under `lint/` (14 lint rules, 47 gate) and `eslint.config.test.ts`. Four gate test files moved with the parity code into `scripts/parity/`.
+- `tests/unit/t-e2e-temporary-root.test.ts`: "an explicit root contains the descendant fixture and its cache" and "an unavailable explicit root refuses instead of choosing an OS fallback". They test a runner change to `tests/lib/e2e-workers.ts`, which this branch keeps as it is on `caea995ae`.
+- `tests/unit/t-runner-production-guards.test.ts`: "an explicit temp boundary keeps the isolated fixture workspace Git-free", for the same runner change.
+- `tests/unit/t-aidlc-lib-only-shrinks.test.ts`: "no monolith gains a top-level declaration or a line over its record", which used the lint layer's monolith records. The `caea995ae` case "aidlc-lib.ts declares no name that is not on its list" runs instead.
+- `tests/integration/t-e2e-isolated-runner.test.ts`: "copied coverage refuses stale sources without changing its registry" and "copied coverage prints a source refusal before changing its registry" moved to `tests/unit/t-package-sources.test.ts`, unchanged. They test `tests/gen-coverage-registry.ts` against the moved `src/packaging/adapters/packaged-sources-file.ts`.
 
 ## Branch history
 

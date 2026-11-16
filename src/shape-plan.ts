@@ -10,12 +10,19 @@ export type AddedFile = {
   readonly mode: string;
 };
 
+export type OptionalPatch = {
+  readonly name: string;
+  readonly file: string;
+  readonly pendingDecision: string;
+};
+
 export type ShapePlan = {
   readonly strippedFolders: readonly string[];
   readonly strippedFiles: readonly string[];
   readonly movedFiles: readonly MovedFile[];
   readonly pinnedFiles: readonly string[];
   readonly patchFolder: string;
+  readonly optionalPatches: readonly OptionalPatch[];
   readonly addedFiles: readonly AddedFile[];
   readonly bridgeMapSource: string;
   readonly bridgeMapPath: string;
@@ -76,10 +83,22 @@ export const SHAPE_PLAN: ShapePlan = {
     "tests/integration/t-runner-process-lifecycle.test.ts",
     "tests/unit/t-runner-production-guards.test.ts",
     "tests/unit/t-e2e-temporary-root.test.ts",
+    "tests/unit-shard-weights.json",
   ],
   patchFolder: "patches",
+  optionalPatches: [
+    {
+      name: "gitleaks-golden-allowlist",
+      file: "patches-optional/gitleaks-golden-allowlist.patch",
+      pendingDecision:
+        "- Pending decision: `.gitleaks.toml` allowlists `tests/golden/*.json` and `tests/golden/install/*.json` by path. " +
+        "The sha256 values in them sit under keys whose paths contain `api`, and gitleaks' `generic-api-key` rule reports them " +
+        "(21 findings). The alternative is a golden file format that rule does not match.",
+    },
+  ],
   addedFiles: [
     { path: `${PARITY}/dist-goldens.ts`, source: "overlay/scripts/parity/dist-goldens.ts", mode: "100644" },
+    { path: "tests/unit/t-package-sources.test.ts", source: "overlay/tests/unit/t-package-sources.test.ts", mode: "100644" },
   ],
   bridgeMapSource: "lint/context-map.ts",
   bridgeMapPath: "src/bridge-map.json",

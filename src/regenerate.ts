@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { bridgeMapFrom, bridgeMapJson, bridgeMapMarkdown } from "./bridge-map.ts";
 import { entryLine, gitIn, removalLine, type Git } from "./git.ts";
-import { isStripped, SHAPE_PLAN, type ShapePlan } from "./shape-plan.ts";
+import { isStripped, SHAPE_PLAN, type OptionalPatch, type ShapePlan } from "./shape-plan.ts";
 
 const TOOLING_ROOT = resolve(import.meta.dir, "..");
 const BRIDGE_MAP_TOKEN = "{{bridge-map}}";
+const PENDING_DECISIONS_TOKEN = "{{pending-decisions}}\n";
 const BLOB_MODE = "100644";
 
 const USAGE = [
@@ -17,6 +18,7 @@ const USAGE = [
   "  --parent <ref>      parent of the new commit (default: the foundation ref)",
   "  --branch <name>     branch to point at the new commit (default upstream-shape)",
   "  --verify            only compare the regenerated tree with the branch; exit 1 on drift",
+  "  --without <name>    leave out an optional patch (repeatable), e.g. gitleaks-golden-allowlist",
   "Twin parented on the pin:",
   "  bun src/regenerate.ts --repository <checkout> --parent caea995ae --branch upstream-shape-on-pin",
 ].join("\n");
@@ -42,6 +44,7 @@ type Options = {
   readonly parent: string | undefined;
   readonly branch: string;
   readonly verify: boolean;
+  readonly without: readonly string[];
 };
 
 const valueOf = (argv: readonly string[], flag: string): string | undefined =>
@@ -57,6 +60,7 @@ const optionsFrom = (argv: readonly string[]): Options | undefined => {
     parent: valueOf(argv, "--parent"),
     branch: valueOf(argv, "--branch") ?? "upstream-shape",
     verify: argv.includes("--verify"),
+    without: argv.flatMap((flag, index) => (flag === "--without" ? [argv[index + 1] ?? ""] : [])),
   };
 };
 
@@ -93,12 +97,27 @@ const applyPatches = (git: Git, plan: ShapePlan): void => {
   }
 };
 
+const includedOptionalPatches = (plan: ShapePlan, without: readonly string[]): readonly OptionalPatch[] => {
+  const unknown = without.filter((name) => !plan.optionalPatches.some((patch) => patch.name === name));
+  if (unknown.length > 0) throw new Error(`unknown optional patch: ${unknown.join(", ")}`);
+  return plan.optionalPatches.filter((patch) => !without.includes(patch.name));
+};
+
+const applyOptionalPatches = (git: Git, patches: readonly OptionalPatch[]): void => {
+  for (const patch of patches) git.applyToIndex(join(TOOLING_ROOT, patch.file));
+};
+
+const pendingDecisions = (patches: readonly OptionalPatch[]): string =>
+  patches.map((patch) => `${patch.pendingDecision}\n`).join("");
+
 const blobLine = (git: Git, path: string, content: string, mode: string): string =>
   entryLine(`${mode} ${git.storeBlob(content)}`, path);
 
-const addFiles = async (git: Git, plan: ShapePlan, foundation: string): Promise<void> => {
+const addFiles = async (git: Git, plan: ShapePlan, foundation: string, patches: readonly OptionalPatch[]): Promise<void> => {
   const map = await bridgeMapFrom(git.show(foundation, plan.bridgeMapSource));
-  const readme = toolingFile(plan.readmeTemplate).replace(BRIDGE_MAP_TOKEN, bridgeMapMarkdown(map));
+  const readme = toolingFile(plan.readmeTemplate)
+    .replace(BRIDGE_MAP_TOKEN, bridgeMapMarkdown(map))
+    .replace(PENDING_DECISIONS_TOKEN, pendingDecisions(patches));
   git.updateIndex([
     ...plan.addedFiles.map((file) => blobLine(git, file.path, toolingFile(file.source), file.mode)),
     blobLine(git, plan.bridgeMapPath, bridgeMapJson(map), BLOB_MODE),
@@ -113,7 +132,9 @@ const shapedTree = async (git: Git, options: Options): Promise<string> => {
   git.updateIndex(moves);
   pinFiles(git, SHAPE_PLAN, options.pin);
   applyPatches(git, SHAPE_PLAN);
-  await addFiles(git, SHAPE_PLAN, options.foundation);
+  const optional = includedOptionalPatches(SHAPE_PLAN, options.without);
+  applyOptionalPatches(git, optional);
+  await addFiles(git, SHAPE_PLAN, options.foundation, optional);
   return git.writeTree();
 };
 
