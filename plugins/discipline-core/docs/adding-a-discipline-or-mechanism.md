@@ -96,7 +96,7 @@ Create `mechanisms/<MechanismId>/runner/runner.ts`. The id is lower-case words j
 
 ```ts
 export const runner = toolchainBoundEmbeddedRunner({
-  toolchain: loadEslintToolchain({ modules: defaultEslintToolchainModules }),
+  toolchain: loadEslintToolchain({ peers: defaultEslintToolchainPeers }),
   projectedKinds: ESLINT_PROJECTED_KINDS,
   runnerOf: (toolchain) =>
     createEslintRunner({
@@ -108,9 +108,9 @@ export const runner = toolchainBoundEmbeddedRunner({
 });
 ```
 
-A runner whose tool comes from the adopting repository declares that tool as a peer dependency, loads it with a dynamic import through `loadedPeer` (`core/mechanism-port/toolchain-requirement.ts`), and binds itself to the result with `toolchainBoundStandaloneRunner` or `toolchainBoundEmbeddedRunner` (`core/mechanism-port/toolchain-bound-runner.ts`), so a missing or out-of-range tool is the failure `toolchain-unavailable` before any piece loads.
+A runner whose tool comes from the adopting repository declares that tool as an optional peer dependency with a `ToolchainRequirement` whose floor is the oldest release its API use is tested on, and is given a `PeerToolchain`: the package location port (`core/platform-ports/package-location-port.ts`) and a dynamic import per package. It loads each package through `loadedPeer` (`core/mechanism-port/toolchain-requirement.ts`) and binds itself to the result with `toolchainBoundStandaloneRunner` or `toolchainBoundEmbeddedRunner` (`core/mechanism-port/toolchain-bound-runner.ts`), which build the runner once. A missing, unloadable or out-of-range tool is the failure `toolchain-unavailable`, and one that resolves from inside the core install is `toolchain-shadowed`, both before any piece loads.
 
-Core loads `runner.ts` once per check and parses the export with its own schema (`core/mechanism-port/runner-module-schema.ts`). An unknown exception path, a missing member or a member that is not a function is the load failure `runner-invalid`. Core also parses everything a runner returns; a value outside its schema, a hit for a clause or file it was not asked about, or a call that throws or rejects is `runner-invalid-output`, and the check exits `2`. A runner reports its own failures as a `RunnerFailure` (`core/mechanism-port/runner-failure.ts`): `piece-invalid`, `tool-failed`, `file-unreadable`, `file-unparseable`, `plugin-conflict`, `team-config-unloadable`, `runner-invalid-output` or `toolchain-unavailable`.
+Core loads `runner.ts` once per check and parses the export with its own schema (`core/mechanism-port/runner-module-schema.ts`). An unknown exception path, a missing member or a member that is not a function is the load failure `runner-invalid`. Core also parses everything a runner returns; a value outside its schema, a hit for a clause or file it was not asked about, or a call that throws or rejects is `runner-invalid-output`, and the check exits `2`. A runner reports its own failures as a `RunnerFailure` (`core/mechanism-port/runner-failure.ts`): `piece-invalid`, `tool-failed`, `file-unreadable`, `file-unparseable`, `plugin-conflict`, `team-config-unloadable`, `runner-invalid-output`, `toolchain-unavailable` or `toolchain-shadowed`.
 
 Use core's ports (`core/platform-ports/`) for files, module loading and paths, and wrap the tool itself in one factory file that is the only place the tool's package is imported. The audit mechanism's is `typescript-parse.ts`; the ESLint runner's is `eslint-toolchain.ts` (`eslint`, `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin` and `typescript`), with `inline-config-parser.ts` the only importer of `@eslint/plugin-kit`.
 
@@ -192,4 +192,4 @@ The team spreads its default export last in its flat config; the projection is t
 
 ### Runtime
 
-The ESLint mechanism runs on the repository's own toolchain, declared as peers: `eslint` `^9.39.5 || ^10.11.0`, `@typescript-eslint/parser` and `@typescript-eslint/eslint-plugin` `^8.71.2` (the latter for the pieces that reuse its rules), and `typescript` `~6.0.3`. `@eslint/plugin-kit` is core's own dependency, imported directly because a transitive copy does not resolve under strict package managers. The development pins are `eslint` 10.11.0 and, as `eslint-9`, 9.39.5; the integration suite runs on both, against the consumer repositories in `mechanisms/eslint/runner/test-fixtures/`.
+The ESLint mechanism runs on the repository's own toolchain, declared as optional peers: `eslint` `^9.12.0 || ^10.0.0`, and `@typescript-eslint/parser` and `@typescript-eslint/eslint-plugin` `^8.56.0` (the latter for the pieces that reuse its rules). TypeScript is the parser's peer and the audit mechanism's, at `>=4.8.4 <7.0.0`. `@eslint/plugin-kit` is core's own dependency, imported directly because a transitive copy does not resolve under strict package managers. The development pins are `eslint` 10.11.0 and, as `eslint-9`, 9.39.5, with typescript-eslint 8.71.2, and each range's floor under a `-floor` alias; the integration suite runs on all four lines, against the consumer repositories in `mechanisms/eslint/runner/test-fixtures/`.

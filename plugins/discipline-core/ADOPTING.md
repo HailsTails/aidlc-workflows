@@ -32,13 +32,13 @@ git -C /tmp/discipline-core-source checkout <pinned-sha>
 
 The commands in this guide are POSIX shell; on Windows run them in Git Bash. On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
-Copy `package.json`, `package-lock.json`, `README.md`, `core/`, the why-chain contract page, every rule page, both mechanisms and the review methods, then remove the core's own tests:
+Copy the install manifest and lock from `install/` to the top of the install folder, then `README.md`, `core/`, the why-chain contract page, every rule page, both mechanisms and the review methods, then remove the core's own tests:
 
 ```bash
 SRC=/tmp/discipline-core-source/plugins/discipline-core
 DEST=tools/discipline-core
 mkdir -p "$DEST/docs"
-cp "$SRC/package.json" "$SRC/package-lock.json" "$SRC/README.md" "$DEST/"
+cp "$SRC/install/package.json" "$SRC/install/package-lock.json" "$SRC/README.md" "$DEST/"
 cp "$SRC/docs/why-chain-contract.md" "$DEST/docs/"
 cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
 find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
@@ -47,21 +47,26 @@ find "$DEST" -name '*.test.ts' -delete
 
 Copying everything is the simplest install. [README.md](README.md#installing) lists the smaller set a selection strictly needs, if you would rather copy only that.
 
-Install the core's own packages inside the install folder from its lockfile. They are `zod`, `jsonc-parser` and `@eslint/plugin-kit`; the flags leave out the core's development tooling and its peers:
+Install the core's own packages inside the install folder from its lockfile. The lock holds `zod`, `jsonc-parser`, `@eslint/plugin-kit` and the five packages they need, and nothing of the toolchain:
 
 ```bash
 cd tools/discipline-core
-npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund --ignore-scripts
+npm ci --no-audit --no-fund --ignore-scripts
 cd -
 ```
 
-Core runs on the repository's own toolchain, which `package.json` declares as peer dependencies. Make sure `<repo>/package.json` has it in its `devDependencies`, in these ranges: `typescript` `~6.0.3` always, and with any `eslint` clause also `eslint` `^9.39.5 || ^10.11.0`, `@typescript-eslint/parser` `^8.71.2` and `@typescript-eslint/eslint-plugin` `^8.71.2`. A repository that already has them in range needs nothing more. Otherwise, for example:
+Core runs on the toolchain the repository already uses, which `package.json` declares as optional peer dependencies. Keep the versions you have; core supports these ranges:
 
-```bash
-npm install --save-dev typescript@~6.0.3 eslint@^10.11.0 @typescript-eslint/parser@^8.71.2 @typescript-eslint/eslint-plugin@^8.71.2
-```
+| Package | Needed for | Range |
+| --- | --- | --- |
+| `typescript` | any `audit` clause | `>=4.8.4 <7.0.0` |
+| `eslint` | any `eslint` clause | `^9.12.0 \|\| ^10.0.0` |
+| `@typescript-eslint/parser` | any `eslint` clause | `^8.56.0` |
+| `@typescript-eslint/eslint-plugin` | any `eslint` clause | `^8.56.0` |
 
-Core finds these by Node's resolution upward from `tools/discipline-core/`, so in a monorepo declare them in the root `package.json` (with pnpm, `pnpm add -Dw`), even where packages also declare their own.
+A repository that already has them in range needs nothing more. A package that is missing or out of range is named when the check runs; add it at a version inside its range and inside the range your other tooling accepts, without moving ESLint or TypeScript to another major for core's sake.
+
+Core finds these by Node's resolution upward from `tools/discipline-core/`, so in a monorepo they must resolve from the repository root: declare them in the root `package.json` (with pnpm, `pnpm add -Dw` at the versions the packages already use), even where packages also declare their own. Yarn Plug'n'Play is not supported, because core resolves the toolchain through `node_modules`.
 
 Add `tools/discipline-core/node_modules/` to `<repo>/.gitignore`, and commit `tools/discipline-core/` with a message that names the pinned SHA. To update later, repeat this step with a newer SHA.
 
@@ -148,7 +153,7 @@ In a monorepo, every `eslint.config.*` that applies to checked files spreads the
 { "eslintConfigLookup": "nearest-to-file" }
 ```
 
-Use `"nearest-to-file"` when ESLint runs per package, with ESLint 10, or with ESLint 9 and `--flag v10_config_lookup_from_file`. Use `"repository-root"` for one ESLint 9 run from the repository root, whose root `eslint.config.*` then applies to every file. To confirm the setting, lint a package file the way the team does (for example `pnpm exec eslint packages/a/src/x.ts` from where the lint script runs) and check that it reports the same finding the core check lists for that file.
+Use `"nearest-to-file"` when ESLint runs per package, with ESLint 10, or with ESLint 9 and `--flag v10_config_lookup_from_file` (on 9.12 to 9.29, `--flag unstable_config_lookup_from_file`). Use `"repository-root"` for one ESLint 9 run from the repository root, whose root `eslint.config.*` then applies to every file. To confirm the setting, lint a package file the way the team does (for example `pnpm exec eslint packages/a/src/x.ts` from where the lint script runs) and check that it reports the same finding the core check lists for that file.
 
 Commit both files. Core's check reads this configuration and fails if the projection is missing, not in effect, or out of date, so re-run `project-command` whenever `disciplines.json` or `discipline-exceptions.json` changes. Core's own ESLint run uses the repository's root `eslint` from step 2, the same copy the projection's pieces load; its verdict is the same on 9.x and 10.x. [README.md](README.md#adopting-the-eslint-mechanism) has the details.
 
@@ -164,7 +169,7 @@ node tools/discipline-core/core/check/check-command.ts --repo .
 | `1` | `verdict: fail`: the report says why |
 | `2` | an input could not be loaded or a check crashed; the output is one line starting `load failure:` or names the failing piece |
 
-A Node stack trace such as `ERR_MODULE_NOT_FOUND ... 'zod'` instead of a report means the core's own packages from step 2 are not installed in `tools/discipline-core/node_modules`. A `load failure: runner-failed <mechanism> toolchain-unavailable <package> ...` line names a toolchain package that is missing from the repository root or outside its range; install a version in the range it prints.
+A Node stack trace such as `ERR_MODULE_NOT_FOUND ... 'zod'` instead of a report means the core's own packages from step 2 are not installed in `tools/discipline-core/node_modules`. A `load failure: runner-failed <mechanism> toolchain-unavailable <package> ...` line names a toolchain package that is missing from the repository root or outside its range; install a version in the range it prints. A `toolchain-shadowed <package> resolved from ...` line means a copy of that package sits inside `tools/discipline-core/node_modules`, left by an older install: delete that folder and run step 2's `npm ci` again.
 
 If the report lists findings under `tools/discipline-core/`, the `exclude` entry from step 4 is missing.
 
@@ -264,7 +269,7 @@ To use an agent, give it the lens file, the rule pages it names, the change and 
 
 ## 10. Update and remove
 
-To update, repeat step 2 on a branch with a newer pinned SHA, compare the copied rule pages with the old ones, re-run `project-command` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages. Before updating to a pin that has the causal why-chain contract, follow [MIGRATING.md section 8](MIGRATING.md#8-moving-to-causal-why-chains): pass `--base-revision` first, or the update's check reports `legacy-chain-unmeasured`. Before updating to a pin whose `package.json` has `peerDependencies`, follow [MIGRATING.md section 9](MIGRATING.md#9-moving-core-onto-the-repositorys-toolchain).
+To update, repeat step 2 on a branch with a newer pinned SHA, compare the copied rule pages with the old ones, re-run `project-command` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages. Before updating to a pin that has the causal why-chain contract, follow [MIGRATING.md section 8](MIGRATING.md#8-moving-to-causal-why-chains): pass `--base-revision` first, or the update's check reports `legacy-chain-unmeasured`. Before updating to a pin that ships `install/package.json`, follow [MIGRATING.md section 9](MIGRATING.md#9-moving-core-onto-the-repositorys-toolchain).
 
 To remove, delete `tools/discipline-core/`, `disciplines.json`, `discipline-exceptions.json` and, with `eslint` clauses, `disciplines.eslint.mjs` and its spread in the flat config, and take the check out of the validation script.
 
