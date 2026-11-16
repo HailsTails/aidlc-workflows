@@ -24,6 +24,15 @@ Wraps the project's configured type-checker. v0.5.0 defaults to tsc;
 multi-language auto-detection (mypy, go vet, cargo-check) is deferred
 to v0.6.0+.
 
+`tsc` is the one the project itself installed, resolved from the nearest
+`node_modules/typescript` at or above the `tsconfig.json` directory, never from
+`PATH` and never downloaded. When TypeScript is not installed the sensor exits
+127 with `tsc-unavailable` and writes a message naming what to install to its
+stderr, which you see when you run the sensor directly. The dispatcher records
+only a `tool-unavailable` note for that fire, an unavailable check rather than
+a verified pass. Install `typescript` as a
+devDependency of the repository to enable it.
+
 Echoes Fowler's "type checkers" example from the harness-engineering article.
 
 ## Failure mode

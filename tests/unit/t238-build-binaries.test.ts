@@ -297,6 +297,7 @@ describe("t238 build-binaries release builder", () => {
       "runtime-assets",
       "sensor-list",
       "run-sensors",
+      "bundled-code-sensors",
       "graph-compile-check",
       "packaged-runtime-immutable",
       "validate-outputs",

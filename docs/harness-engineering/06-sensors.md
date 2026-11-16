@@ -64,7 +64,7 @@ Six manifests ship under `.claude/sensors/`, each prefixed `aidlc-`:
 | `aidlc-required-sections.md` | Gate | The output carries the required H2 headings — a generic content-shape check. Timestamp run records (`*-timestamp.md`) always pass |
 | `aidlc-upstream-coverage.md` | Gate | The stage's deliverables (evaluated as a set) reference each upstream artifact the stage declares it consumes, by slug, wikilink, or the producing stage's directory path |
 | `aidlc-traceability.md` | Write: `**/traceability.json` | Validates stable upstream IDs, statuses, deterministic targets, and derived business-rule orphans |
-| `aidlc-linter.md` | Write: `.ts` / `.js` | Runs `package.json` lint when present; otherwise pinned ESLint |
+| `aidlc-linter.md` | Write: `.ts` / `.js` | Runs `package.json` lint when present; otherwise the project's installed ESLint |
 | `aidlc-type-check.md` | Write: `.ts` / `.tsx` | Wraps your configured type-checker (`tsc` by default) |
 
 All six are gated by a `matches:` glob (more on that below): the provenance
@@ -264,8 +264,10 @@ suffix flags from the sensor manifest command. For direct invocation use
 override the process defaults.
 
 Project mode reports missing scripts as unavailable instead of trying ESLint.
-Default `auto` retains the pinned ESLint fallback when a script is absent;
-explicit `eslint` selects that fallback. Conflicting manager hints, malformed
+Default `auto` runs the project's own installed ESLint (9 or later) when a
+script is absent; explicit `eslint` selects it. Neither ever downloads ESLint:
+without a local install the fire is recorded as `tool-unavailable`, and running
+the sensor directly prints what to install. Conflicting manager hints, malformed
 metadata and failed commands are not verified lint passes. Configure CD
 coverage separately in the consumer's ESLint/Biome rules and discipline
 sensors. Full adoption and failure details: `core/sensors/aidlc-linter.md`.
