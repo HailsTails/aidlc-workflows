@@ -3,8 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { bridgeMapFrom, bridgeMapJson, bridgeMapMarkdown } from "./bridge-map.ts";
-import { contributorFrom, signedBy } from "./contributor.ts";
-import { entryLine, gitIn, removalLine, type Git } from "./git.ts";
+import { entryLine, gitIn, removalLine, type Git, type Identity } from "./git.ts";
 import { pinFactsFrom, type PinFacts } from "./pin-facts.ts";
 import { isStripped, SHAPE_PLAN, type OptionalPatch, type ShapePlan } from "./shape-plan.ts";
 
@@ -27,9 +26,13 @@ const USAGE = [
   "  --without <name>    leave out an optional patch (repeatable), e.g. gitleaks-golden-allowlist",
   "Twin parented on the pin:",
   "  bun src/regenerate.ts --repository <checkout> --pin <commit> --parent <commit> --branch upstream-shape-on-pin",
-  "The commit is authored and committed by the global git identity (git config --global user.name and",
-  "user.email), never a bot, with the foundation tip's dates.",
+  "The commit is authored and committed by HailsTails <9475175+HailsTails@users.noreply.github.com>,",
+  "whatever the git config says, with the foundation tip's dates and no Co-Authored-By trailer.",
 ].join("\n");
+
+const CONTRIBUTOR = { name: "HailsTails", email: "9475175+HailsTails@users.noreply.github.com" } as const;
+
+const contributedOn = (date: string): Identity => ({ ...CONTRIBUTOR, date });
 
 const messageFor = (facts: PinFacts): string =>
   [
@@ -171,13 +174,12 @@ const commit = (git: Git, options: Options, tree: string, facts: PinFacts): numb
   const foundation = git.resolve(options.foundation);
   const parent = git.resolve(options.parent ?? foundation);
   const dates = git.identityOf(foundation);
-  const contributor = contributorFrom(git);
   const sha = git.commitTree({
     tree,
     parent,
     message: messageFor(facts),
-    author: signedBy(contributor, dates.author.date),
-    committer: signedBy(contributor, dates.committer.date),
+    author: contributedOn(dates.author.date),
+    committer: contributedOn(dates.committer.date),
   });
   git.updateBranch(options.branch, sha);
   process.stdout.write(`${options.branch} -> ${sha} (tree ${tree}, parent ${parent})\n`);

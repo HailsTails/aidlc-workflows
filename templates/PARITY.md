@@ -67,7 +67,7 @@ This branch is one commit on top of the rebuild's own history. The same tree as 
 bun src/regenerate.ts --repository <checkout> --pin {{pin}} --parent {{pin}} --branch upstream-shape-on-pin
 ```
 
-The regenerated commit is authored and committed by the global git identity (`git config --global user.name` and `user.email`), with no `Co-Authored-By` trailer, so it needs no re-authoring before it goes upstream. A repository-local identity, such as a bot's, is not used.
+The regenerated commit is authored and committed by `HailsTails <9475175+HailsTails@users.noreply.github.com>`, set in the tooling and never read from git config, with no `Co-Authored-By` trailer, so it needs no re-authoring before it goes upstream.
 
 ## Bridge map
 
