@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-type PathClass = "retained" | "replaced" | "outside-build";
+export type PathClass = "retained" | "replaced" | "outside-build";
 
-type CommitRoute = "retained" | "replaced" | "mixed" | "outside-build";
+export type CommitRoute = "retained" | "replaced" | "mixed" | "outside-build";
 
-type Bridge = {
+export type Bridge = {
   readonly module: string;
   readonly readBy: string;
 };
 
-type Scrutiny = "routine" | "dual-use" | "legacy-script" | "added in range";
+export type Scrutiny = "routine" | "dual-use" | "legacy-script" | "added in range";
 
-type RoutedPath = {
+export type RoutedPath = {
   readonly path: string;
   readonly kind: PathClass;
   readonly owner: string;
@@ -22,9 +22,9 @@ type RoutedPath = {
   readonly atHead: HeadState;
 };
 
-type HeadState = "upstream bytes" | "upstream bytes plus foundation's unchanged delta" | "differs from upstream" | "absent";
+export type HeadState = "upstream bytes" | "upstream bytes plus foundation's unchanged delta" | "differs from upstream" | "absent";
 
-type RoutedCommit = {
+export type RoutedCommit = {
   readonly sha: string;
   readonly pullRequest: string;
   readonly subject: string;
@@ -32,9 +32,9 @@ type RoutedCommit = {
   readonly paths: readonly RoutedPath[];
 };
 
-type Judgements = Readonly<Record<string, string>>;
+export type Judgements = Readonly<Record<string, string>>;
 
-type Options = {
+export type Options = {
   readonly repository: string;
   readonly from: string;
   readonly to: string;
@@ -65,7 +65,7 @@ const valueOf = (argv: readonly string[], flag: string): string | undefined => {
   return at === -1 ? undefined : argv[at + 1];
 };
 
-const optionsFrom = (argv: readonly string[]): Options | undefined => {
+export const optionsFrom = (argv: readonly string[]): Options | undefined => {
   const values = ["--repository", "--from", "--to", "--foundation-before", "--head", "--bridge-map", "--judgements"]
     .map((flag) => valueOf(argv, flag));
   const [repository, from, to, foundationBefore, head, bridgeMap, judgements] = values;
@@ -79,20 +79,20 @@ const CONFLICTED_MERGE_EXIT = 1;
 
 type Git = (args: readonly string[], accepted?: readonly number[]) => string;
 
-const gitIn = (repository: string): Git => (args, accepted = [0]) => {
+export const gitIn = (repository: string): Git => (args, accepted = [0]) => {
   const run = Bun.spawnSync(["git", "-C", repository, ...args], { stdout: "pipe", stderr: "pipe" });
   if (!accepted.includes(run.exitCode)) throw new Error(`git ${args.join(" ")}: ${run.stderr.toString()}`);
   return run.stdout.toString();
 };
 
-const nulSeparated = (text: string): readonly string[] => text.split("\0").filter((entry) => entry !== "");
+export const nulSeparated = (text: string): readonly string[] => text.split("\0").filter((entry) => entry !== "");
 
-const lineSeparated = (text: string): readonly string[] => text.split("\n").filter((entry) => entry !== "");
+export const lineSeparated = (text: string): readonly string[] => text.split("\n").filter((entry) => entry !== "");
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+export const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const bridgesFrom = (file: string): readonly Bridge[] => {
+export const bridgesFrom = (file: string): readonly Bridge[] => {
   const parsed: unknown = JSON.parse(readFileSync(file, "utf-8"));
   const bridges = isRecord(parsed) ? parsed["bridges"] : undefined;
   if (!Array.isArray(bridges)) throw new Error(`${file} has no bridges list`);
@@ -104,7 +104,7 @@ const bridgesFrom = (file: string): readonly Bridge[] => {
   });
 };
 
-const judgementsFrom = (file: string): Judgements => {
+export const judgementsFrom = (file: string): Judgements => {
   const parsed: unknown = JSON.parse(readFileSync(file, "utf-8"));
   if (!isRecord(parsed)) throw new Error(`${file} is not an object of judgements`);
   return Object.fromEntries(Object.entries(parsed).flatMap(([sha, text]) =>
@@ -240,7 +240,7 @@ const bridgedReadsTouchedBy = (request: {
   });
 };
 
-const routedCommits = (options: Options): readonly RoutedCommit[] => {
+export const routedCommits = (options: Options): readonly RoutedCommit[] => {
   const git = gitIn(options.repository);
   const bridges = bridgesFrom(options.bridgeMap);
   const atFrom = new Set(nulSeparated(git(["ls-tree", "-r", "-z", "--name-only", options.from])));
@@ -323,4 +323,4 @@ const main = (argv: readonly string[]): number => {
   return unjudged.length === 0 ? 0 : 1;
 };
 
-process.exit(main(Bun.argv.slice(2)));
+if (import.meta.main) process.exit(main(Bun.argv.slice(2)));
