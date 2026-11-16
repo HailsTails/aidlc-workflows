@@ -17,25 +17,18 @@ export const installRootAboveEntry = (request: {
 
 export type ModuleExtension = ".ts" | ".js";
 
-const BUILT_MODULE_EXTENSION: ModuleExtension = ".js";
+export const BUILT_MODULE_EXTENSION: ModuleExtension = ".js";
 
 const SOURCE_MODULE_EXTENSION: ModuleExtension = ".ts";
 
 export const moduleExtensionOf = (request: { readonly moduleUrl: string }): ModuleExtension =>
   new URL(request.moduleUrl).pathname.endsWith(BUILT_MODULE_EXTENSION) ? BUILT_MODULE_EXTENSION : SOURCE_MODULE_EXTENSION;
 
-export const CORE_MODULE_EXTENSION: ModuleExtension = moduleExtensionOf({ moduleUrl: import.meta.url });
-
 export const runnerModuleSegmentsOf = (request: {
   readonly installRoot: string;
   readonly mechanism: string;
   readonly moduleExtension: ModuleExtension;
 }): readonly string[] => [request.installRoot, "mechanisms", request.mechanism, "runner", `runner${request.moduleExtension}`];
-
-export const installedRunnerSegments = (request: {
-  readonly installRoot: string;
-  readonly mechanism: string;
-}): readonly string[] => runnerModuleSegmentsOf({ ...request, moduleExtension: CORE_MODULE_EXTENSION });
 
 const MODULE_EXTENSIONS: readonly ModuleExtension[] = [SOURCE_MODULE_EXTENSION, BUILT_MODULE_EXTENSION];
 

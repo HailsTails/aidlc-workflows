@@ -40,7 +40,7 @@ const ESLINT_INSTALL_LIST = new RegExp(`^${ESLINT_INSTALLED}$`);
 
 const WALKER_READABLE = new RegExp(String.raw`^(?:${WALKER_INSTALLED}|tests\/test-fixtures\/consumer-proof\/audit\/.*)$`);
 
-const ESLINT_READABLE = new RegExp(String.raw`^(?:package\.json|${ESLINT_INSTALLED}|tests\/test-fixtures\/consumer-proof\/eslint\/.*)$`);
+const ESLINT_READABLE = new RegExp(String.raw`^(?:${ESLINT_INSTALLED}|tests\/test-fixtures\/consumer-proof\/eslint\/.*)$`);
 
 const NO_HARNESS_SEGMENT = /^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/;
 
@@ -73,7 +73,7 @@ const observedPorts = (): ObservedPorts => {
       runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: defaultParsePort }),
     },
     [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })]: {
-      runner: createEslintRunner({ fileText, modules: pieceModules, path, eslint: defaultEslintPort }),
+      runner: createEslintRunner({ fileText, modules: pieceModules, path, eslint: defaultEslintPort, moduleExtension: ".ts" }),
     },
   };
   const runnerModules: ModuleLoaderPort = {
@@ -104,6 +104,7 @@ const checkOf = (request: {
   runCheck({
     repoRoot: request.repo,
     installRoot: INSTALL_ROOT,
+    moduleExtension: ".ts",
     baseRevision: undefined,
     fileText: request.ports.fileText,
     modules: request.ports.runnerModules,
@@ -115,6 +116,7 @@ const projectOf = (request: { readonly repo: AbsolutePath; readonly ports: Obser
   runProject({
     repoRoot: request.repo,
     installRoot: INSTALL_ROOT,
+    moduleExtension: ".ts",
     fileText: request.ports.fileText,
     modules: request.ports.runnerModules,
     path,

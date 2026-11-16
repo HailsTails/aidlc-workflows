@@ -20,6 +20,7 @@ import type { ModuleLoad, ModuleLoaderPort } from "../../../core/platform-ports/
 import type { PathPort } from "../../../core/platform-ports/path-port.ts";
 import { type AbsolutePath, absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { sameClauseAddress } from "../../../core/values/clause-address.ts";
+import type { ModuleExtension } from "../../../core/values/install-layout.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
 import { type CoreInstall, coreInstallOf } from "./core-install.ts";
@@ -55,6 +56,7 @@ export type EslintRunnerPorts = {
   readonly modules: ModuleLoaderPort;
   readonly path: PathPort;
   readonly eslint: EslintPort;
+  readonly moduleExtension: ModuleExtension;
 };
 
 type Outcome<Value> = Result<Value, RunnerFailure>;
@@ -1117,7 +1119,12 @@ const importOriginOf = (request: {
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
 }): Outcome<ImportOrigin> => {
-  const install = coreInstallOf({ fileText: request.ports.fileText, path: request.ports.path, installRoot: request.installRoot });
+  const install = coreInstallOf({
+    fileText: request.ports.fileText,
+    path: request.ports.path,
+    installRoot: request.installRoot,
+    moduleExtension: request.ports.moduleExtension,
+  });
   return install.outcome === "failed" ? install : { outcome: "ok", value: { repoRoot: request.repoRoot, install: install.value } };
 };
 

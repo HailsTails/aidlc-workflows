@@ -20,6 +20,7 @@ describe("eslintPieceSettingsSchema", () => {
 
   it.each([
     "../x.ts",
+    "../x.js",
     "cd14/../../x.ts",
     "./x.ts",
     "cd14//x.ts",

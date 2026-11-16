@@ -201,6 +201,7 @@ const GIT: GitPort = {
 const projectRequest = (overrides: Partial<ProjectRequest>): ProjectRequest => ({
   repoRoot: absolutePathSchema.parse("/repo"),
   installRoot: absolutePathSchema.parse("/install"),
+  moduleExtension: ".ts",
   fileText: fileTextOver(INSTALL),
   modules: modulesLoading({ runner: standaloneRunner() }),
   path: TABLE_PATH,

@@ -28,7 +28,7 @@ import type { PathPort } from "../platform-ports/path-port.ts";
 import { computeTouchedSet, type TouchedSet } from "../touched-set/touched-set.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
 import type { MechanismId } from "../values/identifiers.ts";
-import { installedRunnerSegments } from "../values/install-layout.ts";
+import { type ModuleExtension, runnerModuleSegmentsOf } from "../values/install-layout.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
 import { whyChainFormOf } from "../values/why-chain.ts";
@@ -39,6 +39,7 @@ import { type MechanismRun, runMechanism } from "./mechanism-dispatch.ts";
 export type CheckRequest = {
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
+  readonly moduleExtension: ModuleExtension;
   readonly baseRevision: string | undefined;
   readonly fileText: FileTextPort;
   readonly modules: ModuleLoaderPort;
@@ -108,7 +109,7 @@ const loadRunner = async (
 ): Promise<Result<LoadedRunner, LoadFailure>> => {
   const loaded = await request.modules.load({
     path: request.path.join({
-      segments: installedRunnerSegments({ installRoot: request.installRoot, mechanism: request.mechanism }),
+      segments: runnerModuleSegmentsOf({ installRoot: request.installRoot, mechanism: request.mechanism, moduleExtension: request.moduleExtension }),
     }),
   });
   if (loaded.outcome === "failed") {

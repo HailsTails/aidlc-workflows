@@ -26,7 +26,7 @@ import {
   mechanismIdSchema,
   ruleSetNameSchema,
 } from "../values/identifiers.ts";
-import { installedRunnerSegments } from "../values/install-layout.ts";
+import { type ModuleExtension, runnerModuleSegmentsOf } from "../values/install-layout.ts";
 import type { Result } from "../values/result.ts";
 import type { ClauseBinding, SelectionReading } from "./selection.ts";
 
@@ -39,6 +39,7 @@ export type SelectionRepository = {
 export const createSelectionRepository = (options: {
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
+  readonly moduleExtension: ModuleExtension;
   readonly fileText: FileTextPort;
   readonly path: PathPort;
 }): SelectionRepository => ({
@@ -48,6 +49,7 @@ export const createSelectionRepository = (options: {
 export const createDefaultSelectionRepository = (options: {
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
+  readonly moduleExtension: ModuleExtension;
 }): SelectionRepository => createSelectionRepository({
   ...options,
   fileText: createDefaultFileTextPort({}),
@@ -143,6 +145,7 @@ type ClauseRequest = {
   readonly fileText: FileTextPort;
   readonly path: PathPort;
   readonly installRoot: AbsolutePath;
+  readonly moduleExtension: ModuleExtension;
   readonly ruleSetRoot: AbsolutePath;
   readonly address: ClauseAddress;
   readonly mechanism: MechanismId;
@@ -222,7 +225,7 @@ type PieceEntry = { readonly piece: PieceFile; readonly settings: unknown };
 
 const pieceEntry = (request: PieceRequest): Result<PieceEntry, LoadFailure> => {
   const runnerPath = request.path.join({
-    segments: installedRunnerSegments({ installRoot: request.installRoot, mechanism: request.mechanism }),
+    segments: runnerModuleSegmentsOf({ installRoot: request.installRoot, mechanism: request.mechanism, moduleExtension: request.moduleExtension }),
   });
   if (request.fileText.exists({ path: runnerPath }) === "absent") {
     return failed({ kind: "runner-missing", mechanism: request.mechanism });
@@ -272,6 +275,7 @@ const resolveClause = (request: {
   readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
+  readonly moduleExtension: ModuleExtension;
   readonly ruleSets: ConsumerSelectionFile["ruleSets"];
   readonly address: ClauseAddress;
   readonly mechanism: MechanismId;
@@ -341,6 +345,7 @@ const resolvedClauses = (request: {
   readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
+  readonly moduleExtension: ModuleExtension;
   readonly file: ConsumerSelectionFile;
 }): Result<readonly ResolvedClause[], LoadFailure> =>
   request.file.clauses.reduce<Result<readonly ResolvedClause[], LoadFailure>>(
@@ -407,6 +412,7 @@ export const readSelection = (request: {
   readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
+  readonly moduleExtension: ModuleExtension;
 }): Result<SelectionReading, LoadFailure> => {
   const file = parsedSelectionFile({
     fileText: request.fileText,

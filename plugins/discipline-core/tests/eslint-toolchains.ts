@@ -155,6 +155,7 @@ export const eslintRunnerOn = (request: { readonly line: EslintLine }): Embedded
         modules: pieceModulesOn({ line: request.line, base: createDefaultModuleLoaderPort({}) }),
         path: createDefaultPathPort({}),
         eslint: createEslintPort({ toolchain }),
+        moduleExtension: ".ts",
       }),
   });
 

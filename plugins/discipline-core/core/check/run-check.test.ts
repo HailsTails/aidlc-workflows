@@ -320,6 +320,7 @@ const MEASURED_GIT = gitReporting({
 const checkRequest = (overrides: Partial<CheckRequest>): CheckRequest => ({
   repoRoot: REPO_ROOT,
   installRoot: INSTALL_ROOT,
+  moduleExtension: ".ts",
   baseRevision: "main",
   fileText: fileTextOver(INSTALL),
   modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) }),

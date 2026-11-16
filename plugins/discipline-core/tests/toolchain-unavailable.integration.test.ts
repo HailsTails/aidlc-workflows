@@ -58,7 +58,7 @@ const eslintRunnerLocatingBy = (request: { readonly pieces: ModuleLoaderPort; re
     toolchain: loadEslintToolchain({ peers: { ...eslintPeersOn({ line: "eslint-10" }), location: request.location } }),
     projectedKinds: ESLINT_PROJECTED_KINDS,
     runnerOf: (toolchain) =>
-      createEslintRunner({ fileText, modules: request.pieces, path, eslint: createEslintPort({ toolchain }) }),
+      createEslintRunner({ fileText, modules: request.pieces, path, eslint: createEslintPort({ toolchain }), moduleExtension: ".ts" }),
   });
 
 const auditRunnerWithoutTypescript = (request: { readonly pieces: ModuleLoaderPort }) =>
@@ -71,6 +71,7 @@ const checkWith = (request: { readonly fixture: string; readonly runner: unknown
   runCheck({
     repoRoot: absolutePathSchema.parse(`${INSTALL_ROOT}/${request.fixture}`),
     installRoot: INSTALL_ROOT,
+    moduleExtension: ".ts",
     baseRevision: undefined,
     fileText,
     modules: {

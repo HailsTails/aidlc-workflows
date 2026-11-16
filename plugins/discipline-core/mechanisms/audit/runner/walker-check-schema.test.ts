@@ -15,6 +15,7 @@ describe("walkerPieceSettingsSchema", () => {
 
   it.each([
     "../x.ts",
+    "../x.js",
     "x.mjs",
     "x",
   ])("refuses the module %j", (module) => {

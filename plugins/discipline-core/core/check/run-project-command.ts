@@ -2,6 +2,7 @@ import type { ProjectionWrite } from "../mechanism-port/runner-result-schema.ts"
 import type { Result } from "../values/result.ts";
 import { parseProjectArguments } from "./command-arguments-schema.ts";
 import { projectCommandOutcome } from "./command-outcome.ts";
+import { moduleExtensionOf } from "../values/install-layout.ts";
 import { installRootOf } from "./install-root.ts";
 import type { LoadFailure } from "./load-failure.ts";
 import { type CommandRequest, printOutcome, repoRootOf } from "./run-check-command.ts";
@@ -23,6 +24,7 @@ const projectResult = (request: CommandRequest): Promise<Result<readonly Project
   return runProject({
     repoRoot: repoRoot.value,
     installRoot: installRoot.value,
+    moduleExtension: moduleExtensionOf({ moduleUrl: request.moduleUrl }),
     fileText: request.fileText,
     modules: request.modules,
     path: request.path,

@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPathPort } from "../platform-ports/path-port.ts";
 import {
-  CORE_MODULE_EXTENSION,
-  installedRunnerSegments,
   installRootAboveEntry,
   moduleExtensionOf,
   moduleFileForm,
@@ -56,15 +54,6 @@ describe("runnerModuleSegmentsOf", () => {
       "runner",
       "runner.ts",
     ]);
-  });
-});
-
-describe("installedRunnerSegments", () => {
-  it("names the runner module in the form of the code now running, here source", () => {
-    expect({
-      running: CORE_MODULE_EXTENSION,
-      segments: installedRunnerSegments({ installRoot: "/install", mechanism: "audit" }),
-    }).toEqual({ running: ".ts", segments: ["/install", "mechanisms", "audit", "runner", "runner.ts"] });
   });
 });
 

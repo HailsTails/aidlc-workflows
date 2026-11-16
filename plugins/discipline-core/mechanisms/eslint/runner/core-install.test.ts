@@ -32,34 +32,45 @@ const fileTextFailingToRead: FileTextPort = {
 };
 
 describe("coreInstallOf", () => {
-  it("is a package named by the install's package.json, as a built package install ships it", () => {
+  it("is a package when built core runs from an install whose package.json names it, as a built package install ships it", () => {
     expect(
-      coreInstallOf({ fileText: fileTextHolding({ text: '{ "name": "discipline-core", "type": "module" }' }), path: posixPath, installRoot: INSTALL_ROOT }),
+      coreInstallOf({ fileText: fileTextHolding({ text: '{ "name": "discipline-core", "type": "module" }' }), path: posixPath, installRoot: INSTALL_ROOT, moduleExtension: ".js" }),
     ).toEqual({ outcome: "ok", value: { form: "package", root: INSTALL_ROOT, name: "discipline-core" } });
   });
 
   it("is a folder when the install's package.json names no package, as the copy route's install manifest does", () => {
     expect(
-      coreInstallOf({ fileText: fileTextHolding({ text: '{ "private": true, "type": "module" }' }), path: posixPath, installRoot: INSTALL_ROOT }),
+      coreInstallOf({ fileText: fileTextHolding({ text: '{ "private": true, "type": "module" }' }), path: posixPath, installRoot: INSTALL_ROOT, moduleExtension: ".js" }),
+    ).toEqual({ outcome: "ok", value: { form: "folder" } });
+  });
+
+  it("is a folder when core runs from source, even when a copied install's package.json names a package", () => {
+    expect(
+      coreInstallOf({
+        fileText: fileTextHolding({ text: '{ "name": "tools-discipline-core", "type": "module" }' }),
+        path: posixPath,
+        installRoot: INSTALL_ROOT,
+        moduleExtension: ".ts",
+      }),
     ).toEqual({ outcome: "ok", value: { form: "folder" } });
   });
 
   it("is a folder when the install has no package.json", () => {
-    expect(coreInstallOf({ fileText: fileTextWithoutManifest, path: posixPath, installRoot: INSTALL_ROOT })).toEqual({
+    expect(coreInstallOf({ fileText: fileTextWithoutManifest, path: posixPath, installRoot: INSTALL_ROOT, moduleExtension: ".js" })).toEqual({
       outcome: "ok",
       value: { form: "folder" },
     });
   });
 
   it("fails as tool-failed naming the manifest when it cannot be read", () => {
-    expect(coreInstallOf({ fileText: fileTextFailingToRead, path: posixPath, installRoot: INSTALL_ROOT })).toEqual({
+    expect(coreInstallOf({ fileText: fileTextFailingToRead, path: posixPath, installRoot: INSTALL_ROOT, moduleExtension: ".js" })).toEqual({
       outcome: "failed",
       error: { kind: "tool-failed", detail: `the core install's ${MANIFEST} cannot be read: EACCES` },
     });
   });
 
   it("fails as tool-failed naming the manifest when it is not JSON", () => {
-    expect(coreInstallOf({ fileText: fileTextHolding({ text: "{ name" }), path: posixPath, installRoot: INSTALL_ROOT })).toMatchObject({
+    expect(coreInstallOf({ fileText: fileTextHolding({ text: "{ name" }), path: posixPath, installRoot: INSTALL_ROOT, moduleExtension: ".js" })).toMatchObject({
       outcome: "failed",
       error: { kind: "tool-failed", detail: expect.stringContaining(`the core install's ${MANIFEST} is not JSON:`) },
     });
