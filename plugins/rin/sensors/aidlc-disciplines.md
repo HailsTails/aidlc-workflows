@@ -25,8 +25,8 @@ This sensor binds rin's per-edit constitution feedback to discipline-core in a
 repository that adopted it. It reads `constitution.engine` from
 `harness.config.json` in the checkout that holds the edited file.
 
-- **`discipline-core`.** The sensor runs
-  `node tools/discipline-core/core/check/check-command.ts --repo <checkout>`,
+- **`discipline-core`.** The sensor runs the installed package's check,
+  `node node_modules/discipline-core/core/check/check-command.js --repo <checkout>`,
   adding `--base-revision` when `constitution.baseRevision` is set. It runs in
   that checkout with its own packages. It reports the `findings` lines whose
   file is the edited file. Selection, scope and exceptions come from

@@ -401,8 +401,8 @@ and a true rules-only install/update/removal selection remain backlog gaps.
 ## 6. Moving to discipline-core
 
 A repository that adopts discipline-core (`disciplines.json`,
-`discipline-exceptions.json`, `tools/discipline-core/`) replaces this route.
-Follow `tools/discipline-core/MIGRATING.md`. If the repository also runs the
+`discipline-exceptions.json`, the `discipline-core` package) replaces this route.
+Follow `node_modules/discipline-core/MIGRATING.md`. If the repository also runs the
 Rin AIDLC plugin, it keeps `harness.config.json` and must flip the engine in the
 same change. Otherwise Rin's stage gate, per-CD sensors and review lenses keep
 using the walker and the records described above, and they disagree with CI:
@@ -435,10 +435,11 @@ using the walker and the records described above, and they disagree with CI:
 - `constitution.include`, `exclude`, `scriptGlobs` and `uiGlobs` no longer set
   the scope under discipline-core: `disciplines.json` and its `exclude` do.
 
-With the engine flipped, the stage gate runs
-`node tools/discipline-core/core/check/check-command.ts --repo <checkout>` from
-the checkout that holds the command's working directory, with that checkout's
-own packages. Exit 0 passes. Exit 1 ending in `verdict: fail` refuses the stage
+With the engine flipped, the stage gate runs the installed package's check,
+`node node_modules/discipline-core/core/check/check-command.js --repo <checkout>`,
+from the checkout that holds the command's working directory, with that
+checkout's own packages. A vendored `tools/discipline-core/` copy is run only
+when the package is absent, and its pass is reported unverified. Exit 0 passes. Exit 1 ending in `verdict: fail` refuses the stage
 and lists the failing sections. Anything else refuses it as unverified. The
 `disciplines` sensor reports core's findings in each edited file, the `cd-*`
 and `carve-out-decay` sensors report themselves not evaluated, and the review
