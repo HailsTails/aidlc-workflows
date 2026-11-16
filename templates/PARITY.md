@@ -44,6 +44,8 @@ Each check prints a one-line summary and exits non-zero, naming every file that 
 ## Open items
 
 - Nothing in CI builds the previous-release dist yet, so the install check runs by hand.
+- `tests/gen-coverage-registry.ts --check --base` builds the base commit from `git archive` with no `node_modules`. Against `caea995ae` it passes. Against any base that already has `src/`, the base build stops because `zod` cannot be resolved, so the packager path needs to stay dependency-free or the base build needs an install.
+- The upstream test runner's tiers and the CI workflows do not run `bun test ./src` yet.
 - The install goldens record 2.11.3 over 2.11.2. The next upstream release needs them re-recorded from that release's commit.
 - The rebuild has two phases. Phase 1 is this branch: the build side runs through `src/`, and every shipped byte stays as it is. Phase 2 moves the runtime owners out of `core/tools/` into `src/`, so they ship in the runtime bundle. That is runtime code, so it is a separate change, and it is what retires every bridge below.
 
@@ -55,8 +57,14 @@ This branch is one commit on top of the rebuild's own history. The same tree as 
 bun src/regenerate.ts --repository <checkout> --parent caea995ae --branch upstream-shape-on-pin
 ```
 
+Before that commit goes upstream, re-author it with the contributor's own identity and no `Co-Authored-By` trailer:
+
+```sh
+git log -1 --format=%B | grep -v '^Co-Authored-By:' | git commit --amend --reset-author --file=-
+```
+
 ## Bridge map
 
-Where the rebuilt build side still couples to the runtime, and what retires each coupling. The same data is in `src/bridge-map.json`.
+Where the rebuilt build side still couples to the runtime, and what retires each coupling. The same data is in `src/bridge-map.json`. The map is descriptive: nothing on this branch enforces the context arrows, the bridges or `src/glossary.json`.
 
 {{bridge-map}}

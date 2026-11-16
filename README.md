@@ -25,5 +25,3 @@ What a run does, in a temporary index, never touching a checkout:
 6. Applies `patches/` in name order. A patch that no longer applies stops the run.
 7. Adds `overlay/` files, `src/bridge-map.json` generated from foundation's `lint/context-map.ts`, and `PARITY.md` rendered from `templates/PARITY.md`.
 8. Commits with foundation's tip identity and dates, so the same inputs give the same commit.
-
-`fallback/` holds standalone parity scripts written before the extraction. They are not used.

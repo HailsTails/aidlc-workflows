@@ -1,5 +1,5 @@
 diff --git a/src/README.md b/src/README.md
-index e68b4ecb9..b24386e43 100644
+index e68b4ecb9..c59b7932c 100644
 --- a/src/README.md
 +++ b/src/README.md
 @@ -2,14 +2,14 @@
@@ -17,7 +17,7 @@ index e68b4ecb9..b24386e43 100644
 -- Fixtures are shape fixtures: real identities and frontmatter values, abridged prose and file bodies, references that may point outside the slice. Never shape production output to match fixture bytes; exact outputs come from Lane G's goldens.
 +- Every exported domain or application type is one line in `glossary.json`, under its one owning context.
 +- Types and ports that cross an arrow are contracts: a change to one is a change to every context that reads it, so it lands with the glossary and fixtures in one change.
-+- Fixtures are shape fixtures: real identities and frontmatter values, abridged prose and file bodies, references that may point outside the slice. Never shape production output to match fixture bytes; exact outputs are proved by the goldens in `tests/golden/` (see `PARITY.md`).
++- Fixtures are shape fixtures: real identities and frontmatter values, abridged prose and file bodies, references that may point outside the fixture. Never shape production output to match fixture bytes; exact outputs are proved by the goldens in `tests/golden/` (see `PARITY.md`).
  - Unit tests touch nothing real: no repository folder (`core/`, `plugins/`), no temp folder, no process. A unit that reads files takes its context's narrow port and its test passes `createInMemoryFileSystem` from `src/kernel/fixtures/`. Only a registered platform implementer (today `src/kernel/file-system.ts`) has one hermetic test, in a temp folder it creates and removes.
  - `src/` sits beside `core/` and `scripts/`: `core/` is projected content, `scripts/` is build-only, and runtime contexts ship through Packaging's `ToolBundler`.
 -- Typecheck: `bunx tsc --noEmit -p src/tsconfig.json`. Lint: `bun --bun ./node_modules/.bin/eslint src lint`.
