@@ -11,6 +11,7 @@ import {
 } from "../../../core/values/clause-address.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
+import type { CoreInstall } from "./core-install.ts";
 import { enabledRuleEntry, reservedNamespace } from "./eslint-instance.ts";
 import type { RuleOptions } from "./eslint-piece-settings-schema.ts";
 
@@ -62,16 +63,12 @@ const quoted = (request: { readonly text: string }): string => JSON.stringify(re
 export const escapedGlobPath = (request: { readonly path: string }): string =>
   request.path.replace(GLOB_SPECIAL_CHARACTERS, (character) => `\\${character}`);
 
-export const pluginImportOf = (request: {
+const relativeImportOf = (request: {
   readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
-  readonly pieceRoot: string;
-  readonly pluginModule: string;
+  readonly modulePath: string;
 }): PluginImport => {
-  const location = request.path.relative({
-    from: request.repoRoot,
-    to: request.path.join({ segments: [request.pieceRoot, request.pluginModule] }),
-  });
+  const location = request.path.relative({ from: request.repoRoot, to: request.modulePath });
   if (location.relation === "different-root") {
     return { placement: "piece-on-another-root" };
   }
@@ -79,6 +76,37 @@ export const pluginImportOf = (request: {
     placement: "importable",
     specifier: location.path.startsWith(PARENT_PREFIX) ? location.path : `./${location.path}`,
   };
+};
+
+const pathInsidePackage = (request: {
+  readonly path: PathPort;
+  readonly packageRoot: string;
+  readonly modulePath: string;
+}): string | undefined => {
+  const location = request.path.relative({ from: request.packageRoot, to: request.modulePath });
+  return location.relation === "within-root" && !location.path.startsWith(PARENT_PREFIX) ? location.path : undefined;
+};
+
+const packageImportOf = (request: {
+  readonly path: PathPort;
+  readonly install: Extract<CoreInstall, { readonly form: "package" }>;
+  readonly modulePath: string;
+}): PluginImport | undefined => {
+  const inside = pathInsidePackage({ path: request.path, packageRoot: request.install.root, modulePath: request.modulePath });
+  return inside === undefined ? undefined : { placement: "importable", specifier: `${request.install.name}/${inside}` };
+};
+
+export const pluginImportOf = (request: {
+  readonly path: PathPort;
+  readonly repoRoot: AbsolutePath;
+  readonly install: CoreInstall;
+  readonly pieceRoot: string;
+  readonly pluginModule: string;
+}): PluginImport => {
+  const modulePath = request.path.join({ segments: [request.pieceRoot, request.pluginModule] });
+  const packaged =
+    request.install.form === "package" ? packageImportOf({ path: request.path, install: request.install, modulePath }) : undefined;
+  return packaged ?? relativeImportOf({ path: request.path, repoRoot: request.repoRoot, modulePath });
 };
 
 const rulesLine = (request: { readonly rules: readonly RuleLine[] }): string =>

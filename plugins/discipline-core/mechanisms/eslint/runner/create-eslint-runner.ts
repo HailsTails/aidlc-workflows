@@ -22,6 +22,7 @@ import { type AbsolutePath, absolutePathSchema } from "../../../core/values/abso
 import { sameClauseAddress } from "../../../core/values/clause-address.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
+import { type CoreInstall, coreInstallOf } from "./core-install.ts";
 import type { RuleState } from "./eslint-config-schema.ts";
 import {
   type EslintPort,
@@ -170,14 +171,17 @@ const configuredClause = (request: {
   };
 };
 
+type ImportOrigin = { readonly repoRoot: AbsolutePath; readonly install: CoreInstall };
+
 const placedClause = (request: {
   readonly configured: ConfiguredClause;
   readonly path: PathPort;
-  readonly repoRoot: AbsolutePath;
+  readonly origin: ImportOrigin;
 }): Outcome<PlacedClause> => {
   const pluginImport = pluginImportOf({
     path: request.path,
-    repoRoot: request.repoRoot,
+    repoRoot: request.origin.repoRoot,
+    install: request.origin.install,
     pieceRoot: request.configured.clause.pieceRoot,
     pluginModule: request.configured.settings.pluginModule,
   });
@@ -194,13 +198,13 @@ const placedClause = (request: {
 const placedConfiguredClause = (request: {
   readonly clause: RunnerClause;
   readonly path: PathPort;
-  readonly repoRoot: AbsolutePath;
+  readonly origin: ImportOrigin;
 }): Outcome<PlacedClause> => {
   const configured = configuredClause({ clause: request.clause, path: request.path });
   if (configured.outcome === "failed") {
     return configured;
   }
-  return placedClause({ configured: configured.value, path: request.path, repoRoot: request.repoRoot });
+  return placedClause({ configured: configured.value, path: request.path, origin: request.origin });
 };
 
 const clashOf = (request: {
@@ -223,11 +227,11 @@ const clashingClause = (request: {
 const configuredSelection = (request: {
   readonly clauses: readonly RunnerClause[];
   readonly path: PathPort;
-  readonly repoRoot: AbsolutePath;
+  readonly origin: ImportOrigin;
 }): Outcome<readonly PlacedClause[]> => {
   const configured = collectOutcomes({
     outcomes: request.clauses.map((clause) =>
-      listedOutcome({ outcome: placedConfiguredClause({ clause, path: request.path, repoRoot: request.repoRoot }) }),
+      listedOutcome({ outcome: placedConfiguredClause({ clause, path: request.path, origin: request.origin }) }),
     ),
   });
   if (configured.outcome === "failed") {
@@ -318,10 +322,10 @@ const listedSelection = (request: { readonly shared: SharedPlugin }): Promise<Ou
 const selectedClauses = (request: {
   readonly clauses: readonly RunnerClause[];
   readonly path: PathPort;
-  readonly repoRoot: AbsolutePath;
+  readonly origin: ImportOrigin;
   readonly modules: ModuleLoaderPort;
 }): Promise<Outcome<readonly SelectedClause[]>> => {
-  const configured = configuredSelection({ clauses: request.clauses, path: request.path, repoRoot: request.repoRoot });
+  const configured = configuredSelection({ clauses: request.clauses, path: request.path, origin: request.origin });
   if (configured.outcome === "failed") {
     return Promise.resolve(configured);
   }
@@ -1108,14 +1112,31 @@ const conformedCases = (request: {
   );
 };
 
+const importOriginOf = (request: {
+  readonly ports: EslintRunnerPorts;
+  readonly repoRoot: AbsolutePath;
+  readonly installRoot: AbsolutePath;
+}): Outcome<ImportOrigin> => {
+  const install = coreInstallOf({ fileText: request.ports.fileText, path: request.ports.path, installRoot: request.installRoot });
+  return install.outcome === "failed" ? install : { outcome: "ok", value: { repoRoot: request.repoRoot, install: install.value } };
+};
+
 const projectedWrite = (request: {
   readonly request: ProjectionRequest;
   readonly ports: EslintRunnerPorts;
 }): Promise<Outcome<ProjectionWrite>> => {
+  const origin = importOriginOf({
+    ports: request.ports,
+    repoRoot: request.request.repoRoot,
+    installRoot: request.request.installRoot,
+  });
+  if (origin.outcome === "failed") {
+    return Promise.resolve(origin);
+  }
   const configured = configuredSelection({
     clauses: request.request.clauses,
     path: request.ports.path,
-    repoRoot: request.request.repoRoot,
+    origin: origin.value,
   });
   if (configured.outcome === "failed") {
     return Promise.resolve(configured);
@@ -1130,15 +1151,30 @@ const projectedWrite = (request: {
   );
 };
 
+const ranClauses = (request: {
+  readonly run: RecordedRunRequest;
+  readonly ports: EslintRunnerPorts;
+}): ReturnType<EmbeddedRunner["run"]> => {
+  const origin = importOriginOf({ ports: request.ports, repoRoot: request.run.repoRoot, installRoot: request.run.installRoot });
+  if (origin.outcome === "failed") {
+    return Promise.resolve(origin);
+  }
+  return selectedClauses({
+    clauses: request.run.clauses,
+    path: request.ports.path,
+    origin: origin.value,
+    modules: request.ports.modules,
+  }).then((selected) =>
+    selected.outcome === "failed" ? selected : selectedRun({ run: request.run, selected: selected.value, ports: request.ports }),
+  );
+};
+
 export const ESLINT_PROJECTED_KINDS: readonly NativeException["kind"][] = ["config-override"];
 
 export const createEslintRunner = (ports: EslintRunnerPorts): EmbeddedRunner => ({
   exceptionPath: "embedded",
   projectedKinds: ESLINT_PROJECTED_KINDS,
-  run: (request) =>
-    selectedClauses({ clauses: request.clauses, path: ports.path, repoRoot: request.repoRoot, modules: ports.modules }).then((selected) =>
-      selected.outcome === "failed" ? selected : selectedRun({ run: request, selected: selected.value, ports }),
-    ),
+  run: (request) => ranClauses({ run: request, ports }),
   conform: (request) => conformedCases({ clause: request.clause, cases: request.cases, ports }),
   project: (request) => projectedWrite({ request, ports }),
 });

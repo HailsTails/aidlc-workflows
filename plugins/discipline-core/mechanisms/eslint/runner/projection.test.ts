@@ -10,6 +10,7 @@ import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { mechanismIdSchema } from "../../../core/values/identifiers.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
+import type { CoreInstall } from "./core-install.ts";
 import {
   escapedGlobPath,
   currentProjection,
@@ -28,6 +29,14 @@ const repoRoot = absolutePathSchema.parse("/repo");
 const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
 const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
 const windowsPath = createPathPort({ flavour: "windows", workingDirectory: () => "C:\\repo" });
+
+const FOLDER_INSTALL: CoreInstall = { form: "folder" };
+
+const PACKAGED_INSTALL: CoreInstall = {
+  form: "package",
+  root: "/repo/node_modules/discipline-core",
+  name: "discipline-core",
+};
 
 const cd14Piece: ProjectedPiece = {
   pluginNamespace: "discipline",
@@ -308,6 +317,7 @@ describe("pluginImportOf", () => {
     pluginImportOf({
       path,
       repoRoot,
+      install: FOLDER_INSTALL,
       pieceRoot: "/repo/node_modules/dc/mechanisms/eslint/CD-14",
       pluginModule: "cd14/cd14.eslint-plugin.ts",
     });
@@ -339,6 +349,7 @@ describe("pluginImportOf", () => {
       pluginImportOf({
         path,
         repoRoot,
+        install: FOLDER_INSTALL,
         pieceRoot: "/repo/node_modules/dc/mechanisms/eslint/CD-14",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),
@@ -363,6 +374,7 @@ describe("pluginImportOf", () => {
       pluginImportOf({
         path,
         repoRoot,
+        install: FOLDER_INSTALL,
         pieceRoot: "/team-rules/mechanisms/eslint/PD-1",
         pluginModule: "plugin.ts",
       }),
@@ -374,6 +386,7 @@ describe("pluginImportOf", () => {
       pluginImportOf({
         path: windowsPath,
         repoRoot: windowsRepoRoot,
+        install: FOLDER_INSTALL,
         pieceRoot: "C:\\repo\\tools\\discipline\\mechanisms\\eslint\\CD-14",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),
@@ -388,10 +401,59 @@ describe("pluginImportOf", () => {
       pluginImportOf({
         path: windowsPath,
         repoRoot: windowsRepoRoot,
+        install: FOLDER_INSTALL,
         pieceRoot: "D:\\dc\\mechanisms\\eslint\\CD-14",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),
     ).toEqual({ placement: "piece-on-another-root" });
+  });
+
+  it("imports a shipped piece of a packaged core install by the package name and its path inside the package", () => {
+    expect(
+      pluginImportOf({
+        path: posixPath,
+        repoRoot,
+        install: PACKAGED_INSTALL,
+        pieceRoot: "/repo/node_modules/discipline-core/mechanisms/eslint/CD-14",
+        pluginModule: "cd14/cd14.eslint-plugin.js",
+      }),
+    ).toEqual({ placement: "importable", specifier: "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js" });
+  });
+
+  it("imports a shipped piece of a scoped package installed through a package store by the package name", () => {
+    expect(
+      pluginImportOf({
+        path: posixPath,
+        repoRoot,
+        install: { form: "package", root: "/repo/node_modules/.pnpm/node_modules/@team/discipline-core", name: "@team/discipline-core" },
+        pieceRoot: "/repo/node_modules/.pnpm/node_modules/@team/discipline-core/mechanisms/eslint/CD-1",
+        pluginModule: "cd1/cd1.eslint-plugin.js",
+      }),
+    ).toEqual({ placement: "importable", specifier: "@team/discipline-core/mechanisms/eslint/CD-1/cd1/cd1.eslint-plugin.js" });
+  });
+
+  it("imports a shipped piece of a packaged install on Windows by the package name in forward slashes", () => {
+    expect(
+      pluginImportOf({
+        path: windowsPath,
+        repoRoot: windowsRepoRoot,
+        install: { form: "package", root: "C:\\repo\\node_modules\\discipline-core", name: "discipline-core" },
+        pieceRoot: "C:\\repo\\node_modules\\discipline-core\\mechanisms\\eslint\\CD-14",
+        pluginModule: "cd14/cd14.eslint-plugin.js",
+      }),
+    ).toEqual({ placement: "importable", specifier: "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js" });
+  });
+
+  it("keeps the repository's own piece, outside a packaged core install, as its relative path", () => {
+    expect(
+      pluginImportOf({
+        path: posixPath,
+        repoRoot,
+        install: PACKAGED_INSTALL,
+        pieceRoot: "/repo/tools/team-rules/mechanisms/eslint/PD-1",
+        pluginModule: "plugin.ts",
+      }),
+    ).toEqual({ placement: "importable", specifier: "./tools/team-rules/mechanisms/eslint/PD-1/plugin.ts" });
   });
 });
 

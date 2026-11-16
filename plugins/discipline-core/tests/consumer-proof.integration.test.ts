@@ -40,7 +40,7 @@ const ESLINT_INSTALL_LIST = new RegExp(`^${ESLINT_INSTALLED}$`);
 
 const WALKER_READABLE = new RegExp(String.raw`^(?:${WALKER_INSTALLED}|tests\/test-fixtures\/consumer-proof\/audit\/.*)$`);
 
-const ESLINT_READABLE = new RegExp(String.raw`^(?:${ESLINT_INSTALLED}|tests\/test-fixtures\/consumer-proof\/eslint\/.*)$`);
+const ESLINT_READABLE = new RegExp(String.raw`^(?:package\.json|${ESLINT_INSTALLED}|tests\/test-fixtures\/consumer-proof\/eslint\/.*)$`);
 
 const NO_HARNESS_SEGMENT = /^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/;
 

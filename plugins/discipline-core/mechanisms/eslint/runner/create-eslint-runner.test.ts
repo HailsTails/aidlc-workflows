@@ -1031,6 +1031,53 @@ describe("project", () => {
     });
   });
 
+  it("imports a shipped piece of a packaged core install by the package name the install's package.json gives", async () => {
+    const fileText = fileTextOver({
+      ...SOURCE_FILES,
+      [PROJECTION_PATH]: ABSENT_FILE,
+      "/repo/node_modules/discipline-core/package.json": presentFile({ text: '{ "name": "discipline-core" }' }),
+    });
+    await runnerOver({ fileText }).project({ repoRoot: REPO_ROOT, installRoot: INSTALL_ROOT, clauses: [CLASS_CLAUSE], records: [] });
+    expect(vi.mocked(fileText.write).mock.calls).toEqual([
+      [
+        {
+          path: PROJECTION_PATH,
+          text: ENABLING_PROJECTION.replace(
+            '"./node_modules/discipline-core/mechanisms/',
+            '"discipline-core/mechanisms/',
+          ),
+        },
+      ],
+    ]);
+  });
+
+  it("fails as tool-failed and writes nothing when the core install's package.json cannot be read", async () => {
+    const fileText = fileTextOver({
+      ...SOURCE_FILES,
+      [PROJECTION_PATH]: ABSENT_FILE,
+      "/repo/node_modules/discipline-core/package.json": {
+        read: { outcome: "failed", error: { kind: "unreadable", path: "package.json", detail: "EACCES" } },
+        presence: "present",
+      },
+    });
+    const write = await runnerOver({ fileText }).project({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      clauses: [CLASS_CLAUSE],
+      records: [],
+    });
+    expect({ write, fileWrites: vi.mocked(fileText.write).mock.calls }).toEqual({
+      write: {
+        outcome: "failed",
+        error: {
+          kind: "tool-failed",
+          detail: "the core install's /repo/node_modules/discipline-core/package.json cannot be read: EACCES",
+        },
+      },
+      fileWrites: [],
+    });
+  });
+
   it("reports unchanged and writes nothing when the committed projection differs only by CRLF line endings", async () => {
     const fileText = projectionHolding({ text: ENABLING_PROJECTION_CRLF });
     const write = await runnerOver({ fileText }).project({
@@ -1558,9 +1605,11 @@ const OTHER_DRIVE_PIECE_ROOT = "D:\\dc\\mechanisms\\eslint\\CD-14";
 
 const WINDOWS_PATH = createPathPort({ flavour: "windows", workingDirectory: () => "C:\\repo" });
 
+const WINDOWS_COPIED_INSTALL_MANIFEST = "C:\\repo\\node_modules\\discipline-core\\package.json";
+
 const EVERY_PATH_HOLDING_SOURCE_A: FileTextPort = {
   read: () => ({ outcome: "ok", value: "const a = 1;\n\n  class A {}\n" }),
-  exists: () => "present",
+  exists: ({ path }) => (path === WINDOWS_COPIED_INSTALL_MANIFEST ? "absent" : "present"),
   write: vi.fn<FileTextPort["write"]>().mockReturnValue({ outcome: "ok", value: undefined }),
 };
 
@@ -1608,7 +1657,7 @@ describe("the governance run on Windows paths", () => {
     ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" } });
   });
 
-  it("reads the projection and a tracked suppressions file at their Windows forms under the repo root", async () => {
+  it("reads the core install's manifest, then the projection and a tracked suppressions file at their Windows forms under the repo root", async () => {
     const read = vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: "{}" });
     await runnerOver({
       path: WINDOWS_PATH,
@@ -1620,6 +1669,7 @@ describe("the governance run on Windows paths", () => {
       trackedPaths: [repoPathSchema.parse("src/eslint-suppressions.json")],
     });
     expect(read.mock.calls).toEqual([
+      [{ path: WINDOWS_COPIED_INSTALL_MANIFEST }],
       [{ path: "C:\\repo\\disciplines.eslint.mjs" }],
       [{ path: "C:\\repo\\disciplines.json" }],
       [{ path: "C:\\repo\\node_modules\\eslint\\package.json" }],
