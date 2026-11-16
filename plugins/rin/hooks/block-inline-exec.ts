@@ -72,7 +72,7 @@ const leadingEnvAssignments = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*/;
 const anyHarnessProjectDirectoryPrefix = /^\$(?:CLAUDE|AIDLC)_PROJECT_DIR\//;
 
 const allowlistedRunnerPattern = new RegExp(
-  `${leadingEnvAssignments.source}(uv\\s+run|pnpm\\b|npm\\b|pnpm\\s+exec|npx\\b|python\\s+-m\\s+json\\.tool|bun\\s+(?:run\\s+|test\\b|install\\b|x\\s+)?(?:\\$(?:CLAUDE|AIDLC)_PROJECT_DIR/)?\\.(?:claude|aidlc)/(?:tools|hooks|rin-gates)/)`,
+  `${leadingEnvAssignments.source}(uv\\s+run|pnpm\\b|npm\\b|pnpm\\s+exec|python\\s+-m\\s+json\\.tool|bun\\s+(?:run\\s+|test\\b|install\\b)?(?:\\$(?:CLAUDE|AIDLC)_PROJECT_DIR/)?\\.(?:claude|aidlc)/(?:tools|hooks|rin-gates)/)`,
   "i",
 );
 
