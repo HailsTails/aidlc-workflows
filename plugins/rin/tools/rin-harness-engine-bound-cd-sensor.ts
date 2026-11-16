@@ -2,7 +2,7 @@ import { type CdSensorResult, cdSensorWireLineOf, cdSensorWireOf, runCdSensor } 
 import { type ConstitutionEngineResolution, resolveConstitutionEngine } from "./rin-harness-config.ts";
 import { defaultReviewProcessPort } from "./rin-gates/review-process-port.ts";
 
-const DELEGATED_SCANNED_TEXT = "(constitution.engine is discipline-core: the disciplines sensor applies)";
+const DELEGATED_SCANNED_TEXT = "(constitution.engine is hone: the disciplines sensor applies)";
 
 const delegatedCdSensorResultOf = ({ cdId, scanned }: { readonly cdId: string; readonly scanned: string }): CdSensorResult => ({
   evaluation: "not-evaluated",

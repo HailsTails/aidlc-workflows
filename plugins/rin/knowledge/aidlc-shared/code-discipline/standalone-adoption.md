@@ -439,7 +439,7 @@ using the walker and the records described above, and they disagree with CI:
   `authorised-location` with `{ "kind": "existing-authorisation", "source" }`.
   MIGRATING step 3 gives the exact shapes.
 - `constitution.include`, `exclude`, `scriptGlobs` and `uiGlobs` no longer set
-  the scope under discipline-core: `disciplines.json` and its `exclude` do.
+  the scope under hone: `disciplines.json` and its `exclude` do.
 
 With the engine flipped, the stage gate runs the installed package's check,
 `node node_modules/honed/core/check/tool-command.js check --repo <checkout>`,

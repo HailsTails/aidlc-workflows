@@ -6,7 +6,7 @@
   "scripts": {
     "test": "bun scripts/test.ts --no-llm",
     "test:rin": "vitest run --config vitest.rin.config.ts",
-    "test:rin:honed": "vitest run --config vitest.rin.config.ts plugins/rin/tools/rin-disciplines plugins/rin/hooks/rin-constitution-engine-gate-decision plugins/rin/tools/honed-fork-wiring",
+    "test:rin:honed": "vitest run --config vitest.rin.config.ts plugins/rin/tools/rin-disciplines plugins/rin/hooks/rin-constitution-engine-gate-decision plugins/rin/tools/honed-fork-wiring plugins/rin/tools/rin-harness-config-constitution-engine",
     "test:rin:selftest": "bun plugins/rin/tools/rin-gates/rin-gates-derivation-selftest.spec.ts",
     "audit:rin": "bun plugins/rin/tools/rin-harness-constitution-audit.ts --project-dir .",
     "test:coverage": "bun tests/gen-coverage-registry.ts",

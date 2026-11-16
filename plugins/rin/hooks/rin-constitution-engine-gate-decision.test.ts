@@ -51,7 +51,7 @@ const gatePorts = ({
   recordGateRun: vi.fn<ConstitutionGatePorts["recordGateRun"]>().mockResolvedValue(undefined),
 });
 
-const DISCIPLINE_CORE: EngineReading = {
+const HONE: EngineReading = {
   kind: "read",
   constitutionEngine: { engine: "hone", baseRevision: "origin/main" },
 };
@@ -81,20 +81,20 @@ describe("gatedCompletionOf", () => {
 
 describe("constitutionGateDecisionOf", () => {
   test("an ordinary command is allowed without reading the engine", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE });
+    const ports = gatePorts({ engine: HONE });
     expect(await constitutionGateDecisionOf({ hookInput: hookInputOf({ command: "ls" }), ports })).toEqual({ kind: "allow" });
     expect(ports.readEngine).not.toHaveBeenCalled();
   });
 
   test("under hone a passing check allows the completion", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE });
+    const ports = gatePorts({ engine: HONE });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toEqual({ kind: "allow" });
     expect(ports.runDisciplinesCheck).toHaveBeenCalledWith({ checkoutRoot: "/repo", baseRevision: "origin/main" });
     expect(ports.runWalkerGate).not.toHaveBeenCalled();
   });
 
   test("under hone a failing check denies with only the failing sections and their remedies", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "failed", report: FAILING_REPORT } });
+    const ports = gatePorts({ engine: HONE, check: { kind: "failed", report: FAILING_REPORT } });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toEqual({
       kind: "deny",
       reason: [
@@ -111,7 +111,7 @@ describe("constitutionGateDecisionOf", () => {
   });
 
   test("under hone an unverified check denies", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "unverified", reason: "exit 2: load failure" } });
+    const ports = gatePorts({ engine: HONE, check: { kind: "unverified", reason: "exit 2: load failure" } });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toMatchObject({
       kind: "deny",
       reason: expect.stringContaining("  Hone: exit 2: load failure. Run `npm run --silent hone:check` in the checkout to see it yourself."),
@@ -119,7 +119,7 @@ describe("constitutionGateDecisionOf", () => {
   });
 
   test("under hone the verdict is recorded as gate-run telemetry", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "failed", report: FAILING_REPORT } });
+    const ports = gatePorts({ engine: HONE, check: { kind: "failed", report: FAILING_REPORT } });
     await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports });
     expect(ports.recordGateRun).toHaveBeenCalledWith({
       command: COMPLETION_COMMAND,
@@ -150,7 +150,7 @@ describe("constitutionGateDecisionOf", () => {
   });
 
   test("a working directory in no checkout denies instead of checking another tree", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE, checkoutRoot: null });
+    const ports = gatePorts({ engine: HONE, checkoutRoot: null });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toMatchObject({ kind: "deny" });
     expect(ports.readEngine).not.toHaveBeenCalled();
   });

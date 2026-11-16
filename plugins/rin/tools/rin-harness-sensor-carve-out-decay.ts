@@ -2,11 +2,11 @@ import { sensorEngineResolutionOf, unreadableEngineTextOf } from "./rin-harness-
 import { defaultReviewProcessPort } from "./rin-gates/review-process-port.ts";
 import { defaultPathOperations } from "./rin-harness-path-operations.ts";
 
-const DISCIPLINE_CORE_DECAY_WIRE = {
+const HONE_DECAY_WIRE = {
   pass: true,
   findings_count: 0,
   findings: [],
-  scanned: "(constitution.engine is discipline-core: core reports forfeited carve-outs, and the disciplines sensor applies)",
+  scanned: "(constitution.engine is hone: core reports forfeited carve-outs, and the disciplines sensor applies)",
 };
 
 const processPort = defaultReviewProcessPort();
@@ -25,7 +25,7 @@ if (resolution.outcome === "failed") {
 }
 
 if (resolution.outcome === "resolved" && resolution.constitutionEngine.engine === "hone") {
-  processPort.publish(`${JSON.stringify(DISCIPLINE_CORE_DECAY_WIRE)}\n`);
+  processPort.publish(`${JSON.stringify(HONE_DECAY_WIRE)}\n`);
   processPort.exit(0);
 }
 

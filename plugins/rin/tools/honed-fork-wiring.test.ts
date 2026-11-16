@@ -76,7 +76,7 @@ describe("the fork as a consumer of the pinned honed release (CD-47: what this r
 
   it("runs the honed resolution tests by name", () => {
     expect(developmentManifestSchema.parse(JSON.parse(trackedText({ path: "package.json" }))).scripts["test:rin:honed"]).toBe(
-      "vitest run --config vitest.rin.config.ts plugins/rin/tools/rin-disciplines plugins/rin/hooks/rin-constitution-engine-gate-decision plugins/rin/tools/honed-fork-wiring",
+      "vitest run --config vitest.rin.config.ts plugins/rin/tools/rin-disciplines plugins/rin/hooks/rin-constitution-engine-gate-decision plugins/rin/tools/honed-fork-wiring plugins/rin/tools/rin-harness-config-constitution-engine",
     );
   });
 

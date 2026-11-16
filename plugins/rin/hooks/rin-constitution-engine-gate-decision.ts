@@ -43,6 +43,8 @@ type ConstitutionGatePorts = {
   }) => Promise<void>;
 };
 
+const LEGACY_HONE_ENGINE_SPELLING = "discipline-core";
+
 const MAX_LINES_SHOWN_PER_SECTION = 5;
 
 const ALLOW: GateDecision = { kind: "allow" };
@@ -235,7 +237,7 @@ const constitutionEngineFromWire = ({ text }: { readonly text: string }): Consti
     case "rin-walker":
       return { engine };
     case "hone":
-    case "discipline-core":
+    case LEGACY_HONE_ENGINE_SPELLING:
       return { engine: "hone", baseRevision: stringFieldOf({ container: wire, key: "baseRevision" }) };
     default:
       return undefined;
