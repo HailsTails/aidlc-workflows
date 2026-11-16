@@ -458,15 +458,14 @@ const SHA256_HEX_REGEX = /^[0-9a-f]{64}$/;
 // --- Extraction --------------------------------------------------------------
 //
 // AI-DLC ships NO PDF parser and downloads none at runtime. It probes an
-// EXTERNAL EXECUTABLE -- `pdftotext` on PATH by default -- exactly as the
-// sensors probe their tools: `--version` with an operational backstop, then degrade.
-// probe-then-degrade is the reusable part of that precedent, not the transport.
+// EXTERNAL EXECUTABLE -- `pdftotext` on PATH by default -- with `--version` and
+// an operational backstop, then degrades, as the sensors degrade when their tool
+// is absent. Degrading is the reusable part of that precedent, not the transport.
 //
 // `bunx unpdf` was proposed and withdrawn: `unpdf` is a LIBRARY with no
-// executable `bin`, while `bunx` runs package executables. The precedent that
-// made it look plausible (`bunx eslint`) held only because eslint is a binary.
-// The distribution contract also forbids it -- dist/ has no package.json, no
-// node_modules, and fetches nothing at runtime.
+// executable `bin`, and no sensor fetches and runs a package. The distribution
+// contract also forbids it -- dist/ has no package.json, no node_modules, and
+// fetches nothing at runtime.
 
 /** Refuse outright above this: the point of the bound is to avoid spawning at
  *  all, so an over-size input is never opened. Well above any real policy PDF. */

@@ -2,9 +2,9 @@
 //
 // Owns the linter check itself; the dispatcher (aidlc-sensor.ts) routes a
 // SENSOR fire to this script via the manifest's `command:` field. Self-
-// contained apart from the import-safe runtime budget policy. Wraps
-// project package.json scripts.lint when present, otherwise the pinned ESLint
-// fallback, and prints the
+// contained apart from the import-safe runtime budget policy and the shared
+// installed-tool resolver. Wraps project package.json scripts.lint when
+// present, otherwise the project's own installed ESLint, and prints the
 // locked stdout JSON shape:
 //
 //   {"pass": <bool>, "errorCount": <n>, "warningCount": <n>,
@@ -19,19 +19,17 @@
 //   walk-up resolvers silently drop outer-inherited rules in monorepos
 //   with root flat config + nested legacy config.
 //
-// * "no eslint config" detection: probe `bunx eslint --print-config <path>`.
+// * "no eslint config" detection: probe `eslint --print-config <path>`.
 //   Exit non-zero with stderr matching "No ESLint configuration" /
 //   "Could not find config" → exit 127 with stderr "no-eslint-config".
 //   The dispatcher's branch b reclassifies status 127 to PASSED with
 //   Note=tool-unavailable, giving a quiet PASS for projects without
 //   eslint config rather than spamming script-error.
 //
-// * Tool-unavailable detection: `bunx eslint --version` once at startup.
-//   `bunx <tool>` returns non-127 codes for several failure modes
-//   (network-fetch failure, package-resolution failure, registry timeout)
-//   so the dispatcher's `result.status === 127` check alone won't catch
-//   them. If the probe fails for ANY non-zero reason we exit 127
-//   ourselves, propagating to dispatcher branch b.
+// * Tool-unavailable detection: ESLint is resolved from the project's own
+//   node_modules tree, never PATH and never fetched. An absent or
+//   pre-flat-config install exits 127 with a message naming what to install,
+//   propagating to dispatcher branch b.
 //
 // * pass = errorCount === 0. Warnings tracked but DO NOT fail. Real
 //   eslint configs ship `no-unused-vars: warn` and similar; warning-as-
@@ -49,8 +47,15 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
+import {
+	type ProjectTool,
+	type ProjectToolResolver,
+	type ProjectToolSelection,
+	projectToolCommand,
+	resolveProjectTool,
+	selectProjectTool,
+} from "./aidlc-project-tool.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 
 interface ESLintMessage {
@@ -144,7 +149,7 @@ export function parseArgs(argv: string[], environment: Record<string, string | u
 function printHelp(): void {
 	process.stdout.write(
 		`Usage: aidlc-sensor-linter --stage <slug> --file-path <path>\n\n` +
-			`Prefers package.json scripts.lint; otherwise uses the pinned ESLint fallback.\n` +
+			`Prefers package.json scripts.lint; otherwise uses the project's installed ESLint (9 or later).\n` +
 			`Options: --runner auto|project|eslint --project-dir <path> --package-manager npm|pnpm|yarn|bun\n` +
 			`prints {pass, errorCount, warningCount, violations[]} JSON to stdout.\n`,
 	);
@@ -168,57 +173,42 @@ function findProjectRoot(filePath: string): string | null {
 
 // --- eslint subprocess wrappers ---------------------------------------------
 
-// Pinned eslint spec for every bunx invocation. A BARE `bunx eslint`
-// prefers a project-local node_modules eslint, then ANY `eslint` on PATH
-// before fetching from the registry - and distro packages ship ancient
-// versions (Ubuntu 24.04's apt eslint is 6.4.0, a transitive dependency
-// of `apt install npm`). Pre-flat-config eslint cannot see
-// eslint.config.js, reports "couldn't find a configuration file", and
-// the sensor quietly degrades every fire to a tool-unavailable PASS -
-// masking real lint findings. Pinning the major makes resolution
-// deterministic: bunx fetches/caches this spec and ignores PATH
-// shadowing. A version spec also bypasses local node_modules, so first resolve
-// a local install of the SAME major and run its absolute CLI path. It is already
-// provisioned and never needs the bunx download cache. Older local versions
-// still take the pinned fallback instead of silently missing flat configs.
-const ESLINT_SPEC = "eslint@10";
+const FLAT_CONFIG_ESLINT_MAJOR = 9;
 
-export function localEslintPath(cwd: string): string | null {
-	try {
-		const manifestPath = createRequire(join(cwd, "package.json")).resolve("eslint/package.json");
-		const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-		if (manifest.name !== "eslint" || typeof manifest.version !== "string" ||
-			manifest.version.split(".")[0] !== ESLINT_SPEC.split("@")[1]) return null;
-		const cli = join(dirname(manifestPath), "bin", "eslint.js");
-		return existsSync(cli) ? cli : null;
-	} catch {
-		return null;
+function majorVersion(version: string): number {
+	return Number.parseInt(version.split(".")[0] ?? "", 10);
+}
+
+export function selectInstalledEslint(
+	projectRoot: string,
+	resolveTool: ProjectToolResolver = resolveProjectTool,
+): ProjectToolSelection {
+	const selection = selectProjectTool({
+		request: { projectRoot, packageName: "eslint", binName: "eslint" },
+		unavailableCode: "eslint-unavailable",
+		resolveTool,
+	});
+	if (selection.kind === "unavailable") return selection;
+	const major = majorVersion(selection.tool.version);
+	if (Number.isNaN(major) || major < FLAT_CONFIG_ESLINT_MAJOR) {
+		return {
+			kind: "unavailable",
+			message: `eslint-unsupported: eslint ${selection.tool.version} in ${projectRoot} predates flat config; ` +
+				`install eslint ${FLAT_CONFIG_ESLINT_MAJOR} or later as a devDependency of this repository`,
+		};
 	}
+	return selection;
 }
 
-function invokeEslint(args: string[], cwd: string) {
-	const local = localEslintPath(cwd);
-	const options = { encoding: "utf-8" as const, timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS, cwd };
-	// ESLint's published executable uses Node too. Naming its installed file
-	// avoids both PATH-shadowed eslint binaries and per-TMPDIR bunx installs.
-	if (local) return spawnSync("node", [local, ...args], options);
-	return spawnSync("bunx", [ESLINT_SPEC, ...args], options);
+function invokeEslint(eslint: ProjectTool, args: string[], cwd: string) {
+	const command = projectToolCommand(eslint, args);
+	return spawnSync(command.executable, command.args, {
+		encoding: "utf-8", timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS, cwd,
+		env: { ...process.env, ...command.environment },
+	});
 }
 
-// Probe `bunx eslint --version` at startup. `bunx <tool>` returns non-127
-// codes for several failure modes (network-fetch failure, package-
-// resolution failure, registry timeout). The dispatcher's branch b
-// (status === 127) won't catch those — so we propagate by exiting 127
-// ourselves on any non-zero exit from this probe.
-function probeEslintAvailable(cwd: string): void {
-	const result = invokeEslint(["--version"], cwd);
-	if (result.status !== 0) {
-		process.stderr.write("eslint-unavailable\n");
-		process.exit(127);
-	}
-}
-
-// Probe `bunx eslint --print-config <path>` to detect "no eslint config".
+// Probe `eslint --print-config <path>` to detect "no eslint config".
 // eslint exits non-zero with a stderr message containing "No ESLint
 // configuration found" or "Could not find config file" when no config is
 // resolvable from <path>. Map that to exit 127 so the dispatcher's branch
@@ -232,8 +222,8 @@ function probeEslintAvailable(cwd: string): void {
 // tool-unavailable fallback and exit 2 (script-error). The dispatcher's
 // branch e then emits SENSOR_PASSED with Note=script-error: exit-2,
 // keeping the audit pair closed while flagging the breakage in stderr.
-function probeEslintConfig(filePath: string, cwd: string): void {
-	const result = invokeEslint(["--print-config", filePath], cwd);
+function probeEslintConfig(eslint: ProjectTool, filePath: string, cwd: string): void {
+	const result = invokeEslint(eslint, ["--print-config", filePath], cwd);
 	if (result.status === 0) return; // config resolved
 	const stderr = result.stderr ?? "";
 	// Cover both legacy (.eslintrc.*) and flat-config (eslint.config.js)
@@ -268,8 +258,8 @@ function probeEslintConfig(filePath: string, cwd: string): void {
 		process.stderr.write(`config-parse-error: ${reason}\n`);
 		process.exit(2);
 	}
-	// Any other non-zero from --print-config (permission denied, bunx
-	// itself glitching, etc.) — conservative tool-unavailable PASS.
+	// Any other non-zero from --print-config (permission denied, a broken
+	// install, etc.) — conservative tool-unavailable PASS.
 	process.stderr.write("eslint-unavailable\n");
 	process.exit(127);
 }
@@ -314,6 +304,7 @@ function firstNonEmptyLine(s: string): string {
 }
 
 function runEslint(
+	eslint: ProjectTool,
 	filePath: string,
 	cwd: string,
 ): {
@@ -325,7 +316,7 @@ function runEslint(
 	// with `-` ("No -NUM option defined."). The plan-mandated
 	// "--max-warnings -1" requires the equals form to actually reach
 	// eslint as a numeric value.
-	const result = invokeEslint(["--format", "json", "--max-warnings=-1", filePath], cwd);
+	const result = invokeEslint(eslint, ["--format", "json", "--max-warnings=-1", filePath], cwd);
 	// A killed/spawn-failed run cannot establish a verdict, even if it wrote
 	// a complete-looking JSON prefix before stopping.
 	if (result.error || result.signal || result.status === null) {
@@ -338,7 +329,7 @@ function runEslint(
 // --- result parsing ---------------------------------------------------------
 
 // Slice leading stdout noise down to the first structural JSON character
-// (startChar). `bunx` and the project's package manager can print run banners
+// (startChar). The project's package manager can print run banners
 // or lockfile warnings (pnpm etc.) before eslint's `--format json` array when
 // the sensor fires against a sibling repo; without this the payload never
 // parses and the linter verdict is silently discarded. When startChar is
@@ -502,13 +493,14 @@ export function main(argv: string[]): void {
 		findProjectRoot(args.filePath) ?? dirname(resolve(args.filePath));
 	if (runConsumerLint(args, projectRoot)) return;
 
-	// Probe order: tool first (cheap, ~1s for cached bunx), then config
-	// (~1s for --print-config). Both gates feed dispatcher branch b
-	// (PASSED Note=tool-unavailable) on non-zero.
-	probeEslintAvailable(projectRoot);
-	probeEslintConfig(args.filePath, projectRoot);
+	const eslint = selectInstalledEslint(projectRoot);
+	if (eslint.kind === "unavailable") {
+		process.stderr.write(`${eslint.message}\n`);
+		process.exit(127);
+	}
+	probeEslintConfig(eslint.tool, args.filePath, projectRoot);
 
-	const { stdout } = runEslint(args.filePath, projectRoot);
+	const { stdout } = runEslint(eslint.tool, args.filePath, projectRoot);
 
 	// eslint exits 1 when violations exist and 0 when clean. With
 	// --max-warnings -1 the warning-exit override is disabled so we never
