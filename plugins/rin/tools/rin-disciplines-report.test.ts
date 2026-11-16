@@ -22,7 +22,7 @@ const FAILING_REPORT = [
   "",
 ].join("\n");
 
-describe("discipline-core report text", () => {
+describe("Hone report text", () => {
   test("splits the report into its named sections and drops the verdict line", () => {
     expect(disciplinesReportSectionsOf({ report: FAILING_REPORT }).map((section) => section.name)).toEqual([
       "excluded",
@@ -53,12 +53,12 @@ describe("discipline-core report text", () => {
   test("names the installed package's project script as the remedy for projection problems", () => {
     const projectionProblems: FailingSection = { name: "projectionProblems", header: "projectionProblems (1)", lines: [] };
     expect(remedyOf({ section: projectionProblems })).toBe(
-      "To fix projectionProblems: run `npm run --silent discipline:project` and commit disciplines.eslint.mjs.",
+      "To fix projectionProblems: run `npm run --silent hone:project` and commit disciplines.eslint.mjs.",
     );
   });
 
   test("names the installed package's check script as the command to run the check", () => {
-    expect(CHECK_COMMAND_TEXT).toBe("npm run --silent discipline:check");
+    expect(CHECK_COMMAND_TEXT).toBe("npm run --silent hone:check");
   });
 
   test("reads a CRLF report the same as an LF one", () => {

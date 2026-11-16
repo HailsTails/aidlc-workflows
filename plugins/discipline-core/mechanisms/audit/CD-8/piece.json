@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "discipline": "CD-8",
-  "mechanism": "audit",
-  "clauses": [
-    { "clause": "switch-defaults", "settings": { "module": "switch-defaults.ts" } }
-  ]
-}

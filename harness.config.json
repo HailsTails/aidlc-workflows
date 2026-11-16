@@ -17,7 +17,7 @@
     ]
   },
   "constitution": {
-    "include": ["plugins/rin/**", "plugins/discipline-core/**"],
+    "include": ["plugins/rin/**"],
     "exclude": [
       "**/node_modules/**",
       "**/dist/**",

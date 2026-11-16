@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 type SidecarFileReader = {
@@ -64,6 +64,7 @@ type FileTextPort = {
   readonly writeExecutable: (path: string, text: string) => void;
   readonly append: (path: string, text: string, encoding?: TextEncoding) => void;
   readonly mkdir: (path: string, options?: DirectoryOptions) => void;
+  readonly linkDirectory: (target: string, path: string) => void;
   readonly remove: (path: string, options?: RemovalOptions) => void;
   readonly makeTemporaryDirectory: (prefix: string) => string;
   readonly temporaryRoot: () => string;
@@ -84,6 +85,7 @@ const defaultFileTextPort = (): FileTextPort => ({
     fileOperation(() => writeFileSync(path, text, { encoding: "utf8", mode: EXECUTABLE_FILE_MODE })),
   append: (path, text, encoding = "utf8") => fileOperation(() => appendFileSync(path, text, encoding)),
   mkdir: (path, options) => { fileOperation(() => mkdirSync(path, options)); },
+  linkDirectory: (target, path) => { fileOperation(() => symlinkSync(target, path, "junction")); },
   remove: (path, options) => fileOperation(() => rmSync(path, options)),
   makeTemporaryDirectory: (prefix) => fileOperation(() => mkdtempSync(prefix)),
   temporaryRoot: () => tmpdir(),

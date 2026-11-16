@@ -128,9 +128,10 @@ and the machine-diffable convergence predicate. Then re-run the decorrelated swe
 **When `harness.config.json` enables `rinGates.exceptionWhyChains`, a `push-back` or `defer` row carries a `why-chain` block (R7).** Those two
 dispositions leave the cited violation STANDING — one argues it away, the other
 parks it — so each is an exception judgement and carries its why-chain in the
-row. The chain follows discipline-core's why-chain contract
-(`node_modules/discipline-core/docs/why-chain-contract.md` where core is installed,
-`plugins/discipline-core/docs/why-chain-contract.md` in the fork), which R7
+row. The chain follows Hone's why-chain contract
+(`node_modules/honed/docs/why-chain-contract.md` where the `honed` package is
+installed, as it is in the fork; the source is
+https://github.com/HailsTails/hone/blob/main/docs/why-chain-contract.md), which R7
 adopts.
 `fixed@<sha>` and `withdrawn(<reason>)` carry no chain and that asymmetry is
 deliberate: a fix removes the violation and a withdrawal retracts the finding,

@@ -110,7 +110,7 @@ const failedDenialOf = ({ report }: { readonly report: string }): GateDecision =
   return {
     kind: "deny",
     reason: [
-      "Blocked: stage completion refused. discipline-core fails on this tree:",
+      "Blocked: stage completion refused. Hone fails on this tree:",
       ...failingSections.flatMap((section) => shownSectionLinesOf({ section })),
       ...failingSections.map((section) => remedyOf({ section })),
       "",
@@ -153,7 +153,7 @@ const disciplinesDecisionOf = ({ outcome }: { readonly outcome: DisciplinesCheck
       return failedDenialOf({ report: outcome.report });
     case "unverified":
       return unverifiedDenialOf({
-        reason: `discipline-core: ${outcome.reason}. Run \`${CHECK_COMMAND_TEXT}\` in the checkout to see it yourself.`,
+        reason: `Hone: ${outcome.reason}. Run \`${CHECK_COMMAND_TEXT}\` in the checkout to see it yourself.`,
       });
   }
 };

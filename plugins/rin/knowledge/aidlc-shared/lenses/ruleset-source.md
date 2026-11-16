@@ -18,14 +18,14 @@ and the records under `.constitution-carve-outs/` and
 
 ## `discipline-core`
 
-The ruleset is the codebase's adopted disciplines:
+This engine value names Hone (https://github.com/HailsTails/hone), installed as the npm package `honed`. The ruleset is the codebase's adopted disciplines:
 
 1. Read `disciplines.json` at the repository root. A discipline is adopted when
    at least one of its clauses appears in `clauses`. A clause address is
    `[<ruleSet>/]<DisciplineId>#<clauseId>`, and no prefix means the shared rule
    set.
 2. The rule page of a shared discipline is
-   `node_modules/discipline-core/rules/<DisciplineId>/README.md`. The rule page of a
+   `node_modules/honed/rules/<DisciplineId>/README.md`. The rule page of a
    repository rule set's discipline is
    `<ruleSets[<ruleSet>]>/<DisciplineId>/README.md`, where the directory comes
    from `disciplines.json` `ruleSets`.
@@ -45,7 +45,7 @@ The ruleset is the codebase's adopted disciplines:
 A lens that loads no tagged rules (defended-on-intent, which re-tests other
 lenses' PASS claims, and ddd-modelling) instead looks up the rule each claim or
 finding cites. It does not match on `Review lens:`. A cited `CD-n` resolves to
-`node_modules/discipline-core/rules/CD-n/README.md`. A cited `<ruleSet>/<Id>`
+`node_modules/honed/rules/CD-n/README.md`. A cited `<ruleSet>/<Id>`
 resolves to `<ruleSets[<ruleSet>]>/<Id>/README.md`. A clause address
 `<Id>#<clause>` resolves to the same page, at that clause's row in its
 `## Clauses` table. The page holds whatever its `Review lens:` line says. A

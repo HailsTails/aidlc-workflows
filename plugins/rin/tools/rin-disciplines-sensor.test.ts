@@ -35,7 +35,7 @@ describe("disciplinesSensorWireOf", () => {
       pass: false,
       findings_count: 0,
       findings: [],
-      scanned: "(discipline-core reached no verdict: exit 2: load failure)",
+      scanned: "(Hone reached no verdict: exit 2: load failure)",
     });
   });
 
