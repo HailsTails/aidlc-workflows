@@ -6,23 +6,13 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
-import { pathToFileURL } from "node:url";
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 
 describe("t303 manifest-owned orchestrator skill path", () => {
   test("every harness declares an in-tree emitted skill that exists in dist", async () => {
-    const harnesses = readdirSync(join(REPO_ROOT, "harness"))
-      .filter((name) => existsSync(join(REPO_ROOT, "harness", name, "manifest.ts")))
-      .sort();
-
-    for (const name of harnesses) {
-      const module = await import(
-        pathToFileURL(join(REPO_ROOT, "harness", name, "manifest.ts")).href
-      ) as { default: HarnessManifest };
-      const rel = module.default.orchestratorSkillPath;
-      expect(rel).toBeDefined();
-      if (!rel) throw new Error(`${name} does not declare orchestratorSkillPath`);
+    for (const { name, manifest } of HARNESS_MATRIX) {
+      const rel = manifest.orchestratorSkillPath;
       expect(rel.length).toBeGreaterThan(0);
       expect(isAbsolute(rel)).toBe(false);
       expect(rel.split(/[\\/]/)).not.toContain("..");
@@ -34,17 +24,8 @@ describe("t303 manifest-owned orchestrator skill path", () => {
   // and Claude Code both do for these paths), so every file the emitted skill
   // and its question rules name under the harness folder must be there.
   test("every file an emitted skill names under its harness folder exists from the project root", async () => {
-    const harnesses = readdirSync(join(REPO_ROOT, "harness"))
-      .filter((name) => existsSync(join(REPO_ROOT, "harness", name, "manifest.ts")))
-      .sort();
-    for (const name of harnesses) {
-      const manifest = (await import(
-        pathToFileURL(join(REPO_ROOT, "harness", name, "manifest.ts")).href
-      ) as { default: HarnessManifest }).default;
-      const skill = join(
-        REPO_ROOT, "dist", name,
-        manifest.orchestratorSkillPath ?? join(manifest.harnessDir, "skills", "aidlc", "SKILL.md"),
-      );
+    for (const { name, manifest } of HARNESS_MATRIX) {
+      const skill = join(REPO_ROOT, "dist", name, manifest.orchestratorSkillPath);
       const reference = new RegExp(`\`(${manifest.harnessDir.replace(".", "\\.")}/[^\`\\s]+)\``, "g");
       let named = 0;
       for (const file of readdirSync(dirname(skill)).filter((entry) => entry.endsWith(".md"))) {
@@ -59,13 +40,21 @@ describe("t303 manifest-owned orchestrator skill path", () => {
     }
   });
 
-  test("package.ts resolves the optional manifest field with the in-tree default", () => {
-    const source = readFileSync(join(REPO_ROOT, "scripts", "package.ts"), "utf-8");
-    expect(source).toContain("manifest.orchestratorSkillPath");
-    expect(source).toContain(
-      'join(manifest.harnessDir, "skills", "aidlc", "SKILL.md")',
-    );
-    expect(source).not.toContain('join(projectRoot, ".agents", "skills", "aidlc"');
-    expect(source).not.toContain('join(projectRoot, ".github", "skills", "aidlc"');
+  test("each host's skill renderer places the orchestrator skill in-tree at its declared path", () => {
+    const orchestratorSource = "skills/aidlc/SKILL.md";
+    const projectRootJoins = [
+      'join(projectRoot, ".agents", "skills", "aidlc"',
+      'join(projectRoot, ".github", "skills", "aidlc"',
+    ];
+    for (const { name, manifest } of HARNESS_MATRIX) {
+      expect(manifest.orchestratorSkillPath.endsWith(orchestratorSource), name).toBe(true);
+      const prefix = manifest.orchestratorSkillPath.slice(0, -orchestratorSource.length);
+      const renderer = readFileSync(join(REPO_ROOT, "src", "hosts", name, "projection", "skill-renderer.ts"), "utf-8");
+      expect(renderer, name).toContain(`\`${prefix}\${source}\``);
+      expect(renderer, name).toContain("projectPath(");
+      for (const projectRootJoin of projectRootJoins) expect(renderer, name).not.toContain(projectRootJoin);
+    }
+    const packager = readFileSync(join(REPO_ROOT, "scripts", "package.ts"), "utf-8");
+    for (const projectRootJoin of projectRootJoins) expect(packager).not.toContain(projectRootJoin);
   });
 });

@@ -34,10 +34,19 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, join, posix, win32 } from "node:path";
 import { parse } from "smol-toml";
 import { TRUSTED_ROUTE_NAMESPACE } from "../../core/tools/aidlc-command.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
+import {
+  trustEntries as renderTrustEntries,
+} from "../../src/hosts/codex/projection/settings-renderer.ts";
+import {
+  extendedSubprocessTimeoutMs,
+} from "../../src/projection/adapters/legacy-runtime-budget.ts";
+import {
+  legacyHookTrustHash,
+} from "../../src/projection/adapters/legacy-trusted-commands.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -78,31 +87,27 @@ function parseTrustDocument(source: string): TrustDocument {
   return parse(source) as unknown as TrustDocument;
 }
 
+const TRUST_CAPABILITIES = {
+  extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(),
+  hookTrust: legacyHookTrustHash,
+};
+
+function defaultHooksJson(project: string, harnessDir: string): string {
+  const flavour = win32.isAbsolute(project) &&
+    (!posix.isAbsolute(project) || project.startsWith("//")) ? win32 : posix;
+  return flavour.join(project, harnessDir, "hooks.json");
+}
+
 function trustEntries(): TrustEntries {
-  const emitter = require(join(REPO_ROOT, "harness", "codex", "emit.ts")) as {
-    trustEntries: (...args: [
-      string,
-      string | undefined,
-      string,
-      string,
-      string,
-      string,
-    ]) => string;
+  return (project, hooksJson, harnessDir = ".codex", harnessName = "codex",
+    invoke = "aidlc") => {
+    const entries = renderTrustEntries({
+      hooksJsonPath: hooksJson ?? defaultHooksJson(project, harnessDir),
+      harnessName, invoke, trustedNamespace: TRUSTED_ROUTE_NAMESPACE,
+    }, TRUST_CAPABILITIES);
+    if (!entries.ok) throw new Error(entries.refusal.reason);
+    return entries.value;
   };
-  return (
-    project,
-    hooksJson,
-    harnessDir = ".codex",
-    harnessName = "codex",
-    invoke = "aidlc",
-  ) => emitter.trustEntries(
-    project,
-    hooksJson,
-    harnessDir,
-    harnessName,
-    invoke,
-    TRUSTED_ROUTE_NAMESPACE,
-  );
 }
 
 function expectedTrustKeys(hooksJsonPath: string): string[] {
