@@ -224,7 +224,7 @@ The chain runs cause to cause: each why asks why the answer before it is true, e
 
 Debt or authorisations already recorded by an earlier system, for example the old standalone route's `.constitution-carve-outs/`, can be imported with `provenance` instead of a `whyChain`, as [MIGRATING.md](MIGRATING.md#3-convert-the-old-records-into-exceptions) step 3 shows. Imported entries are checked against `--base-revision`: by default, any entry you write or change yourself needs the full `whyChain`.
 
-To record existing debt without a chain on every entry, set `"fileExceptionWhyChains": "optional"` in `disciplines.json`. An `authorised-location` or `file-carve-out` entry may then give only its `reason`, so write the reason as why the exception exists. A `clause-wide-carve-out` still needs its `whyChain`, and a `whyChain` or `provenance` you give anyway is still checked. [README.md](README.md#discipline-exceptionsjson) has the details.
+To record existing debt without a chain on every entry, set `"fileExceptionWhyChains": "optional"` in `disciplines.json`. An `authorised-location` or `file-carve-out` entry may then give only its `reason`, so write the reason as why the exception exists; a blank reason is refused. A run with any file carve-out still needs `--base-revision`, or it reports `forfeiture-unmeasured` and fails. A `clause-wide-carve-out` still needs its `whyChain`, and a `whyChain` or `provenance` you give anyway is still checked. [README.md](README.md#discipline-exceptionsjson) has the details.
 
 ## 8. Prove one failure and correction
 

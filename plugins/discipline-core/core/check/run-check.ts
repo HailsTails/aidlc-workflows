@@ -10,6 +10,7 @@ import {
   legacyChainsIn,
   parseExceptionEntries,
   readExceptionEntries,
+  recordImportOf,
   type StructuralExceptionEntry,
   UNMEASURED_EXCEPTION_BASELINE,
 } from "../exception-records/exception-records.ts";
@@ -205,9 +206,7 @@ const forfeitureUnmeasured = (request: {
     : [];
 
 const importedRecords = (request: { readonly records: readonly ExceptionRecord[] }): "present" | "absent" =>
-  request.records.some(
-    (record) => record.kind !== "clause-wide-carve-out" && record.whyChain === undefined && record.provenance !== undefined,
-  )
+  request.records.some((record) => recordImportOf({ record }).imported === "yes")
     ? "present"
     : "absent";
 

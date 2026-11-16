@@ -34,7 +34,6 @@ export type {
   FileDebtEvidence,
   InheritedDebtProvenance,
   InvalidRecord,
-  ReasonOnlyEvidence,
 } from "./exception-record.ts";
 
 export type ExceptionReading = {
@@ -172,13 +171,13 @@ type Unjudged<Entry> = Entry extends { readonly whyChain: RecordedWhyChain }
 
 const unjudgedWhyChainSchema = z.custom<UnjudgedWhyChain>((whyChain) => whyChain !== undefined);
 
-const reasonOnlyEvidenceFields = { whyChain: z.never().optional(), provenance: z.never().optional() };
+const reasonOnlyFields = { reason: recordedTextSchema, whyChain: z.never().optional(), provenance: z.never().optional() };
 
 const chainedAuthorisedLocationSchema = z.strictObject({ ...authorisedLocationFields, whyChain: unjudgedWhyChainSchema, provenance: existingAuthorisationProvenanceSchema.optional() });
 
 const importedAuthorisedLocationSchema = z.strictObject({ ...authorisedLocationFields, whyChain: z.never().optional(), provenance: existingAuthorisationProvenanceSchema });
 
-const reasonedAuthorisedLocationSchema = z.strictObject({ ...authorisedLocationFields, ...reasonOnlyEvidenceFields });
+const reasonedAuthorisedLocationSchema = z.strictObject({ ...authorisedLocationFields, ...reasonOnlyFields });
 
 const fileCarveOutFields = {
   kind: z.literal("file-carve-out"),
@@ -191,7 +190,7 @@ const chainedFileCarveOutSchema = z.strictObject({ ...fileCarveOutFields, whyCha
 
 const importedFileCarveOutSchema = z.strictObject({ ...fileCarveOutFields, whyChain: z.never().optional(), provenance: inheritedDebtProvenanceSchema });
 
-const reasonedFileCarveOutSchema = z.strictObject({ ...fileCarveOutFields, ...reasonOnlyEvidenceFields });
+const reasonedFileCarveOutSchema = z.strictObject({ ...fileCarveOutFields, ...reasonOnlyFields });
 
 type FileEvidenceSchemas = {
   readonly "authorised-location": z.ZodType<Unjudged<AuthorisedLocationEntry>>;
@@ -557,7 +556,7 @@ export const readExceptionEntries = (request: {
   return { outcome: "ok", value: parsed.data.exceptions };
 };
 
-type ImportEvidence = { readonly imported: "no" } | { readonly imported: "yes"; readonly source: string };
+export type ImportEvidence = { readonly imported: "no" } | { readonly imported: "yes"; readonly source: string };
 
 const importedEvidenceOf = (request: { readonly entry: StructuralExceptionEntry }) => {
   switch (request.entry.kind) {
@@ -576,6 +575,14 @@ const importEvidenceOf = (request: { readonly entry: StructuralExceptionEntry })
     return { imported: "no" };
   }
   return { imported: "yes", source: evidence.data.provenance.source };
+};
+
+export const recordImportOf = (request: { readonly record: ExceptionRecord }): ImportEvidence => {
+  const { record } = request;
+  if (record.kind === "clause-wide-carve-out" || record.whyChain !== undefined || record.provenance === undefined) {
+    return { imported: "no" };
+  }
+  return { imported: "yes", source: record.provenance.source };
 };
 
 const importSourcePathsOf = (request: { readonly entry: StructuralExceptionEntry }): readonly RepoPath[] => {

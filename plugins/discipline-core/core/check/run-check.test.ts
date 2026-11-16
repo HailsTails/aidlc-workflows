@@ -629,7 +629,22 @@ describe("runCheck for a repository whose disciplines.json makes file exception 
     });
   });
 
-  it("reports nothing unmeasured for reason-only records when no base revision is given", async () => {
+  it("reports forfeiture-unmeasured for a reason-only file carve-out when no base revision is given", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          baseRevision: undefined,
+          fileText: fileTextOver({
+            ...INSTALL,
+            [SELECTION_PATH]: presentFile({ text: SELECTION_WITH_OPTIONAL_WHY_CHAINS }),
+            [EXCEPTIONS_PATH]: presentFile({ text: JSON.stringify({ version: 1, exceptions: [REASONED_CARVE_OUT] }) }),
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({ outcome: "ok", value: { invalidRecords: [], unmeasured: [{ kind: "forfeiture-unmeasured" }] } });
+  });
+
+  it("reports nothing unmeasured for a reason-only authorised location when no base revision is given", async () => {
     await expect(
       runCheck(
         checkRequest({

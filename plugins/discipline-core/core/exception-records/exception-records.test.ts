@@ -10,10 +10,13 @@ import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import {
   createExceptionRepository,
   type ExceptionBaseline,
+  type ExceptionRecord,
   exceptionEntriesOfText,
+  type ImportEvidence,
   legacyChainsIn,
   parseExceptionEntries,
   readExceptionEntries,
+  recordImportOf,
   type StructuralExceptionEntry,
   UNMEASURED_EXCEPTION_BASELINE,
 } from "./exception-records.ts";
@@ -721,10 +724,42 @@ describe("parseExceptionEntries when file exception why-chains are optional", ()
     expect(parsedWithOptionalWhyChains({ entries: [REASONED_LOCATION, REASONED_CARVE_OUT], baseline: NOTHING_AT_BASE }).invalid).toEqual([]);
   });
 
-  it("still judges a why-chain a file record supplies", () => {
+  it.each([
+    ["authorised location", REASONED_LOCATION],
+    ["file carve-out", REASONED_CARVE_OUT],
+  ] as const)("refuses a reason-only %s whose reason is blank", (_label, entry) => {
     expect(
-      parsedWithOptionalWhyChains({ entries: [{ ...REASONED_CARVE_OUT, whyChain: SHORT_CHAIN }], baseline: UNMEASURED_EXCEPTION_BASELINE }),
-    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
+      parsedWithOptionalWhyChains({ entries: [{ ...entry, reason: "" }, { ...entry, file: "src/blank.ts", reason: " \t " }], baseline: UNMEASURED_EXCEPTION_BASELINE }),
+    ).toEqual({
+      records: [],
+      invalid: [
+        { index: 0, problem: { kind: "evidence-refused", detail: expect.any(String) } },
+        { index: 1, problem: { kind: "evidence-refused", detail: expect.any(String) } },
+      ],
+    });
+  });
+
+  it.each([
+    ["authorised location", REASONED_LOCATION],
+    ["file carve-out", REASONED_CARVE_OUT],
+  ] as const)("judges a reason-only-shaped %s that also carries a why-chain on that chain", (_label, entry) => {
+    expect(
+      parsedWithOptionalWhyChains({ entries: [{ ...entry, whyChain: SHORT_CHAIN }, { ...entry, file: "src/chained.ts", whyChain: CAUSAL_WHY_CHAIN }], baseline: UNMEASURED_EXCEPTION_BASELINE }),
+    ).toEqual({
+      records: [{ ...entry, file: "src/chained.ts", clause: CLASS_SYNTAX, mechanism: "audit", whyChain: CAUSAL_WHY_CHAIN }],
+      invalid: [{ index: 0, problem: { kind: "why-chain-refused", detail: expect.any(String) } }],
+    });
+  });
+
+  it("keeps a blank reason beside a why-chain as it is while file exception why-chains are required", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...FILE_CARVE_OUT, reason: "" }],
+        selection: SELECTION,
+        fileExceptionWhyChains: "required",
+        baseline: UNMEASURED_EXCEPTION_BASELINE,
+      }).invalid,
+    ).toEqual([]);
   });
 
   it("still verifies provenance a file record supplies against the base revision", () => {
@@ -925,5 +960,31 @@ describe("legacyChainsIn reports whether any entry holds a chain without rootChe
     ["no entries", [], "absent"],
   ] as const)("reads %s as %s", (_label, entries, presence) => {
     expect(legacyChainsIn({ entries })).toBe(presence);
+  });
+});
+
+const CLASS_SYNTAX_ADDRESS = clauseAddressSchema.parse("CD-14#class-syntax");
+
+const AUDIT = mechanismIdSchema.parse("audit");
+
+const IMPORTED_EXCEPTION_RECORD: ExceptionRecord = {
+  kind: "file-carve-out",
+  clause: CLASS_SYNTAX_ADDRESS,
+  mechanism: AUDIT,
+  file: repoPathSchema.parse("src/legacy.ts"),
+  reason: IMPORTED_CARVE_OUT.reason,
+  provenance: IMPORTED_CARVE_OUT.provenance,
+};
+
+const RECORD_IMPORT_CASES: readonly (readonly [string, ExceptionRecord, ImportEvidence])[] = [
+  ["an imported file carve-out", IMPORTED_EXCEPTION_RECORD, { imported: "yes", source: IMPORTED_CARVE_OUT.provenance.source }],
+  ["a chained record that also gives provenance", { ...IMPORTED_EXCEPTION_RECORD, whyChain: CAUSAL_WHY_CHAIN }, { imported: "no" }],
+  ["a reason-only record", { kind: "authorised-location", clause: CLASS_SYNTAX_ADDRESS, mechanism: AUDIT, file: repoPathSchema.parse("src/factory.ts"), reason: REASONED_LOCATION.reason }, { imported: "no" }],
+  ["a clause-wide carve-out", { kind: "clause-wide-carve-out", clause: CLASS_SYNTAX_ADDRESS, mechanism: AUDIT, reason: CLAUSE_WIDE.reason, whyChain: CAUSAL_WHY_CHAIN }, { imported: "no" }],
+];
+
+describe("recordImportOf names the provenance source of an imported record, and of no other", () => {
+  it.each(RECORD_IMPORT_CASES)("reads %s", (_label, record, recordImport) => {
+    expect(recordImportOf({ record })).toEqual(recordImport);
   });
 });
