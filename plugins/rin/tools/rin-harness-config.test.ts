@@ -5,6 +5,7 @@ import { inspect } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   CONFIG_FILENAME,
+  configBoundedCloseOptIn,
   configR7OptIn,
   createDefaultVaultConfigurationReader,
   defaultProjectIdentity,
@@ -67,6 +68,75 @@ const minimalConfig = {
   stageGraph: ".claude/tools/data/stage-graph.json",
   packageManager: { primary: "bun", runnerAllowlist: ["pnpm"] },
 };
+
+describe("configBoundedCloseOptIn", () => {
+  test("is off when no config file exists", () => {
+    const projectDir = createProjectDir({ contents: null });
+    expect(
+      configBoundedCloseOptIn({ projectDir, recordName: "260101-a" }),
+    ).toEqual({ kind: "disabled" });
+  });
+
+  test("is off when a valid config omits the flag", () => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify(minimalConfig),
+    });
+    expect(
+      configBoundedCloseOptIn({ projectDir, recordName: "260101-a" }),
+    ).toEqual({ kind: "disabled" });
+  });
+
+  test("is on for a record the flag names", () => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify({
+        ...minimalConfig,
+        rinGates: { oneBoardBoundedClose: { records: ["260101-a"] } },
+      }),
+    });
+    expect(
+      configBoundedCloseOptIn({ projectDir, recordName: "260101-a" }),
+    ).toEqual({ kind: "enabled" });
+  });
+
+  test("is off for a record the flag does not name", () => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify({
+        ...minimalConfig,
+        rinGates: { oneBoardBoundedClose: { records: ["260101-a"] } },
+      }),
+    });
+    expect(
+      configBoundedCloseOptIn({ projectDir, recordName: "260101-b" }),
+    ).toEqual({ kind: "disabled" });
+  });
+
+  test("is on for every record when set to all", () => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify({
+        ...minimalConfig,
+        rinGates: { oneBoardBoundedClose: "all" },
+      }),
+    });
+    expect(
+      configBoundedCloseOptIn({ projectDir, recordName: "260101-b" }),
+    ).toEqual({ kind: "enabled" });
+  });
+
+  test("is off, and names the flag, when the flag is malformed", () => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify({
+        ...minimalConfig,
+        rinGates: { oneBoardBoundedClose: true },
+      }),
+    });
+    expect(
+      configBoundedCloseOptIn({ projectDir, recordName: "260101-a" }),
+    ).toEqual({ kind: "disabled" });
+    expect(readConfig({ projectDir }).failure).toMatchObject({
+      detail: expect.stringContaining('"rinGates.oneBoardBoundedClose" must be'),
+    });
+  });
+});
 
 describe("configR7OptIn", () => {
   test("defaults off when no config file exists", () => {

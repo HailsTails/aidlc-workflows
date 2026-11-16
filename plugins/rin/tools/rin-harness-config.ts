@@ -124,13 +124,27 @@ type ConstitutionScopeConfig = {
 
 const RIN_WALKER_ENGINE: ConstitutionEngine = { engine: "rin-walker" };
 
+const boundedCloseSchema = z.union([
+  z.literal("off"),
+  z.literal("all"),
+  z.object({ records: z.array(z.string().min(1)) }).strict(),
+]);
+
+type BoundedCloseConfig = z.infer<typeof boundedCloseSchema>;
+
 const rinGatesSchema = z.object({
   exceptionWhyChains: z.boolean().default(false),
+  oneBoardBoundedClose: boundedCloseSchema.default("off"),
 });
 
 type RinGatesConfig = {
   exceptionWhyChains: boolean;
+  oneBoardBoundedClose: BoundedCloseConfig;
 };
+
+type BoundedCloseOptIn =
+  | { readonly kind: "enabled" }
+  | { readonly kind: "disabled" };
 
 type SettledR7OptIn =
   | { readonly kind: "enabled" }
@@ -232,7 +246,7 @@ const defaultConfig: HarnessConfig = {
   },
   mechanisms: defaultMechanisms,
   projectIdentity: defaultProjectIdentity,
-  rinGates: { exceptionWhyChains: false },
+  rinGates: { exceptionWhyChains: false, oneBoardBoundedClose: "off" },
 };
 
 type Validation<T> =
@@ -711,10 +725,14 @@ const validateRinGates = ({
   const offendsBlock = parsed.error.issues.some(
     (issue) => issue.path.length === 0,
   );
+  const offendsBoundedClose = parsed.error.issues.some(
+    (issue) => issue.path[0] === "oneBoardBoundedClose",
+  );
+  if (offendsBlock) return { ok: false, error: `"rinGates" must be an object` };
   return {
     ok: false,
-    error: offendsBlock
-      ? `"rinGates" must be an object`
+    error: offendsBoundedClose
+      ? `"rinGates.oneBoardBoundedClose" must be "off", "all" or { "records": [<record name>, ...] }`
       : `"rinGates.exceptionWhyChains" must be a boolean`,
   };
 };
@@ -995,6 +1013,36 @@ const configR7OptIn = ({
     : { kind: "disabled" };
 };
 
+const boundedCloseOptInOf = ({
+  setting,
+  recordName,
+}: {
+  readonly setting: BoundedCloseConfig;
+  readonly recordName: string;
+}): BoundedCloseOptIn => {
+  if (setting === "all") return { kind: "enabled" };
+  if (setting === "off") return { kind: "disabled" };
+  return setting.records.includes(recordName)
+    ? { kind: "enabled" }
+    : { kind: "disabled" };
+};
+
+const configBoundedCloseOptIn = ({
+  projectDir,
+  recordName,
+}: {
+  readonly projectDir: string;
+  readonly recordName: string;
+}): BoundedCloseOptIn => {
+  const loaded = readConfig({ projectDir });
+  return loaded.failure === null
+    ? boundedCloseOptInOf({
+        setting: loaded.config.rinGates.oneBoardBoundedClose,
+        recordName,
+      })
+    : { kind: "disabled" };
+};
+
 const requiresExceptionWhyChains = ({
   optIn,
 }: {
@@ -1052,6 +1100,7 @@ export type {
   ProjectIdentityConfig,
   ProjectIdentityFailure,
   ProjectIdentityOutcome,
+  BoundedCloseOptIn,
   R7OptIn,
   ResolvedReviewCommand,
   ReviewCommandBinding,
@@ -1072,6 +1121,7 @@ export {
   configMechanisms,
   configNotesSink,
   configProjectName,
+  configBoundedCloseOptIn,
   configR7OptIn,
   configRulesetRoot,
   configRunnerAllowlist,

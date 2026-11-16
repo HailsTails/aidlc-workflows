@@ -16,6 +16,9 @@ type GraphNode = {
   readonly scopes?: unknown;
   readonly phase?: unknown;
   readonly review_artifact?: unknown;
+  readonly lead_agent?: unknown;
+  readonly support_agents?: unknown;
+  readonly produces?: unknown;
 };
 
 const RIN_GATES_SCOPE = "rin-gates";
@@ -123,6 +126,50 @@ export const declaredReviewArtifactPathFor = (args: {
   const { phase, review_artifact: artifact } = node;
   if (typeof phase !== "string" || typeof artifact !== "string") return null;
   return join(phase, args.gate, `${artifact}.md`);
+};
+
+const graphNodeFor = (args: {
+  readonly gate: string;
+  readonly graph: unknown;
+}): GraphNode | null => {
+  if (!Array.isArray(args.graph)) return null;
+  return (
+    args.graph
+      .filter(
+        (entry): entry is GraphNode =>
+          typeof entry === "object" && entry !== null,
+      )
+      .find((entry) => entry.slug === args.gate) ?? null
+  );
+};
+
+const stringsIn = (candidate: unknown): readonly string[] =>
+  Array.isArray(candidate)
+    ? candidate.filter((entry): entry is string => typeof entry === "string")
+    : [];
+
+export const declaredSeatsFor = (args: {
+  readonly gate: string;
+  readonly graph: unknown;
+}): readonly string[] => {
+  const node = graphNodeFor(args);
+  if (node === null) return [];
+  return [
+    ...(typeof node.lead_agent === "string" ? [node.lead_agent] : []),
+    ...stringsIn(node.support_agents),
+  ];
+};
+
+export const declaredProducedArtifactPathsFor = (args: {
+  readonly gate: string;
+  readonly graph: unknown;
+}): readonly string[] => {
+  const node = graphNodeFor(args);
+  if (node === null || typeof node.phase !== "string") return [];
+  const phase = node.phase;
+  return stringsIn(node.produces).map(
+    (artifact) => `${phase}/${args.gate}/${artifact}.md`,
+  );
 };
 
 export type TotalityFinding = {
