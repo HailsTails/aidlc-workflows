@@ -11,14 +11,17 @@
 //
 // Exit codes follow the per-sensor script contract:
 //   0   pass (the JSON `pass` field carries the verdict)
-//   127 biome unresolvable — the dispatcher reclassifies as tool-unavailable
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+//   127 biome not installed in the project — the dispatcher reclassifies as tool-unavailable
+import { defaultReviewProcessPort } from "./rin-gates/review-process-port.ts";
+import { defaultPathOperations } from "./rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "./rin-harness-sidecar-file-reader.ts";
 
 const FORMATTED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc|css)$/;
 
 const TOOL_UNAVAILABLE_EXIT_CODE = 127;
+
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
 
 const argumentValue = ({
   argv,
@@ -49,26 +52,164 @@ const targetPathFrom = ({
 
 const nearestProjectRoot = (startPath: string): string => {
   const walkUp = (directory: string): string => {
-    if (existsSync(resolve(directory, "package.json"))) return directory;
-    const parent = dirname(directory);
+    if (files.exists(paths.join({ segments: [directory, "package.json"] })))
+      return directory;
+    const parent = paths.dirname({ path: directory });
     return parent === directory ? directory : walkUp(parent);
   };
-  return walkUp(dirname(resolve(startPath)));
+  return walkUp(
+    paths.dirname({ path: paths.resolve({ segments: [startPath] }) }),
+  );
 };
 
-const emit = (payload: {
-  pass: boolean;
-  reformatted: boolean;
-  file: string;
-  note?: string;
-}): void => {
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
+type InstalledTool = {
+  readonly version: string;
+  readonly cliPath: string;
+};
+
+type ProjectToolRequest = {
+  readonly projectRoot: string;
+  readonly packageName: string;
+  readonly binName: string;
+};
+
+type FormatCommand =
+  | {
+      readonly kind: "run";
+      readonly executable: string;
+      readonly commandArguments: readonly string[];
+    }
+  | { readonly kind: "unavailable"; readonly message: string };
+
+const BIOME_PACKAGE = "@biomejs/biome";
+
+const isRecord = (candidate: unknown): candidate is Record<string, unknown> =>
+  typeof candidate === "object" &&
+  candidate !== null &&
+  !Array.isArray(candidate);
+
+const ancestorDirectories = (start: string): readonly string[] => {
+  const parent = paths.dirname({ path: start });
+  return parent === start ? [start] : [start, ...ancestorDirectories(parent)];
+};
+
+const parsedManifest = (
+  manifestPath: string,
+): Record<string, unknown> | null => {
+  try {
+    const manifest: unknown = JSON.parse(files.read(manifestPath));
+    return isRecord(manifest) ? manifest : null;
+  } catch {
+    return null;
+  }
+};
+
+const binRelativePath = ({
+  manifest,
+  binName,
+}: {
+  readonly manifest: Record<string, unknown>;
+  readonly binName: string;
+}): string | null => {
+  const { bin } = manifest;
+  if (typeof bin === "string") return bin;
+  if (!isRecord(bin)) return null;
+  const entry = bin[binName];
+  return typeof entry === "string" ? entry : null;
+};
+
+const toolInstalledAt = ({
+  packageDirectory,
+  request,
+}: {
+  readonly packageDirectory: string;
+  readonly request: ProjectToolRequest;
+}): InstalledTool | null => {
+  const manifest = parsedManifest(
+    paths.join({ segments: [packageDirectory, "package.json"] }),
+  );
+  if (
+    manifest === null ||
+    manifest["name"] !== request.packageName ||
+    typeof manifest["version"] !== "string"
+  )
+    return null;
+  const relativeCli = binRelativePath({ manifest, binName: request.binName });
+  if (relativeCli === null) return null;
+  const cliPath = paths.join({ segments: [packageDirectory, relativeCli] });
+  return files.exists(cliPath)
+    ? { version: manifest["version"], cliPath }
+    : null;
+};
+
+const installedProjectTool = (
+  request: ProjectToolRequest,
+): InstalledTool | null => {
+  const packageDirectory = ancestorDirectories(
+    paths.resolve({ segments: [request.projectRoot] }),
+  )
+    .map((directory) =>
+      paths.join({
+        segments: [directory, "node_modules", request.packageName],
+      }),
+    )
+    .find((candidate) =>
+      files.exists(paths.join({ segments: [candidate, "package.json"] })),
+    );
+  return packageDirectory === undefined
+    ? null
+    : toolInstalledAt({ packageDirectory, request });
+};
+
+const biomeFormatCommand = ({
+  filePath,
+  projectRoot,
+  resolveTool,
+}: {
+  readonly filePath: string;
+  readonly projectRoot: string;
+  readonly resolveTool: (request: ProjectToolRequest) => InstalledTool | null;
+}): FormatCommand => {
+  const biome = resolveTool({
+    projectRoot,
+    packageName: BIOME_PACKAGE,
+    binName: "biome",
+  });
+  if (biome === null)
+    return {
+      kind: "unavailable",
+      message: `biome-unavailable: ${BIOME_PACKAGE} is not installed in ${projectRoot} or its parent directories; install ${BIOME_PACKAGE} as a devDependency of this repository to enable this sensor`,
+    };
+  return {
+    kind: "run",
+    executable: process.execPath,
+    commandArguments: [
+      biome.cliPath,
+      "format",
+      "--write",
+      "--no-errors-on-unmatched",
+      filePath,
+    ],
+  };
 };
 
 const runFormatSensor = (): void => {
-  // The dispatcher decides which flag to pass from a CLOSED allowlist of sensor
-  const filePath = targetPathFrom({ argv: process.argv });
-  if (filePath === null || !existsSync(filePath)) {
+  const processes = defaultReviewProcessPort();
+  const emit = (payload: {
+    pass: boolean;
+    reformatted: boolean;
+    file: string;
+    note?: string;
+  }): void => {
+    processes.publish(`${JSON.stringify(payload)}\n`);
+  };
+  const unavailable: (message: string) => never = (message) => {
+    processes.diagnose(`${message}\n`);
+    return processes.exit(TOOL_UNAVAILABLE_EXIT_CODE);
+  };
+
+  const filePath = targetPathFrom({ argv: processes.arguments });
+  if (filePath === null || !files.exists(filePath)) {
     emit({
       pass: true,
       reformatted: false,
@@ -89,23 +230,32 @@ const runFormatSensor = (): void => {
   }
 
   const projectRoot = nearestProjectRoot(filePath);
-  const before = readFileSync(filePath, "utf-8");
+  const command = biomeFormatCommand({
+    filePath,
+    projectRoot,
+    resolveTool: installedProjectTool,
+  });
+  if (command.kind === "unavailable") unavailable(command.message);
 
-  const formatted = spawnSync(
-    "bunx",
-    ["biome", "format", "--write", "--no-errors-on-unmatched", filePath],
-    { cwd: projectRoot, encoding: "utf-8" },
-  );
+  const before = files.read(filePath);
+  const formatted = processes.runSync({
+    program: command.executable,
+    args: command.commandArguments,
+    cwd: projectRoot,
+    environment: processes.environment,
+  });
+  if (formatted.status === null) unavailable("biome-unavailable");
 
-  if (formatted.error !== undefined) {
-    process.stderr.write("biome-unavailable\n");
-    process.exit(TOOL_UNAVAILABLE_EXIT_CODE);
-  }
-
-  const after = readFileSync(filePath, "utf-8");
+  const after = files.read(filePath);
   emit({ pass: true, reformatted: before !== after, file: filePath });
 };
 
 if (import.meta.main) runFormatSensor();
 
-export { FORMATTED_EXTENSIONS, nearestProjectRoot, targetPathFrom };
+export {
+  biomeFormatCommand,
+  FORMATTED_EXTENSIONS,
+  installedProjectTool,
+  nearestProjectRoot,
+  targetPathFrom,
+};

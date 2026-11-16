@@ -32,4 +32,4 @@ The framework's `linter` sensor prefers the consumer's `package.json` lint scrip
 
 ## Failure mode
 
-If the formatter binary cannot be resolved the script exits 127 and the dispatcher reclassifies the fire as `tool-unavailable`, giving a quiet PASS rather than spamming script-error on a machine without the toolchain installed.
+Biome is the one the project itself installed, resolved from the nearest `node_modules/@biomejs/biome` at or above the file's package directory, never from `PATH` and never downloaded. If it is not installed the script exits 127 with `biome-unavailable` and a message naming what to install, and the dispatcher reclassifies the fire as `tool-unavailable` rather than spamming script-error. Install `@biomejs/biome` as a devDependency of the repository to enable it.
