@@ -16,6 +16,8 @@ export type Git = {
   readonly resolve: (revision: string) => string;
   readonly show: (revision: string, path: string) => string;
   readonly identityOf: (revision: string) => { readonly author: Identity; readonly committer: Identity };
+  readonly globalConfig: (key: string) => string | undefined;
+  readonly filesIn: (revision: string, folder: string) => readonly string[];
   readonly treeOf: (revision: string) => string | undefined;
   readonly readTree: (revision: string) => void;
   readonly indexedPaths: () => readonly string[];
@@ -89,6 +91,18 @@ export const gitIn = (repository: string, indexFile: string): Git => {
         .split("\0");
       return { author: identityFrom(fields, 0), committer: identityFrom(fields, 3) };
     },
+    globalConfig: (key) => {
+      try {
+        const value = git({ args: ["config", "--global", "--get", key] }).trim();
+        return value === "" ? undefined : value;
+      } catch {
+        return undefined;
+      }
+    },
+    filesIn: (revision, folder) =>
+      git({ args: ["ls-tree", "-z", "--name-only", revision, "--", `${folder}/`] })
+        .split("\0")
+        .filter((path) => path !== ""),
     treeOf: (revision) => {
       try {
         return git({ args: ["rev-parse", "--verify", "--quiet", `${revision}^{tree}`] }).trim();

@@ -1,3 +1,5 @@
+import type { PinSources } from "./pin-facts.ts";
+
 export type MovedFile = {
   readonly from: string;
   readonly to: string;
@@ -28,6 +30,7 @@ export type ShapePlan = {
   readonly bridgeMapPath: string;
   readonly readmeTemplate: string;
   readonly readmePath: string;
+  readonly pinSources: PinSources;
 };
 
 const GATE = "lint/gate";
@@ -104,6 +107,11 @@ export const SHAPE_PLAN: ShapePlan = {
   bridgeMapPath: "src/bridge-map.json",
   readmeTemplate: "templates/PARITY.md",
   readmePath: "PARITY.md",
+  pinSources: {
+    versionModule: "core/tools/aidlc-version.ts",
+    previousReleaseRecord: "lint/gate/previous-release.json",
+    goldenFolder: "tests/golden",
+  },
 };
 
 export const isStripped = (plan: ShapePlan, path: string): boolean =>

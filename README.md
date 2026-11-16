@@ -4,21 +4,21 @@ Rebuilds the `upstream-shape` branch of `HailsTails/aidlc-workflows` from `rebui
 
 ```sh
 bun install
-bun src/regenerate.ts --repository <aidlc-workflows checkout>
-bun src/regenerate.ts --repository <aidlc-workflows checkout> --verify
+bun src/regenerate.ts --repository <aidlc-workflows checkout> --pin <upstream commit>
+bun src/regenerate.ts --repository <aidlc-workflows checkout> --pin <upstream commit> --verify
 git -C <aidlc-workflows checkout> push origin upstream-shape
 ```
 
 The twin of the branch as one commit on the upstream pin, for a pull request against `awslabs/aidlc-workflows`:
 
 ```sh
-bun src/regenerate.ts --repository <aidlc-workflows checkout> --parent caea995ae --branch upstream-shape-on-pin
+bun src/regenerate.ts --repository <aidlc-workflows checkout> --pin <upstream commit> --parent <upstream commit> --branch upstream-shape-on-pin
 ```
 
 An optional patch carries a change the branch can be built without. Leaving it out also drops its note from `PARITY.md`:
 
 ```sh
-bun src/regenerate.ts --repository <aidlc-workflows checkout> --without gitleaks-golden-allowlist
+bun src/regenerate.ts --repository <aidlc-workflows checkout> --pin <upstream commit> --without gitleaks-golden-allowlist
 ```
 
 What a run does, in a temporary index, never touching a checkout:
@@ -29,5 +29,5 @@ What a run does, in a temporary index, never touching a checkout:
 4. Moves the golden and install-lifecycle code from `lint/gate/` to `scripts/parity/`.
 5. Takes `SHAPE_PLAN.pinnedFiles` from the pin.
 6. Applies `patches/` in name order, then each `SHAPE_PLAN.optionalPatches` entry not named by `--without`. A patch that no longer applies stops the run.
-7. Adds `overlay/` files, `src/bridge-map.json` generated from foundation's `lint/context-map.ts`, and `PARITY.md` rendered from `templates/PARITY.md`.
-8. Commits with foundation's tip identity and dates, so the same inputs give the same commit.
+7. Adds `overlay/` files, `src/bridge-map.json` generated from foundation's `lint/context-map.ts`, and `PARITY.md` rendered from `templates/PARITY.md`. The template's pin, release, previous release and golden file count come from the pin's `core/tools/aidlc-version.ts`, foundation's `lint/gate/previous-release.json` and foundation's `tests/golden/`.
+8. Commits as the global git identity (`git config --global user.name` and `user.email`), never a bot and never the repository-local identity, with foundation's tip dates and no `Co-Authored-By` trailer, so the same inputs give the same commit.

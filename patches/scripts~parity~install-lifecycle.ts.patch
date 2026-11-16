@@ -14,7 +14,7 @@ index 9ba27fe0c..2d91fd6ed 100644
 -  "Run it under the machine lock:",
 -  "  bun scripts/gate.ts --locked -- bun lint/gate/install-lifecycle.ts …",
 +  "Build the previous-release dist first:",
-+  "  git worktree add ../aidlc-previous-release v2.11.2",
++  "  git worktree add ../aidlc-previous-release <previous release tag>",
 +  "  bun install --cwd ../aidlc-previous-release",
 +  "  bun ../aidlc-previous-release/scripts/package.ts",
  ].join("\n");
