@@ -36,6 +36,7 @@ KIRO_IDE_ROW_SESSION_NOTE
 KIRO_KEPT_CHANGED_DETAIL
 KIRO_SWITCH_DIR
 KIRO_UPGRADED_DETAIL
+KiroAgentModelReport
 KiroModelsPlan
 MENU_TEXT_MIN_COLUMNS
 MENU_WORD
@@ -166,6 +167,7 @@ earlierSkillTablesOnly
 effortTradeoff
 emitKiroSessionResult
 emitResult
+emitWithKiroAgentModels
 entryIdentity
 excludeLocalSettingsFromClone
 executeGlobalSettingsMutation
@@ -174,6 +176,7 @@ existingProject
 existingProjectionOutstanding
 expected
 firstRunChildCount
+firstRunDefaultMcp
 firstRunDefaultPreset
 firstRunFailureLines
 firstRunKiroSummary
@@ -203,6 +206,8 @@ invokedToolNamer
 isRecord
 isStringMap
 isTomlTable
+kiroAgentModelReport
+kiroAgentModelsSetBy
 kiroAgentPinsNote
 kiroAutoUpgradeOn
 kiroBackupsKeptNote

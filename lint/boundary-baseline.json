@@ -1,35 +1,35 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 173113,
+  "total": 177993,
   "totals": {
-    "@typescript-eslint/consistent-type-imports": 77,
+    "@typescript-eslint/consistent-type-imports": 80,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
-    "aidlc/no-comments": 112108,
-    "complexity": 3062,
-    "Context boundary": 42,
-    "Harness branching": 410,
-    "max-depth": 2122,
-    "max-len": 48667,
-    "max-lines-per-function": 3520,
-    "max-params": 1755,
+    "aidlc/no-comments": 114607,
+    "complexity": 3107,
+    "Context boundary": 44,
+    "Harness branching": 418,
+    "max-depth": 2067,
+    "max-len": 50920,
+    "max-lines-per-function": 3588,
+    "max-params": 1792,
     "Monolith": 47,
     "no-control-regex": 17,
     "no-irregular-whitespace": 12,
     "no-lone-blocks": 3,
-    "no-nested-ternary": 934,
-    "no-template-curly-in-string": 11,
+    "no-nested-ternary": 953,
+    "no-template-curly-in-string": 14,
     "no-unsafe-finally": 2,
     "no-useless-escape": 2,
-    "One owner": 93,
+    "One owner": 85,
     "prefer-const": 3,
-    "prefer-template": 192
+    "prefer-template": 198
   },
   "files": {
     "core/hooks/aidlc-continue-workflow.ts": {
-      "aidlc/no-comments": 805,
-      "max-len": 44,
+      "aidlc/no-comments": 788,
+      "max-len": 43,
       "Monolith": 1,
       "Harness branching": 3,
       "max-depth": 17,
@@ -39,7 +39,7 @@
       "no-nested-ternary": 5
     },
     "core/hooks/aidlc-deliver-stage-rules.ts": {
-      "aidlc/no-comments": 69,
+      "aidlc/no-comments": 68,
       "Monolith": 1,
       "prefer-template": 1,
       "max-len": 8,
@@ -54,42 +54,43 @@
       "max-len": 1
     },
     "core/hooks/aidlc-log-subagent.ts": {
-      "aidlc/no-comments": 30,
+      "aidlc/no-comments": 32,
       "Monolith": 1,
       "max-len": 14,
       "complexity": 2,
       "max-lines-per-function": 1
     },
     "core/hooks/aidlc-plan-approval-guard.ts": {
-      "aidlc/no-comments": 733,
-      "max-len": 130,
+      "aidlc/no-comments": 762,
+      "max-len": 131,
       "Monolith": 1,
       "max-params": 12,
-      "complexity": 26,
+      "complexity": 27,
       "no-nested-ternary": 24,
-      "prefer-template": 6,
+      "prefer-template": 4,
       "max-depth": 14,
       "@typescript-eslint/consistent-type-imports": 2,
       "max-lines-per-function": 5,
       "no-control-regex": 2,
-      "Harness branching": 1
+      "Harness branching": 2
     },
     "core/hooks/aidlc-rebuild-stage-graph.ts": {
-      "aidlc/no-comments": 136,
+      "aidlc/no-comments": 144,
       "Monolith": 1,
       "max-lines-per-function": 2,
       "complexity": 2,
-      "max-len": 3,
+      "max-len": 5,
       "max-depth": 2
     },
     "core/hooks/aidlc-record-human-turn.ts": {
-      "aidlc/no-comments": 368,
-      "max-len": 48,
+      "aidlc/no-comments": 384,
+      "max-len": 53,
       "Monolith": 1,
-      "complexity": 12,
+      "complexity": 13,
       "no-nested-ternary": 5,
       "max-params": 1,
       "max-lines-per-function": 1,
+      "Harness branching": 1,
       "max-depth": 12
     },
     "core/hooks/aidlc-review-freeze.ts": {
@@ -102,12 +103,12 @@
       "max-depth": 2
     },
     "core/hooks/aidlc-reviewer-scope.ts": {
-      "aidlc/no-comments": 184,
-      "max-len": 17,
+      "aidlc/no-comments": 186,
+      "max-len": 16,
       "Monolith": 1,
       "complexity": 13,
       "max-params": 9,
-      "max-depth": 4,
+      "max-depth": 6,
       "max-lines-per-function": 2,
       "no-nested-ternary": 5
     },
@@ -173,22 +174,23 @@
       "complexity": 1
     },
     "core/hooks/review-freeze-command.ts": {
-      "aidlc/no-comments": 158,
-      "max-lines-per-function": 8,
-      "complexity": 23,
-      "max-depth": 30,
+      "aidlc/no-comments": 210,
+      "max-lines-per-function": 9,
+      "complexity": 27,
+      "max-depth": 34,
       "max-params": 5,
-      "max-len": 16,
-      "no-nested-ternary": 3
+      "max-len": 24,
+      "no-nested-ternary": 5,
+      "Harness branching": 1
     },
     "core/hooks/runtime-integrity.ts": {
-      "aidlc/no-comments": 156,
+      "aidlc/no-comments": 167,
       "Monolith": 1,
       "max-len": 62,
       "no-nested-ternary": 6,
       "max-lines-per-function": 5,
-      "complexity": 27,
-      "max-depth": 49,
+      "complexity": 26,
+      "max-depth": 42,
       "max-params": 10,
       "Harness branching": 2
     },
@@ -205,8 +207,8 @@
       "max-len": 6
     },
     "core/skills/aidlc-issue-report/scripts/collect.ts": {
-      "aidlc/no-comments": 87,
-      "max-len": 100,
+      "aidlc/no-comments": 88,
+      "max-len": 101,
       "no-nested-ternary": 1,
       "complexity": 1,
       "max-depth": 4
@@ -259,8 +261,8 @@
       "max-depth": 8
     },
     "core/skills/aidlc-issue-report/scripts/lib-project.ts": {
-      "aidlc/no-comments": 56,
-      "max-len": 54,
+      "aidlc/no-comments": 61,
+      "max-len": 60,
       "complexity": 5,
       "no-nested-ternary": 1,
       "max-params": 1
@@ -275,7 +277,7 @@
     },
     "core/skills/aidlc-issue-report/scripts/lib-shape.ts": {
       "aidlc/no-comments": 69,
-      "max-len": 68,
+      "max-len": 69,
       "complexity": 5,
       "no-nested-ternary": 5,
       "max-lines-per-function": 1
@@ -285,14 +287,14 @@
       "max-len": 3
     },
     "core/skills/aidlc-issue-report/scripts/lib-transcripts.ts": {
-      "aidlc/no-comments": 213,
-      "max-len": 229,
+      "aidlc/no-comments": 225,
+      "max-len": 243,
       "max-params": 15,
       "Harness branching": 1,
       "complexity": 9,
-      "no-nested-ternary": 7,
+      "no-nested-ternary": 9,
       "max-lines-per-function": 5,
-      "max-depth": 93
+      "max-depth": 96
     },
     "core/skills/aidlc-issue-report/scripts/lib-vocab.ts": {
       "aidlc/no-comments": 21,
@@ -340,12 +342,13 @@
       "no-nested-ternary": 1
     },
     "core/tools/aidlc-audit.ts": {
+      "Context boundary": 1,
       "Monolith": 1,
-      "aidlc/no-comments": 552,
-      "max-len": 31,
+      "aidlc/no-comments": 554,
+      "max-len": 34,
       "One owner": 1,
+      "complexity": 13,
       "max-params": 8,
-      "complexity": 12,
       "max-lines-per-function": 4,
       "max-depth": 7,
       "no-nested-ternary": 1,
@@ -370,17 +373,17 @@
       "max-depth": 1
     },
     "core/tools/aidlc-brought-files.ts": {
-      "aidlc/no-comments": 83,
+      "aidlc/no-comments": 88,
       "Context boundary": 2,
       "Monolith": 1,
-      "max-len": 39,
+      "max-len": 40,
       "complexity": 7,
       "max-depth": 6,
       "no-nested-ternary": 5,
       "max-params": 4
     },
     "core/tools/aidlc-channel.ts": {
-      "aidlc/no-comments": 26,
+      "aidlc/no-comments": 32,
       "max-len": 4,
       "complexity": 1,
       "no-nested-ternary": 1
@@ -403,8 +406,8 @@
       "no-nested-ternary": 1
     },
     "core/tools/aidlc-command.ts": {
-      "max-len": 14,
-      "aidlc/no-comments": 72,
+      "max-len": 15,
+      "aidlc/no-comments": 75,
       "max-params": 2,
       "One owner": 1,
       "complexity": 7,
@@ -412,14 +415,14 @@
       "max-lines-per-function": 1
     },
     "core/tools/aidlc-completions.ts": {
-      "aidlc/no-comments": 11,
+      "aidlc/no-comments": 10,
       "complexity": 2,
       "max-len": 4,
       "max-params": 1
     },
     "core/tools/aidlc-config-diagnostics.ts": {
-      "max-len": 130,
-      "aidlc/no-comments": 316,
+      "max-len": 135,
+      "aidlc/no-comments": 320,
       "Harness branching": 69,
       "complexity": 45,
       "no-nested-ternary": 19,
@@ -429,7 +432,7 @@
     },
     "core/tools/aidlc-construction-checkpoints.ts": {
       "aidlc/no-comments": 261,
-      "max-len": 135,
+      "max-len": 134,
       "Context boundary": 1,
       "Monolith": 1,
       "One owner": 3,
@@ -440,14 +443,14 @@
       "no-nested-ternary": 6
     },
     "core/tools/aidlc-directive.ts": {
-      "aidlc/no-comments": 680,
+      "aidlc/no-comments": 684,
       "Monolith": 1,
       "Context boundary": 1,
       "max-len": 206,
       "One owner": 1,
       "complexity": 22,
       "max-params": 21,
-      "no-nested-ternary": 8,
+      "no-nested-ternary": 9,
       "max-lines-per-function": 8,
       "max-depth": 9
     },
@@ -463,7 +466,7 @@
       "no-nested-ternary": 3
     },
     "core/tools/aidlc-doctor-bundle.ts": {
-      "aidlc/no-comments": 467,
+      "aidlc/no-comments": 472,
       "no-nested-ternary": 3,
       "max-lines-per-function": 4,
       "complexity": 7,
@@ -472,16 +475,15 @@
       "max-params": 2
     },
     "core/tools/aidlc-doctor.ts": {
-      "aidlc/no-comments": 57,
-      "max-len": 22,
+      "max-len": 27,
+      "aidlc/no-comments": 67,
       "no-nested-ternary": 9,
       "complexity": 5,
       "max-lines-per-function": 3,
-      "Harness branching": 1,
-      "max-params": 1
+      "Harness branching": 2
     },
     "core/tools/aidlc-documentkb-schema.ts": {
-      "aidlc/no-comments": 223,
+      "aidlc/no-comments": 224,
       "complexity": 6,
       "max-len": 8,
       "max-lines-per-function": 2,
@@ -505,8 +507,8 @@
     },
     "core/tools/aidlc-git.ts": {
       "max-len": 1,
-      "aidlc/no-comments": 26,
-      "complexity": 1
+      "aidlc/no-comments": 48,
+      "complexity": 2
     },
     "core/tools/aidlc-gitignore.ts": {
       "aidlc/no-comments": 19,
@@ -535,9 +537,9 @@
     },
     "core/tools/aidlc-guard-operation.ts": {
       "Context boundary": 1,
-      "aidlc/no-comments": 78,
+      "aidlc/no-comments": 80,
+      "max-len": 15,
       "complexity": 5,
-      "max-len": 12,
       "max-params": 1,
       "max-lines-per-function": 1,
       "no-nested-ternary": 1
@@ -573,47 +575,48 @@
       "max-depth": 4
     },
     "core/tools/aidlc-init.ts": {
-      "aidlc/no-comments": 1289,
       "One owner": 4,
-      "max-len": 567,
-      "complexity": 109,
-      "Harness branching": 114,
+      "aidlc/no-comments": 1308,
+      "max-len": 577,
+      "complexity": 111,
+      "Harness branching": 116,
       "max-params": 50,
       "max-lines-per-function": 51,
       "no-nested-ternary": 112,
       "max-depth": 133
     },
     "core/tools/aidlc-inline-context.ts": {
-      "aidlc/no-comments": 56,
+      "aidlc/no-comments": 59,
       "max-params": 3,
       "complexity": 4,
-      "max-len": 10,
+      "max-len": 14,
       "no-nested-ternary": 1,
+      "Harness branching": 1,
       "max-lines-per-function": 2,
       "max-depth": 1
     },
     "core/tools/aidlc-install-paths.ts": {
-      "aidlc/no-comments": 89,
+      "aidlc/no-comments": 94,
       "complexity": 5,
-      "max-len": 7,
+      "max-len": 9,
       "no-nested-ternary": 4,
       "max-lines-per-function": 1
     },
     "core/tools/aidlc-jump.ts": {
       "Context boundary": 1,
-      "aidlc/no-comments": 209,
+      "aidlc/no-comments": 218,
       "max-params": 3,
       "complexity": 7,
-      "max-len": 29,
+      "max-len": 31,
       "max-lines-per-function": 5,
       "no-nested-ternary": 2,
       "max-depth": 4
     },
     "core/tools/aidlc-kiro-chat-record.ts": {
-      "aidlc/no-comments": 15,
-      "max-len": 16,
+      "aidlc/no-comments": 25,
+      "max-len": 17,
       "max-lines-per-function": 1,
-      "complexity": 2,
+      "complexity": 3,
       "max-depth": 5
     },
     "core/tools/aidlc-kiro-hooks-off.ts": {
@@ -622,7 +625,7 @@
       "Harness branching": 1
     },
     "core/tools/aidlc-kiro-ide-terminal.ts": {
-      "aidlc/no-comments": 75,
+      "aidlc/no-comments": 77,
       "max-len": 48,
       "complexity": 6,
       "Harness branching": 3
@@ -641,20 +644,20 @@
       "max-lines-per-function": 1
     },
     "core/tools/aidlc-kiro-session.ts": {
-      "aidlc/no-comments": 110,
-      "max-len": 38,
+      "aidlc/no-comments": 122,
+      "max-len": 46,
       "complexity": 7,
       "max-params": 2,
       "max-lines-per-function": 4
     },
     "core/tools/aidlc-knowledge.ts": {
-      "aidlc/no-comments": 1076,
-      "max-len": 57,
-      "complexity": 22,
-      "no-nested-ternary": 4,
-      "max-params": 14,
-      "max-lines-per-function": 14,
-      "max-depth": 6
+      "aidlc/no-comments": 1106,
+      "max-len": 79,
+      "complexity": 29,
+      "no-nested-ternary": 5,
+      "max-params": 19,
+      "max-lines-per-function": 16,
+      "max-depth": 8
     },
     "core/tools/aidlc-launcher-voucher.ts": {
       "aidlc/no-comments": 21,
@@ -664,34 +667,34 @@
       "aidlc/no-comments": 12
     },
     "core/tools/aidlc-learnings.ts": {
-      "aidlc/no-comments": 396,
+      "aidlc/no-comments": 390,
       "max-len": 36,
       "Monolith": 1,
       "max-params": 6,
-      "complexity": 8,
+      "complexity": 7,
       "max-lines-per-function": 5,
-      "no-nested-ternary": 3
+      "no-nested-ternary": 2
     },
     "core/tools/aidlc-lib.ts": {
-      "max-len": 1205,
-      "aidlc/no-comments": 6339,
+      "max-len": 1214,
+      "aidlc/no-comments": 6349,
       "One owner": 17,
-      "max-lines-per-function": 116,
-      "complexity": 329,
-      "max-depth": 215,
-      "no-nested-ternary": 87,
-      "max-params": 191,
+      "max-lines-per-function": 117,
+      "complexity": 328,
+      "max-depth": 208,
+      "no-nested-ternary": 88,
+      "max-params": 192,
       "@typescript-eslint/consistent-type-imports": 19,
       "no-control-regex": 2,
       "Harness branching": 13,
       "no-irregular-whitespace": 3
     },
     "core/tools/aidlc-lifecycle.ts": {
-      "aidlc/no-comments": 279,
-      "Context boundary": 2,
-      "max-lines-per-function": 15,
-      "complexity": 25,
-      "max-len": 77,
+      "Context boundary": 3,
+      "aidlc/no-comments": 286,
+      "max-lines-per-function": 16,
+      "complexity": 26,
+      "max-len": 79,
       "no-nested-ternary": 16,
       "max-depth": 6,
       "One owner": 1,
@@ -703,8 +706,8 @@
       "max-len": 14
     },
     "core/tools/aidlc-locks.ts": {
-      "aidlc/no-comments": 517,
-      "max-len": 9,
+      "aidlc/no-comments": 524,
+      "max-len": 10,
       "Context boundary": 1,
       "complexity": 24,
       "max-depth": 14,
@@ -713,11 +716,11 @@
       "max-params": 9
     },
     "core/tools/aidlc-log.ts": {
-      "aidlc/no-comments": 895,
-      "max-len": 304,
-      "max-params": 17,
-      "complexity": 34,
-      "max-lines-per-function": 19,
+      "aidlc/no-comments": 939,
+      "max-len": 322,
+      "max-params": 20,
+      "complexity": 36,
+      "max-lines-per-function": 20,
       "no-nested-ternary": 15,
       "no-control-regex": 1,
       "max-depth": 15,
@@ -725,26 +728,27 @@
       "Harness branching": 1
     },
     "core/tools/aidlc-machine-config.ts": {
-      "aidlc/no-comments": 4,
       "Context boundary": 1,
+      "aidlc/no-comments": 3,
       "complexity": 5,
       "no-nested-ternary": 1,
+      "max-len": 2,
       "max-lines-per-function": 1
     },
     "core/tools/aidlc-markdown.ts": {
-      "aidlc/no-comments": 187,
-      "max-len": 60,
+      "aidlc/no-comments": 194,
+      "max-len": 61,
       "no-control-regex": 1,
       "max-lines-per-function": 3,
       "complexity": 7,
       "max-depth": 4,
       "max-params": 6,
-      "no-nested-ternary": 7
+      "no-nested-ternary": 8
     },
     "core/tools/aidlc-message-store.ts": {
       "Monolith": 1,
-      "aidlc/no-comments": 242,
-      "max-len": 75,
+      "aidlc/no-comments": 248,
+      "max-len": 80,
       "complexity": 9,
       "no-nested-ternary": 6,
       "@typescript-eslint/consistent-type-imports": 2,
@@ -759,8 +763,8 @@
       "max-lines-per-function": 1
     },
     "core/tools/aidlc-model-policy.ts": {
-      "max-len": 14,
-      "aidlc/no-comments": 59,
+      "max-len": 15,
+      "aidlc/no-comments": 61,
       "Harness branching": 27,
       "complexity": 10,
       "no-nested-ternary": 4,
@@ -786,13 +790,13 @@
       "no-nested-ternary": 3
     },
     "core/tools/aidlc-orchestrate.ts": {
-      "aidlc/no-comments": 5524,
-      "max-len": 1319,
-      "max-params": 132,
-      "complexity": 160,
-      "no-nested-ternary": 81,
-      "max-lines-per-function": 57,
-      "max-depth": 81,
+      "aidlc/no-comments": 5735,
+      "max-len": 1420,
+      "max-params": 137,
+      "complexity": 168,
+      "no-nested-ternary": 86,
+      "max-lines-per-function": 60,
+      "max-depth": 82,
       "Harness branching": 2
     },
     "core/tools/aidlc-pdf.ts": {
@@ -805,18 +809,18 @@
       "max-params": 2
     },
     "core/tools/aidlc-plan-approval-ask.ts": {
-      "aidlc/no-comments": 370,
+      "aidlc/no-comments": 423,
       "Monolith": 1,
       "Context boundary": 1,
-      "max-len": 176,
-      "complexity": 27,
-      "max-params": 8,
-      "max-depth": 5,
-      "no-nested-ternary": 14,
-      "max-lines-per-function": 10
+      "max-len": 185,
+      "complexity": 29,
+      "max-params": 9,
+      "max-depth": 6,
+      "max-lines-per-function": 11,
+      "no-nested-ternary": 14
     },
     "core/tools/aidlc-plugin-build.ts": {
-      "aidlc/no-comments": 4,
+      "aidlc/no-comments": 5,
       "Context boundary": 1,
       "max-len": 2,
       "max-params": 3,
@@ -830,7 +834,7 @@
       "complexity": 2
     },
     "core/tools/aidlc-plugin-create.ts": {
-      "aidlc/no-comments": 2,
+      "aidlc/no-comments": 1,
       "no-nested-ternary": 1,
       "max-lines-per-function": 2,
       "max-len": 2,
@@ -839,8 +843,8 @@
     "core/tools/aidlc-plugin-emit.ts": {
       "aidlc/no-comments": 81,
       "Context boundary": 2,
-      "max-len": 18,
       "Monolith": 1,
+      "max-len": 17,
       "complexity": 7,
       "Harness branching": 15,
       "max-params": 6,
@@ -865,16 +869,16 @@
       "max-len": 2
     },
     "core/tools/aidlc-plugin-test.ts": {
-      "aidlc/no-comments": 16,
+      "aidlc/no-comments": 20,
       "max-len": 7,
       "Harness branching": 5,
       "max-lines-per-function": 4,
-      "complexity": 5,
+      "complexity": 6,
       "max-params": 2,
       "max-depth": 4
     },
     "core/tools/aidlc-plugin-validate.ts": {
-      "aidlc/no-comments": 65,
+      "aidlc/no-comments": 66,
       "Monolith": 1,
       "Context boundary": 3,
       "max-len": 48,
@@ -885,9 +889,9 @@
       "max-depth": 2
     },
     "core/tools/aidlc-plugin.ts": {
-      "aidlc/no-comments": 289,
+      "aidlc/no-comments": 291,
       "Harness branching": 30,
-      "max-len": 103,
+      "max-len": 106,
       "max-params": 21,
       "complexity": 31,
       "no-nested-ternary": 15,
@@ -904,20 +908,20 @@
       "no-nested-ternary": 2
     },
     "core/tools/aidlc-questions.ts": {
-      "aidlc/no-comments": 76,
+      "aidlc/no-comments": 83,
       "Monolith": 1,
-      "max-len": 40,
-      "complexity": 6,
+      "max-len": 42,
+      "complexity": 5,
       "max-params": 3,
       "max-depth": 1
     },
     "core/tools/aidlc-record-core.ts": {
-      "aidlc/no-comments": 671,
-      "max-len": 55,
+      "aidlc/no-comments": 672,
+      "max-len": 60,
       "Context boundary": 2,
       "One owner": 11,
-      "max-params": 8,
-      "complexity": 23,
+      "max-params": 9,
+      "complexity": 24,
       "max-lines-per-function": 3,
       "max-depth": 6,
       "Harness branching": 3,
@@ -934,16 +938,16 @@
       "max-lines-per-function": 1
     },
     "core/tools/aidlc-release.ts": {
-      "max-len": 16,
+      "max-len": 17,
       "Context boundary": 2,
-      "aidlc/no-comments": 50,
+      "aidlc/no-comments": 60,
       "complexity": 13,
       "max-params": 2,
       "max-lines-per-function": 7,
       "max-depth": 1
     },
     "core/tools/aidlc-reply-reader.ts": {
-      "aidlc/no-comments": 60,
+      "aidlc/no-comments": 66,
       "complexity": 1,
       "max-len": 8
     },
@@ -984,12 +988,12 @@
       "no-nested-ternary": 1
     },
     "core/tools/aidlc-runner-gen.ts": {
-      "aidlc/no-comments": 168,
+      "aidlc/no-comments": 176,
       "Monolith": 1,
       "Context boundary": 1,
       "max-lines-per-function": 4,
-      "max-len": 12,
-      "max-params": 1,
+      "max-len": 14,
+      "max-params": 2,
       "Harness branching": 1,
       "complexity": 2
     },
@@ -997,7 +1001,7 @@
       "aidlc/no-comments": 4
     },
     "core/tools/aidlc-runtime-paths.ts": {
-      "aidlc/no-comments": 201,
+      "aidlc/no-comments": 219,
       "max-len": 34,
       "complexity": 14,
       "One owner": 2,
@@ -1028,7 +1032,7 @@
     "core/tools/aidlc-sensor-linter.ts": {
       "aidlc/no-comments": 154,
       "complexity": 2,
-      "max-len": 2
+      "max-len": 3
     },
     "core/tools/aidlc-sensor-record.ts": {
       "aidlc/no-comments": 36,
@@ -1107,24 +1111,24 @@
       "max-depth": 10
     },
     "core/tools/aidlc-state-upgrade.ts": {
-      "aidlc/no-comments": 28,
-      "max-len": 6,
+      "aidlc/no-comments": 45,
+      "max-len": 17,
       "max-params": 1,
       "max-lines-per-function": 1,
       "complexity": 1,
       "max-depth": 2
     },
     "core/tools/aidlc-state.ts": {
-      "max-len": 327,
+      "max-len": 339,
       "Context boundary": 1,
       "Monolith": 1,
-      "aidlc/no-comments": 1778,
+      "aidlc/no-comments": 1807,
       "max-lines-per-function": 58,
       "complexity": 74,
       "Harness branching": 1,
       "max-params": 38,
       "max-depth": 14,
-      "no-nested-ternary": 6,
+      "no-nested-ternary": 7,
       "One owner": 4
     },
     "core/tools/aidlc-statusline-choice.ts": {
@@ -1138,11 +1142,16 @@
       "max-lines-per-function": 1
     },
     "core/tools/aidlc-steering.ts": {
-      "aidlc/no-comments": 29,
+      "aidlc/no-comments": 30,
       "no-nested-ternary": 1,
       "complexity": 1,
       "max-depth": 1,
       "max-len": 2
+    },
+    "core/tools/aidlc-subagent-inflight.ts": {
+      "aidlc/no-comments": 34,
+      "max-len": 12,
+      "complexity": 2
     },
     "core/tools/aidlc-swarm-checkpoints.ts": {
       "aidlc/no-comments": 38,
@@ -1154,30 +1163,30 @@
       "no-nested-ternary": 1
     },
     "core/tools/aidlc-swarm-source.ts": {
-      "aidlc/no-comments": 35,
+      "aidlc/no-comments": 36,
       "Monolith": 1,
       "complexity": 2,
-      "max-len": 8,
+      "max-len": 7,
       "max-params": 1
     },
     "core/tools/aidlc-swarm.ts": {
-      "aidlc/no-comments": 419,
-      "max-len": 189,
+      "aidlc/no-comments": 432,
+      "max-len": 190,
       "Monolith": 1,
       "Context boundary": 1,
-      "max-params": 23,
+      "max-params": 25,
+      "max-lines-per-function": 15,
       "complexity": 29,
-      "max-lines-per-function": 13,
       "max-depth": 29,
       "no-nested-ternary": 2
     },
     "core/tools/aidlc-testing-posture.ts": {
-      "aidlc/no-comments": 784,
-      "max-len": 348,
+      "aidlc/no-comments": 815,
+      "max-len": 367,
       "One owner": 1,
       "max-params": 38,
-      "complexity": 65,
-      "no-nested-ternary": 15,
+      "complexity": 67,
+      "no-nested-ternary": 16,
       "max-lines-per-function": 26,
       "max-depth": 1
     },
@@ -1200,9 +1209,9 @@
     "core/tools/aidlc-uninstall-plan.ts": {
       "Context boundary": 2,
       "One owner": 1,
-      "aidlc/no-comments": 46,
+      "aidlc/no-comments": 47,
       "complexity": 8,
-      "max-len": 18,
+      "max-len": 16,
       "max-params": 1,
       "max-lines-per-function": 2,
       "max-depth": 11,
@@ -1217,7 +1226,7 @@
       "max-lines-per-function": 2
     },
     "core/tools/aidlc-unit-holders.ts": {
-      "aidlc/no-comments": 28,
+      "aidlc/no-comments": 55,
       "One owner": 2,
       "max-lines-per-function": 2,
       "complexity": 3,
@@ -1237,14 +1246,14 @@
       "max-depth": 2
     },
     "core/tools/aidlc-unit.ts": {
-      "aidlc/no-comments": 363,
+      "aidlc/no-comments": 410,
       "Context boundary": 3,
-      "max-len": 133,
+      "max-len": 143,
       "max-params": 22,
-      "complexity": 36,
+      "complexity": 41,
       "no-nested-ternary": 2,
       "max-lines-per-function": 19,
-      "max-depth": 1
+      "max-depth": 2
     },
     "core/tools/aidlc-update.ts": {
       "aidlc/no-comments": 21,
@@ -1265,17 +1274,17 @@
       "max-lines-per-function": 5
     },
     "core/tools/aidlc-utility.ts": {
-      "max-len": 645,
+      "max-len": 669,
       "Monolith": 1,
-      "aidlc/no-comments": 2464,
-      "max-params": 37,
-      "complexity": 78,
-      "max-lines-per-function": 51,
+      "aidlc/no-comments": 2488,
+      "max-params": 41,
+      "complexity": 80,
+      "max-lines-per-function": 52,
       "max-depth": 145,
-      "no-nested-ternary": 45,
+      "no-nested-ternary": 46,
       "no-control-regex": 1,
       "Harness branching": 18,
-      "@typescript-eslint/consistent-type-imports": 7
+      "@typescript-eslint/consistent-type-imports": 12
     },
     "core/tools/aidlc-validate.ts": {
       "aidlc/no-comments": 31,
@@ -1297,18 +1306,18 @@
       "aidlc/no-comments": 3
     },
     "core/tools/aidlc-windows-uninstall.ts": {
-      "aidlc/no-comments": 86,
+      "aidlc/no-comments": 89,
       "max-len": 61,
       "complexity": 8,
       "max-params": 1,
       "max-lines-per-function": 7,
-      "max-depth": 1
+      "max-depth": 2
     },
     "core/tools/aidlc-workspace-doctor.ts": {
-      "aidlc/no-comments": 70,
-      "max-len": 22,
-      "max-lines-per-function": 1,
-      "complexity": 2,
+      "aidlc/no-comments": 84,
+      "max-lines-per-function": 2,
+      "complexity": 3,
+      "max-len": 23,
       "max-depth": 2,
       "max-params": 1
     },
@@ -1330,69 +1339,54 @@
       "max-params": 5
     },
     "core/tools/aidlc-worktree.ts": {
-      "aidlc/no-comments": 382,
-      "max-len": 168,
+      "aidlc/no-comments": 388,
+      "max-len": 169,
       "max-params": 21,
       "complexity": 23,
       "max-lines-per-function": 17,
-      "max-depth": 30,
+      "max-depth": 31,
       "no-nested-ternary": 7
     },
     "core/tools/aidlc.ts": {
-      "aidlc/no-comments": 428,
-      "max-len": 106,
+      "aidlc/no-comments": 449,
+      "max-len": 119,
       "@typescript-eslint/consistent-type-imports": 4,
-      "Harness branching": 15,
+      "Harness branching": 16,
       "max-params": 3,
-      "complexity": 30,
-      "max-lines-per-function": 9,
+      "complexity": 31,
+      "max-lines-per-function": 10,
       "max-depth": 2,
       "prefer-const": 1,
       "no-nested-ternary": 6
     },
     "harness/codex/hooks/aidlc-codex-adapter.ts": {
-      "aidlc/no-comments": 284,
+      "aidlc/no-comments": 290,
       "max-depth": 9,
       "complexity": 8,
-      "max-len": 10,
+      "max-len": 13,
       "max-lines-per-function": 1,
       "no-nested-ternary": 2
     },
-    "harness/copilot/emit.ts": {
-      "aidlc/no-comments": 47,
-      "max-len": 4,
-      "max-lines-per-function": 1,
-      "complexity": 1
-    },
     "harness/copilot/hooks/aidlc-copilot-adapter.ts": {
-      "aidlc/no-comments": 608,
-      "max-len": 139,
+      "aidlc/no-comments": 611,
+      "max-len": 140,
       "complexity": 27,
       "max-lines-per-function": 3,
       "no-nested-ternary": 9,
       "max-params": 2,
-      "max-depth": 24
-    },
-    "harness/copilot/manifest.ts": {
-      "aidlc/no-comments": 133,
-      "max-len": 1
-    },
-    "harness/copilot/onboarding.fills.ts": {
-      "aidlc/no-comments": 4,
-      "max-len": 17
+      "max-depth": 25
     },
     "harness/cursor/hooks/aidlc-cursor-adapter.ts": {
-      "aidlc/no-comments": 227,
-      "max-lines-per-function": 13,
-      "complexity": 31,
-      "max-len": 17,
-      "no-nested-ternary": 4,
-      "max-depth": 82,
-      "max-params": 6,
-      "@typescript-eslint/consistent-type-imports": 2
+      "aidlc/no-comments": 211,
+      "max-len": 16,
+      "max-lines-per-function": 8,
+      "complexity": 20,
+      "no-nested-ternary": 2,
+      "max-depth": 21,
+      "max-params": 5
     },
     "harness/cursor/install.ts": {
-      "aidlc/no-comments": 67,
+      "aidlc/no-comments": 66,
       "max-len": 16,
       "complexity": 13,
       "max-lines-per-function": 7,
@@ -1401,13 +1395,13 @@
       "no-nested-ternary": 1
     },
     "harness/kiro-ide/hooks/aidlc-kiro-adapter.ts": {
-      "aidlc/no-comments": 887,
-      "max-len": 118,
+      "aidlc/no-comments": 942,
+      "max-len": 128,
       "max-lines-per-function": 7,
-      "complexity": 26,
+      "complexity": 29,
       "max-depth": 53,
-      "no-nested-ternary": 6,
-      "max-params": 1
+      "max-params": 2,
+      "no-nested-ternary": 6
     },
     "harness/kiro-ide/hooks/aidlc-kiro-tool-names.ts": {
       "aidlc/no-comments": 91,
@@ -1415,16 +1409,17 @@
       "max-len": 1
     },
     "harness/kiro/hooks/aidlc-kiro-adapter.ts": {
-      "aidlc/no-comments": 419,
+      "aidlc/no-comments": 469,
       "max-lines-per-function": 5,
-      "complexity": 9,
-      "max-len": 20,
-      "max-depth": 12,
-      "no-nested-ternary": 2
+      "complexity": 11,
+      "max-len": 27,
+      "max-depth": 13,
+      "no-nested-ternary": 3,
+      "max-params": 1
     },
     "harness/opencode/plugin/aidlc-opencode-adapter.ts": {
-      "aidlc/no-comments": 270,
-      "max-len": 36,
+      "aidlc/no-comments": 276,
+      "max-len": 37,
       "max-params": 1,
       "complexity": 10,
       "max-lines-per-function": 7,
@@ -1433,8 +1428,9 @@
       "no-nested-ternary": 1
     },
     "plugins/test-pro/tests/plugin.test.ts": {
-      "aidlc/no-comments": 12,
-      "max-len": 2
+      "aidlc/no-comments": 15,
+      "max-lines-per-function": 1,
+      "max-len": 4
     },
     "plugins/test-pro/tools/aidlc-sensor-coverage-threshold.ts": {
       "aidlc/no-comments": 17,
@@ -1446,19 +1442,11 @@
       "max-len": 1
     },
     "plugins/test-pro/tools/test-pro-doctor.ts": {
-      "aidlc/no-comments": 6,
-      "max-len": 1
-    },
-    "scripts/agent-knowledge.ts": {
-      "aidlc/no-comments": 45,
-      "complexity": 1,
-      "no-nested-ternary": 1,
-      "max-params": 1,
-      "Harness branching": 1,
-      "max-len": 2
+      "aidlc/no-comments": 4,
+      "Harness branching": 1
     },
     "scripts/build-binaries.ts": {
-      "aidlc/no-comments": 69,
+      "aidlc/no-comments": 68,
       "Context boundary": 1,
       "Monolith": 1,
       "max-len": 41,
@@ -1551,7 +1539,7 @@
       "max-depth": 1
     },
     "scripts/ci-update-from-previous.ts": {
-      "aidlc/no-comments": 85,
+      "aidlc/no-comments": 84,
       "max-len": 64,
       "complexity": 5,
       "Harness branching": 4,
@@ -1559,7 +1547,7 @@
       "max-lines-per-function": 1
     },
     "scripts/copy-era-files.ts": {
-      "aidlc/no-comments": 20,
+      "aidlc/no-comments": 19,
       "max-len": 10,
       "max-params": 1
     },
@@ -1569,22 +1557,16 @@
       "max-len": 1
     },
     "scripts/package-release.ts": {
-      "aidlc/no-comments": 5,
       "Context boundary": 2,
+      "aidlc/no-comments": 4,
       "complexity": 4,
       "max-params": 1,
       "max-lines-per-function": 2,
       "max-len": 1,
-      "max-depth": 1,
-      "no-nested-ternary": 1
-    },
-    "scripts/package-sources.ts": {
-      "aidlc/no-comments": 11,
-      "max-len": 7,
       "no-nested-ternary": 1
     },
     "scripts/plan-preview-release.ts": {
-      "aidlc/no-comments": 17,
+      "aidlc/no-comments": 16,
       "max-len": 7,
       "complexity": 4,
       "max-params": 1,
@@ -1592,15 +1574,15 @@
       "no-nested-ternary": 1
     },
     "scripts/plugin-hooks-template/aidlc-plugin-compose.ts": {
-      "aidlc/no-comments": 9,
+      "aidlc/no-comments": 8,
       "complexity": 1,
       "max-len": 2
     },
     "scripts/plugin-hooks-template/compose.ts": {
-      "aidlc/no-comments": 614,
+      "aidlc/no-comments": 617,
       "complexity": 23,
       "Harness branching": 25,
-      "max-len": 156,
+      "max-len": 158,
       "no-nested-ternary": 10,
       "max-depth": 80,
       "max-lines-per-function": 6,
@@ -1608,23 +1590,23 @@
       "no-irregular-whitespace": 1
     },
     "scripts/preview-release.ts": {
-      "aidlc/no-comments": 11,
+      "aidlc/no-comments": 10,
       "complexity": 1,
       "max-len": 1
     },
     "scripts/publish-release.ts": {
-      "aidlc/no-comments": 45,
+      "aidlc/no-comments": 44,
       "max-params": 8,
       "complexity": 7,
       "max-lines-per-function": 2,
       "max-len": 5
     },
     "scripts/release-notes.ts": {
-      "aidlc/no-comments": 13
+      "aidlc/no-comments": 12
     },
     "scripts/release-promotion.ts": {
-      "aidlc/no-comments": 46,
-      "max-len": 91,
+      "aidlc/no-comments": 45,
+      "max-len": 93,
       "max-params": 5,
       "complexity": 10
     },
@@ -1648,7 +1630,7 @@
       "max-params": 1
     },
     "scripts/verify-release.ts": {
-      "aidlc/no-comments": 3,
+      "aidlc/no-comments": 2,
       "max-len": 1,
       "max-lines-per-function": 1,
       "complexity": 2
@@ -1659,8 +1641,8 @@
       "max-lines-per-function": 2
     },
     "tests/e2e/t-acp-kiro-compose-inflight.serial.test.ts": {
-      "aidlc/no-comments": 72,
-      "max-len": 10,
+      "aidlc/no-comments": 74,
+      "max-len": 9,
       "max-lines-per-function": 2,
       "complexity": 1
     },
@@ -1726,9 +1708,9 @@
       "max-lines-per-function": 2
     },
     "tests/e2e/t-exec-codex-compose-inflight.serial.test.ts": {
-      "aidlc/no-comments": 97,
-      "max-len": 11,
-      "max-lines-per-function": 3,
+      "aidlc/no-comments": 98,
+      "max-len": 12,
+      "max-lines-per-function": 4,
       "max-params": 1,
       "complexity": 1
     },
@@ -2171,11 +2153,8 @@
       "aidlc/no-comments": 52,
       "max-len": 5
     },
-    "tests/fixtures/bin/gh.ts": {
-      "aidlc/no-comments": 1
-    },
     "tests/fixtures/copilot-adapter-2.8.0/aidlc-copilot-adapter.ts": {
-      "aidlc/no-comments": 144,
+      "aidlc/no-comments": 143,
       "max-lines-per-function": 3,
       "complexity": 9,
       "max-len": 33,
@@ -2258,7 +2237,7 @@
       "no-lone-blocks": 1
     },
     "tests/fixtures/stage-frontmatter-2.11.0/generate.ts": {
-      "aidlc/no-comments": 14,
+      "aidlc/no-comments": 13,
       "max-len": 4
     },
     "tests/fixtures/stage-frontmatter-2.11.0/stage-frontmatter.ts": {
@@ -2319,9 +2298,6 @@
       "complexity": 4,
       "no-nested-ternary": 3
     },
-    "tests/harness/aidlc-hook-driver.ts": {
-      "aidlc/no-comments": 1
-    },
     "tests/harness/aidlc-input-corpus.ts": {
       "aidlc/no-comments": 59,
       "max-len": 106,
@@ -2356,12 +2332,16 @@
       "aidlc/no-comments": 4
     },
     "tests/harness/code-generation-states.ts": {
-      "aidlc/no-comments": 72,
-      "max-len": 90,
+      "aidlc/no-comments": 73,
+      "max-len": 91,
       "max-params": 5,
       "prefer-template": 1,
       "complexity": 3,
       "no-nested-ternary": 9
+    },
+    "tests/harness/codex-hook-answer.ts": {
+      "aidlc/no-comments": 6,
+      "max-len": 2
     },
     "tests/harness/codex-test-lifecycle.ts": {
       "max-len": 29,
@@ -2387,6 +2367,10 @@
       "aidlc/no-comments": 4,
       "complexity": 1,
       "prefer-template": 1
+    },
+    "tests/harness/conductor-skill.ts": {
+      "aidlc/no-comments": 9,
+      "max-len": 2
     },
     "tests/harness/copilot-tui.ts": {
       "aidlc/no-comments": 54,
@@ -2424,7 +2408,7 @@
       "no-nested-ternary": 3
     },
     "tests/harness/fixtures.ts": {
-      "aidlc/no-comments": 167,
+      "aidlc/no-comments": 168,
       "@typescript-eslint/consistent-type-imports": 3,
       "max-params": 4,
       "max-lines-per-function": 2,
@@ -2432,7 +2416,7 @@
       "max-len": 16
     },
     "tests/harness/gate-fuzz-run.ts": {
-      "aidlc/no-comments": 27,
+      "aidlc/no-comments": 26,
       "max-len": 48,
       "complexity": 5,
       "max-depth": 1
@@ -2467,8 +2451,6 @@
     },
     "tests/harness/harness-matrix.ts": {
       "aidlc/no-comments": 3,
-      "max-lines-per-function": 1,
-      "complexity": 1,
       "max-len": 2
     },
     "tests/harness/intent-grounding-regressions.ts": {
@@ -2569,17 +2551,17 @@
     "tests/harness/person-turns.ts": {
       "aidlc/no-comments": 83,
       "@typescript-eslint/consistent-type-imports": 2,
-      "complexity": 6,
-      "max-len": 50,
-      "max-params": 3,
+      "complexity": 7,
+      "max-len": 54,
+      "max-params": 4,
       "max-lines-per-function": 1,
-      "no-nested-ternary": 1,
+      "no-nested-ternary": 2,
       "max-depth": 10,
       "prefer-template": 1
     },
     "tests/harness/persons-words-readers.ts": {
       "aidlc/no-comments": 114,
-      "max-len": 357,
+      "max-len": 365,
       "complexity": 19,
       "max-lines-per-function": 4,
       "max-depth": 12,
@@ -2616,11 +2598,11 @@
       "max-lines-per-function": 1
     },
     "tests/harness/release-fixture.ts": {
-      "aidlc/no-comments": 11,
       "max-len": 10,
       "max-lines-per-function": 5,
       "complexity": 4,
       "max-depth": 6,
+      "aidlc/no-comments": 10,
       "no-nested-ternary": 1
     },
     "tests/harness/release-journey.ts": {
@@ -2659,7 +2641,7 @@
       "prefer-template": 3
     },
     "tests/harness/sdk-contained-bootstrap.ts": {
-      "aidlc/no-comments": 26
+      "aidlc/no-comments": 25
     },
     "tests/harness/sdk-drive.calibration.test.ts": {
       "aidlc/no-comments": 149,
@@ -2704,7 +2686,7 @@
       "max-len": 1
     },
     "tests/harness/swarm-checkpoint.ts": {
-      "aidlc/no-comments": 27,
+      "aidlc/no-comments": 31,
       "max-len": 31,
       "max-params": 2,
       "max-lines-per-function": 1,
@@ -2847,13 +2829,13 @@
       "max-lines-per-function": 1
     },
     "tests/harness/windows/ssm-run.ts": {
-      "aidlc/no-comments": 10,
+      "aidlc/no-comments": 9,
       "max-len": 13,
       "complexity": 1,
       "max-params": 3
     },
     "tests/harness/windows/sync.ts": {
-      "aidlc/no-comments": 2,
+      "aidlc/no-comments": 1,
       "max-len": 6,
       "complexity": 1,
       "max-params": 1
@@ -2864,8 +2846,13 @@
       "max-params": 1,
       "complexity": 1
     },
+    "tests/integration/t-claim-file-place.test.ts": {
+      "aidlc/no-comments": 23,
+      "max-len": 13,
+      "max-lines-per-function": 1
+    },
     "tests/integration/t-claimed-unit-beside-another-checkouts-unit.test.ts": {
-      "aidlc/no-comments": 38,
+      "aidlc/no-comments": 41,
       "max-len": 27,
       "max-lines-per-function": 3,
       "max-params": 1
@@ -2892,8 +2879,8 @@
       "max-lines-per-function": 2
     },
     "tests/integration/t-claimed-unit-reopen.test.ts": {
-      "aidlc/no-comments": 46,
-      "max-len": 56,
+      "aidlc/no-comments": 47,
+      "max-len": 62,
       "max-params": 3,
       "max-lines-per-function": 1,
       "complexity": 1
@@ -2906,7 +2893,7 @@
     },
     "tests/integration/t-e2e-isolated-runner.test.ts": {
       "aidlc/no-comments": 36,
-      "max-len": 73,
+      "max-len": 71,
       "max-params": 2,
       "max-lines-per-function": 2,
       "complexity": 1
@@ -3085,6 +3072,11 @@
       "max-len": 61,
       "max-lines-per-function": 4
     },
+    "tests/integration/t-lead-redo-finished-unit.test.ts": {
+      "aidlc/no-comments": 30,
+      "max-len": 51,
+      "max-lines-per-function": 3
+    },
     "tests/integration/t-plugin-rules.serial.test.ts": {
       "aidlc/no-comments": 35,
       "max-len": 56,
@@ -3100,7 +3092,7 @@
       "max-len": 9
     },
     "tests/integration/t-review-verdict-unit-state.test.ts": {
-      "aidlc/no-comments": 35,
+      "aidlc/no-comments": 36,
       "max-lines-per-function": 3,
       "max-len": 3
     },
@@ -3329,8 +3321,8 @@
       "complexity": 1
     },
     "tests/integration/t-single-on-finished-work.test.ts": {
-      "aidlc/no-comments": 12,
-      "max-len": 17,
+      "aidlc/no-comments": 19,
+      "max-len": 19,
       "prefer-template": 1,
       "max-lines-per-function": 1
     },
@@ -3340,11 +3332,16 @@
       "max-lines-per-function": 1
     },
     "tests/integration/t-team-handover-offers.test.ts": {
-      "aidlc/no-comments": 54,
-      "max-len": 33,
+      "aidlc/no-comments": 88,
+      "max-len": 64,
       "max-lines-per-function": 5,
       "prefer-template": 1,
       "no-nested-ternary": 2
+    },
+    "tests/integration/t-team-lead-stop.test.ts": {
+      "aidlc/no-comments": 25,
+      "max-len": 24,
+      "max-lines-per-function": 1
     },
     "tests/integration/t-team-publish-own-work.test.ts": {
       "aidlc/no-comments": 17,
@@ -3386,8 +3383,9 @@
       "max-len": 1
     },
     "tests/integration/t-team-unit-land-after-jump.test.ts": {
-      "aidlc/no-comments": 7,
-      "max-len": 1
+      "aidlc/no-comments": 30,
+      "max-len": 33,
+      "max-lines-per-function": 3
     },
     "tests/integration/t-team-unit-land-commit-refusal.test.ts": {
       "aidlc/no-comments": 10,
@@ -3432,8 +3430,8 @@
       "max-lines-per-function": 1
     },
     "tests/integration/t-team-unit-replan-open-claims.test.ts": {
-      "aidlc/no-comments": 33,
-      "max-len": 14,
+      "aidlc/no-comments": 34,
+      "max-len": 16,
       "max-lines-per-function": 1
     },
     "tests/integration/t-team-unit-replan-plan-edits.test.ts": {
@@ -3479,8 +3477,8 @@
       "max-params": 1
     },
     "tests/integration/t-unit-help-changes-nothing.test.ts": {
-      "aidlc/no-comments": 20,
-      "max-len": 21
+      "aidlc/no-comments": 23,
+      "max-len": 23
     },
     "tests/integration/t-unit-plan-change-ask.test.ts": {
       "aidlc/no-comments": 14,
@@ -3546,7 +3544,7 @@
       "max-lines-per-function": 1
     },
     "tests/integration/t121-stop-hook-enforce.test.ts": {
-      "aidlc/no-comments": 664,
+      "aidlc/no-comments": 665,
       "max-len": 290,
       "max-params": 6,
       "max-lines-per-function": 6,
@@ -3556,8 +3554,8 @@
       "no-nested-ternary": 1
     },
     "tests/integration/t127-single-stage-invariant.test.ts": {
-      "aidlc/no-comments": 122,
-      "max-len": 63,
+      "aidlc/no-comments": 124,
+      "max-len": 65,
       "max-lines-per-function": 7,
       "complexity": 1,
       "prefer-template": 1
@@ -3599,7 +3597,6 @@
     },
     "tests/integration/t145-packaging-parity.test.ts": {
       "aidlc/no-comments": 20,
-      "complexity": 1,
       "max-lines-per-function": 1,
       "max-len": 1
     },
@@ -3713,12 +3710,11 @@
       "max-lines-per-function": 2
     },
     "tests/integration/t195-stop-hook-compose-carveout.test.ts": {
-      "aidlc/no-comments": 47,
-      "max-len": 5,
-      "max-lines-per-function": 1
+      "aidlc/no-comments": 38,
+      "max-len": 9
     },
     "tests/integration/t196-compose-inflight.sdk.test.ts": {
-      "aidlc/no-comments": 41,
+      "aidlc/no-comments": 36,
       "max-len": 4,
       "max-lines-per-function": 2,
       "complexity": 1
@@ -3837,10 +3833,10 @@
       "aidlc/no-comments": 8
     },
     "tests/integration/t325-team-unit-claims.test.ts": {
-      "aidlc/no-comments": 47,
-      "max-len": 27,
+      "aidlc/no-comments": 58,
+      "max-len": 52,
       "max-params": 2,
-      "max-lines-per-function": 10,
+      "max-lines-per-function": 11,
       "prefer-template": 1
     },
     "tests/integration/t326-team-unit-merge-drift.test.ts": {
@@ -3885,7 +3881,7 @@
       "max-len": 9
     },
     "tests/integration/t326-team-unit-merge-records.test.ts": {
-      "aidlc/no-comments": 34,
+      "aidlc/no-comments": 36,
       "max-len": 22,
       "max-params": 1,
       "max-lines-per-function": 1
@@ -3916,14 +3912,14 @@
       "max-lines-per-function": 1
     },
     "tests/integration/t327-stop-hook-subagent-inflight.test.ts": {
-      "aidlc/no-comments": 35,
-      "max-len": 4,
+      "aidlc/no-comments": 39,
+      "max-len": 6,
       "max-params": 2,
       "max-lines-per-function": 1
     },
     "tests/integration/t327-team-dispatcher.test.ts": {
-      "aidlc/no-comments": 12,
-      "max-len": 18,
+      "aidlc/no-comments": 14,
+      "max-len": 20,
       "max-params": 2,
       "max-lines-per-function": 10
     },
@@ -3984,12 +3980,12 @@
       "max-lines-per-function": 1
     },
     "tests/integration/t36-stage-protocol-governance.test.ts": {
-      "aidlc/no-comments": 53,
-      "max-len": 2
+      "aidlc/no-comments": 46,
+      "max-len": 3
     },
     "tests/integration/t37-stage-protocol-compliance.test.ts": {
-      "aidlc/no-comments": 47,
-      "max-len": 2
+      "aidlc/no-comments": 49,
+      "max-len": 3
     },
     "tests/integration/t38-stage-agent-cross-check.test.ts": {
       "aidlc/no-comments": 51,
@@ -4159,17 +4155,17 @@
       "max-lines-per-function": 1
     },
     "tests/integration/t91.test.ts": {
-      "aidlc/no-comments": 103,
-      "max-len": 4,
+      "aidlc/no-comments": 111,
+      "max-len": 8,
       "max-lines-per-function": 3
     },
     "tests/integration/t92.test.ts": {
-      "aidlc/no-comments": 303,
+      "aidlc/no-comments": 320,
+      "max-lines-per-function": 12,
+      "max-len": 106,
       "max-params": 3,
       "complexity": 2,
-      "max-depth": 1,
-      "max-len": 93,
-      "max-lines-per-function": 10
+      "max-depth": 1
     },
     "tests/integration/t93.test.ts": {
       "aidlc/no-comments": 66,
@@ -4205,7 +4201,7 @@
       "max-len": 20
     },
     "tests/lib/bun-junit-to-meta.ts": {
-      "aidlc/no-comments": 121,
+      "aidlc/no-comments": 120,
       "complexity": 3,
       "max-depth": 1,
       "no-nested-ternary": 1
@@ -4280,20 +4276,20 @@
       "no-nested-ternary": 1
     },
     "tests/reconcile-tests.ts": {
-      "aidlc/no-comments": 8,
       "max-len": 8,
+      "aidlc/no-comments": 7,
       "max-lines-per-function": 1,
       "complexity": 1,
       "no-nested-ternary": 1,
       "max-depth": 1
     },
     "tests/run-tests.ts": {
-      "aidlc/no-comments": 148,
+      "aidlc/no-comments": 147,
       "max-len": 75,
       "max-lines-per-function": 9,
-      "complexity": 16,
       "max-depth": 4,
       "@typescript-eslint/consistent-type-imports": 2,
+      "complexity": 15,
       "max-params": 3,
       "no-lone-blocks": 1,
       "no-nested-ternary": 7
@@ -4314,9 +4310,10 @@
       "max-len": 1
     },
     "tests/smoke/t03-settings-json.test.ts": {
-      "aidlc/no-comments": 83,
-      "max-len": 19,
+      "aidlc/no-comments": 85,
+      "max-len": 20,
       "max-lines-per-function": 3,
+      "complexity": 1,
       "no-nested-ternary": 2
     },
     "tests/smoke/t04-shell-lint.test.ts": {
@@ -4348,7 +4345,7 @@
       "max-lines-per-function": 1
     },
     "tests/smoke/t148-kiro-file-structure.test.ts": {
-      "aidlc/no-comments": 192,
+      "aidlc/no-comments": 198,
       "max-len": 88,
       "max-lines-per-function": 4,
       "complexity": 7,
@@ -4376,8 +4373,8 @@
       "max-depth": 2
     },
     "tests/unit/t-active-space-includes.test.ts": {
-      "aidlc/no-comments": 44,
-      "max-len": 64,
+      "aidlc/no-comments": 46,
+      "max-len": 65,
       "max-lines-per-function": 5
     },
     "tests/unit/t-add-stages-finished-work.test.ts": {
@@ -4401,6 +4398,10 @@
       "max-len": 30,
       "max-lines-per-function": 1,
       "complexity": 1
+    },
+    "tests/unit/t-agent-reference-agrees-with-the-stages.test.ts": {
+      "aidlc/no-comments": 16,
+      "max-len": 2
     },
     "tests/unit/t-agent-runs-the-check-switch.test.ts": {
       "aidlc/no-comments": 19,
@@ -4458,6 +4459,17 @@
     "tests/unit/t-answers-live-setup.test.ts": {
       "aidlc/no-comments": 21,
       "max-len": 32,
+      "max-lines-per-function": 1
+    },
+    "tests/unit/t-answers-taken-as-given.test.ts": {
+      "aidlc/no-comments": 14,
+      "max-len": 5
+    },
+    "tests/unit/t-approval-beside-refused-setting.test.ts": {
+      "aidlc/no-comments": 26,
+      "max-len": 41,
+      "max-params": 2,
+      "complexity": 1,
       "max-lines-per-function": 1
     },
     "tests/unit/t-approval-offers-a-check.test.ts": {
@@ -4563,7 +4575,7 @@
     },
     "tests/unit/t-build-told-brought-files.test.ts": {
       "aidlc/no-comments": 31,
-      "max-len": 40,
+      "max-len": 42,
       "no-nested-ternary": 2,
       "max-lines-per-function": 2,
       "max-params": 1
@@ -4717,9 +4729,13 @@
       "max-len": 19,
       "max-lines-per-function": 2
     },
+    "tests/unit/t-claim-places.test.ts": {
+      "aidlc/no-comments": 12,
+      "max-len": 15
+    },
     "tests/unit/t-claude-guard-group.test.ts": {
-      "aidlc/no-comments": 26,
-      "max-len": 17,
+      "aidlc/no-comments": 28,
+      "max-len": 18,
       "max-params": 1,
       "max-lines-per-function": 2
     },
@@ -4766,8 +4782,8 @@
       "max-len": 7
     },
     "tests/unit/t-code-generation-completion-owner.test.ts": {
-      "aidlc/no-comments": 88,
-      "max-len": 99,
+      "aidlc/no-comments": 89,
+      "max-len": 98,
       "max-params": 1,
       "complexity": 1,
       "max-lines-per-function": 3
@@ -4779,6 +4795,17 @@
       "max-params": 1,
       "max-depth": 2,
       "max-lines-per-function": 5
+    },
+    "tests/unit/t-code-generation-plan-adds-mid-build.test.ts": {
+      "aidlc/no-comments": 28,
+      "max-len": 24,
+      "max-params": 1,
+      "prefer-template": 1,
+      "max-lines-per-function": 1
+    },
+    "tests/unit/t-code-generation-plan-names-data-model.test.ts": {
+      "aidlc/no-comments": 32,
+      "max-len": 18
     },
     "tests/unit/t-code-generation-resume.test.ts": {
       "aidlc/no-comments": 116,
@@ -4801,7 +4828,7 @@
     },
     "tests/unit/t-codex-helper-session.test.ts": {
       "aidlc/no-comments": 29,
-      "max-len": 27,
+      "max-len": 30,
       "max-lines-per-function": 1
     },
     "tests/unit/t-codex-rules-match-aidlc-commands.test.ts": {
@@ -4829,7 +4856,7 @@
     },
     "tests/unit/t-collaborators-switch-cli.test.ts": {
       "aidlc/no-comments": 22,
-      "max-len": 26
+      "max-len": 25
     },
     "tests/unit/t-collaborators-switch.test.ts": {
       "aidlc/no-comments": 14,
@@ -4847,8 +4874,9 @@
       "max-depth": 1
     },
     "tests/unit/t-compose-approve-carries-on.test.ts": {
-      "aidlc/no-comments": 21,
-      "max-len": 12
+      "aidlc/no-comments": 37,
+      "max-len": 33,
+      "max-lines-per-function": 1
     },
     "tests/unit/t-composed-plan-change-kept.test.ts": {
       "aidlc/no-comments": 66,
@@ -4907,15 +4935,15 @@
       "max-len": 7
     },
     "tests/unit/t-construction-staffing-question.test.ts": {
-      "aidlc/no-comments": 30,
-      "max-len": 30,
+      "aidlc/no-comments": 35,
+      "max-len": 32,
       "max-lines-per-function": 2,
       "max-params": 1
     },
     "tests/unit/t-contract-stale-by-setting.test.ts": {
-      "aidlc/no-comments": 13,
-      "max-len": 13,
-      "prefer-template": 1,
+      "aidlc/no-comments": 17,
+      "max-len": 14,
+      "prefer-template": 2,
       "max-lines-per-function": 1
     },
     "tests/unit/t-copied-project-keeps-its-release.test.ts": {
@@ -4970,6 +4998,12 @@
       "max-len": 13,
       "max-lines-per-function": 1
     },
+    "tests/unit/t-copy-install-onboard-step.test.ts": {
+      "aidlc/no-comments": 24,
+      "max-len": 13,
+      "max-params": 2,
+      "max-lines-per-function": 1
+    },
     "tests/unit/t-copy-refresh-runs-newer-tool.test.ts": {
       "aidlc/no-comments": 37,
       "max-len": 36,
@@ -4985,6 +5019,12 @@
       "max-len": 38,
       "max-params": 1,
       "max-lines-per-function": 1
+    },
+    "tests/unit/t-cut-request-whole-words.test.ts": {
+      "aidlc/no-comments": 34,
+      "max-len": 73,
+      "max-lines-per-function": 3,
+      "complexity": 1
     },
     "tests/unit/t-decision-form-keeps-the-words.test.ts": {
       "aidlc/no-comments": 17,
@@ -5002,6 +5042,12 @@
       "aidlc/no-comments": 8,
       "max-len": 4,
       "complexity": 1
+    },
+    "tests/unit/t-docs-links-reach-a-page.test.ts": {
+      "aidlc/no-comments": 37,
+      "max-len": 7,
+      "complexity": 1,
+      "no-nested-ternary": 2
     },
     "tests/unit/t-doctor-harness-tree-versions.test.ts": {
       "aidlc/no-comments": 15,
@@ -5091,6 +5137,11 @@
     "tests/unit/t-engine-child-keeps-the-parents-chat.test.ts": {
       "aidlc/no-comments": 21,
       "max-len": 4
+    },
+    "tests/unit/t-engine-from-code-repo.test.ts": {
+      "aidlc/no-comments": 17,
+      "max-len": 17,
+      "max-lines-per-function": 1
     },
     "tests/unit/t-engine-now-clock.test.ts": {
       "aidlc/no-comments": 21,
@@ -5221,7 +5272,7 @@
     },
     "tests/unit/t-gate-says-replaced-files.test.ts": {
       "aidlc/no-comments": 47,
-      "max-len": 99,
+      "max-len": 102,
       "max-params": 3,
       "max-lines-per-function": 3,
       "no-nested-ternary": 1
@@ -5243,6 +5294,10 @@
       "max-params": 1,
       "max-lines-per-function": 1
     },
+    "tests/unit/t-generated-text-names-what-the-harness-has.test.ts": {
+      "aidlc/no-comments": 13,
+      "max-len": 4
+    },
     "tests/unit/t-git-pack-source-boundary.test.ts": {
       "aidlc/no-comments": 3,
       "max-len": 8,
@@ -5258,6 +5313,11 @@
       "max-len": 124,
       "max-lines-per-function": 3
     },
+    "tests/unit/t-graph-read-subcommands.test.ts": {
+      "aidlc/no-comments": 18,
+      "max-len": 8,
+      "max-lines-per-function": 1
+    },
     "tests/unit/t-guard-operation-contract.test.ts": {
       "aidlc/no-comments": 34,
       "max-lines-per-function": 3,
@@ -5265,8 +5325,8 @@
       "complexity": 1
     },
     "tests/unit/t-guard-plan-continuation-swarm.test.ts": {
-      "aidlc/no-comments": 109,
-      "max-len": 126,
+      "aidlc/no-comments": 113,
+      "max-len": 132,
       "max-params": 5,
       "max-lines-per-function": 7,
       "complexity": 3
@@ -5277,6 +5337,10 @@
       "max-params": 3,
       "no-control-regex": 1,
       "max-lines-per-function": 2
+    },
+    "tests/unit/t-handover-and-onboarding-match-what-ships.test.ts": {
+      "aidlc/no-comments": 12,
+      "max-len": 4
     },
     "tests/unit/t-help-from-prompt-hook.test.ts": {
       "aidlc/no-comments": 22,
@@ -5296,8 +5360,8 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t-hooks-off-step.test.ts": {
-      "aidlc/no-comments": 157,
-      "max-len": 157,
+      "aidlc/no-comments": 161,
+      "max-len": 169,
       "max-params": 7,
       "max-lines-per-function": 7
     },
@@ -5327,6 +5391,11 @@
       "max-lines-per-function": 1,
       "max-len": 2
     },
+    "tests/unit/t-installed-text-names-no-repo-docs.test.ts": {
+      "aidlc/no-comments": 22,
+      "max-len": 5,
+      "max-depth": 1
+    },
     "tests/unit/t-integration-branch-exact-line.test.ts": {
       "aidlc/no-comments": 22,
       "max-len": 26,
@@ -5338,8 +5407,8 @@
       "max-lines-per-function": 3
     },
     "tests/unit/t-intent-add-repo.test.ts": {
-      "aidlc/no-comments": 29,
-      "max-len": 51,
+      "aidlc/no-comments": 34,
+      "max-len": 60,
       "max-lines-per-function": 2
     },
     "tests/unit/t-intent-grounding-regressions.test.ts": {
@@ -5377,8 +5446,8 @@
       "max-len": 5
     },
     "tests/unit/t-issue-report-doctor-env.test.ts": {
-      "aidlc/no-comments": 3,
-      "max-len": 7
+      "aidlc/no-comments": 9,
+      "max-len": 17
     },
     "tests/unit/t-issue-report-finish.test.ts": {
       "aidlc/no-comments": 7,
@@ -5414,8 +5483,8 @@
       "complexity": 1
     },
     "tests/unit/t-issue-report-run-facts.test.ts": {
-      "aidlc/no-comments": 39,
-      "max-len": 274,
+      "aidlc/no-comments": 44,
+      "max-len": 288,
       "prefer-template": 1,
       "max-lines-per-function": 1,
       "complexity": 1
@@ -5430,7 +5499,7 @@
     },
     "tests/unit/t-issue-report-shape.test.ts": {
       "aidlc/no-comments": 23,
-      "max-len": 125,
+      "max-len": 133,
       "max-lines-per-function": 2
     },
     "tests/unit/t-issue-report-time-window.test.ts": {
@@ -5478,12 +5547,12 @@
       "complexity": 1
     },
     "tests/unit/t-kiro-agent-models.test.ts": {
-      "aidlc/no-comments": 16,
-      "max-len": 50,
+      "aidlc/no-comments": 26,
+      "max-len": 72,
       "max-lines-per-function": 2
     },
     "tests/unit/t-kiro-cli-persona-tools.test.ts": {
-      "aidlc/no-comments": 13,
+      "aidlc/no-comments": 11,
       "max-len": 1
     },
     "tests/unit/t-kiro-composer-call-shape.test.ts": {
@@ -5504,7 +5573,7 @@
     },
     "tests/unit/t-kiro-hook-exit-code.test.ts": {
       "aidlc/no-comments": 14,
-      "max-len": 8,
+      "max-len": 9,
       "max-params": 1,
       "max-lines-per-function": 1
     },
@@ -5534,7 +5603,7 @@
       "max-len": 10
     },
     "tests/unit/t-kiro-ide-terminal.test.ts": {
-      "aidlc/no-comments": 74,
+      "aidlc/no-comments": 77,
       "max-len": 169,
       "max-lines-per-function": 6,
       "complexity": 1
@@ -5546,8 +5615,8 @@
       "no-nested-ternary": 1
     },
     "tests/unit/t-kiro-request-keeps-spacing.test.ts": {
-      "aidlc/no-comments": 23,
-      "max-len": 28,
+      "aidlc/no-comments": 24,
+      "max-len": 34,
       "max-params": 1
     },
     "tests/unit/t-kiro-review-copy.test.ts": {
@@ -5561,12 +5630,14 @@
       "max-lines-per-function": 5
     },
     "tests/unit/t-kiro-skill-read-in-parts.test.ts": {
-      "aidlc/no-comments": 22,
-      "max-len": 16
+      "aidlc/no-comments": 47,
+      "max-len": 29,
+      "max-lines-per-function": 1,
+      "complexity": 1
     },
     "tests/unit/t-kiro-typed-harness-names.test.ts": {
-      "aidlc/no-comments": 82,
-      "max-len": 111,
+      "aidlc/no-comments": 85,
+      "max-len": 115,
       "complexity": 2,
       "max-lines-per-function": 1
     },
@@ -5612,9 +5683,9 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t-lines-said-before-they-reply.test.ts": {
-      "aidlc/no-comments": 31,
-      "max-len": 65,
-      "max-lines-per-function": 1
+      "aidlc/no-comments": 51,
+      "max-len": 90,
+      "max-lines-per-function": 2
     },
     "tests/unit/t-live-answers-nightly.test.ts": {
       "aidlc/no-comments": 15,
@@ -5655,12 +5726,18 @@
       "complexity": 1
     },
     "tests/unit/t-lone-letter-reading.test.ts": {
-      "aidlc/no-comments": 12,
-      "max-len": 6
+      "aidlc/no-comments": 10,
+      "max-len": 4
+    },
+    "tests/unit/t-long-message-note.test.ts": {
+      "aidlc/no-comments": 34,
+      "max-len": 70,
+      "max-params": 1,
+      "max-lines-per-function": 2
     },
     "tests/unit/t-long-question-asked-once.test.ts": {
       "aidlc/no-comments": 17,
-      "max-len": 17
+      "max-len": 15
     },
     "tests/unit/t-machine-local-caches-outside-source-boundary.test.ts": {
       "aidlc/no-comments": 20,
@@ -5717,7 +5794,7 @@
     },
     "tests/unit/t-native-install-hooks.test.ts": {
       "aidlc/no-comments": 25,
-      "max-len": 19,
+      "max-len": 18,
       "complexity": 2,
       "max-lines-per-function": 2
     },
@@ -5741,6 +5818,13 @@
       "max-len": 61,
       "max-params": 5,
       "max-lines-per-function": 2
+    },
+    "tests/unit/t-newer-work-update-offer.test.ts": {
+      "aidlc/no-comments": 17,
+      "max-len": 28,
+      "max-params": 1,
+      "complexity": 2,
+      "max-lines-per-function": 1
     },
     "tests/unit/t-newest-request-wins.test.ts": {
       "aidlc/no-comments": 35,
@@ -5814,9 +5898,10 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t-onboard-adds-named-document.test.ts": {
-      "aidlc/no-comments": 37,
-      "max-len": 31,
-      "max-lines-per-function": 2,
+      "aidlc/no-comments": 56,
+      "max-len": 64,
+      "max-lines-per-function": 4,
+      "prefer-template": 1,
       "max-params": 1
     },
     "tests/unit/t-onboarding-title-line-is-theirs.test.ts": {
@@ -5828,6 +5913,13 @@
     "tests/unit/t-one-choice-question.test.ts": {
       "aidlc/no-comments": 13,
       "max-len": 8
+    },
+    "tests/unit/t-one-other-choice.test.ts": {
+      "aidlc/no-comments": 11
+    },
+    "tests/unit/t-open-work-long-name.test.ts": {
+      "aidlc/no-comments": 15,
+      "max-len": 20
     },
     "tests/unit/t-opencode-json-entries.test.ts": {
       "aidlc/no-comments": 45,
@@ -5857,7 +5949,7 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t-own-harness-bindings.test.ts": {
-      "aidlc/no-comments": 16,
+      "aidlc/no-comments": 15,
       "max-lines-per-function": 1,
       "max-len": 12,
       "max-depth": 2
@@ -5872,10 +5964,6 @@
       "max-len": 113,
       "max-params": 1,
       "max-lines-per-function": 6
-    },
-    "tests/unit/t-package-sources.test.ts": {
-      "aidlc/no-comments": 6,
-      "max-len": 8
     },
     "tests/unit/t-park-keeps-the-persons-words.test.ts": {
       "aidlc/no-comments": 65,
@@ -5896,8 +5984,8 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t-person-turns.test.ts": {
-      "aidlc/no-comments": 66,
-      "max-len": 106,
+      "aidlc/no-comments": 70,
+      "max-len": 111,
       "max-params": 3,
       "max-lines-per-function": 2
     },
@@ -5906,6 +5994,10 @@
       "max-len": 54,
       "max-params": 1,
       "complexity": 2
+    },
+    "tests/unit/t-phase-check-has-one-owner.test.ts": {
+      "aidlc/no-comments": 11,
+      "max-len": 3
     },
     "tests/unit/t-pick-reads-the-words.test.ts": {
       "aidlc/no-comments": 45,
@@ -5926,12 +6018,12 @@
       "max-params": 1
     },
     "tests/unit/t-plan-approval-ask.test.ts": {
-      "aidlc/no-comments": 493,
-      "max-len": 430,
+      "aidlc/no-comments": 590,
+      "max-len": 523,
       "max-params": 6,
       "prefer-template": 3,
       "complexity": 2,
-      "max-lines-per-function": 15
+      "max-lines-per-function": 17
     },
     "tests/unit/t-plan-approval-autonomy.test.ts": {
       "aidlc/no-comments": 18,
@@ -5951,8 +6043,8 @@
       "max-len": 7
     },
     "tests/unit/t-plan-approval-off-after-question.test.ts": {
-      "aidlc/no-comments": 41,
-      "max-len": 36,
+      "aidlc/no-comments": 46,
+      "max-len": 41,
       "max-params": 1,
       "prefer-template": 1,
       "max-lines-per-function": 2
@@ -5970,7 +6062,7 @@
       "prefer-template": 1
     },
     "tests/unit/t-plan-approval-refusal-way-out.test.ts": {
-      "aidlc/no-comments": 84,
+      "aidlc/no-comments": 88,
       "max-len": 95,
       "prefer-template": 2,
       "max-params": 2,
@@ -5984,8 +6076,8 @@
       "max-lines-per-function": 3
     },
     "tests/unit/t-plan-approval-switch.test.ts": {
-      "aidlc/no-comments": 106,
-      "max-len": 131,
+      "aidlc/no-comments": 108,
+      "max-len": 134,
       "prefer-template": 1,
       "max-lines-per-function": 5,
       "complexity": 2
@@ -6001,6 +6093,18 @@
       "max-len": 141,
       "max-params": 3,
       "max-lines-per-function": 8
+    },
+    "tests/unit/t-plan-question-box-summary.test.ts": {
+      "aidlc/no-comments": 60,
+      "max-len": 64,
+      "prefer-template": 2,
+      "max-params": 1,
+      "max-lines-per-function": 2
+    },
+    "tests/unit/t-plan-question-new-chat.test.ts": {
+      "aidlc/no-comments": 36,
+      "max-len": 53,
+      "max-lines-per-function": 1
     },
     "tests/unit/t-plan-question-waits-for-the-person.test.ts": {
       "aidlc/no-comments": 42,
@@ -6039,7 +6143,7 @@
     },
     "tests/unit/t-plan-wait-new-work-compose.test.ts": {
       "aidlc/no-comments": 42,
-      "max-len": 13,
+      "max-len": 12,
       "prefer-template": 1,
       "max-params": 1
     },
@@ -6081,6 +6185,11 @@
       "max-len": 14,
       "max-lines-per-function": 1
     },
+    "tests/unit/t-practices-save-new-space.test.ts": {
+      "aidlc/no-comments": 17,
+      "max-len": 17,
+      "max-lines-per-function": 1
+    },
     "tests/unit/t-predecessor-hold.test.ts": {
       "aidlc/no-comments": 7,
       "max-len": 1
@@ -6095,9 +6204,33 @@
       "max-len": 7,
       "max-lines-per-function": 1
     },
+    "tests/unit/t-printed-commands-config.test.ts": {
+      "aidlc/no-comments": 20,
+      "max-len": 25,
+      "max-params": 1,
+      "max-lines-per-function": 1
+    },
+    "tests/unit/t-printed-commands-dispatcher.test.ts": {
+      "aidlc/no-comments": 14,
+      "max-len": 20,
+      "complexity": 1
+    },
+    "tests/unit/t-printed-commands-engine.test.ts": {
+      "aidlc/no-comments": 22,
+      "max-len": 8
+    },
+    "tests/unit/t-printed-commands-quoting.test.ts": {
+      "aidlc/no-comments": 14,
+      "max-len": 10
+    },
     "tests/unit/t-printed-lines-keyboard-dash.test.ts": {
       "aidlc/no-comments": 19,
       "max-len": 12
+    },
+    "tests/unit/t-project-in-repo.test.ts": {
+      "aidlc/no-comments": 29,
+      "max-len": 13,
+      "max-lines-per-function": 1
     },
     "tests/unit/t-question-about-the-work.test.ts": {
       "aidlc/no-comments": 14,
@@ -6117,7 +6250,7 @@
       "max-len": 17
     },
     "tests/unit/t-question-options-fit-the-box.test.ts": {
-      "aidlc/no-comments": 13,
+      "aidlc/no-comments": 11,
       "max-len": 7,
       "max-depth": 1
     },
@@ -6192,6 +6325,10 @@
       "max-len": 38,
       "max-lines-per-function": 2
     },
+    "tests/unit/t-refined-mockups-runs-without-ideation.test.ts": {
+      "aidlc/no-comments": 8,
+      "max-len": 12
+    },
     "tests/unit/t-refresh-keeps-edited-pinned-agent.test.ts": {
       "aidlc/no-comments": 33,
       "max-len": 36,
@@ -6222,8 +6359,12 @@
       "max-params": 4,
       "complexity": 1
     },
+    "tests/unit/t-release-provenance-names-repository.test.ts": {
+      "aidlc/no-comments": 12,
+      "max-len": 2
+    },
     "tests/unit/t-repair-says-what-it-repaired.test.ts": {
-      "aidlc/no-comments": 33,
+      "aidlc/no-comments": 34,
       "max-len": 17,
       "prefer-template": 1,
       "max-lines-per-function": 1
@@ -6293,6 +6434,11 @@
       "aidlc/no-comments": 23,
       "max-len": 9
     },
+    "tests/unit/t-review-knows-plan-change.test.ts": {
+      "aidlc/no-comments": 33,
+      "max-len": 26,
+      "prefer-template": 2
+    },
     "tests/unit/t-review-manifest-forms.test.ts": {
       "aidlc/no-comments": 16,
       "max-len": 13,
@@ -6305,7 +6451,7 @@
       "max-params": 1
     },
     "tests/unit/t-review-request-names-its-command.test.ts": {
-      "aidlc/no-comments": 18,
+      "aidlc/no-comments": 19,
       "max-len": 21
     },
     "tests/unit/t-review-retried-incomplete-file.test.ts": {
@@ -6382,7 +6528,7 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t-routing-question-own-marker.test.ts": {
-      "aidlc/no-comments": 81,
+      "aidlc/no-comments": 82,
       "max-len": 97,
       "prefer-template": 2,
       "max-params": 3,
@@ -6394,6 +6540,11 @@
       "max-len": 13,
       "max-lines-per-function": 1
     },
+    "tests/unit/t-rule-layers-say-what-the-engine-does.test.ts": {
+      "aidlc/no-comments": 20,
+      "max-len": 15,
+      "max-lines-per-function": 1
+    },
     "tests/unit/t-rules-already-in-chat.test.ts": {
       "aidlc/no-comments": 124,
       "max-len": 65,
@@ -6402,8 +6553,8 @@
       "max-lines-per-function": 3
     },
     "tests/unit/t-rules-travel-with-steps.test.ts": {
-      "aidlc/no-comments": 34,
-      "max-len": 61,
+      "aidlc/no-comments": 35,
+      "max-len": 62,
       "max-lines-per-function": 2,
       "prefer-template": 1
     },
@@ -6436,6 +6587,11 @@
       "aidlc/no-comments": 19,
       "max-len": 70,
       "max-lines-per-function": 1
+    },
+    "tests/unit/t-scope-switch-windows-line-endings.test.ts": {
+      "aidlc/no-comments": 16,
+      "max-len": 18,
+      "complexity": 1
     },
     "tests/unit/t-sdk-approval-gate.test.ts": {
       "aidlc/no-comments": 23,
@@ -6493,7 +6649,15 @@
     },
     "tests/unit/t-sensor-type-check-native.test.ts": {
       "aidlc/no-comments": 14,
-      "max-len": 5
+      "max-len": 7,
+      "max-lines-per-function": 1
+    },
+    "tests/unit/t-set-aside-unit-skeleton.test.ts": {
+      "aidlc/no-comments": 44,
+      "max-len": 51,
+      "max-params": 2,
+      "complexity": 1,
+      "max-lines-per-function": 1
     },
     "tests/unit/t-set-by-you-needs-their-reply.test.ts": {
       "aidlc/no-comments": 35,
@@ -6564,20 +6728,22 @@
     },
     "tests/unit/t-skill-body-carriers.test.ts": {
       "aidlc/no-comments": 15,
+      "max-lines-per-function": 1,
       "max-len": 5
     },
     "tests/unit/t-skill-composer-on-demand.test.ts": {
-      "aidlc/no-comments": 16,
+      "aidlc/no-comments": 17,
       "max-len": 7
     },
     "tests/unit/t-skill-no-continuation-default.test.ts": {
-      "aidlc/no-comments": 10
+      "aidlc/no-comments": 12,
+      "max-len": 3
     },
     "tests/unit/t-skill-title-in-plain-words.test.ts": {
-      "aidlc/no-comments": 11,
+      "aidlc/no-comments": 13,
       "max-len": 1,
       "complexity": 1,
-      "max-depth": 1
+      "max-depth": 2
     },
     "tests/unit/t-skip-beside-reopen.test.ts": {
       "aidlc/no-comments": 31,
@@ -6657,6 +6823,12 @@
       "max-len": 11,
       "max-lines-per-function": 1
     },
+    "tests/unit/t-stage-steps-agree-with-the-engine.test.ts": {
+      "aidlc/no-comments": 17,
+      "max-len": 5,
+      "complexity": 1,
+      "max-depth": 1
+    },
     "tests/unit/t-stale-accepted-change.test.ts": {
       "aidlc/no-comments": 9,
       "max-len": 4
@@ -6700,8 +6872,8 @@
       "max-lines-per-function": 3
     },
     "tests/unit/t-steps-carry-their-words.test.ts": {
-      "aidlc/no-comments": 52,
-      "max-len": 92,
+      "aidlc/no-comments": 54,
+      "max-len": 94,
       "max-lines-per-function": 3,
       "complexity": 1,
       "prefer-template": 2
@@ -6734,6 +6906,10 @@
       "prefer-template": 2,
       "max-lines-per-function": 3,
       "complexity": 2
+    },
+    "tests/unit/t-subagent-inflight-ignored.test.ts": {
+      "aidlc/no-comments": 14,
+      "max-len": 4
     },
     "tests/unit/t-submodule-not-a-repo.test.ts": {
       "aidlc/no-comments": 22,
@@ -6771,11 +6947,19 @@
       "max-params": 1,
       "max-lines-per-function": 1
     },
+    "tests/unit/t-summary-stop-has-one-owner.test.ts": {
+      "aidlc/no-comments": 9,
+      "max-len": 1
+    },
     "tests/unit/t-swarm-after-skeleton-approves.test.ts": {
       "aidlc/no-comments": 38,
       "max-len": 73,
       "complexity": 1,
       "max-lines-per-function": 2
+    },
+    "tests/unit/t-swarm-check-time-limit.test.ts": {
+      "aidlc/no-comments": 9,
+      "max-len": 5
     },
     "tests/unit/t-swarm-finalize-keeps-changes.test.ts": {
       "aidlc/no-comments": 11,
@@ -6783,8 +6967,9 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t-swarm-ignored-files-are-not-source.test.ts": {
-      "aidlc/no-comments": 18,
-      "max-len": 34
+      "aidlc/no-comments": 43,
+      "max-len": 54,
+      "max-params": 2
     },
     "tests/unit/t-swarm-landing-brings-records.test.ts": {
       "aidlc/no-comments": 19,
@@ -6793,11 +6978,15 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t-swarm-landing-clash.test.ts": {
-      "aidlc/no-comments": 55,
-      "max-len": 80,
+      "aidlc/no-comments": 68,
+      "max-len": 106,
       "max-params": 1,
       "complexity": 1,
-      "max-lines-per-function": 3
+      "max-lines-per-function": 4
+    },
+    "tests/unit/t-swarm-landing-leaves-aidlc-files.test.ts": {
+      "aidlc/no-comments": 20,
+      "max-len": 9
     },
     "tests/unit/t-swarm-main-checkout-change-asked.test.ts": {
       "aidlc/no-comments": 24,
@@ -6819,6 +7008,10 @@
       "aidlc/no-comments": 9,
       "max-len": 9
     },
+    "tests/unit/t-swarm-recovery-review-retry.test.ts": {
+      "aidlc/no-comments": 10,
+      "max-len": 4
+    },
     "tests/unit/t-swarm-retry-after-failed-landing.test.ts": {
       "aidlc/no-comments": 35,
       "max-len": 54,
@@ -6831,12 +7024,12 @@
     },
     "tests/unit/t-swarm-unit-starts-with-records.test.ts": {
       "aidlc/no-comments": 14,
-      "max-len": 36,
+      "max-len": 37,
       "max-lines-per-function": 2
     },
     "tests/unit/t-swarm-unit-tests-through-aidlc.test.ts": {
-      "aidlc/no-comments": 19,
-      "max-len": 24,
+      "aidlc/no-comments": 25,
+      "max-len": 28,
       "max-params": 1,
       "max-lines-per-function": 1
     },
@@ -6885,14 +7078,14 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t-team-skeleton-answer-first.test.ts": {
-      "aidlc/no-comments": 20,
-      "max-len": 21,
+      "aidlc/no-comments": 23,
+      "max-len": 20,
       "max-lines-per-function": 1
     },
     "tests/unit/t-team-skip-mid-walk.test.ts": {
-      "aidlc/no-comments": 52,
-      "max-len": 82,
-      "max-lines-per-function": 3,
+      "aidlc/no-comments": 58,
+      "max-len": 89,
+      "max-lines-per-function": 4,
       "no-nested-ternary": 1
     },
     "tests/unit/t-team-unit-end-gate-findings.test.ts": {
@@ -6954,8 +7147,8 @@
       "max-len": 15
     },
     "tests/unit/t-traced-id-examples.test.ts": {
-      "aidlc/no-comments": 15,
-      "max-len": 5
+      "aidlc/no-comments": 16,
+      "max-len": 7
     },
     "tests/unit/t-transaction-busy-cleanup.test.ts": {
       "aidlc/no-comments": 16,
@@ -7084,7 +7277,7 @@
       "complexity": 1
     },
     "tests/unit/t-uninstall-plan.test.ts": {
-      "aidlc/no-comments": 19,
+      "aidlc/no-comments": 24,
       "no-nested-ternary": 1,
       "complexity": 1,
       "max-len": 24,
@@ -7106,7 +7299,7 @@
       "max-len": 4
     },
     "tests/unit/t-unit-notes-in-unit-folder.test.ts": {
-      "aidlc/no-comments": 13,
+      "aidlc/no-comments": 15,
       "max-len": 16,
       "max-lines-per-function": 1
     },
@@ -7117,8 +7310,8 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t-unit-receipt-recovery-ask.test.ts": {
-      "aidlc/no-comments": 35,
-      "max-len": 5,
+      "aidlc/no-comments": 40,
+      "max-len": 6,
       "max-lines-per-function": 2
     },
     "tests/unit/t-unit-redo-change-answers-plan.test.ts": {
@@ -7133,6 +7326,17 @@
       "max-params": 1,
       "complexity": 1,
       "max-lines-per-function": 2
+    },
+    "tests/unit/t-unit-source-changes-lookup.test.ts": {
+      "aidlc/no-comments": 30,
+      "max-len": 25,
+      "no-nested-ternary": 2,
+      "max-lines-per-function": 1
+    },
+    "tests/unit/t-unit-start-receipt.test.ts": {
+      "aidlc/no-comments": 33,
+      "max-len": 8,
+      "max-lines-per-function": 1
     },
     "tests/unit/t-unit-verb-route.test.ts": {
       "aidlc/no-comments": 25,
@@ -7165,6 +7369,11 @@
     "tests/unit/t-verification-command-mid-batch.test.ts": {
       "aidlc/no-comments": 7,
       "max-len": 7
+    },
+    "tests/unit/t-version-names-pin.test.ts": {
+      "aidlc/no-comments": 15,
+      "max-len": 14,
+      "max-lines-per-function": 1
     },
     "tests/unit/t-wave-questions-first.test.ts": {
       "aidlc/no-comments": 20,
@@ -7210,8 +7419,8 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t-windows-path-uninstall.test.ts": {
-      "aidlc/no-comments": 25,
-      "max-len": 108,
+      "aidlc/no-comments": 38,
+      "max-len": 124,
       "max-lines-per-function": 8,
       "complexity": 4,
       "no-nested-ternary": 4
@@ -7281,8 +7490,8 @@
       "prefer-template": 1
     },
     "tests/unit/t100-memory-template-lifecycle.test.ts": {
-      "aidlc/no-comments": 80,
-      "max-len": 5,
+      "aidlc/no-comments": 81,
+      "max-len": 4,
       "max-lines-per-function": 1
     },
     "tests/unit/t103.test.ts": {
@@ -7330,8 +7539,8 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t114-orchestrate-next.test.ts": {
-      "aidlc/no-comments": 330,
-      "max-len": 114,
+      "aidlc/no-comments": 331,
+      "max-len": 116,
       "max-lines-per-function": 11,
       "prefer-template": 1,
       "no-nested-ternary": 1
@@ -7385,8 +7594,8 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t129-stage-runner-drift.test.ts": {
-      "aidlc/no-comments": 176,
-      "max-len": 3,
+      "aidlc/no-comments": 179,
+      "max-len": 5,
       "max-lines-per-function": 1
     },
     "tests/unit/t13-hook-input-robustness.test.ts": {
@@ -7429,6 +7638,11 @@
       "max-len": 5,
       "max-lines-per-function": 1
     },
+    "tests/unit/t1454-long-brief-compose.test.ts": {
+      "aidlc/no-comments": 8,
+      "max-len": 7,
+      "max-lines-per-function": 1
+    },
     "tests/unit/t146-core-hygiene.test.ts": {
       "aidlc/no-comments": 44,
       "max-len": 2,
@@ -7436,18 +7650,18 @@
       "prefer-template": 1
     },
     "tests/unit/t147-kiro-hook-adapter.test.ts": {
-      "aidlc/no-comments": 276,
-      "max-len": 142,
+      "aidlc/no-comments": 303,
+      "max-len": 170,
       "max-params": 1,
-      "max-lines-per-function": 11,
+      "max-lines-per-function": 12,
       "prefer-template": 4
     },
     "tests/unit/t149-codex-hook-adapter.test.ts": {
-      "aidlc/no-comments": 250,
-      "max-len": 130,
+      "aidlc/no-comments": 256,
+      "max-len": 143,
       "max-params": 2,
       "complexity": 1,
-      "max-lines-per-function": 8,
+      "max-lines-per-function": 9,
       "prefer-template": 3
     },
     "tests/unit/t15-knowledge-file-inventory.test.ts": {
@@ -7455,15 +7669,15 @@
       "max-len": 2
     },
     "tests/unit/t150-codex-packaging.test.ts": {
-      "aidlc/no-comments": 77,
+      "aidlc/no-comments": 78,
       "max-params": 2,
       "max-lines-per-function": 3,
       "complexity": 2,
       "max-len": 23
     },
     "tests/unit/t151-onboarding-skeleton.test.ts": {
-      "aidlc/no-comments": 12,
-      "max-len": 9,
+      "aidlc/no-comments": 10,
+      "max-len": 12,
       "max-lines-per-function": 1,
       "prefer-template": 2,
       "complexity": 1
@@ -7556,7 +7770,7 @@
       "max-len": 1
     },
     "tests/unit/t174-docs-legacy-refs-gate.test.ts": {
-      "aidlc/no-comments": 54,
+      "aidlc/no-comments": 56,
       "complexity": 1,
       "max-len": 1
     },
@@ -7564,7 +7778,7 @@
       "aidlc/no-comments": 37
     },
     "tests/unit/t178-classify-terminal-command.test.ts": {
-      "aidlc/no-comments": 68,
+      "aidlc/no-comments": 69,
       "max-len": 7,
       "max-lines-per-function": 5
     },
@@ -7579,18 +7793,18 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t180-kiro-rollforward-seam.test.ts": {
-      "aidlc/no-comments": 58,
-      "max-len": 12,
+      "aidlc/no-comments": 69,
+      "max-len": 37,
       "max-params": 2,
       "prefer-template": 1,
-      "max-lines-per-function": 2
+      "max-lines-per-function": 3
     },
     "tests/unit/t181-conductor-skill-parity.test.ts": {
       "aidlc/no-comments": 285,
-      "max-len": 180,
+      "max-len": 177,
       "max-lines-per-function": 5,
+      "max-depth": 4,
       "complexity": 6,
-      "max-depth": 3,
       "no-nested-ternary": 1
     },
     "tests/unit/t182-codekb-placement.test.ts": {
@@ -7603,9 +7817,9 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t186-foreach-per-unit-iteration.test.ts": {
-      "aidlc/no-comments": 126,
+      "aidlc/no-comments": 129,
       "complexity": 1,
-      "max-len": 5,
+      "max-len": 6,
       "max-params": 1,
       "max-lines-per-function": 1
     },
@@ -7678,9 +7892,9 @@
       "max-len": 12
     },
     "tests/unit/t204-compose-marker-doctor.test.ts": {
-      "aidlc/no-comments": 25,
-      "max-lines-per-function": 1,
-      "max-len": 2
+      "aidlc/no-comments": 20,
+      "max-len": 5,
+      "max-lines-per-function": 1
     },
     "tests/unit/t205-gate-revision-backstop.test.ts": {
       "aidlc/no-comments": 226,
@@ -7758,14 +7972,15 @@
       "max-len": 6
     },
     "tests/unit/t218-kiro-ide-hook-adapter.test.ts": {
-      "aidlc/no-comments": 635,
-      "max-len": 465,
+      "aidlc/no-comments": 672,
+      "max-len": 534,
       "max-params": 12,
-      "max-lines-per-function": 48,
+      "max-lines-per-function": 50,
       "prefer-template": 2,
       "max-depth": 5,
       "complexity": 1,
-      "no-nested-ternary": 1
+      "no-nested-ternary": 1,
+      "no-template-curly-in-string": 3
     },
     "tests/unit/t219-claude-project-dir-quoting.test.ts": {
       "aidlc/no-comments": 7,
@@ -7777,13 +7992,13 @@
       "max-len": 6
     },
     "tests/unit/t221-reviewer-scope-hook.test.ts": {
-      "aidlc/no-comments": 107,
-      "max-len": 50,
+      "aidlc/no-comments": 110,
+      "max-len": 57,
       "max-lines-per-function": 4
     },
     "tests/unit/t222-plugin-runner-naming.test.ts": {
-      "aidlc/no-comments": 3,
-      "max-len": 4,
+      "aidlc/no-comments": 5,
+      "max-len": 5,
       "max-params": 1,
       "max-lines-per-function": 1
     },
@@ -7815,12 +8030,12 @@
     },
     "tests/unit/t229-workspace-parser.test.ts": {
       "aidlc/no-comments": 50,
-      "max-len": 81,
+      "max-len": 82,
       "max-lines-per-function": 4
     },
     "tests/unit/t230-dispatcher-routes.test.ts": {
       "aidlc/no-comments": 171,
-      "max-len": 127,
+      "max-len": 132,
       "no-nested-ternary": 2,
       "complexity": 4,
       "max-params": 4,
@@ -7835,8 +8050,8 @@
       "max-params": 1
     },
     "tests/unit/t232-phase-progress-flip.test.ts": {
-      "aidlc/no-comments": 60,
-      "max-len": 5
+      "aidlc/no-comments": 62,
+      "max-len": 6
     },
     "tests/unit/t233-upstream-coverage-matching.test.ts": {
       "aidlc/no-comments": 74,
@@ -7855,10 +8070,10 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t236-ensemble-evidence-gate.test.ts": {
-      "aidlc/no-comments": 56,
+      "aidlc/no-comments": 60,
       "max-params": 3,
-      "max-lines-per-function": 4,
-      "max-len": 22
+      "max-lines-per-function": 5,
+      "max-len": 28
     },
     "tests/unit/t237-linter-sensor-version-pin.test.ts": {
       "aidlc/no-comments": 25
@@ -7870,15 +8085,15 @@
       "max-lines-per-function": 4
     },
     "tests/unit/t239-documentation-parity.test.ts": {
-      "aidlc/no-comments": 44,
-      "max-len": 33,
-      "max-lines-per-function": 7,
-      "complexity": 2
+      "max-len": 111,
+      "aidlc/no-comments": 70,
+      "max-lines-per-function": 8,
+      "complexity": 3
     },
     "tests/unit/t240-opencode-packaging.test.ts": {
       "aidlc/no-comments": 61,
       "max-lines-per-function": 1,
-      "max-len": 14,
+      "max-len": 16,
       "complexity": 1
     },
     "tests/unit/t241-opencode-adapter.test.ts": {
@@ -7903,31 +8118,31 @@
       "max-lines-per-function": 9
     },
     "tests/unit/t242-state-transition-guard.test.ts": {
-      "aidlc/no-comments": 118,
-      "max-len": 206,
+      "aidlc/no-comments": 134,
+      "max-len": 210,
       "max-lines-per-function": 7,
       "complexity": 2
     },
     "tests/unit/t243-doctor-bundle.test.ts": {
-      "aidlc/no-comments": 155,
+      "aidlc/no-comments": 159,
       "complexity": 1,
-      "max-len": 73,
+      "max-len": 76,
       "max-lines-per-function": 4,
       "max-params": 2,
       "prefer-template": 1
     },
     "tests/unit/t243-install-mechanism.test.ts": {
-      "aidlc/no-comments": 376,
-      "max-len": 443,
+      "aidlc/no-comments": 395,
+      "max-len": 469,
       "max-params": 2,
       "complexity": 5,
       "max-depth": 2,
-      "max-lines-per-function": 55,
+      "max-lines-per-function": 56,
       "prefer-template": 15
     },
     "tests/unit/t244-install-management.test.ts": {
-      "aidlc/no-comments": 191,
-      "max-len": 159,
+      "aidlc/no-comments": 200,
+      "max-len": 174,
       "max-lines-per-function": 27,
       "max-params": 3,
       "complexity": 4,
@@ -7942,7 +8157,7 @@
       "max-depth": 2
     },
     "tests/unit/t245-kiro-ide-hook-registrations.test.ts": {
-      "aidlc/no-comments": 47,
+      "aidlc/no-comments": 48,
       "max-len": 19,
       "max-lines-per-function": 3
     },
@@ -7969,30 +8184,30 @@
       "max-len": 10
     },
     "tests/unit/t248-steering-content-delivery.test.ts": {
-      "aidlc/no-comments": 138,
+      "aidlc/no-comments": 139,
       "max-len": 48,
       "max-params": 2,
-      "max-lines-per-function": 6
+      "max-lines-per-function": 5
     },
     "tests/unit/t249-copilot-adapter.test.ts": {
-      "aidlc/no-comments": 493,
-      "max-len": 547,
+      "aidlc/no-comments": 496,
+      "max-len": 553,
       "complexity": 8,
       "max-params": 11,
       "max-lines-per-function": 19,
       "no-nested-ternary": 3
     },
     "tests/unit/t250-copilot-adapter-security.test.ts": {
-      "aidlc/no-comments": 283,
-      "max-len": 223,
+      "aidlc/no-comments": 284,
+      "max-len": 226,
       "max-params": 2,
       "max-lines-per-function": 11,
       "complexity": 11,
       "max-depth": 4
     },
     "tests/unit/t251-sensor-stdout-noise.test.ts": {
-      "aidlc/no-comments": 25,
-      "max-len": 1
+      "aidlc/no-comments": 28,
+      "max-len": 2
     },
     "tests/unit/t252-kiro-allowlist-semantics.test.ts": {
       "aidlc/no-comments": 170,
@@ -8009,8 +8224,8 @@
       "max-params": 1
     },
     "tests/unit/t256-workspace-doctor.test.ts": {
-      "aidlc/no-comments": 59,
-      "max-len": 69,
+      "aidlc/no-comments": 71,
+      "max-len": 82,
       "max-lines-per-function": 2
     },
     "tests/unit/t257-default-scope-resolver.test.ts": {
@@ -8025,8 +8240,8 @@
       "max-params": 2
     },
     "tests/unit/t259-turn-markers.test.ts": {
-      "aidlc/no-comments": 164,
-      "max-len": 86,
+      "aidlc/no-comments": 167,
+      "max-len": 88,
       "max-lines-per-function": 6,
       "complexity": 1,
       "max-params": 1
@@ -8053,22 +8268,22 @@
     },
     "tests/unit/t263-reviewer-terminal-ordering.test.ts": {
       "aidlc/no-comments": 42,
-      "max-len": 2,
+      "max-len": 3,
       "max-params": 1,
       "max-lines-per-function": 1
     },
     "tests/unit/t264-review-freeze-hook.test.ts": {
-      "aidlc/no-comments": 164,
-      "max-len": 73,
+      "aidlc/no-comments": 169,
+      "max-len": 80,
       "max-lines-per-function": 14,
       "complexity": 3,
       "max-params": 1
     },
     "tests/unit/t265-plan-approval-guard.test.ts": {
-      "aidlc/no-comments": 480,
-      "max-len": 240,
-      "max-lines-per-function": 27,
-      "complexity": 10,
+      "aidlc/no-comments": 549,
+      "max-len": 301,
+      "max-lines-per-function": 30,
+      "complexity": 11,
       "prefer-template": 2,
       "max-depth": 18,
       "max-params": 3,
@@ -8108,8 +8323,8 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t27.test.ts": {
-      "aidlc/no-comments": 149,
-      "max-len": 22,
+      "aidlc/no-comments": 154,
+      "max-len": 23,
       "complexity": 2,
       "max-depth": 2,
       "max-lines-per-function": 6
@@ -8133,8 +8348,8 @@
       "max-len": 1
     },
     "tests/unit/t272-unit-major-code-gen.test.ts": {
-      "aidlc/no-comments": 66,
-      "max-len": 9,
+      "aidlc/no-comments": 69,
+      "max-len": 10,
       "prefer-template": 1,
       "max-lines-per-function": 2,
       "complexity": 1
@@ -8156,11 +8371,12 @@
       "max-lines-per-function": 12
     },
     "tests/unit/t276-cursor-adapter.test.ts": {
-      "aidlc/no-comments": 209,
-      "max-len": 134,
+      "aidlc/no-comments": 248,
+      "max-len": 159,
       "max-params": 1,
       "complexity": 7,
-      "max-lines-per-function": 21
+      "max-lines-per-function": 24,
+      "no-nested-ternary": 2
     },
     "tests/unit/t277-validate-grid-nearest-stock.test.ts": {
       "aidlc/no-comments": 33,
@@ -8198,8 +8414,8 @@
       "max-lines-per-function": 14
     },
     "tests/unit/t282-state-version-doctor.test.ts": {
-      "aidlc/no-comments": 48,
-      "max-len": 24,
+      "aidlc/no-comments": 50,
+      "max-len": 25,
       "max-lines-per-function": 2
     },
     "tests/unit/t283-copilot-engine-cursor.test.ts": {
@@ -8216,13 +8432,13 @@
       "max-lines-per-function": 4
     },
     "tests/unit/t285-knowledge-skill.test.ts": {
-      "aidlc/no-comments": 218,
+      "aidlc/no-comments": 211,
       "max-len": 45,
       "max-lines-per-function": 6
     },
     "tests/unit/t286-read-write-boundary.test.ts": {
-      "aidlc/no-comments": 70,
-      "max-len": 3,
+      "aidlc/no-comments": 72,
+      "max-len": 4,
       "max-lines-per-function": 2
     },
     "tests/unit/t287-knowledge-sync-cas.test.ts": {
@@ -8232,13 +8448,13 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t288-documentkb-schema.test.ts": {
-      "aidlc/no-comments": 143,
-      "max-len": 10,
+      "aidlc/no-comments": 146,
+      "max-len": 11,
       "max-lines-per-function": 1
     },
     "tests/unit/t289-knowledge-onboard-boundary.test.ts": {
-      "aidlc/no-comments": 511,
-      "max-len": 41,
+      "aidlc/no-comments": 519,
+      "max-len": 47,
       "max-lines-per-function": 11,
       "complexity": 5,
       "max-depth": 2,
@@ -8269,8 +8485,8 @@
       "max-lines-per-function": 2
     },
     "tests/unit/t293-config-models.test.ts": {
-      "aidlc/no-comments": 73,
-      "max-len": 123,
+      "aidlc/no-comments": 75,
+      "max-len": 124,
       "max-lines-per-function": 11,
       "complexity": 1
     },
@@ -8281,10 +8497,11 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t294-config-diagnostics.test.ts": {
-      "max-len": 300,
-      "aidlc/no-comments": 345,
+      "max-len": 310,
+      "aidlc/no-comments": 352,
       "max-lines-per-function": 57,
       "complexity": 7,
+      "max-params": 1,
       "no-nested-ternary": 1,
       "max-depth": 4,
       "prefer-template": 2
@@ -8301,7 +8518,7 @@
       "max-lines-per-function": 13
     },
     "tests/unit/t295-knowledge-extraction.test.ts": {
-      "aidlc/no-comments": 179,
+      "aidlc/no-comments": 181,
       "max-len": 27,
       "max-lines-per-function": 4
     },
@@ -8334,8 +8551,8 @@
       "max-lines-per-function": 6
     },
     "tests/unit/t299-first-run-wizard.test.ts": {
-      "aidlc/no-comments": 213,
-      "max-len": 94,
+      "aidlc/no-comments": 223,
+      "max-len": 102,
       "max-params": 4,
       "max-lines-per-function": 7,
       "complexity": 5
@@ -8466,8 +8683,8 @@
       "max-len": 62
     },
     "tests/unit/t314-source-freshness-receipts.test.ts": {
-      "aidlc/no-comments": 406,
-      "max-len": 220,
+      "aidlc/no-comments": 411,
+      "max-len": 225,
       "max-params": 1,
       "max-lines-per-function": 35,
       "complexity": 2,
@@ -8488,9 +8705,9 @@
       "max-len": 18
     },
     "tests/unit/t316-plugin-test.test.ts": {
-      "aidlc/no-comments": 19,
+      "aidlc/no-comments": 27,
       "max-lines-per-function": 2,
-      "max-len": 7
+      "max-len": 12
     },
     "tests/unit/t316-run-stage-memory-bootstrap.test.ts": {
       "aidlc/no-comments": 5,
@@ -8511,14 +8728,14 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t318-session-binding-helpers.test.ts": {
-      "aidlc/no-comments": 48,
-      "max-len": 41,
+      "aidlc/no-comments": 52,
+      "max-len": 44,
       "max-lines-per-function": 2
     },
     "tests/unit/t319-doctor-hooks-blocked.test.ts": {
       "aidlc/no-comments": 74,
       "max-params": 1,
-      "max-len": 44,
+      "max-len": 46,
       "complexity": 1,
       "max-lines-per-function": 1
     },
@@ -8553,8 +8770,8 @@
       "max-len": 2
     },
     "tests/unit/t324-team-unit-progress-gates.test.ts": {
-      "aidlc/no-comments": 71,
-      "max-len": 90,
+      "aidlc/no-comments": 79,
+      "max-len": 104,
       "max-params": 2,
       "max-lines-per-function": 11,
       "complexity": 1
@@ -8599,8 +8816,8 @@
       "max-params": 3
     },
     "tests/unit/t329-document-input.test.ts": {
-      "aidlc/no-comments": 33,
-      "max-len": 24,
+      "aidlc/no-comments": 38,
+      "max-len": 29,
       "max-params": 1,
       "max-lines-per-function": 2
     },
@@ -8670,8 +8887,8 @@
       "complexity": 1
     },
     "tests/unit/t334-change-control-plan-approval.test.ts": {
-      "aidlc/no-comments": 71,
-      "max-len": 53,
+      "aidlc/no-comments": 78,
+      "max-len": 60,
       "max-lines-per-function": 9,
       "prefer-template": 1,
       "complexity": 2
@@ -8759,15 +8976,16 @@
       "max-lines-per-function": 1
     },
     "tests/unit/t341-orchestrate-wait.test.ts": {
-      "aidlc/no-comments": 15,
-      "max-lines-per-function": 1,
-      "max-len": 5,
-      "complexity": 1
+      "aidlc/no-comments": 35,
+      "max-len": 39,
+      "max-lines-per-function": 2,
+      "complexity": 1,
+      "prefer-template": 1
     },
     "tests/unit/t342-construction-checkpoint-routing.test.ts": {
-      "aidlc/no-comments": 368,
-      "max-len": 438,
-      "complexity": 7,
+      "aidlc/no-comments": 377,
+      "max-len": 441,
+      "complexity": 8,
       "max-params": 5,
       "max-lines-per-function": 4,
       "max-depth": 1,
@@ -8859,9 +9077,9 @@
       "max-len": 6
     },
     "tests/unit/t349-audit-trail-guard.test.ts": {
-      "aidlc/no-comments": 36,
+      "aidlc/no-comments": 39,
       "max-lines-per-function": 4,
-      "max-len": 36
+      "max-len": 39
     },
     "tests/unit/t349-composer-scope-settings.test.ts": {
       "aidlc/no-comments": 80,
@@ -8925,7 +9143,7 @@
       "max-len": 10
     },
     "tests/unit/t352-workspace-reclassify.test.ts": {
-      "aidlc/no-comments": 169,
+      "aidlc/no-comments": 170,
       "max-len": 133,
       "max-params": 4,
       "max-lines-per-function": 9
