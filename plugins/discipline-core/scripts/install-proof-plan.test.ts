@@ -25,49 +25,59 @@ const packageFiles = import.meta.glob(["../package.json"], {
   eager: true,
 });
 
-const CONTAINS_FAIL: StepExpectation = { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } };
+const FAILING_REPORT = "findings (1)\nCD-23#export-test-sibling audit src/kept.ts:1:0 missing co-located *.test.ts(x) sibling\nverdict: fail\n";
 
-const EMPTY_OUTPUT: StepExpectation = { exitCode: 0, output: { kind: "empty" } };
+const FAILING: StepExpectation = { exitCode: 1, output: FAILING_REPORT };
+
+const SILENT: StepExpectation = { exitCode: 0, output: "" };
+
 describe("judgedStep", () => {
-  it("passes on the expected exit and a line containing the expected text", () => {
-    expect(
-      judgedStep({ label: "audit check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 1, output: "x\nverdict: fail\n" } }),
-    ).toEqual({ outcome: "ok", value: 'ok: audit check -> exit 1, "verdict: fail"' });
-  });
-
-  it("fails on an exit mismatch, carrying the captured output", () => {
-    expect(
-      judgedStep({ label: "audit check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 0, output: "verdict: fail\n" } }),
-    ).toEqual({ outcome: "failed", error: 'FAIL: audit check: expected exit 1 and "verdict: fail", got exit 0\nverdict: fail\n' });
-  });
-
-  it("fails when the expected text is missing", () => {
-    expect(
-      judgedStep({ label: "audit check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 1, output: "verdict: pass\n" } }),
-    ).toEqual({ outcome: "failed", error: 'FAIL: audit check: expected exit 1 and "verdict: fail", got exit 1\nverdict: pass\n' });
-  });
-
-  it("passes an empty-output expectation on no output", () => {
-    expect(judgedStep({ label: "audit project", expectation: EMPTY_OUTPUT, run: { outcome: "exited", exitCode: 0, output: "" } })).toEqual({
+  it("passes on the expected exit and exactly the expected output", () => {
+    expect(judgedStep({ label: "audit check", expectation: FAILING, run: { outcome: "exited", exitCode: 1, output: FAILING_REPORT } })).toEqual({
       outcome: "ok",
-      value: 'ok: audit project -> exit 0, ""',
+      value: "ok: audit check -> exit 1, output exactly as expected",
     });
   });
 
-  it("fails an empty-output expectation on any output", () => {
-    expect(
-      judgedStep({ label: "audit project", expectation: EMPTY_OUTPUT, run: { outcome: "exited", exitCode: 0, output: "a written\n" } }),
-    ).toEqual({ outcome: "failed", error: 'FAIL: audit project: expected exit 0 and "", got exit 0\na written\n' });
+  it("fails on an exit mismatch, showing the expected and the captured output", () => {
+    expect(judgedStep({ label: "audit check", expectation: SILENT, run: { outcome: "exited", exitCode: 1, output: "" } })).toEqual({
+      outcome: "failed",
+      error: 'FAIL: audit check: expected exit 0 and output "", got exit 1 and output ""',
+    });
+  });
+
+  it.each([
+    {
+      change: "a finding line",
+      output: "findings (1)\nCD-23#export-test-sibling audit src/kept.ts:2:0 missing co-located *.test.ts(x) sibling\nverdict: fail\n",
+    },
+    {
+      change: "a section header",
+      output: "findings [1]\nCD-23#export-test-sibling audit src/kept.ts:1:0 missing co-located *.test.ts(x) sibling\nverdict: fail\n",
+    },
+    { change: "an extra section", output: `excluded (1)\nvendor\n${FAILING_REPORT}` },
+    { change: "only the verdict line", output: "verdict: fail\n" },
+  ])("fails when $change differs, even with the verdict kept", ({ output }) => {
+    expect(judgedStep({ label: "audit check", expectation: FAILING, run: { outcome: "exited", exitCode: 1, output } })).toEqual({
+      outcome: "failed",
+      error: `FAIL: audit check: expected exit 1 and output ${JSON.stringify(FAILING_REPORT)}, got exit 1 and output ${JSON.stringify(output)}`,
+    });
+  });
+
+  it("fails an expectation of no output on any output", () => {
+    expect(judgedStep({ label: "audit project", expectation: SILENT, run: { outcome: "exited", exitCode: 0, output: "a written\n" } })).toEqual({
+      outcome: "failed",
+      error: 'FAIL: audit project: expected exit 0 and output "", got exit 0 and output "a written\\n"',
+    });
   });
 
   it("fails a run that did not exit", () => {
-    expect(judgedStep({ label: "audit project", expectation: EMPTY_OUTPUT, run: { outcome: "not-exited", detail: "spawn ENOENT" } })).toEqual({
+    expect(judgedStep({ label: "audit project", expectation: SILENT, run: { outcome: "not-exited", detail: "spawn ENOENT" } })).toEqual({
       outcome: "failed",
-      error: 'FAIL: audit project: expected exit 0 and "", but it did not exit: spawn ENOENT',
+      error: 'FAIL: audit project: expected exit 0 and output "", but it did not exit: spawn ENOENT',
     });
   });
 });
-
 const manifestText = (request: { readonly devDependencies: Readonly<Record<string, string>> }): string =>
   `${JSON.stringify({ private: true, devDependencies: request.devDependencies }, null, 2)}\n`;
 
@@ -130,32 +140,49 @@ describe("toolchainManifest, over this package's own package.json read as a buil
   });
 });
 
-const ESLINT_ACTIONS: readonly ProofAction[] = [
-  { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } } },
+const PROJECTION = `import piece0 from "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";
+
+export default [
   {
-    kind: "read",
-    path: "disciplines.eslint.mjs",
-    contains: 'import piece0 from "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";',
+    name: "discipline-core/piece/discipline",
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error", "discipline/no-extraneous-class": ["error",{"allowConstructorOnly":true,"allowEmpty":true,"allowStaticOnly":false,"allowWithDecorator":true}] },
   },
+];
+`;
+
+const ESLINT_ACTIONS: readonly ProofAction[] = [
+  { kind: "project", expectation: { exitCode: 0, output: "disciplines.eslint.mjs written\n" } },
+  { kind: "read", path: "disciplines.eslint.mjs", text: PROJECTION },
   { kind: "commit", message: "project" },
-  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  {
+    kind: "check",
+    expectation: { exitCode: 1, output: "findings (1)\nCD-14#class-syntax eslint src/kept.ts:1:7 export class Kept {}\nverdict: fail\n" },
+  },
   { kind: "remove", path: "src/kept.ts" },
   { kind: "commit", message: "clean" },
-  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+  { kind: "check", expectation: { exitCode: 0, output: "verdict: pass\n" } },
 ];
 
 const AUDIT_ACTIONS: readonly ProofAction[] = [
-  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  { kind: "check", expectation: FAILING },
   { kind: "remove", path: "src/kept.ts" },
   { kind: "commit", message: "clean" },
-  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
-  { kind: "project", expectation: { exitCode: 0, output: { kind: "empty" } } },
+  { kind: "check", expectation: { exitCode: 0, output: "verdict: pass\n" } },
+  { kind: "project", expectation: SILENT },
 ];
 
 const ESLINT_MISSING_ACTIONS: readonly ProofAction[] = [
-  { kind: "project", expectation: { exitCode: 2, output: { kind: "contains", text: "toolchain-unavailable eslint found not installed" } } },
+  {
+    kind: "project",
+    expectation: {
+      exitCode: 2,
+      output:
+        "load failure: runner-failed eslint toolchain-unavailable eslint found not installed, supported ^9.12.0 || ^10.0.0: add a supported version to the devDependencies of the repository root\n",
+    },
+  },
 ];
-
 describe("the proof cases", () => {
   it("install the packed package into an audit-only consumer, an ESLint consumer on each line's floor and one missing eslint, over three shared toolchains, projecting with the package's own import", () => {
     expect(PROOF_CASES).toEqual([

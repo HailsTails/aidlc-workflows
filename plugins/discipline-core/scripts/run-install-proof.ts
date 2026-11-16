@@ -144,6 +144,7 @@ const installedCommand = (request: {
   request.context.process.writeOut({ text: `${judged.value}\n` });
   return SUCCEEDED;
 };
+
 const removedPath = (request: {
   readonly context: ProofContext;
   readonly label: string;
@@ -151,20 +152,23 @@ const removedPath = (request: {
 }): Result<null, string> =>
   labelled({ label: request.label, result: request.context.scratch.removeFile({ path: request.path }) });
 
-const readHolding = (request: {
+const readExactly = (request: {
   readonly context: ProofContext;
   readonly label: string;
   readonly path: string;
-  readonly contains: string;
+  readonly text: string;
 }): Result<null, string> => {
-  const text = labelled({ label: request.label, result: request.context.fileText.read({ path: request.path }) });
-  if (text.outcome === "failed") {
-    return text;
+  const read = labelled({ label: request.label, result: request.context.fileText.read({ path: request.path }) });
+  if (read.outcome === "failed") {
+    return read;
   }
-  if (!text.value.includes(request.contains)) {
-    return { outcome: "failed", error: `FAIL: ${request.label}, but it reads\n${text.value}` };
+  if (read.value !== request.text) {
+    return {
+      outcome: "failed",
+      error: `FAIL: ${request.label}: expected ${JSON.stringify(request.text)}, but it reads ${JSON.stringify(read.value)}`,
+    };
   }
-  request.context.process.writeOut({ text: `ok: ${request.label}\n` });
+  request.context.process.writeOut({ text: `ok: ${request.label} reads exactly as expected\n` });
   return SUCCEEDED;
 };
 
@@ -195,14 +199,15 @@ const performedAction = (request: {
     case "commit":
       return commitAll({ context: request.context, repo: request.repo, consumer: request.consumer, message: action.message });
     case "read":
-      return readHolding({
+      return readExactly({
         context: request.context,
-        label: `${request.consumer} ${action.path} holds ${action.contains}`,
+        label: `${request.consumer} ${action.path}`,
         path: request.context.path.join({ segments: [request.repo, action.path] }),
-        contains: action.contains,
+        text: action.text,
       });
   }
 };
+
 const writtenFile = (request: {
   readonly context: ProofContext;
   readonly label: string;

@@ -45,15 +45,22 @@ const EXPECTING_PASS: ProofCase = {
   mechanism: "audit",
   toolchain: "typescript-floor",
   actions: [
-    { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
-    { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
-    { kind: "read", path: "disciplines.eslint.mjs", contains: 'from "discipline-core/mechanisms/' },
+    { kind: "check", expectation: { exitCode: 0, output: "verdict: pass\n" } },
+    { kind: "project", expectation: { exitCode: 0, output: "verdict: pass\n" } },
+    { kind: "read", path: "disciplines.eslint.mjs", text: PROJECTION },
   ],
 };
 
 const EXPECTING_FAIL: ProofCase = {
   ...EXPECTING_PASS,
-  actions: [{ kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } }],
+  actions: [{ kind: "check", expectation: { exitCode: 1, output: "verdict: fail\n" } }],
+};
+
+const REPORT_OF_FINDINGS = "findings (1)\nCD-23#export-test-sibling audit src/kept.ts:1:0 missing co-located *.test.ts(x) sibling\nverdict: fail\n";
+
+const EXPECTING_FINDINGS: ProofCase = {
+  ...EXPECTING_PASS,
+  actions: [{ kind: "check", expectation: { exitCode: 1, output: REPORT_OF_FINDINGS } }],
 };
 
 const SECOND_CONSUMER: ProofCase = { ...EXPECTING_PASS, consumer: "second", actions: [] };
@@ -68,7 +75,7 @@ const INSTALLED_PACKAGE_WITH_SOURCE: readonly ListedEntry[] = [
   { path: "core/check/run-check.ts", name: "run-check.ts", entryKind: "file" },
 ];
 
-const EXITED_PASSING: StepRun = { outcome: "exited", exitCode: 0, output: "verdict: pass" };
+const EXITED_PASSING: StepRun = { outcome: "exited", exitCode: 0, output: "verdict: pass\n" };
 
 const EXITED_NPM_ERROR: StepRun = { outcome: "exited", exitCode: 1, output: "npm ERR! network" };
 
@@ -134,9 +141,9 @@ describe("runInstallProof", () => {
     expect(reportOf({ process: proofProcess })).toEqual({
       writes: [
         [{ text: "ok: audit installed package holds no TypeScript source to strip\n" }],
-        [{ text: 'ok: audit check -> exit 0, "verdict: pass"\n' }],
-        [{ text: 'ok: audit project -> exit 0, "verdict: pass"\n' }],
-        [{ text: 'ok: audit disciplines.eslint.mjs holds from "discipline-core/mechanisms/\n' }],
+        [{ text: "ok: audit check -> exit 0, output exactly as expected\n" }],
+        [{ text: "ok: audit project -> exit 0, output exactly as expected\n" }],
+        [{ text: "ok: audit disciplines.eslint.mjs reads exactly as expected\n" }],
         [{ text: "install proof: pass\n" }],
       ],
       exits: [[{ code: 0 }]],
@@ -249,18 +256,53 @@ describe("runInstallProof", () => {
     });
   });
 
-  it("exits 1 with the projection text when it does not import the package's pieces by name", async () => {
+  it("exits 1 showing both texts when the projection differs from the expected text", async () => {
     const proofProcess = processPort();
+    const expected = 'import piece0 from "./node_modules/discipline-core/x.js";\n';
 
     await runInstallProof(
       proofRequest({
         process: proofProcess,
-        proofCases: [{ ...EXPECTING_PASS, actions: [{ kind: "read", path: "disciplines.eslint.mjs", contains: "./node_modules/" }] }],
+        proofCases: [{ ...EXPECTING_PASS, actions: [{ kind: "read", path: "disciplines.eslint.mjs", text: expected }] }],
       }),
     );
 
     expect(proofProcess.writeOut).toHaveBeenLastCalledWith({
-      text: `FAIL: audit disciplines.eslint.mjs holds ./node_modules/, but it reads\n${PROJECTION}\n`,
+      text: `FAIL: audit disciplines.eslint.mjs: expected ${JSON.stringify(expected)}, but it reads ${JSON.stringify(PROJECTION)}\n`,
+    });
+  });
+
+  it("exits 1 when the built package prints a report whose finding line differs, though its exit and verdict match", async () => {
+    const proofProcess = processPort();
+    const altered = "findings (1)\nCD-23#export-test-sibling audit src/kept.ts:1:1 missing co-located *.test.ts(x) sibling\nverdict: fail\n";
+
+    await runInstallProof(
+      proofRequest({
+        process: proofProcess,
+        commands: {
+          run: vi
+            .fn<CommandRunPort["run"]>()
+            .mockReturnValueOnce(EXITED_PASSING)
+            .mockReturnValueOnce(EXITED_PASSING)
+            .mockReturnValueOnce(EXITED_PASSING)
+            .mockReturnValueOnce(EXITED_PASSING)
+            .mockReturnValueOnce(EXITED_PASSING)
+            .mockReturnValue({ outcome: "exited", exitCode: 1, output: altered }),
+        },
+        proofCases: [EXPECTING_FINDINGS],
+      }),
+    );
+
+    expect(reportOf({ process: proofProcess })).toEqual({
+      writes: [
+        [{ text: "ok: audit installed package holds no TypeScript source to strip\n" }],
+        [
+          {
+            text: `FAIL: audit check: expected exit 1 and output ${JSON.stringify(REPORT_OF_FINDINGS)}, got exit 1 and output ${JSON.stringify(altered)}\n`,
+          },
+        ],
+      ],
+      exits: [[{ code: 1 }]],
     });
   });
 
@@ -272,7 +314,7 @@ describe("runInstallProof", () => {
     expect(reportOf({ process: proofProcess })).toEqual({
       writes: [
         [{ text: "ok: audit installed package holds no TypeScript source to strip\n" }],
-        [{ text: 'FAIL: audit check: expected exit 1 and "verdict: fail", got exit 0\nverdict: pass\n' }],
+        [{ text: 'FAIL: audit check: expected exit 1 and output "verdict: fail\\n", got exit 0 and output "verdict: pass\\n"\n' }],
       ],
       exits: [[{ code: 1 }]],
     });

@@ -7,9 +7,7 @@ export type EntryKind = "folder" | "file";
 
 export type EntryDisposition = "left-out" | "kept";
 
-export type ExpectedOutput = { readonly kind: "contains"; readonly text: string } | { readonly kind: "empty" };
-
-export type StepExpectation = { readonly exitCode: number; readonly output: ExpectedOutput };
+export type StepExpectation = { readonly exitCode: number; readonly output: string };
 
 export type StepRun =
   | { readonly outcome: "exited"; readonly exitCode: number; readonly output: string }
@@ -22,7 +20,7 @@ export type ProofAction =
   | { readonly kind: "project"; readonly expectation: StepExpectation }
   | { readonly kind: "remove"; readonly path: string }
   | { readonly kind: "commit"; readonly message: string }
-  | { readonly kind: "read"; readonly path: string; readonly contains: string };
+  | { readonly kind: "read"; readonly path: string; readonly text: string };
 
 export type ProofToolchain = "typescript-floor" | "eslint-9-floor" | "eslint-10-floor";
 
@@ -37,41 +35,64 @@ export type ProofCase = {
 
 export type ManifestFailure = { readonly kind: "manifest-invalid"; readonly detail: string };
 
-const ESLINT_CONSUMER_ACTIONS: readonly ProofAction[] = [
-  { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } } },
+const PASSING_REPORT = "verdict: pass\n";
+
+const ESLINT_PROJECTION = `import piece0 from "${PACKAGE_IDENTITY.name}/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";
+
+export default [
   {
-    kind: "read",
-    path: "disciplines.eslint.mjs",
-    contains: `import piece0 from "${PACKAGE_IDENTITY.name}/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";`,
+    name: "discipline-core/piece/discipline",
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error", "discipline/no-extraneous-class": ["error",{"allowConstructorOnly":true,"allowEmpty":true,"allowStaticOnly":false,"allowWithDecorator":true}] },
   },
+];
+`;
+
+const ESLINT_CONSUMER_ACTIONS: readonly ProofAction[] = [
+  { kind: "project", expectation: { exitCode: 0, output: "disciplines.eslint.mjs written\n" } },
+  { kind: "read", path: "disciplines.eslint.mjs", text: ESLINT_PROJECTION },
   { kind: "commit", message: "project" },
-  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  {
+    kind: "check",
+    expectation: { exitCode: 1, output: "findings (1)\nCD-14#class-syntax eslint src/kept.ts:1:7 export class Kept {}\nverdict: fail\n" },
+  },
   { kind: "remove", path: "src/kept.ts" },
   { kind: "commit", message: "clean" },
-  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+  { kind: "check", expectation: { exitCode: 0, output: PASSING_REPORT } },
 ];
 
 const AUDIT_CONSUMER_ACTIONS: readonly ProofAction[] = [
-  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  {
+    kind: "check",
+    expectation: {
+      exitCode: 1,
+      output: "findings (1)\nCD-23#export-test-sibling audit src/kept.ts:1:0 missing co-located *.test.ts(x) sibling\nverdict: fail\n",
+    },
+  },
   { kind: "remove", path: "src/kept.ts" },
   { kind: "commit", message: "clean" },
-  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
-  { kind: "project", expectation: { exitCode: 0, output: { kind: "empty" } } },
+  { kind: "check", expectation: { exitCode: 0, output: PASSING_REPORT } },
+  { kind: "project", expectation: { exitCode: 0, output: "" } },
 ];
 
 const ESLINT_MISSING_ACTIONS: readonly ProofAction[] = [
   {
     kind: "project",
-    expectation: { exitCode: 2, output: { kind: "contains", text: "toolchain-unavailable eslint found not installed" } },
+    expectation: {
+      exitCode: 2,
+      output:
+        "load failure: runner-failed eslint toolchain-unavailable eslint found not installed, supported ^9.12.0 || ^10.0.0: add a supported version to the devDependencies of the repository root\n",
+    },
   },
 ];
-
 export const PROOF_CASES: readonly ProofCase[] = [
   { consumer: "audit", mechanism: "audit", toolchain: "typescript-floor", actions: AUDIT_CONSUMER_ACTIONS },
   { consumer: "eslint-10", mechanism: "eslint", toolchain: "eslint-10-floor", actions: ESLINT_CONSUMER_ACTIONS },
   { consumer: "eslint-9", mechanism: "eslint", toolchain: "eslint-9-floor", actions: ESLINT_CONSUMER_ACTIONS },
   { consumer: "eslint-missing", mechanism: "eslint", toolchain: "typescript-floor", actions: ESLINT_MISSING_ACTIONS },
 ];
+
 export const PACKAGED_SCRIPTS: Readonly<Record<CommandScript, string>> = {
   check: "discipline:check",
   project: "discipline:project",
@@ -93,47 +114,22 @@ export const packagedConsumerManifest = (request: { readonly identity: PackageId
     2,
   )}\n`;
 
-const describedOutput = (request: { readonly output: ExpectedOutput }): string => {
-  switch (request.output.kind) {
-    case "contains":
-      return `"${request.output.text}"`;
-    case "empty":
-      return `""`;
-  }
-};
-
-type OutputVerdict = "met" | "unmet";
-
-const outputVerdict = (request: { readonly expected: ExpectedOutput; readonly output: string }): OutputVerdict => {
-  switch (request.expected.kind) {
-    case "contains":
-      return request.output.includes(request.expected.text) ? "met" : "unmet";
-    case "empty":
-      return request.output === "" ? "met" : "unmet";
-  }
-};
-
 export const judgedStep = (request: {
   readonly label: string;
   readonly expectation: StepExpectation;
   readonly run: StepRun;
 }): Result<string, string> => {
-  const expected = `expected exit ${request.expectation.exitCode} and ${describedOutput({ output: request.expectation.output })}`;
+  const expected = `expected exit ${request.expectation.exitCode} and output ${JSON.stringify(request.expectation.output)}`;
   if (request.run.outcome === "not-exited") {
     return { outcome: "failed", error: `FAIL: ${request.label}: ${expected}, but it did not exit: ${request.run.detail}` };
   }
-  return request.run.exitCode === request.expectation.exitCode &&
-    outputVerdict({ expected: request.expectation.output, output: request.run.output }) === "met"
-    ? {
-        outcome: "ok",
-        value: `ok: ${request.label} -> exit ${request.run.exitCode}, ${describedOutput({ output: request.expectation.output })}`,
-      }
+  return request.run.exitCode === request.expectation.exitCode && request.run.output === request.expectation.output
+    ? { outcome: "ok", value: `ok: ${request.label} -> exit ${request.run.exitCode}, output exactly as expected` }
     : {
         outcome: "failed",
-        error: `FAIL: ${request.label}: ${expected}, got exit ${request.run.exitCode}\n${request.run.output}`,
+        error: `FAIL: ${request.label}: ${expected}, got exit ${request.run.exitCode} and output ${JSON.stringify(request.run.output)}`,
       };
 };
-
 const toolchainManifestSchema = z.object({
   peerDependencies: z.record(z.string(), z.string()),
   devDependencies: z.record(z.string(), z.string()),
