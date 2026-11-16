@@ -1,4 +1,8 @@
-import typescript from "typescript";
+import type typescript from "typescript";
+import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
+import { loadedPeer, type PeerToolchain, type ToolchainRequirement } from "../../../core/mechanism-port/toolchain-requirement.ts";
+import { createDefaultPackageLocationPort } from "../../../core/platform-ports/package-location-port.ts";
+import type { Result } from "../../../core/values/result.ts";
 
 export type SyntaxApi = typeof typescript;
 export type SyntaxTree = typescript.SourceFile;
@@ -11,24 +15,41 @@ export type TypeScriptParsePort = {
   readonly children: (request: { readonly node: SyntaxNode }) => readonly SyntaxNode[];
 };
 
-const directChildren = (request: { readonly node: SyntaxNode }): readonly SyntaxNode[] => {
+export type TypeScriptModules = { readonly typescript: () => Promise<{ readonly default: SyntaxApi }> };
+
+export type TypeScriptPeers = PeerToolchain<TypeScriptModules>;
+
+export const TYPESCRIPT_REQUIREMENT: ToolchainRequirement = {
+  packageName: "typescript",
+  lines: [{ floor: "4.8.4", below: "7.0.0" }],
+};
+
+export const defaultTypeScriptPeers: TypeScriptPeers = {
+  location: createDefaultPackageLocationPort({}),
+  modules: { typescript: () => import("typescript") },
+};
+
+const directChildren = (request: { readonly syntaxApi: SyntaxApi; readonly node: SyntaxNode }): readonly SyntaxNode[] => {
   const collected: SyntaxNode[] = [];
-  typescript.forEachChild(request.node, (child) => {
+  request.syntaxApi.forEachChild(request.node, (child) => {
     collected.push(child);
   });
   return collected;
 };
 
-export const createDefaultParsePort = (
-  _options: Record<string, never>,
-): TypeScriptParsePort => ({
-  syntaxApi: typescript,
+export const createParsePort = (options: { readonly syntaxApi: SyntaxApi }): TypeScriptParsePort => ({
+  syntaxApi: options.syntaxApi,
   parse: (request) =>
-    typescript.createSourceFile(
-      request.fileName,
-      request.source,
-      typescript.ScriptTarget.Latest,
-      true,
-    ),
-  children: directChildren,
+    options.syntaxApi.createSourceFile(request.fileName, request.source, options.syntaxApi.ScriptTarget.Latest, true),
+  children: (request) => directChildren({ syntaxApi: options.syntaxApi, node: request.node }),
 });
+
+export const loadParsePort = (request: { readonly peers: TypeScriptPeers }): Promise<Result<TypeScriptParsePort, RunnerFailure>> =>
+  loadedPeer({
+    requirement: TYPESCRIPT_REQUIREMENT,
+    location: request.peers.location,
+    load: request.peers.modules.typescript,
+    versionOf: (loaded) => loaded.default.version,
+  }).then((loaded) =>
+    loaded.outcome === "failed" ? loaded : { outcome: "ok", value: createParsePort({ syntaxApi: loaded.value.default }) },
+  );

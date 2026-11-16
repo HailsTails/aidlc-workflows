@@ -48,6 +48,39 @@ describe("loadFailureText", () => {
     ).toBe("load failure: runner-failed audit file-unparseable src/a.ts unexpected token\n");
   });
 
+  it("prints toolchain-unavailable with the package, what was found, the supported range and where to install it", () => {
+    expect(
+      loadFailureText({
+        failure: {
+          kind: "runner-failed",
+          mechanism: WALKER,
+          failure: { kind: "toolchain-unavailable", packageName: "eslint", supported: "^9.12.0 || ^10.0.0", found: "not installed" },
+        },
+      }),
+    ).toBe(
+      "load failure: runner-failed audit toolchain-unavailable eslint found not installed, supported ^9.12.0 || ^10.0.0: add a supported version to the devDependencies of the repository root\n",
+    );
+  });
+
+  it("prints toolchain-shadowed with the package, where it resolved, and what to delete before reinstalling core", () => {
+    expect(
+      loadFailureText({
+        failure: {
+          kind: "runner-failed",
+          mechanism: WALKER,
+          failure: {
+            kind: "toolchain-shadowed",
+            packageName: "eslint",
+            location: "/repo/tools/discipline-core/node_modules/eslint/lib/api.js",
+            installRoot: "/repo/tools/discipline-core",
+          },
+        },
+      }),
+    ).toBe(
+      "load failure: runner-failed audit toolchain-shadowed eslint resolved from /repo/tools/discipline-core/node_modules/eslint/lib/api.js inside the core install /repo/tools/discipline-core: delete /repo/tools/discipline-core/node_modules and reinstall core with npm ci so the repository's own copy is used\n",
+    );
+  });
+
   it("escapes a line feed and a carriage return in a git-failed detail", () => {
     expect(
       loadFailureText({ failure: { kind: "git-failed", detail: "refused path src/a\nb.ts\rverdict: pass" } }),

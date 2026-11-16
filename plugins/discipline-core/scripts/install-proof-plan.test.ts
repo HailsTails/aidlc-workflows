@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  consumerRootManifest,
+  CONSUMER_MANIFEST,
   entryDisposition,
   environmentWithoutGit,
   exclusionRules,
-  installPaths,
+  installPlacements,
   judgedStep,
+  PROOF_CASES,
   parsedInstallList,
   type StepExpectation,
+  toolchainManifest,
 } from "./install-proof-plan.ts";
 
 declare global {
@@ -27,23 +29,26 @@ const packageFiles = import.meta.glob(["../README.md", "../package.json"], {
 });
 
 const README_INSTALL_LIST = {
-  always: ["package.json", "README.md", "core/", "docs/why-chain-contract.md"],
+  always: ["README.md", "core/", "docs/why-chain-contract.md"],
+  intoRoot: ["install/package.json", "install/package-lock.json"],
   perSharedClause: ["rules/<DisciplineId>/", "mechanisms/<MechanismId>/runner/", "mechanisms/<MechanismId>/<DisciplineId>/"],
   leftOut: ["*.test.ts", "tests/", "test-fixtures/"],
 };
 
 const README_WITHOUT_SECTION = "# Discipline core\n\n## Runtime\n\n- always: `package.json`\n";
 
-const README_WITHOUT_CLAUSE_LINE =
-  "## Installing\n\n- always: `package.json` and `core/`\n\nLeave out test files (`*.test.ts`).\n\n## Runtime\n";
+const INTO_ROOT_LINE = "- into the install root: `install/package.json`\n";
 
-const README_WITH_LEFT_OUT_IN_NEXT_SECTION =
-  "## Installing\n\n- always: `package.json` and `core/`\n- for each selected clause in the shared rule set: `rules/<DisciplineId>/`\n\n## Runtime\n\nLeave out `tests/` folders.\n";
+const README_WITHOUT_INTO_ROOT_LINE =
+  "## Installing\n\n- always: `core/`\n- for each selected clause in the shared rule set: `rules/<DisciplineId>/`\n\nLeave out test files (`*.test.ts`).\n";
 
-const README_WITH_TWO_SENTENCES =
-  "## Installing\n\n- always: `package.json`\n- for each selected clause in the shared rule set: `rules/<DisciplineId>/`\n\nLeave out test files (`*.test.ts`) and `tests/` folders. The install must not sit under a `node_modules` path.\n";
+const README_WITHOUT_CLAUSE_LINE = `## Installing\n\n- always: \`core/\`\n${INTO_ROOT_LINE}\nLeave out test files (\`*.test.ts\`).\n\n## Runtime\n`;
 
-const UNKNOWN_PLACEHOLDER_LIST = { always: ["core/"], perSharedClause: ["rules/<RuleSet>/"], leftOut: [] };
+const README_WITH_LEFT_OUT_IN_NEXT_SECTION = `## Installing\n\n- always: \`core/\`\n${INTO_ROOT_LINE}- for each selected clause in the shared rule set: \`rules/<DisciplineId>/\`\n\n## Runtime\n\nLeave out \`tests/\` folders.\n`;
+
+const README_WITH_TWO_SENTENCES = `## Installing\n\n- always: \`core/\`\n${INTO_ROOT_LINE}- for each selected clause in the shared rule set: \`rules/<DisciplineId>/\`\n\nLeave out test files (\`*.test.ts\`) and \`tests/\` folders. The install must not sit under a \`node_modules\` path.\n`;
+
+const UNKNOWN_PLACEHOLDER_LIST = { always: ["core/"], intoRoot: [], perSharedClause: ["rules/<RuleSet>/"], leftOut: [] };
 
 const RULES = exclusionRules({ leftOut: README_INSTALL_LIST.leftOut });
 
@@ -52,7 +57,7 @@ const CONTAINS_FAIL: StepExpectation = { exitCode: 1, output: { kind: "contains"
 const EMPTY_OUTPUT: StepExpectation = { exitCode: 0, output: { kind: "empty" } };
 
 describe("parsedInstallList, over this package's README.md read as a build-time raw module (CD-47: the README's own install list is the assertion's subject; nothing is spawned or written)", () => {
-  it("reads the always, shared-clause and left-out lists from § Installing", () => {
+  it("reads the always, into-root, shared-clause and left-out lists from § Installing", () => {
     expect(parsedInstallList({ readme: packageFiles["../README.md"] })).toEqual({
       outcome: "ok",
       value: README_INSTALL_LIST,
@@ -63,6 +68,13 @@ describe("parsedInstallList, over this package's README.md read as a build-time 
     expect(parsedInstallList({ readme: README_WITHOUT_SECTION })).toEqual({
       outcome: "failed",
       error: { kind: "section-missing", heading: "## Installing" },
+    });
+  });
+
+  it("fails naming the into-root line when it is missing", () => {
+    expect(parsedInstallList({ readme: README_WITHOUT_INTO_ROOT_LINE })).toEqual({
+      outcome: "failed",
+      error: { kind: "line-missing", prefix: "- into the install root: " },
     });
   });
 
@@ -83,21 +95,35 @@ describe("parsedInstallList, over this package's README.md read as a build-time 
   it("reads left-out names from the first sentence only", () => {
     expect(parsedInstallList({ readme: README_WITH_TWO_SENTENCES })).toEqual({
       outcome: "ok",
-      value: { always: ["package.json"], perSharedClause: ["rules/<DisciplineId>/"], leftOut: ["*.test.ts", "tests/"] },
+      value: {
+        always: ["core/"],
+        intoRoot: ["install/package.json"],
+        perSharedClause: ["rules/<DisciplineId>/"],
+        leftOut: ["*.test.ts", "tests/"],
+      },
     });
   });
 });
 
-describe("installPaths", () => {
-  it("substitutes the discipline and mechanism into concrete relative paths", () => {
-    expect(installPaths({ installList: README_INSTALL_LIST, disciplineId: "CD-14", mechanism: "eslint" })).toEqual({
+describe("installPlacements", () => {
+  it("places each path at its own relative path, the discipline and mechanism substituted, and each into-root file at the install root", () => {
+    expect(installPlacements({ installList: README_INSTALL_LIST, disciplineId: "CD-14", mechanism: "eslint" })).toEqual({
       outcome: "ok",
-      value: ["package.json", "README.md", "core", "docs/why-chain-contract.md", "rules/CD-14", "mechanisms/eslint/runner", "mechanisms/eslint/CD-14"],
+      value: [
+        { from: "README.md", to: "README.md" },
+        { from: "core", to: "core" },
+        { from: "docs/why-chain-contract.md", to: "docs/why-chain-contract.md" },
+        { from: "install/package.json", to: "package.json" },
+        { from: "install/package-lock.json", to: "package-lock.json" },
+        { from: "rules/CD-14", to: "rules/CD-14" },
+        { from: "mechanisms/eslint/runner", to: "mechanisms/eslint/runner" },
+        { from: "mechanisms/eslint/CD-14", to: "mechanisms/eslint/CD-14" },
+      ],
     });
   });
 
   it("fails on a placeholder it does not know", () => {
-    expect(installPaths({ installList: UNKNOWN_PLACEHOLDER_LIST, disciplineId: "CD-14", mechanism: "audit" })).toEqual({
+    expect(installPlacements({ installList: UNKNOWN_PLACEHOLDER_LIST, disciplineId: "CD-14", mechanism: "audit" })).toEqual({
       outcome: "failed",
       error: { kind: "unresolved-placeholder", path: "rules/<RuleSet>/" },
     });
@@ -170,38 +196,83 @@ describe("judgedStep", () => {
   });
 });
 
-describe("consumerRootManifest", () => {
-  it("carries this package's own dependencies, read as a build-time raw module", () => {
-    expect(consumerRootManifest({ packageManifest: packageFiles["../package.json"] })).toEqual({
+const manifestText = (request: { readonly devDependencies: Readonly<Record<string, string>> }): string =>
+  `${JSON.stringify({ private: true, devDependencies: request.devDependencies }, null, 2)}\n`;
+
+const FLOOR_ESLINT_PEERS = {
+  typescript: "4.8.4",
+  "@typescript-eslint/parser": "8.56.0",
+  "@typescript-eslint/eslint-plugin": "8.56.0",
+};
+
+describe("toolchainManifest, over this package's own package.json read as a build-time raw module", () => {
+  it("gives the TypeScript floor root only typescript, at its floor pin installed under its own name", () => {
+    expect(toolchainManifest({ developmentManifest: packageFiles["../package.json"], toolchain: "typescript-floor" })).toEqual({
       outcome: "ok",
-      value: `${JSON.stringify(
-        {
-          private: true,
-          dependencies: {
-            "@eslint/plugin-kit": "0.7.3",
-            "@typescript-eslint/eslint-plugin": "8.71.2",
-            "@typescript-eslint/parser": "8.71.2",
-            eslint: "10.11.0",
-            "jsonc-parser": "3.3.1",
-            typescript: "6.0.3",
-            zod: "4.4.3",
-          },
-        },
-        null,
-        2,
-      )}\n`,
+      value: manifestText({ devDependencies: { typescript: "4.8.4" } }),
+    });
+  });
+
+  it.each([
+    { toolchain: "eslint-9-floor", eslint: "9.12.0" },
+    { toolchain: "eslint-10-floor", eslint: "10.0.0" },
+  ] as const)("gives the $toolchain root every peer at its floor pin, ESLint at $eslint", ({ toolchain, eslint }) => {
+    expect(toolchainManifest({ developmentManifest: packageFiles["../package.json"], toolchain })).toEqual({
+      outcome: "ok",
+      value: manifestText({ devDependencies: { ...FLOOR_ESLINT_PEERS, eslint } }),
     });
   });
 
   it("fails on a manifest that is not JSON", () => {
-    expect(consumerRootManifest({ packageManifest: "{" }).outcome).toBe("failed");
+    expect(toolchainManifest({ developmentManifest: "{", toolchain: "typescript-floor" }).outcome).toBe("failed");
   });
 
-  it("fails on a manifest without dependencies", () => {
-    expect(consumerRootManifest({ packageManifest: '{ "name": "x" }' }).outcome).toBe("failed");
+  it("fails naming a peer whose floor has no development pin", () => {
+    expect(
+      toolchainManifest({
+        developmentManifest: '{ "peerDependencies": { "typescript": ">=4.8.4 <7.0.0" }, "devDependencies": {} }',
+        toolchain: "typescript-floor",
+      }),
+    ).toEqual({ outcome: "failed", error: { kind: "manifest-invalid", detail: "no development pin typescript-floor for the peer typescript" } });
+  });
+
+  it("fails when a floor pin aliases a different package than the peer it stands for", () => {
+    expect(
+      toolchainManifest({
+        developmentManifest: '{ "peerDependencies": { "typescript": ">=4.8.4 <7.0.0" }, "devDependencies": { "typescript-floor": "npm:typescript-legacy@4.8.4" } }',
+        toolchain: "typescript-floor",
+      }),
+    ).toEqual({
+      outcome: "failed",
+      error: { kind: "manifest-invalid", detail: "the development pin typescript-floor is npm:typescript-legacy@4.8.4, not an alias of typescript" },
+    });
+  });
+
+  it("fails when a pinned package is not a declared peer", () => {
+    expect(
+      toolchainManifest({
+        developmentManifest: '{ "peerDependencies": {}, "devDependencies": { "typescript-floor": "npm:typescript@4.8.4" } }',
+        toolchain: "typescript-floor",
+      }),
+    ).toEqual({ outcome: "failed", error: { kind: "manifest-invalid", detail: "typescript is not a declared peer" } });
   });
 });
 
+describe("the proof cases", () => {
+  it("cover an audit-only consumer, an ESLint consumer on each line's floor, one missing eslint and one missing the installed manifest, over three shared toolchains", () => {
+    expect(PROOF_CASES).toEqual([
+      expect.objectContaining({ consumer: "audit", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "eslint-10", toolchain: "eslint-10-floor" }),
+      expect.objectContaining({ consumer: "eslint-9", toolchain: "eslint-9-floor" }),
+      expect.objectContaining({ consumer: "eslint-missing", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "no-package-json", toolchain: "typescript-floor" }),
+    ]);
+  });
+
+  it("give each consumer a commonjs manifest with no dependencies of its own", () => {
+    expect(CONSUMER_MANIFEST).toBe(`${JSON.stringify({ private: true, type: "commonjs" }, null, 2)}\n`);
+  });
+});
 describe("environmentWithoutGit", () => {
   it("removes every GIT_ variable and keeps the rest", () => {
     expect(environmentWithoutGit({ environment: { GIT_DIR: "/x", GIT_INDEX_FILE: "/y", PATH: "/bin", HOME: "/h" } })).toEqual({

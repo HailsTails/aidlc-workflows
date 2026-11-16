@@ -9,7 +9,7 @@ import { repoPathSchema } from "../core/values/repo-path.ts";
 import * as exportTestSibling from "../mechanisms/audit/CD-23/export-test-sibling.ts";
 import cd23Piece from "../mechanisms/audit/CD-23/piece.json" with { type: "json" };
 import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
-import { createDefaultParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
+import { defaultParsePort } from "./typescript-parse-port.ts";
 import cd23Discipline from "../rules/CD-23/discipline.json" with { type: "json" };
 import * as noTmpFiles from "./probe-rule-set/mechanisms/audit/PD-1/no-tmp-files.ts";
 import probePiece from "./probe-rule-set/mechanisms/audit/PD-1/piece.json" with { type: "json" };
@@ -96,7 +96,7 @@ const PROBE_ADDRESS = { ruleSet: { name: "probe" }, discipline: "PD-1", clause: 
 const EXPORT_TEST_SIBLING_ADDRESS = { ruleSet: "shared", discipline: "CD-23", clause: "export-test-sibling" };
 
 const probeCheck = () => {
-  const parse = createDefaultParsePort({});
+  const parse = { ...defaultParsePort };
   const parseCalls = vi.spyOn(parse, "parse");
   const runnerModule = { runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse }) };
   const report = runCheck({

@@ -3,13 +3,13 @@ import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
-import { createDefaultParsePort } from "../runner/typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PreparedWalkerCheck, WalkerFile } from "../runner/walker-piece.ts";
 import { check } from "./factory-return-types.ts";
 
 const FILE = repoPathSchema.parse("src/profile.ts");
 const ADDRESS = clauseAddressSchema.parse("CD-7a#factory-return-types");
-const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
+const SYNTAX_API = defaultParsePort.syntaxApi;
 const TYPE_QUERY = "Return" + "Type";
 const CLAUSE: RunnerClause = {
   address: ADDRESS,

@@ -4,6 +4,7 @@ import {
   importsOutside,
   nodeBuiltinImport,
   packageImport,
+  packageDynamicImport,
   packageOrComputedImport,
   packageTypeImport,
   relativeImport,
@@ -33,6 +34,8 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./tests/required-entry.ts",
     "!./tests/confinement.ts",
     "!./tests/conformance-rows.ts",
+    "!./tests/eslint-toolchains.ts",
+    "!./tests/typescript-parse-port.ts",
     "!./mechanisms/**",
     "!./vitest.config.ts",
     "!./scripts/install-proof-ports.ts",
@@ -51,6 +54,7 @@ const runnerSources = import.meta.glob(
     "!./mechanisms/audit/runner/typescript-parse.ts",
     "!./mechanisms/audit/runner/jsonc-parse.ts",
     "!./mechanisms/eslint/runner/eslint-instance.ts",
+    "!./mechanisms/eslint/runner/eslint-toolchain.ts",
     "!./mechanisms/eslint/runner/inline-config-parser.ts",
     "!./mechanisms/eslint/runner/native-rules.ts",
   ],
@@ -111,7 +115,28 @@ const jsoncWrapperSources = import.meta.glob(["./mechanisms/audit/runner/jsonc-p
   eager: true,
 });
 
-const eslintWrapperSources = import.meta.glob(["./mechanisms/eslint/runner/eslint-instance.ts"], {
+const eslintInstanceSources = import.meta.glob(["./mechanisms/eslint/runner/eslint-instance.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const eslintToolchainSources = import.meta.glob(["./mechanisms/eslint/runner/eslint-toolchain.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const typescriptLineSources = import.meta.glob(["./tests/typescript-parse-port.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const eslintLineSources = import.meta.glob(["./tests/eslint-toolchains.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -185,6 +210,8 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       walkerPieceSources,
       eslintPieceSources,
       testSources,
+      eslintLineSources,
+      typescriptLineSources,
     }).toEqual({
       sourcesOutsideMechanisms: expect.objectContaining({
         "./core/check/run-check.ts": expect.any(String),
@@ -212,6 +239,8 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./tests/required-entry.ts": expect.any(String),
         "./tests/confinement.ts": expect.any(String),
       }),
+      eslintLineSources: { "./tests/eslint-toolchains.ts": expect.any(String) },
+      typescriptLineSources: { "./tests/typescript-parse-port.ts": expect.any(String) },
     });
   });
 
@@ -252,11 +281,16 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     expect(importsOutside({ sources: installProofPortSources, allowed: [relativeImport, nodeBuiltinImport] })).toEqual([]);
   });
 
-  it("finds typescript-parse.ts the only file importing typescript by value", () => {
+  it("finds typescript-parse.ts the only file loading typescript, by a dynamic import that core can answer with a named failure", () => {
     expect(
       importsOutside({
         sources: typescriptWrapperSources,
-        allowed: [relativeImport, zodImport, packageImport({ packageName: "typescript" })],
+        allowed: [
+          relativeImport,
+          zodImport,
+          packageTypeImport({ packageName: "typescript" }),
+          packageDynamicImport({ packageName: "typescript" }),
+        ],
       }),
     ).toEqual([]);
   });
@@ -270,15 +304,30 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     ).toEqual([]);
   });
 
-  it("finds eslint-instance.ts the only file importing eslint and @typescript-eslint/parser by value", () => {
+  it("finds eslint-toolchain.ts the only file loading the adopter's ESLint toolchain, each package by a dynamic import that core can answer with a named failure", () => {
     expect(
       importsOutside({
-        sources: eslintWrapperSources,
+        sources: eslintToolchainSources,
+        allowed: [
+          relativeImport,
+          packageTypeImport({ packageName: "@typescript-eslint/eslint-plugin" }),
+          packageDynamicImport({ packageName: "eslint" }),
+          packageDynamicImport({ packageName: "@typescript-eslint/parser" }),
+          packageDynamicImport({ packageName: "@typescript-eslint/eslint-plugin" }),
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds eslint-instance.ts taking only types from eslint and @typescript-eslint/parser", () => {
+    expect(
+      importsOutside({
+        sources: eslintInstanceSources,
         allowed: [
           relativeImport,
           zodImport,
-          packageImport({ packageName: "eslint" }),
-          packageImport({ packageName: "@typescript-eslint/parser" }),
+          packageTypeImport({ packageName: "eslint" }),
+          packageTypeImport({ packageName: "@typescript-eslint/parser" }),
         ],
       }),
     ).toEqual([]);
@@ -319,6 +368,36 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       importsOutside({
         sources: eslintPieceSources,
         allowed: [relativeImport, zodImport, packageTypeImport({ packageName: "eslint" })],
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds tests/eslint-toolchains.ts the only test-support file loading the pinned ESLint lines, each by a dynamic import, and checking the floor copies' exports with zod", () => {
+    expect(
+      importsOutside({
+        sources: eslintLineSources,
+        allowed: [
+          relativeImportOfAnyForm,
+          vitestImport,
+          zodImport,
+          packageDynamicImport({ packageName: "eslint-9" }),
+          packageDynamicImport({ packageName: "eslint-9/use-at-your-own-risk" }),
+          packageDynamicImport({ packageName: "eslint-9-floor" }),
+          packageDynamicImport({ packageName: "eslint-9-floor/use-at-your-own-risk" }),
+          packageDynamicImport({ packageName: "eslint-10-floor" }),
+          packageDynamicImport({ packageName: "eslint-10-floor/use-at-your-own-risk" }),
+          packageDynamicImport({ packageName: "typescript-eslint-parser-floor" }),
+          packageDynamicImport({ packageName: "typescript-eslint-plugin-floor" }),
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds tests/typescript-parse-port.ts the only test-support file loading the pinned TypeScript floor, by a dynamic import, and checking its exports with zod", () => {
+    expect(
+      importsOutside({
+        sources: typescriptLineSources,
+        allowed: [relativeImportOfAnyForm, vitestImport, zodImport, packageDynamicImport({ packageName: "typescript-floor" })],
       }),
     ).toEqual([]);
   });

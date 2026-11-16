@@ -8,9 +8,9 @@ import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
 import { createEslintRunner } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
-import { createDefaultEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
+import { defaultEslintPort } from "./eslint-toolchains.ts";
 import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
-import { createDefaultParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
+import { defaultParsePort } from "./typescript-parse-port.ts";
 import { type PathCallsOutside, pathCallsOutside } from "./confinement.ts";
 import { fullReportExitCode } from "./full-report-exit-code.ts";
 
@@ -70,10 +70,10 @@ const observedPorts = (): ObservedPorts => {
   const pieceModules: ModuleLoaderPort = { load: createDefaultModuleLoaderPort({}).load };
   const runners: Readonly<Record<string, unknown>> = {
     [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/audit/runner/runner.ts` })]: {
-      runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: createDefaultParsePort({}) }),
+      runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: defaultParsePort }),
     },
     [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })]: {
-      runner: createEslintRunner({ fileText, modules: pieceModules, path, eslint: createDefaultEslintPort({}) }),
+      runner: createEslintRunner({ fileText, modules: pieceModules, path, eslint: defaultEslintPort }),
     },
   };
   const runnerModules: ModuleLoaderPort = {

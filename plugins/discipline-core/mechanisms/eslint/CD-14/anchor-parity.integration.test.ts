@@ -9,8 +9,8 @@ import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import { check } from "../../audit/CD-14/class-syntax.ts";
 import { createWalkerRunner } from "../../audit/runner/create-walker-runner.ts";
-import { createDefaultParsePort } from "../../audit/runner/typescript-parse.ts";
-import { createDefaultEslintPort } from "../runner/eslint-instance.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
+import { defaultEslintPort } from "../../../tests/eslint-toolchains.ts";
 import { eslintPluginModuleSchema } from "../runner/eslint-plugin-schema.ts";
 import classAuthoringPlugin from "./cd14/cd14.eslint-plugin.ts";
 
@@ -33,7 +33,7 @@ const keywordAfterNodeStartCases: readonly SourceCase[] = [
 
 const loadedPlugin = eslintPluginModuleSchema.parse({ default: classAuthoringPlugin }).default;
 
-const eslint = createDefaultEslintPort({});
+const eslint = defaultEslintPort;
 
 const noFileText: FileTextPort = {
   read: ({ path }) => ({ outcome: "failed", error: { kind: "unreadable", path, detail: "not used" } }),
@@ -49,7 +49,7 @@ const walkerRunner = createWalkerRunner({
   fileText: noFileText,
   modules: loadingWalkerPiece,
   path: createPathPort({ flavour: "posix", workingDirectory: () => "/install" }),
-  parse: createDefaultParsePort({}),
+  parse: defaultParsePort,
 });
 
 const WALKER_CLAUSE: RunnerClause = {

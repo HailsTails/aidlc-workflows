@@ -1,8 +1,9 @@
 import { z } from "zod";
-import * as typescriptParser from "@typescript-eslint/parser";
-import { ESLint } from "eslint";
+import type * as TypescriptParserModule from "@typescript-eslint/parser";
+import type { ESLint } from "eslint";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { CaseVerdict } from "../../../core/mechanism-port/runner-result-schema.ts";
+import { type ToolchainRequirement, versionSupport } from "../../../core/mechanism-port/toolchain-requirement.ts";
 import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import type { AbsolutePath } from "../../../core/values/absolute-path.ts";
 import type { RepoPath } from "../../../core/values/repo-path.ts";
@@ -69,9 +70,11 @@ export type GovernedRule = {
 
 export type EnabledRuleEntry = "error" | readonly ["error", ...RuleOptions];
 
+export type TypescriptParser = typeof TypescriptParserModule;
+
 export type GovernanceBlock = {
   readonly files: readonly string[];
-  readonly languageOptions: { readonly parser: unknown };
+  readonly languageOptions: { readonly parser: TypescriptParser };
   readonly plugins: Readonly<Record<string, LoadedEslintPlugin | InlineConfigPlugin>>;
   readonly rules: Readonly<Record<string, EnabledRuleEntry>>;
 };
@@ -80,7 +83,6 @@ export type EslintSurfaceOptions = {
   readonly cwd?: AbsolutePath;
   readonly overrideConfigFile?: true | string;
   readonly ignore?: false;
-  readonly applySuppressions?: false;
   readonly allowInlineConfig?: false;
   readonly overrideConfig?: GovernanceBlock;
 };
@@ -112,6 +114,12 @@ export type EslintSurface = {
 };
 
 export type CreateEslint = (request: { readonly options: EslintSurfaceOptions }) => EslintSurface;
+
+export type EslintToolchain = {
+  readonly eslintVersion: string;
+  readonly createEslint: CreateEslint;
+  readonly typescriptParser: TypescriptParser;
+};
 
 export type IgnoredState = "ignored" | "checked";
 
@@ -252,9 +260,10 @@ export const enabledRuleEntry = (request: { readonly options: RuleOptions }): En
 export const governanceConfig = (request: {
   readonly plugins: Readonly<Record<string, LoadedEslintPlugin>>;
   readonly rules: readonly GovernedRule[];
+  readonly parser: TypescriptParser;
 }): GovernanceBlock => ({
   files: GOVERNED_FILES,
-  languageOptions: { parser: typescriptParser },
+  languageOptions: { parser: request.parser },
   plugins: {
     ...request.plugins,
     [reservedNamespace]: inlineConfigPlugin({ ruleIds: request.rules.map((governed) => governed.ruleId) }),
@@ -270,13 +279,13 @@ const governanceOptions = (request: {
   readonly cwd: AbsolutePath;
   readonly plugins: Readonly<Record<string, LoadedEslintPlugin>>;
   readonly rules: readonly GovernedRule[];
+  readonly parser: TypescriptParser;
 }): EslintSurfaceOptions => ({
   cwd: request.cwd,
   overrideConfigFile: true,
   ignore: false,
-  applySuppressions: false,
   allowInlineConfig: false,
-  overrideConfig: governanceConfig({ plugins: request.plugins, rules: request.rules }),
+  overrideConfig: governanceConfig({ plugins: request.plugins, rules: request.rules, parser: request.parser }),
 });
 
 const thrownDetail = (thrown: unknown): string =>
@@ -441,7 +450,7 @@ const caseVerdicts = (request: {
 };
 
 const sourceCaseVerdicts = (request: {
-  readonly createEslint: CreateEslint;
+  readonly toolchain: EslintToolchain;
   readonly cwd: AbsolutePath;
   readonly plugin: LoadedEslintPlugin;
   readonly pluginNamespace: string;
@@ -452,9 +461,10 @@ const sourceCaseVerdicts = (request: {
   const ruleId = `${request.pluginNamespace}/${request.rule}`;
   return onSurface({
     surface: builtSurface({
-      createEslint: request.createEslint,
+      createEslint: request.toolchain.createEslint,
       options: governanceOptions({
         cwd: request.cwd,
+        parser: request.toolchain.typescriptParser,
         plugins: { [request.pluginNamespace]: request.plugin },
         rules: [{ ruleId, options: request.options }],
       }),
@@ -464,11 +474,11 @@ const sourceCaseVerdicts = (request: {
   }).then((lintedCases) => caseVerdicts({ lintedCases, ruleId }));
 };
 
-export const createEslintPort = (options: { readonly createEslint: CreateEslint }): EslintPort => ({
+export const createEslintPort = (options: { readonly toolchain: EslintToolchain }): EslintPort => ({
   createQueryInstance: (request) =>
     queryInstanceOf({
       surface: builtSurface({
-        createEslint: options.createEslint,
+        createEslint: options.toolchain.createEslint,
         options:
           request.configFile === undefined
             ? { cwd: request.repoRoot }
@@ -477,16 +487,39 @@ export const createEslintPort = (options: { readonly createEslint: CreateEslint 
     }),
   createGovernanceInstance: (request) => {
     const surface = builtSurface({
-      createEslint: options.createEslint,
-      options: governanceOptions({ cwd: request.repoRoot, plugins: request.plugins, rules: request.rules }),
+      createEslint: options.toolchain.createEslint,
+      options: governanceOptions({
+        cwd: request.repoRoot,
+        plugins: request.plugins,
+        rules: request.rules,
+        parser: options.toolchain.typescriptParser,
+      }),
     });
     return {
       lintFiles: (lint) =>
         onSurface({ surface, act: (eslint) => eslint.lintFiles({ filePaths: lint.files }), onRejected: toolFailed }),
     };
   },
-  lintSourceCases: (request) => sourceCaseVerdicts({ ...request, createEslint: options.createEslint }),
+  lintSourceCases: (request) => sourceCaseVerdicts({ ...request, toolchain: options.toolchain }),
 });
+
+type EslintEngine = Pick<ESLint, "isPathIgnored" | "calculateConfigForFile" | "lintFiles" | "lintText">;
+
+export type EslintClass = Pick<typeof ESLint, "version"> &
+  (new (...options: ConstructorParameters<typeof ESLint>) => EslintEngine);
+
+export type EslintModule = { readonly ESLint: EslintClass };
+
+type ConfigLookup = { readonly releases: ToolchainRequirement; readonly flags: readonly string[] };
+
+const NEAREST_CONFIG_LOOKUPS: readonly ConfigLookup[] = [
+  { releases: { packageName: "eslint", lines: [{ floor: "9.12.0", below: "9.30.0" }] }, flags: ["unstable_config_lookup_from_file"] },
+  { releases: { packageName: "eslint", lines: [{ floor: "9.30.0", below: "10.0.0" }] }, flags: ["v10_config_lookup_from_file"] },
+];
+
+const lookupFlagsOf = (request: { readonly version: string }): readonly string[] =>
+  NEAREST_CONFIG_LOOKUPS.find((lookup) => versionSupport({ requirement: lookup.releases, version: request.version }) === "supported")
+    ?.flags ?? [];
 
 const lintedMessageOf = (message: ESLint.LintResult["messages"][number]): LintedMessage => ({
   ruleId: message.ruleId,
@@ -502,39 +535,43 @@ const lintedFileOf = (lintResult: ESLint.LintResult): LintedFile => ({
   messages: lintResult.messages.map(lintedMessageOf),
 });
 
-const eslintOptionsOf = (request: { readonly options: EslintSurfaceOptions }): ESLint.Options => {
-  const { overrideConfig, ...surfaceOptions } = request.options;
-  if (overrideConfig === undefined) {
-    return surfaceOptions;
-  }
+const overrideConfigOf = (request: {
+  readonly overrideConfig: NonNullable<EslintSurfaceOptions["overrideConfig"]>;
+}): ESLint.Options["overrideConfig"] => ({
+  ...request.overrideConfig,
+  files: [...request.overrideConfig.files],
+  rules: Object.fromEntries(
+    Object.entries(request.overrideConfig.rules).map(([ruleId, entry]) => [
+      ruleId,
+      typeof entry === "string" ? entry : [...entry],
+    ]),
+  ),
+});
+
+const lookupOptionsOf = (request: { readonly version: string; readonly options: EslintSurfaceOptions }): ESLint.Options => {
+  const flags = lookupFlagsOf(request);
+  return request.options.overrideConfigFile === undefined && flags.length > 0 ? { flags: [...flags] } : {};
+};
+
+export const eslintOptionsOf = (request: {
+  readonly version: string;
+  readonly options: EslintSurfaceOptions;
+}): ESLint.Options => {
+  const { overrideConfig, ...sharedOptions } = request.options;
   return {
-    ...surfaceOptions,
-    overrideConfig: {
-      ...overrideConfig,
-      files: [...overrideConfig.files],
-      rules: Object.fromEntries(
-        Object.entries(overrideConfig.rules).map(([ruleId, entry]) => [
-          ruleId,
-          typeof entry === "string" ? entry : [...entry],
-        ]),
-      ),
-    },
+    ...sharedOptions,
+    ...lookupOptionsOf(request),
+    ...(overrideConfig === undefined ? {} : { overrideConfig: overrideConfigOf({ overrideConfig }) }),
   };
 };
 
-export const defaultCreateEslint: CreateEslint = (request) => {
-  const eslint = new ESLint(eslintOptionsOf({ options: request.options }));
+export const createEslintOn = (request: { readonly eslintClass: EslintClass }): CreateEslint => (create) => {
+  const eslint = new request.eslintClass(eslintOptionsOf({ version: request.eslintClass.version, options: create.options }));
   return {
     isPathIgnored: (query) => eslint.isPathIgnored(query.filePath),
     calculateConfigForFile: (query) => eslint.calculateConfigForFile(query.filePath),
-    lintFiles: (lint) =>
-      eslint.lintFiles([...lint.filePaths]).then((results) => results.map(lintedFileOf)),
+    lintFiles: (lint) => eslint.lintFiles([...lint.filePaths]).then((results) => results.map(lintedFileOf)),
     lintText: (lint) =>
-      eslint
-        .lintText(lint.code, { filePath: lint.filePath })
-        .then((results) => results.map(lintedFileOf)),
+      eslint.lintText(lint.code, { filePath: lint.filePath }).then((results) => results.map(lintedFileOf)),
   };
 };
-
-export const createDefaultEslintPort = (_options: Record<string, never>): EslintPort =>
-  createEslintPort({ createEslint: defaultCreateEslint });

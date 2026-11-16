@@ -3,13 +3,13 @@ import type { RunnerClause } from "../../../core/mechanism-port/runner-module-sc
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { JsoncParsePort } from "../runner/jsonc-parse.ts";
-import { createDefaultParsePort } from "../runner/typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PreparedWalkerCheck, WalkerFile, WalkerRepository } from "../runner/walker-piece.ts";
 import { createCompilerOverridesCheck } from "./compiler-overrides.ts";
 
 const FILE = repoPathSchema.parse("tsconfig.json");
 const SOURCE = '{"compilerOptions":{"strict":true}}';
-const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
+const SYNTAX_API = defaultParsePort.syntaxApi;
 const STRICT = clauseAddressSchema.parse("CD-3#strict");
 const UNCHECKED = clauseAddressSchema.parse("CD-3#no-unchecked-indexed-access");
 const EXACT = clauseAddressSchema.parse("CD-3#exact-optional-property-types");

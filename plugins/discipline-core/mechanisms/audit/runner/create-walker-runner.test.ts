@@ -7,7 +7,7 @@ import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import { createWalkerRunner } from "./create-walker-runner.ts";
-import { createDefaultParsePort } from "./typescript-parse.ts";
+import { defaultParsePort } from "../../../tests/typescript-parse-port.ts";
 import type { PreparedWalkerCheck, WalkerPiece } from "./walker-piece.ts";
 
 const PIECE_ROOT = "/install/mechanisms/audit/XX-1";
@@ -117,7 +117,7 @@ const runnerWith = (request: { readonly fileText: FileTextPort; readonly modules
     fileText: request.fileText,
     modules: request.modules,
     path: createPathPort({ flavour: "posix", workingDirectory: () => "/" }),
-    parse: createDefaultParsePort({}),
+    parse: defaultParsePort,
   });
 
 describe("createWalkerRunner run", () => {

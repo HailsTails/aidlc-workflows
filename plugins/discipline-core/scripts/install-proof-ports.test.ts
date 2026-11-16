@@ -23,6 +23,7 @@ const surfaceOver = (surface: Partial<ScratchFilesSurface>): ScratchFilesSurface
   makeTemporaryDirectory: vi.fn(),
   removeTree: vi.fn(),
   removeFile: vi.fn(),
+  makeDirectory: vi.fn(),
   copyTree: vi.fn(),
   listTree: vi.fn(),
   ...surface,
@@ -58,6 +59,30 @@ describe("createScratchFilesPort createTemporaryDirectory", () => {
     }).createTemporaryDirectory({ prefix: "proof-" });
 
     expect(created).toEqual({
+      outcome: "failed",
+      error: { kind: "effect-failed", detail: "EACCES: permission denied, rm '/scratch/proof'" },
+    });
+  });
+});
+
+describe("createScratchFilesPort makeDirectory", () => {
+  it("makes the requested directory", () => {
+    const makeDirectory = vi.fn<ScratchFilesSurface["makeDirectory"]>();
+
+    const made = createScratchFilesPort({ surface: surfaceOver({ makeDirectory }) }).makeDirectory({ path: "/scratch/toolchain" });
+
+    expect({ made, calls: makeDirectory.mock.calls }).toEqual({
+      made: { outcome: "ok", value: null },
+      calls: [[{ path: "/scratch/toolchain" }]],
+    });
+  });
+
+  it("returns effect-failed when making the directory throws", () => {
+    const made = createScratchFilesPort({
+      surface: surfaceOver({ makeDirectory: vi.fn<ScratchFilesSurface["makeDirectory"]>().mockThrow(PERMISSION_DENIED) }),
+    }).makeDirectory({ path: "/scratch/toolchain" });
+
+    expect(made).toEqual({
       outcome: "failed",
       error: { kind: "effect-failed", detail: "EACCES: permission denied, rm '/scratch/proof'" },
     });

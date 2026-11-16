@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
+import { ESLINT_LINES, type EslintLine, loadedEslintToolchain } from "../../../tests/eslint-toolchains.ts";
 import {
   type CreateEslint,
   createEslintPort,
-  defaultCreateEslint,
+  type EslintPort,
   type EslintSurface,
+  type EslintToolchain,
+  eslintOptionsOf,
   governanceConfig,
   type LintedFile,
 } from "./eslint-instance.ts";
@@ -97,8 +100,20 @@ const throwsOnBuild = vi
   .fn<CreateEslint>()
   .mockThrow(new Error("Invalid Options: unknown option"));
 
-const lintsGovernanceText = (request: { readonly code: string }) =>
-  defaultCreateEslint({
+const TOOLCHAINS: Readonly<Record<EslintLine, EslintToolchain>> = {
+  "eslint-10": await loadedEslintToolchain({ line: "eslint-10" }),
+  "eslint-10-floor": await loadedEslintToolchain({ line: "eslint-10-floor" }),
+  "eslint-9": await loadedEslintToolchain({ line: "eslint-9" }),
+  "eslint-9-floor": await loadedEslintToolchain({ line: "eslint-9-floor" }),
+};
+
+const PARSER = TOOLCHAINS["eslint-10"].typescriptParser;
+
+const portWith = (request: { readonly createEslint: CreateEslint }): EslintPort =>
+  createEslintPort({ toolchain: { ...TOOLCHAINS["eslint-10"], createEslint: request.createEslint } });
+
+const lintsGovernanceText = (request: { readonly code: string; readonly line: EslintLine }) =>
+  TOOLCHAINS[request.line].createEslint({
     options: {
       cwd: inlineConfigCwd,
       overrideConfigFile: true,
@@ -107,6 +122,7 @@ const lintsGovernanceText = (request: { readonly code: string }) =>
       overrideConfig: governanceConfig({
         plugins: { cd: classAndFunctionPlugin },
         rules: [{ ruleId: "cd/no-class", options: [] }],
+        parser: TOOLCHAINS[request.line].typescriptParser,
       }),
     },
   }).lintText({ code: request.code, filePath: "src/a.ts" });
@@ -114,7 +130,7 @@ const lintsGovernanceText = (request: { readonly code: string }) =>
 describe("governanceConfig", () => {
   it("builds one block for TypeScript files", () => {
     expect(
-      governanceConfig({ plugins: { cd: classAndFunctionPlugin }, rules: [{ ruleId: "cd/no-class", options: [] }] }),
+      governanceConfig({ plugins: { cd: classAndFunctionPlugin }, rules: [{ ruleId: "cd/no-class", options: [] }], parser: PARSER }),
     ).toMatchObject({ files: ["**/*.{ts,tsx,mts,cts}"] });
   });
 
@@ -123,6 +139,7 @@ describe("governanceConfig", () => {
       governanceConfig({
         plugins: { cd: classAndFunctionPlugin, pd: tmpFilePlugin },
         rules: [{ ruleId: "cd/no-class", options: [] }, { ruleId: "pd/no-tmp", options: [] }],
+        parser: PARSER,
       }).rules,
     ).toEqual({
       "cd/no-class": "error",
@@ -136,6 +153,7 @@ describe("governanceConfig", () => {
       governanceConfig({
         plugins: { cd: classAndFunctionPlugin },
         rules: [{ ruleId: "cd/no-class", options: [{ max: 2 }] }],
+        parser: PARSER,
       }).rules,
     ).toEqual({
       "cd/no-class": ["error", { max: 2 }],
@@ -148,6 +166,7 @@ describe("governanceConfig", () => {
       governanceConfig({
         plugins: { cd: classAndFunctionPlugin, pd: tmpFilePlugin },
         rules: [{ ruleId: "cd/no-class", options: [] }, { ruleId: "pd/no-tmp", options: [] }],
+        parser: PARSER,
       }).plugins,
     ).toEqual({
       cd: classAndFunctionPlugin,
@@ -159,9 +178,9 @@ describe("governanceConfig", () => {
   });
 });
 
-describe("lintSourceCases over ESLint", () => {
+describe.each(ESLINT_LINES)("lintSourceCases over real %s", (line) => {
   it("returns each case's flagged lines for the requested rule", async () => {
-    const verdicts = await createEslintPort({ createEslint: defaultCreateEslint }).lintSourceCases({
+    const verdicts = await createEslintPort({ toolchain: TOOLCHAINS[line] }).lintSourceCases({
       cwd: conformanceRoot,
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
@@ -180,7 +199,7 @@ describe("lintSourceCases over ESLint", () => {
   });
 
   it("does not flag lines for another rule of the same plugin", async () => {
-    const verdicts = await createEslintPort({ createEslint: defaultCreateEslint }).lintSourceCases({
+    const verdicts = await createEslintPort({ toolchain: TOOLCHAINS[line] }).lintSourceCases({
       cwd: conformanceRoot,
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
@@ -196,7 +215,7 @@ describe("lintSourceCases over ESLint", () => {
   });
 
   it("ignores the inline-config message and is not silenced by a disable comment", async () => {
-    const verdicts = await createEslintPort({ createEslint: defaultCreateEslint }).lintSourceCases({
+    const verdicts = await createEslintPort({ toolchain: TOOLCHAINS[line] }).lintSourceCases({
       cwd: conformanceRoot,
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
@@ -212,7 +231,7 @@ describe("lintSourceCases over ESLint", () => {
   });
 });
 
-describe("the discipline-core/inline-config rule over ESLint", () => {
+describe.each(ESLINT_LINES)("the discipline-core/inline-config rule over real %s", (eslintLine) => {
   it.each([
     { form: "a disable naming no rule", code: "/* eslint-disable */\nconst a = 1;\n", line: 1 },
     {
@@ -236,7 +255,7 @@ describe("the discipline-core/inline-config rule over ESLint", () => {
       line: 1,
     },
   ])("reports $form as inline-disable on its line", async ({ code, line }) => {
-    expect(await lintsGovernanceText({ code })).toMatchObject([
+    expect(await lintsGovernanceText({ code, line: eslintLine })).toMatchObject([
       {
         messages: [{ ruleId: "discipline-core/inline-config", messageId: "inline-disable", line }],
       },
@@ -245,7 +264,7 @@ describe("the discipline-core/inline-config rule over ESLint", () => {
 
   it("reports a rule-config comment turning the selected rule off as inline-rule-config on its line", async () => {
     expect(
-      await lintsGovernanceText({ code: 'const a = 1;\n/* eslint cd/no-class: "off" */\n' }),
+      await lintsGovernanceText({ code: 'const a = 1;\n/* eslint cd/no-class: "off" */\n', line: eslintLine }),
     ).toMatchObject([
       {
         messages: [
@@ -272,13 +291,13 @@ describe("the discipline-core/inline-config rule over ESLint", () => {
       text: '/* eslint cd/no-class: "off" */',
     },
   ])("carries $form exactly as written in source, trimmed, as its message", async ({ code, text }) => {
-    expect(await lintsGovernanceText({ code })).toMatchObject([
+    expect(await lintsGovernanceText({ code, line: eslintLine })).toMatchObject([
       { messages: [{ ruleId: "discipline-core/inline-config", message: text }] },
     ]);
   });
 
   it("reports an eslint comment whose configuration does not parse as inline-rule-config", async () => {
-    expect(await lintsGovernanceText({ code: "/* eslint cd/no-class: [ */\n" })).toMatchObject([
+    expect(await lintsGovernanceText({ code: "/* eslint cd/no-class: [ */\n", line: eslintLine })).toMatchObject([
       {
         messages: [
           { ruleId: "discipline-core/inline-config", messageId: "inline-rule-config", line: 1 },
@@ -296,7 +315,7 @@ describe("the discipline-core/inline-config rule over ESLint", () => {
     { form: "an exported comment", code: "/* exported foo */\n" },
     { form: "a comment that is not a directive", code: "/* not a directive */\n" },
   ])("reports nothing for $form", async ({ code }) => {
-    expect(await lintsGovernanceText({ code })).toMatchObject([{ messages: [] }]);
+    expect(await lintsGovernanceText({ code, line: eslintLine })).toMatchObject([{ messages: [] }]);
   });
 });
 
@@ -304,7 +323,7 @@ describe("createQueryInstance", () => {
   it("builds ESLint on the team's own configuration, with the repository root as its only option", async () => {
     const createEslint = vi.fn<CreateEslint>().mockReturnValue(idleSurface);
 
-    await createEslintPort({ createEslint }).createQueryInstance({ repoRoot }).ignoredState({
+    await portWith({ createEslint }).createQueryInstance({ repoRoot }).ignoredState({
       file: fileA,
     });
 
@@ -313,7 +332,7 @@ describe("createQueryInstance", () => {
 
   it("builds ESLint once for every query of one instance", async () => {
     const createEslint = vi.fn<CreateEslint>().mockReturnValue(idleSurface);
-    const queryInstance = createEslintPort({ createEslint }).createQueryInstance({ repoRoot });
+    const queryInstance = portWith({ createEslint }).createQueryInstance({ repoRoot });
 
     await queryInstance.ignoredState({ file: fileA });
     await queryInstance.ruleState({ file: fileB, ruleId: "cd/no-class" });
@@ -322,7 +341,7 @@ describe("createQueryInstance", () => {
   });
 
   it("answers ignored for a path ESLint ignores", async () => {
-    const ignoredState = await createEslintPort({
+    const ignoredState = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
         ...idleSurface,
         isPathIgnored: vi.fn<EslintSurface["isPathIgnored"]>().mockResolvedValue(true),
@@ -335,7 +354,7 @@ describe("createQueryInstance", () => {
   });
 
   it("answers checked for a path ESLint does not ignore", async () => {
-    const ignoredState = await createEslintPort({
+    const ignoredState = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
         ...idleSurface,
         isPathIgnored: vi.fn<EslintSurface["isPathIgnored"]>().mockResolvedValue(false),
@@ -352,7 +371,7 @@ describe("createQueryInstance", () => {
       .fn<EslintSurface["calculateConfigForFile"]>()
       .mockResolvedValue({ rules: { "cd/no-class": [2] } });
 
-    const ruleState = await createEslintPort({
+    const ruleState = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({ ...idleSurface, calculateConfigForFile }),
     })
       .createQueryInstance({ repoRoot })
@@ -365,7 +384,7 @@ describe("createQueryInstance", () => {
   });
 
   it("reads an undefined resolved configuration as file-ignored", async () => {
-    const ruleState = await createEslintPort({
+    const ruleState = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue(idleSurface),
     })
       .createQueryInstance({ repoRoot })
@@ -375,7 +394,7 @@ describe("createQueryInstance", () => {
   });
 
   it("reports a resolved configuration the schema refuses as runner-invalid-output", async () => {
-    const ruleState = await createEslintPort({
+    const ruleState = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
         ...idleSurface,
         calculateConfigForFile: vi
@@ -390,7 +409,7 @@ describe("createQueryInstance", () => {
   });
 
   it("reports ESLint refusing to redefine a plugin while answering a rule state as plugin-conflict", async () => {
-    const ruleState = await createEslintPort({
+    const ruleState = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
         ...idleSurface,
         calculateConfigForFile: vi
@@ -411,7 +430,7 @@ describe("createQueryInstance", () => {
   });
 
   it("reports any other rejection while answering a rule state as team-config-unloadable", async () => {
-    const ruleState = await createEslintPort({
+    const ruleState = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
         ...idleSurface,
         calculateConfigForFile: vi
@@ -429,7 +448,7 @@ describe("createQueryInstance", () => {
   });
 
   it("reports ESLint failing to build as tool-failed", async () => {
-    const ignoredState = await createEslintPort({ createEslint: throwsOnBuild })
+    const ignoredState = await portWith({ createEslint: throwsOnBuild })
       .createQueryInstance({ repoRoot })
       .ignoredState({ file: fileA });
 
@@ -444,7 +463,7 @@ describe("createGovernanceInstance", () => {
   it("builds ESLint on the runner's own complete configuration, never the team's", async () => {
     const createEslint = vi.fn<CreateEslint>().mockReturnValue(idleSurface);
 
-    await createEslintPort({ createEslint })
+    await portWith({ createEslint })
       .createGovernanceInstance({
         repoRoot,
         plugins: { cd: classAndFunctionPlugin },
@@ -457,7 +476,6 @@ describe("createGovernanceInstance", () => {
         cwd: "/repo",
         overrideConfigFile: true,
         ignore: false,
-        applySuppressions: false,
         allowInlineConfig: false,
         overrideConfig: expect.objectContaining({
           files: ["**/*.{ts,tsx,mts,cts}"],
@@ -470,7 +488,7 @@ describe("createGovernanceInstance", () => {
   it("lints the requested files and returns ESLint's results", async () => {
     const lintFiles = vi.fn<EslintSurface["lintFiles"]>().mockResolvedValue([lintedA]);
 
-    const linted = await createEslintPort({
+    const linted = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({ ...idleSurface, lintFiles }),
     })
       .createGovernanceInstance({
@@ -487,7 +505,7 @@ describe("createGovernanceInstance", () => {
   });
 
   it("reports a rejecting lint as tool-failed", async () => {
-    const linted = await createEslintPort({
+    const linted = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
         ...idleSurface,
         lintFiles: vi
@@ -513,7 +531,7 @@ describe("lintSourceCases", () => {
   it("lints each case's source as text under its file name", async () => {
     const lintText = vi.fn<EslintSurface["lintText"]>().mockResolvedValue([]);
 
-    await createEslintPort({
+    await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({ ...idleSurface, lintText }),
     }).lintSourceCases({
       cwd: conformanceRoot,
@@ -533,7 +551,7 @@ describe("lintSourceCases", () => {
   it("builds ESLint on the governance configuration for the one requested rule, ignoring any configuration file", async () => {
     const createEslint = vi.fn<CreateEslint>().mockReturnValue(idleSurface);
 
-    await createEslintPort({ createEslint }).lintSourceCases({
+    await portWith({ createEslint }).lintSourceCases({
       cwd: conformanceRoot,
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
@@ -556,7 +574,7 @@ describe("lintSourceCases", () => {
   });
 
   it("reports an inline-config-unreadable message as tool-failed", async () => {
-    const verdicts = await createEslintPort({
+    const verdicts = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
         ...idleSurface,
         lintText: vi.fn<EslintSurface["lintText"]>().mockResolvedValue([
@@ -590,7 +608,7 @@ describe("lintSourceCases", () => {
   });
 
   it("reports a case holding a fatal message as runner-invalid-output naming that case", async () => {
-    const verdicts = await createEslintPort({
+    const verdicts = await portWith({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
         ...idleSurface,
         lintText: vi.fn<EslintSurface["lintText"]>().mockResolvedValue([
@@ -618,5 +636,36 @@ describe("lintSourceCases", () => {
         detail: "case class was not linted as a rule source: Parsing error: '{' expected.",
       },
     });
+  });
+});
+
+const OPTIONS_CWD = absolutePathSchema.parse("/repo");
+
+describe("eslintOptionsOf, which asks every supported ESLint for the configuration nearest each file", () => {
+  it.each(["10.0.0", "10.11.0"])("passes the options through unchanged on ESLint %s, whose default is the nearest-to-file lookup", (version) => {
+    expect(eslintOptionsOf({ version, options: { cwd: OPTIONS_CWD } })).toEqual({ cwd: OPTIONS_CWD });
+  });
+
+  it.each(["9.30.0", "9.39.5"])("asks ESLint %s for the lookup by its v10 flag, which these releases name", (version) => {
+    expect(eslintOptionsOf({ version, options: { cwd: OPTIONS_CWD } })).toEqual({
+      cwd: OPTIONS_CWD,
+      flags: ["v10_config_lookup_from_file"],
+    });
+  });
+
+  it.each(["9.12.0", "9.29.0"])("asks ESLint %s for the lookup by its unstable flag, the only name these releases accept", (version) => {
+    expect(eslintOptionsOf({ version, options: { cwd: OPTIONS_CWD } })).toEqual({
+      cwd: OPTIONS_CWD,
+      flags: ["unstable_config_lookup_from_file"],
+    });
+  });
+
+  it.each(["9.12.0", "9.39.5", "10.11.0"])("names no lookup flag for ESLint %s when a configuration file is named", (version) => {
+    expect(
+      eslintOptionsOf({
+        version,
+        options: { cwd: OPTIONS_CWD, overrideConfigFile: true, ignore: false, allowInlineConfig: false },
+      }),
+    ).toEqual({ cwd: OPTIONS_CWD, overrideConfigFile: true, ignore: false, allowInlineConfig: false });
   });
 });
