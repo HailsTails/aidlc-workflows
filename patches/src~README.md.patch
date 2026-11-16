@@ -21,4 +21,4 @@ index e68b4ecb9..c59b7932c 100644
  - Unit tests touch nothing real: no repository folder (`core/`, `plugins/`), no temp folder, no process. A unit that reads files takes its context's narrow port and its test passes `createInMemoryFileSystem` from `src/kernel/fixtures/`. Only a registered platform implementer (today `src/kernel/file-system.ts`) has one hermetic test, in a temp folder it creates and removes.
  - `src/` sits beside `core/` and `scripts/`: `core/` is projected content, `scripts/` is build-only, and runtime contexts ship through Packaging's `ToolBundler`.
 -- Typecheck: `bunx tsc --noEmit -p src/tsconfig.json`. Lint: `bun --bun ./node_modules/.bin/eslint src lint`.
-+- Typecheck: `bunx tsc --noEmit -p src/tsconfig.json`. Tests: `bun test ./src`.
++- Typecheck: `bunx tsc --noEmit -p src/tsconfig.json`. Tests: `bun test ./src`. `tests/run-tests.ts` discovers every `src/**/*.test.ts` and runs it in the integration tier, named `src-<path>` (`--filter '^src-'`).

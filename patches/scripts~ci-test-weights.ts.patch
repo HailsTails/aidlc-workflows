@@ -1,0 +1,16 @@
+diff --git a/scripts/ci-test-weights.ts b/scripts/ci-test-weights.ts
+index 9b05df229..2ffbcd673 100644
+--- a/scripts/ci-test-weights.ts
++++ b/scripts/ci-test-weights.ts
+@@ -110,6 +110,11 @@ export function integrationNames(repoRoot: string): string[] {
+       names.push(`plugin-${plugin}-${file.replace(/\.test\.ts$/, "")}`);
+     }
+   }
++  const source = join(repoRoot, "src");
++  for (const file of existsSync(source) ? readdirSync(source, { recursive: true, encoding: "utf8" }) : []) {
++    const path = file.replaceAll("\\", "/");
++    if (path.endsWith(".test.ts")) names.push(`src-${path.replace(/\.test\.ts$/, "").replaceAll("/", "-")}`);
++  }
+   return names.sort();
+ }
+ 
