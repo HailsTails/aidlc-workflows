@@ -15,13 +15,17 @@ export type InheritedDebtProvenance = {
   readonly decision: string;
 };
 
+export type ReasonOnlyEvidence = { readonly whyChain?: never; readonly provenance?: never };
+
 export type AuthorisationEvidence =
   | { readonly whyChain: RecordedWhyChain; readonly provenance?: ExistingAuthorisationProvenance }
-  | { readonly whyChain?: never; readonly provenance: ExistingAuthorisationProvenance };
+  | { readonly whyChain?: never; readonly provenance: ExistingAuthorisationProvenance }
+  | ReasonOnlyEvidence;
 
 export type FileDebtEvidence =
   | { readonly whyChain: RecordedWhyChain; readonly provenance?: InheritedDebtProvenance }
-  | { readonly whyChain?: never; readonly provenance: InheritedDebtProvenance };
+  | { readonly whyChain?: never; readonly provenance: InheritedDebtProvenance }
+  | ReasonOnlyEvidence;
 
 export type AuthorisedLocationEntry = AuthorisationEvidence & {
   readonly kind: "authorised-location";

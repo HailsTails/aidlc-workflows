@@ -1,4 +1,4 @@
-import type { ExceptionRecord, InvalidRecord } from "../exception-records/exception-records.ts";
+import { type ExceptionRecord, type InvalidRecord, recordImportOf } from "../exception-records/exception-records.ts";
 import type { AttributedNativeException, ExemptedFinding, Finding } from "../governance/governance.ts";
 import { clauseAddressText } from "../values/clause-address.ts";
 import type { CheckReport, Unmeasured } from "./check-report.ts";
@@ -11,13 +11,8 @@ const findingLine = (request: { readonly finding: Finding }): string =>
   `${clauseAddressText({ address: request.finding.clause })} ${request.finding.mechanism} ${request.finding.file}:${request.finding.anchor.line}:${request.finding.anchor.column} ${escapedLineBreaks({ text: request.finding.snippet })}`;
 
 const importNote = (request: { readonly record: ExceptionRecord }): string => {
-  switch (request.record.kind) {
-    case "authorised-location":
-    case "file-carve-out":
-      return request.record.whyChain === undefined ? ` imported from ${request.record.provenance.source}` : "";
-    case "clause-wide-carve-out":
-      return "";
-  }
+  const recordImport = recordImportOf(request);
+  return recordImport.imported === "yes" ? ` imported from ${recordImport.source}` : "";
 };
 
 const exemptedLine = (request: { readonly exempted: ExemptedFinding }): string =>

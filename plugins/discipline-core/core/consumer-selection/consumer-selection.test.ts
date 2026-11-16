@@ -229,6 +229,7 @@ describe("createSelectionRepository", () => {
           },
         ],
         excluded: [],
+        fileExceptionWhyChains: "required",
       },
     });
   });
@@ -250,6 +251,18 @@ describe("createSelectionRepository", () => {
     });
 
     expect(repository.read({})).toMatchObject({ outcome: "ok", value: { excluded: ["vendor", "src/generated.ts"] } });
+  });
+
+  it("reads optional file exception why-chains when disciplines.json makes them optional", () => {
+    expect(
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" }, fileExceptionWhyChains: "optional" }),
+    ).toMatchObject({ outcome: "ok", value: { fileExceptionWhyChains: "optional" } });
+  });
+
+  it("is file-malformed when disciplines.json gives file exception why-chains a value other than required or optional", () => {
+    expect(
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" }, fileExceptionWhyChains: "off" }),
+    ).toMatchObject({ outcome: "failed", error: { kind: "file-malformed", path: SELECTION_PATH } });
   });
 
   it("is file-malformed when disciplines.json excludes a path that is not a repository path", () => {
@@ -365,6 +378,7 @@ describe("readSelection", () => {
           },
         ],
         excluded: [],
+        fileExceptionWhyChains: "required",
       },
     });
   });
@@ -397,6 +411,7 @@ describe("readSelection", () => {
           },
         ],
         excluded: [],
+        fileExceptionWhyChains: "required",
       },
     });
   });
@@ -415,6 +430,7 @@ describe("readSelection", () => {
         },
         bindings: [expect.objectContaining({ mechanism: "audit" })],
         excluded: [],
+        fileExceptionWhyChains: "required",
       },
     });
   });

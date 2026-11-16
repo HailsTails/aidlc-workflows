@@ -464,6 +464,16 @@ describe("renderReportText sections", () => {
     );
   });
 
+  it("names no import for an exempting record that gives only a reason", () => {
+    const reasoned: ExceptionRecord = { kind: "authorised-location", clause: noClass, mechanism: audit, file: fileA, reason: located.reason };
+
+    expect(
+      renderReportText({
+        report: { ...emptyReport, exempted: [{ finding, by: [reasoned] }] },
+      }),
+    ).toBe("exempted (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {} exempted by authorised-location\nverdict: pass\n");
+  });
+
   it("renders an empty report as exactly the pass verdict line", () => {
     expect(renderReportText({ report: emptyReport })).toBe("verdict: pass\n");
   });

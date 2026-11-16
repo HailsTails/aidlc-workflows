@@ -216,6 +216,29 @@ const EXCEPTIONS_WITH_AUTHORISED_LOCATION = JSON.stringify({
   ],
 });
 
+const SELECTION_WITH_OPTIONAL_WHY_CHAINS = JSON.stringify({
+  version: 1,
+  ruleSets: {},
+  clauses: { "CD-14#class-syntax": "audit" },
+  fileExceptionWhyChains: "optional",
+});
+
+const REASONED_LOCATION = {
+  kind: "authorised-location",
+  clause: "CD-14#class-syntax",
+  file: "src/factory.ts",
+  reason: "the wrapping factory for the library",
+} as const;
+
+const REASONED_CARVE_OUT = {
+  kind: "file-carve-out",
+  clause: "CD-14#class-syntax",
+  file: "src/legacy.ts",
+  reason: "legacy class awaiting paydown",
+} as const;
+
+const EXCEPTIONS_WITH_REASONED_RECORDS = JSON.stringify({ version: 1, exceptions: [REASONED_LOCATION, REASONED_CARVE_OUT] });
+
 const WORKING_TREE: Readonly<Record<string, FakeFile>> = {
   "/repo/README.md": presentFile({ text: "" }),
   "/repo/package.json": presentFile({ text: "" }),
@@ -565,6 +588,144 @@ describe("runCheck forfeiture measurement", () => {
     ).resolves.toMatchObject({
       outcome: "ok",
       value: { forfeited: [{ kind: "file-carve-out", file: "src/legacy.ts" }], stale: [] },
+    });
+  });
+});
+
+const installWithReasonedRecords = (request: { readonly selection: string }): FileTextPort =>
+  fileTextOver({
+    ...INSTALL,
+    [SELECTION_PATH]: presentFile({ text: request.selection }),
+    [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_REASONED_RECORDS }),
+  });
+
+describe("runCheck for a repository whose disciplines.json makes file exception why-chains optional", () => {
+  it("exempts a finding a reason-only authorised location names while the base revision holds no exceptions file", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          fileText: installWithReasonedRecords({ selection: SELECTION_WITH_OPTIONAL_WHY_CHAINS }),
+          modules: modulesLoading({
+            runner: standaloneRunner({ runReturns: { outcome: "ok", value: [{ ...HIT_IN_A, file: "src/factory.ts" }] } }),
+          }),
+          git: gitReporting({
+            trackedPaths: { outcome: "ok", value: [repoPathSchema.parse("src/factory.ts")] },
+            changedSince: { outcome: "ok", value: [] },
+          }),
+        }),
+      ),
+    ).resolves.toEqual({
+      outcome: "ok",
+      value: {
+        ...EMPTY_REPORT,
+        exempted: [
+          {
+            finding: { ...HIT_IN_A, file: "src/factory.ts", mechanism: "audit" },
+            by: [{ ...REASONED_LOCATION, clause: CLASS_SYNTAX_OBJECT, mechanism: "audit" }],
+          },
+        ],
+        stale: [{ ...REASONED_CARVE_OUT, clause: CLASS_SYNTAX_OBJECT, mechanism: "audit" }],
+      },
+    });
+  });
+
+  it("reports forfeiture-unmeasured for a reason-only file carve-out when no base revision is given", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          baseRevision: undefined,
+          fileText: fileTextOver({
+            ...INSTALL,
+            [SELECTION_PATH]: presentFile({ text: SELECTION_WITH_OPTIONAL_WHY_CHAINS }),
+            [EXCEPTIONS_PATH]: presentFile({ text: JSON.stringify({ version: 1, exceptions: [REASONED_CARVE_OUT] }) }),
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({ outcome: "ok", value: { invalidRecords: [], unmeasured: [{ kind: "forfeiture-unmeasured" }] } });
+  });
+
+  it("reports nothing unmeasured for a reason-only authorised location when no base revision is given", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          baseRevision: undefined,
+          fileText: fileTextOver({
+            ...INSTALL,
+            [SELECTION_PATH]: presentFile({ text: SELECTION_WITH_OPTIONAL_WHY_CHAINS }),
+            [EXCEPTIONS_PATH]: presentFile({ text: JSON.stringify({ version: 1, exceptions: [REASONED_LOCATION] }) }),
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({ outcome: "ok", value: { invalidRecords: [], unmeasured: [] } });
+  });
+
+  it("reads nothing at the base revision for reason-only records", async () => {
+    const git = gitReporting({ trackedPaths: { outcome: "ok", value: TRACKED_PATHS }, changedSince: { outcome: "ok", value: [] } });
+
+    await runCheck(checkRequest({ git, fileText: installWithReasonedRecords({ selection: SELECTION_WITH_OPTIONAL_WHY_CHAINS }) }));
+
+    expect(git.textInBase).not.toHaveBeenCalled();
+  });
+
+  it("still forfeits a reason-only file carve-out whose file the measured change set touched", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          fileText: installWithReasonedRecords({ selection: SELECTION_WITH_OPTIONAL_WHY_CHAINS }),
+          git: gitReporting({
+            trackedPaths: { outcome: "ok", value: TRACKED_PATHS },
+            changedSince: { outcome: "ok", value: [repoPathSchema.parse("src/legacy.ts")] },
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({
+      outcome: "ok",
+      value: { invalidRecords: [], forfeited: [{ kind: "file-carve-out", file: "src/legacy.ts" }] },
+    });
+  });
+
+  it("still refuses an imported authorised location the base revision does not hold", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          fileText: fileTextOver({
+            ...INSTALL,
+            [SELECTION_PATH]: presentFile({ text: SELECTION_WITH_OPTIONAL_WHY_CHAINS }),
+            [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_AUTHORISED_LOCATION }),
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({
+      outcome: "ok",
+      value: { invalidRecords: [{ index: 0, problem: { kind: "import-unverified" } }], unmeasured: [] },
+    });
+  });
+
+  it("still reports import-unmeasured for an imported authorised location when no base revision is given", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          baseRevision: undefined,
+          fileText: fileTextOver({
+            ...INSTALL,
+            [SELECTION_PATH]: presentFile({ text: SELECTION_WITH_OPTIONAL_WHY_CHAINS }),
+            [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_AUTHORISED_LOCATION }),
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({ outcome: "ok", value: { unmeasured: [{ kind: "import-unmeasured" }] } });
+  });
+
+  it("refuses the same reason-only records as evidence-refused when disciplines.json leaves why-chains required", async () => {
+    await expect(runCheck(checkRequest({ fileText: installWithReasonedRecords({ selection: SELECTION }) }))).resolves.toMatchObject({
+      outcome: "ok",
+      value: {
+        invalidRecords: [
+          { index: 0, problem: { kind: "evidence-refused" } },
+          { index: 1, problem: { kind: "evidence-refused" } },
+        ],
+        unmeasured: [],
+      },
     });
   });
 });

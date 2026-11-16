@@ -202,7 +202,7 @@ Fix findings where you can. Where a file legitimately needs what a clause forbid
 - `file-carve-out`: known debt in one file. It is forfeited, and fails the run, as soon as that file changes since `--base-revision`.
 - `clause-wide-carve-out`: the clause is waived everywhere. Not selecting the clause is not an alternative: it leaves the clause `uncovered`. A clause-wide carve-out that exempts no finding is `stale`, so record one only while the clause still has findings.
 
-Every entry needs a `reason` and a `whyChain` shaped like this, with exactly five steps in `whys`:
+Every entry needs a `reason`. By default every entry also needs a `whyChain` shaped like this, with exactly five steps in `whys`:
 
 ```json
 "whyChain": {
@@ -222,7 +222,9 @@ Every entry needs a `reason` and a `whyChain` shaped like this, with exactly fiv
 
 The chain runs cause to cause: each why asks why the answer before it is true, each answer cites evidence that can be checked again, the root names the fifth answer's cause and is checked against today, and the readback runs back from the root to the symptom with "therefore". [The why-chain contract](docs/why-chain-contract.md) has a worked example, the checks core runs, and what review still judges. A chain that breaks a check is refused as an `invalidRecords` entry. `file` is an exact repository path.
 
-Debt or authorisations already recorded by an earlier system, for example the old standalone route's `.constitution-carve-outs/`, can be imported with `provenance` instead of a `whyChain`, as [MIGRATING.md](MIGRATING.md#3-convert-the-old-records-into-exceptions) step 3 shows. Imported entries are checked against `--base-revision`: any entry you write or change yourself needs the full `whyChain`.
+Debt or authorisations already recorded by an earlier system, for example the old standalone route's `.constitution-carve-outs/`, can be imported with `provenance` instead of a `whyChain`, as [MIGRATING.md](MIGRATING.md#3-convert-the-old-records-into-exceptions) step 3 shows. Imported entries are checked against `--base-revision`: by default, any entry you write or change yourself needs the full `whyChain`.
+
+To record existing debt without a chain on every entry, set `"fileExceptionWhyChains": "optional"` in `disciplines.json`. An `authorised-location` or `file-carve-out` entry may then give only its `reason`, so write the reason as why the exception exists; a blank reason is refused. A run with any file carve-out still needs `--base-revision`, or it reports `forfeiture-unmeasured` and fails. A `clause-wide-carve-out` still needs its `whyChain`, and a `whyChain` or `provenance` you give anyway is still checked. [README.md](README.md#discipline-exceptionsjson) has the details.
 
 ## 8. Prove one failure and correction
 
