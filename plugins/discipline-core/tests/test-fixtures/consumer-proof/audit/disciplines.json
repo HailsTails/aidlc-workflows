@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "ruleSets": {},
-  "clauses": {
-    "CD-23#export-test-sibling": "audit"
-  }
-}

@@ -24,7 +24,7 @@ const unverifiedWireOf = ({ reason }: { readonly reason: string }): DisciplinesS
   pass: false,
   findings_count: 0,
   findings: [],
-  scanned: `(discipline-core reached no verdict: ${reason})`,
+  scanned: `(Hone reached no verdict: ${reason})`,
 });
 
 const findingNoticeLineOf = ({ finding }: { readonly finding: DisciplinesFinding }): string =>

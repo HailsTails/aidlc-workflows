@@ -28,15 +28,21 @@ type DisciplinesFinding = {
   readonly snippet: string;
 };
 
-const DISCIPLINE_CORE_PACKAGE = "discipline-core";
+const HONE_PACKAGE = "honed";
 
-const PACKAGED_CORE_INSTALL = `node_modules/${DISCIPLINE_CORE_PACKAGE}`;
+const PACKAGED_HONE_INSTALL = `node_modules/${HONE_PACKAGE}`;
+
+const LEGACY_PACKAGE = "discipline-core";
+
+const LEGACY_PACKAGED_INSTALL = `node_modules/${LEGACY_PACKAGE}`;
 
 const VENDORED_CORE_INSTALL = "tools/discipline-core";
 
-const CHECK_COMMAND_TEXT = "npm run --silent discipline:check";
+const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/v0.1.0-pre.1/MIGRATING.md";
 
-const PROJECT_COMMAND_TEXT = "npm run --silent discipline:project";
+const CHECK_COMMAND_TEXT = "npm run --silent hone:check";
+
+const PROJECT_COMMAND_TEXT = "npm run --silent hone:project";
 
 const SECTION_HEADER = /^([A-Za-z]+) \(\d+\)$/;
 
@@ -46,7 +52,7 @@ const FINDING_LINE = /^(\S+) (\S+) (.+?):(\d+):(\d+)(?: (.*))?$/;
 
 const SECTION_REMEDIES: Readonly<Record<FailingSectionName, string>> = {
   findings:
-    `change the code, or record an exception in discipline-exceptions.json with a whyChain written to ${PACKAGED_CORE_INSTALL}/docs/why-chain-contract.md: five whys chained cause to cause, a rootCause, its rootCheck, a readback and an owner.`,
+    `change the code, or record an exception in discipline-exceptions.json with a whyChain written to ${PACKAGED_HONE_INSTALL}/docs/why-chain-contract.md: five whys chained cause to cause, a rootCause, its rootCheck, a readback and an owner.`,
   uncovered:
     "select every mechanical clause of each adopted discipline in disciplines.json.",
   stale:
@@ -152,11 +158,14 @@ export type {
 };
 export {
   CHECK_COMMAND_TEXT,
-  DISCIPLINE_CORE_PACKAGE,
   disciplinesReportSectionsOf,
   failingSectionsOf,
   findingsOf,
-  PACKAGED_CORE_INSTALL,
+  HONE_MIGRATING_URL,
+  HONE_PACKAGE,
+  LEGACY_PACKAGE,
+  LEGACY_PACKAGED_INSTALL,
+  PACKAGED_HONE_INSTALL,
   remedyOf,
   VENDORED_CORE_INSTALL,
 };

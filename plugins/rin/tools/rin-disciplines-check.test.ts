@@ -5,7 +5,11 @@ import { pathOperationsFor } from "./rin-harness-path-operations.ts";
 
 const TIMEOUT_MILLISECONDS = 1000;
 
-const PACKAGED_CHECK = "/repo/node_modules/discipline-core/core/check/check-command.js";
+const PACKAGED_CHECK = "/repo/node_modules/honed/core/check/tool-command.js";
+
+const LEGACY_PACKAGED_CHECK = "/repo/node_modules/discipline-core/core/check/check-command.js";
+
+const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/v0.1.0-pre.1/MIGRATING.md";
 
 const VENDORED_CHECK = "/repo/tools/discipline-core/core/check/check-command.ts";
 
@@ -67,12 +71,12 @@ describe("disciplinesCheckOutcomeOf", () => {
 });
 
 describe("runDisciplinesCheck", () => {
-  test("runs the installed package's built check-command with its base revision, in that checkout", () => {
-    const ports = portsReturning({ output: PASSING_OUTPUT, installedFiles: [PACKAGED_CHECK, VENDORED_CHECK] });
+  test("runs the installed honed package's hone check subcommand with its base revision, in that checkout", () => {
+    const ports = portsReturning({ output: PASSING_OUTPUT, installedFiles: [PACKAGED_CHECK, LEGACY_PACKAGED_CHECK, VENDORED_CHECK] });
     expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: "origin/main" }, ports })).toEqual({ kind: "passed" });
     expect(ports.runSync).toHaveBeenCalledWith({
       program: "node",
-      args: [PACKAGED_CHECK, "--repo", "/repo", "--base-revision", "origin/main"],
+      args: [PACKAGED_CHECK, "check", "--repo", "/repo", "--base-revision", "origin/main"],
       cwd: "/repo",
       timeoutMilliseconds: TIMEOUT_MILLISECONDS,
     });
@@ -83,7 +87,7 @@ describe("runDisciplinesCheck", () => {
     expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: undefined }, ports })).toEqual({
       kind: "unverified",
       reason:
-        "the vendored copy at /repo/tools/discipline-core passed, but a vendored copy is not a verified install: move it to the discipline-core package as tools/discipline-core/MIGRATING.md says",
+        `the vendored copy at /repo/tools/discipline-core passed, but a vendored copy is not a verified install: install the honed package in its place as Hone's MIGRATING.md sections 9 and 10 say (${HONE_MIGRATING})`,
     });
     expect(ports.runSync).toHaveBeenCalledWith({
       program: "node",
@@ -99,11 +103,20 @@ describe("runDisciplinesCheck", () => {
     expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: undefined }, ports })).toEqual({ kind: "failed", report });
   });
 
-  test("an uninstalled core reaches no verdict and runs nothing", () => {
+  test("the package under its old name discipline-core is unverified, runs nothing and names the move to honed", () => {
+    const ports = portsReturning({ output: PASSING_OUTPUT, installedFiles: [LEGACY_PACKAGED_CHECK, VENDORED_CHECK] });
+    expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: undefined }, ports })).toEqual({
+      kind: "unverified",
+      reason: `the package at /repo/node_modules/discipline-core is discipline-core, Hone's old name, which rin no longer runs: install the honed package in its place and rename its scripts and rule ids as Hone's MIGRATING.md section 10 says (${HONE_MIGRATING})`,
+    });
+    expect(ports.runSync).not.toHaveBeenCalled();
+  });
+
+  test("an uninstalled Hone reaches no verdict, runs nothing and names the package to install", () => {
     const ports = portsReturning({ output: PASSING_OUTPUT, installedFiles: [] });
     expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: undefined }, ports })).toEqual({
       kind: "unverified",
-      reason: `discipline-core is not installed: neither ${PACKAGED_CHECK} nor ${VENDORED_CHECK} exists`,
+      reason: `Hone is not installed: none of ${PACKAGED_CHECK}, ${LEGACY_PACKAGED_CHECK} or ${VENDORED_CHECK} exists; install the npm package honed (not hone) as Hone's ADOPTING.md step 2 says`,
     });
     expect(ports.runSync).not.toHaveBeenCalled();
   });

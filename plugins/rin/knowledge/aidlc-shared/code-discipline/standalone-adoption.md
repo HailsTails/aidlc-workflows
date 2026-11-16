@@ -398,11 +398,15 @@ or rules used elsewhere and the consumer's lockfile history.
 No core/plugin uninstall command applies to these copies. Native rule projection
 and a true rules-only install/update/removal selection remain backlog gaps.
 
-## 6. Moving to discipline-core
+## 6. Moving to Hone
 
-A repository that adopts discipline-core (`disciplines.json`,
-`discipline-exceptions.json`, the `discipline-core` package) replaces this route.
-Follow `node_modules/discipline-core/MIGRATING.md`. If the repository also runs the
+Hone, formerly discipline core, now lives in its own repository,
+https://github.com/HailsTails/hone, and installs as the npm package `honed`
+(not `hone`, an unrelated npm package), pinned to an exact release tarball. A
+repository that adopts Hone (`disciplines.json`, `discipline-exceptions.json`,
+the `honed` package) replaces this route. Follow
+`node_modules/honed/MIGRATING.md`; a repository still on the old
+`discipline-core` package or command names follows its section 10. If the repository also runs the
 Rin AIDLC plugin, it keeps `harness.config.json` and must flip the engine in the
 same change. Otherwise Rin's stage gate, per-CD sensors and review lenses keep
 using the walker and the records described above, and they disagree with CI:
@@ -416,7 +420,8 @@ using the walker and the records described above, and they disagree with CI:
 }
 ```
 
-- `engine` is `"rin-walker"` (the default when absent) or `"discipline-core"`.
+- `engine` is `"rin-walker"` (the default when absent) or `"discipline-core"`,
+  which names Hone and keeps its earlier name so existing configs stay valid.
   Any other value fails the stage gate rather than silently choosing one.
 - `baseRevision` is passed to core as `--base-revision`. Set it whenever
   `discipline-exceptions.json` holds a file carve-out, an entry imported with
@@ -436,10 +441,12 @@ using the walker and the records described above, and they disagree with CI:
   the scope under discipline-core: `disciplines.json` and its `exclude` do.
 
 With the engine flipped, the stage gate runs the installed package's check,
-`node node_modules/discipline-core/core/check/check-command.js --repo <checkout>`,
+`node node_modules/honed/core/check/tool-command.js check --repo <checkout>`,
 from the checkout that holds the command's working directory, with that
 checkout's own packages. A vendored `tools/discipline-core/` copy is run only
-when the package is absent, and its pass is reported unverified. Exit 0 passes. Exit 1 ending in `verdict: fail` refuses the stage
+when the package is absent, and its pass is reported unverified. A package still
+installed as `node_modules/discipline-core` is not run: the stage is refused as
+unverified, naming the move to `honed`. Exit 0 passes. Exit 1 ending in `verdict: fail` refuses the stage
 and lists the failing sections. Anything else refuses it as unverified. The
 `disciplines` sensor reports core's findings in each edited file, the `cd-*`
 and `carve-out-decay` sensors report themselves not evaluated, and the review
