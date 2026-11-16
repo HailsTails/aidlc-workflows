@@ -3,6 +3,7 @@ import {
   defaultFileKindPort,
   defaultFileTextPort,
 } from "../tools/rin-harness-sidecar-file-reader.ts";
+import { simpleCommandsOf } from "../tools/rin-shell-simple-commands.ts";
 
 const paths = defaultPathOperations();
 const files = defaultFileTextPort();
@@ -106,20 +107,63 @@ const fetchAndRunDenyReason = [
   "NO self-granted bypass: no settings.json entry, authorised location or trial token lifts this.",
 ].join("\n");
 
-const COMMAND_HEAD_SEPARATORS = /&&|\|\||\$\(|[;&|()`{}\n\r]/;
+type WrapperSyntax = {
+  readonly optionsTakingAValue: ReadonlySet<string>;
+  readonly leadingOperands: number;
+};
 
-const COMMAND_WRAPPERS: ReadonlySet<string> = new Set([
-  "call",
-  "cmd",
-  "command",
-  "corepack",
-  "env",
-  "exec",
-  "nohup",
-  "start",
-  "sudo",
-  "time",
-  "xargs",
+const wrapperSyntax = ({
+  optionsTakingAValue = [],
+  leadingOperands = 0,
+}: {
+  readonly optionsTakingAValue?: readonly string[];
+  readonly leadingOperands?: number;
+}): WrapperSyntax => ({
+  optionsTakingAValue: new Set(optionsTakingAValue),
+  leadingOperands,
+});
+
+const COMMAND_WRAPPERS: ReadonlyMap<string, WrapperSyntax> = new Map([
+  ["call", wrapperSyntax({})],
+  ["cmd", wrapperSyntax({})],
+  ["command", wrapperSyntax({})],
+  ["corepack", wrapperSyntax({})],
+  ["env", wrapperSyntax({ optionsTakingAValue: ["-u", "--unset", "-C", "--chdir"] })],
+  ["exec", wrapperSyntax({ optionsTakingAValue: ["-a"] })],
+  ["nice", wrapperSyntax({ optionsTakingAValue: ["-n", "--adjustment"] })],
+  ["nohup", wrapperSyntax({})],
+  ["start", wrapperSyntax({})],
+  [
+    "sudo",
+    wrapperSyntax({
+      optionsTakingAValue: ["-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T", "--user", "--group", "--host", "--prompt", "--chdir", "--role", "--type", "--other-user", "--command-timeout", "--close-from"],
+    }),
+  ],
+  ["time", wrapperSyntax({ optionsTakingAValue: ["-f", "-o", "--format", "--output"] })],
+  [
+    "timeout",
+    wrapperSyntax({ optionsTakingAValue: ["-s", "-k", "--signal", "--kill-after"], leadingOperands: 1 }),
+  ],
+  [
+    "xargs",
+    wrapperSyntax({ optionsTakingAValue: ["-I", "-n", "-P", "-L", "-d", "-s", "-E", "-a"] }),
+  ],
+]);
+
+const COMMAND_LOOKUP_OPTIONS: ReadonlySet<string> = new Set(["-v", "-V"]);
+
+const PACKAGE_MANAGER_OPTIONS_TAKING_A_VALUE: ReadonlySet<string> = new Set([
+  "--filter",
+  "-F",
+  "--dir",
+  "-C",
+  "--prefix",
+  "--cwd",
+  "--workspace",
+  "-w",
+  "--reporter",
+  "--loglevel",
+  "--userconfig",
 ]);
 
 const STANDALONE_LAUNCHERS: ReadonlySet<string> = new Set([
@@ -129,48 +173,79 @@ const STANDALONE_LAUNCHERS: ReadonlySet<string> = new Set([
   "uvx",
 ]);
 
-const SHELL_WORD = /"([^"]*)"|'([^']*)'|(\S+)/g;
-
-const shellWordsOf = ({
-  segment,
-}: {
-  readonly segment: string;
-}): readonly string[] =>
-  [...segment.matchAll(SHELL_WORD)].map(
-    (match) => match[1] ?? match[2] ?? match[3] ?? "",
-  );
+const isEnvironmentAssignment = ({ word }: { readonly word: string }): boolean =>
+  /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
 
 const executableNameOf = ({ word }: { readonly word: string }): string =>
   (word.split(/[\\/]/).pop() ?? "")
     .toLowerCase()
     .replace(/\.(?:cmd|exe|ps1|bat|com)$/, "");
 
-const isWrapperArgument = ({ word }: { readonly word: string }): boolean =>
+const isWrapperOption = ({ word }: { readonly word: string }): boolean =>
   word.startsWith("-") ||
   /^\/[a-z]$/i.test(word) ||
-  /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
+  isEnvironmentAssignment({ word });
 
-const launchedWordsOf = ({
+const wordsAfterWrapperOptions = ({
   words,
+  syntax,
 }: {
   readonly words: readonly string[];
+  readonly syntax: WrapperSyntax;
 }): readonly string[] => {
-  const [head, ...rest] = words;
-  if (head === undefined) return [];
-  if (!COMMAND_WRAPPERS.has(executableNameOf({ word: head }))) return words;
-  const launched = rest.findIndex((word) => !isWrapperArgument({ word }));
-  return launched < 0 ? [] : launchedWordsOf({ words: rest.slice(launched) });
+  const [first, ...rest] = words;
+  if (first === undefined) return [];
+  if (!isWrapperOption({ word: first })) return words.slice(syntax.leadingOperands);
+  return wordsAfterWrapperOptions({
+    words: syntax.optionsTakingAValue.has(first) ? rest.slice(1) : rest,
+    syntax,
+  });
 };
 
-const optionsBeforeOperand = ({
+const withoutEnvironmentAssignments = ({
   words,
 }: {
   readonly words: readonly string[];
 }): readonly string[] => {
-  const operand = words.findIndex(
-    (word) => word === "--" || !word.startsWith("-"),
+  const command = words.findIndex((word) => !isEnvironmentAssignment({ word }));
+  return command < 0 ? [] : words.slice(command);
+};
+
+const isCommandLookup = ({
+  executable,
+  rest,
+}: {
+  readonly executable: string;
+  readonly rest: readonly string[];
+}): boolean =>
+  executable === "command" &&
+  rest.some((word) => COMMAND_LOOKUP_OPTIONS.has(word));
+
+const subcommandPositionOf = ({
+  words,
+  index = 0,
+}: {
+  readonly words: readonly string[];
+  readonly index?: number;
+}): number => {
+  const word = words[index];
+  if (word === undefined || word === "--") return -1;
+  if (!word.startsWith("-")) return index;
+  return subcommandPositionOf({
+    words,
+    index: PACKAGE_MANAGER_OPTIONS_TAKING_A_VALUE.has(word) ? index + 2 : index + 1,
+  });
+};
+
+const optionsBeforeSeparator = ({
+  words,
+}: {
+  readonly words: readonly string[];
+}): readonly string[] => {
+  const separator = words.indexOf("--");
+  return (separator < 0 ? words : words.slice(0, separator)).filter((word) =>
+    word.startsWith("-"),
   );
-  return operand < 0 ? words : words.slice(0, operand);
 };
 
 const npmExecForbidsInstalling = ({
@@ -192,7 +267,7 @@ const npmFetchesAndRuns = ({
 }): boolean => {
   if (subcommand === "exec" || subcommand === "x")
     return !npmExecForbidsInstalling({
-      options: optionsBeforeOperand({ words: afterSubcommand }),
+      options: optionsBeforeSeparator({ words: afterSubcommand }),
     });
   if (subcommand === "create") return true;
   if (subcommand === "init")
@@ -200,26 +275,23 @@ const npmFetchesAndRuns = ({
   return false;
 };
 
-const wordsRunAFetchAndRunLauncher = ({
-  words,
+const packageManagerFetchesAndRuns = ({
+  executable,
+  rest,
 }: {
-  readonly words: readonly string[];
+  readonly executable: string;
+  readonly rest: readonly string[];
 }): boolean => {
-  const [head, ...rawArguments] = launchedWordsOf({ words });
-  if (head === undefined) return false;
-  const executable = executableNameOf({ word: head });
-  if (STANDALONE_LAUNCHERS.has(executable)) return true;
-  const lowered = rawArguments.map((word) => word.toLowerCase());
-  const subcommandIndex = lowered.findIndex((word) => !word.startsWith("-"));
-  const subcommand = subcommandIndex < 0 ? undefined : lowered[subcommandIndex];
-  const afterSubcommand =
-    subcommandIndex < 0 ? [] : lowered.slice(subcommandIndex + 1);
+  const lowered = rest.map((word) => word.toLowerCase());
+  const position = subcommandPositionOf({ words: lowered });
+  const subcommand = position < 0 ? undefined : lowered[position];
+  const afterSubcommand = position < 0 ? [] : lowered.slice(position + 1);
   switch (executable) {
     case "bun":
       return subcommand === "x" || subcommand === "create";
     case "pnpm":
     case "yarn":
-      return lowered.includes("dlx") || subcommand === "create";
+      return subcommand === "dlx" || subcommand === "create";
     case "npm":
       return npmFetchesAndRuns({ subcommand, afterSubcommand });
     case "uv":
@@ -231,20 +303,34 @@ const wordsRunAFetchAndRunLauncher = ({
   }
 };
 
+const wordsRunAFetchAndRunLauncher = ({
+  words,
+}: {
+  readonly words: readonly string[];
+}): boolean => {
+  const [head, ...rest] = withoutEnvironmentAssignments({ words });
+  if (head === undefined) return false;
+  const executable = executableNameOf({ word: head });
+  if (STANDALONE_LAUNCHERS.has(executable)) return true;
+  if (executable === "eval")
+    return commandRunsAFetchAndRunLauncher({ command: rest.join(" ") });
+  if (isCommandLookup({ executable, rest })) return false;
+  const wrapper = COMMAND_WRAPPERS.get(executable);
+  if (wrapper !== undefined)
+    return wordsRunAFetchAndRunLauncher({
+      words: wordsAfterWrapperOptions({ words: rest, syntax: wrapper }),
+    });
+  return packageManagerFetchesAndRuns({ executable, rest });
+};
+
 const commandRunsAFetchAndRunLauncher = ({
   command,
 }: {
   readonly command: string;
 }): boolean =>
-  command
-    .split(COMMAND_HEAD_SEPARATORS)
-    .some((segment) =>
-      wordsRunAFetchAndRunLauncher({
-        words: shellWordsOf({
-          segment: segment.replace(leadingEnvAssignments, ""),
-        }),
-      }),
-    );
+  simpleCommandsOf({ source: command }).some((words) =>
+    wordsRunAFetchAndRunLauncher({ words }),
+  );
 
 const splitTopLevelSegments = ({
   command,

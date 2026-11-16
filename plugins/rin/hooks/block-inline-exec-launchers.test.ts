@@ -48,9 +48,55 @@ const FETCH_AND_RUN_LAUNCHES = [
   "npm x pkg",
   "npm create vite",
   "npm init vite",
+  "npm exec --no pkg --yes",
+  "npm exec --no vitest -y",
   "uvx ruff check",
   "uv tool run ruff check",
   "pipx run black .",
+  'echo "$(npx pkg)"',
+  'git commit -m "$(npx pkg)"',
+  "cat <<EOF\n$(npx pkg)\nEOF",
+  "cat <<'EOF'\nplain text\nEOF\nnpx pkg",
+  "FOO='a b' npx pkg",
+  'FOO="a b" bunx pkg',
+  "sudo -u ci npx pkg",
+  "env -u FOO npx pkg",
+  "timeout 60 npx pkg",
+  "timeout -s KILL 60 bunx pkg",
+  "nice npx pkg",
+  "nice -n 5 npx pkg",
+  "nice -5 npx pkg",
+  "xargs -n 1 npx pkg",
+  "eval npx pkg",
+  'eval "npx pkg"',
+  "command npx pkg",
+] as const;
+
+const LAUNCHER_WORDS_AS_DATA = [
+  'git commit -m "a; npx b"',
+  'git commit -m "first line\nnpx is no longer approved\n(npx b) neither"',
+  "git commit -m \"$(cat <<'EOF'\nfix(rin): deny launchers\n\nnpx foo is denied\n(npx bar) too\nEOF\n)\"",
+  'git commit -m "fix: deny launchers (npx and bunx)"',
+  'gh pr create --title "stop approving npx" --body "The gate (npx included) now denies."',
+  'gh issue create --title "launchers" --body "Steps:\nnpx foo\nthen bunx bar"',
+  'echo "use; npx here"',
+  "rg 'foo|npx x' src",
+  "jq '.scripts | to_entries[] | select(.value | test(\"npx\"))' package.json",
+  "printf 'a\\n' && printf \"%s\" \"(npx foo)\"",
+  "cat <<'EOF' > docs/x.md\nRun npx foo to see the old way.\nnpx bar\nEOF",
+  "echo '$(npx pkg)'",
+  "echo ${HOME}/npx",
+  "git log --grep npx # npx in a comment; bunx too",
+] as const;
+
+const SUBCOMMAND_LOOKALIKES = [
+  "pnpm test dlx",
+  "pnpm run build -- dlx",
+  "pnpm --filter dlx build",
+  "pnpm add -D dlx",
+  "yarn add dlx",
+  "command -v npx",
+  "command -V bunx",
 ] as const;
 
 const WRAPPED_FORMS = [
@@ -183,8 +229,18 @@ describe("block-inline-exec keeps in-repository tooling runnable", () => {
   });
 });
 
+describe("block-inline-exec judges only what the shell would run as a command", () => {
+  test.each(LAUNCHER_WORDS_AS_DATA)("passes %s", async (command) => {
+    expect(await decisionFor({ command })).toBeUndefined();
+  });
+
+  test.each(SUBCOMMAND_LOOKALIKES)("passes %s", async (command) => {
+    expect(await decisionFor({ command })).toBeUndefined();
+  });
+});
+
 describe("the launcher rule cannot be lifted by an authorised location", () => {
-  test("denies a launcher naming a script under a declared authorised location", async () => {
+  const decisionInAuthorisedProject = async ({ command }: { readonly command: string }) => {
     const projectDirectory = files.makeTemporaryDirectory(
       paths.join({ segments: [files.temporaryRoot(), "inline-exec-launcher-authorised-"] }),
     );
@@ -201,13 +257,23 @@ describe("the launcher rule cannot be lifted by an authorised location", () => {
       const outcome = await invokeBashHook({
         hookFileName: INLINE_EXEC_HOOK,
         hookPath,
-        command: "npx tsx scripts/tasks/migrate.ts",
+        command,
         runtime: "bun",
       });
-      expect(permissionDecisionFrom({ stdout: outcome.stdout }).hookSpecificOutput?.permissionDecision).toBe("deny");
+      return permissionDecisionFrom({ stdout: outcome.stdout }).hookSpecificOutput?.permissionDecision;
     } finally {
       files.remove(projectDirectory, { recursive: true, force: true });
     }
+  };
+
+  test.each([
+    { command: "node scripts/tasks/migrate.mjs", expected: undefined },
+    { command: "python3 scripts/tasks/migrate.py", expected: undefined },
+    { command: "npx node scripts/tasks/migrate.mjs", expected: "deny" },
+    { command: "bunx bun scripts/tasks/migrate.ts", expected: "deny" },
+    { command: "pnpm dlx python3 scripts/tasks/migrate.py", expected: "deny" },
+  ])("in a project authorising scripts/, $command is decided $expected", async ({ command, expected }) => {
+    expect(await decisionInAuthorisedProject({ command })).toBe(expected);
   });
 });
 
