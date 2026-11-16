@@ -18,13 +18,23 @@ const PACKAGE_PATH = "/package/";
 
 const PACKAGE_BASE = `file://${PACKAGE_PATH}`;
 
-const NOT_RELATIVE =/^(?:[a-z][a-z0-9+.-]*:|#)/i;
+const NOT_RELATIVE = /^(?:[a-z][a-z0-9+.-]*:|#)/i;
 
 const NODE_MODULES_SEGMENT = /(?:^|\/)node_modules\//g;
 
-const lockSchema = z.object({
-  packages: z.record(z.string(), z.tuple([z.string()]).rest(z.unknown())),
-});
+const PACKAGE_PATH_SEPARATOR = "/";
+
+const PACKAGE_NAME_IN_KEY = /@[^/]+\/[^/]+|[^/]+/g;
+
+const dependenciesSchema = z.record(z.string(), z.string());
+
+const lockedPackageSchema = z
+  .tuple([z.string(), z.string(), z.object({ dependencies: dependenciesSchema.optional(), optionalDependencies: dependenciesSchema.optional() })])
+  .rest(z.unknown());
+
+const lockSchema = z.object({ packages: z.record(z.string(), lockedPackageSchema) });
+
+type LockedPackages = z.output<typeof lockSchema>["packages"];
 
 const jsonc = createDefaultJsoncParsePort({ trailingCommas: "allowed" });
 
@@ -33,6 +43,45 @@ const lockKeyOf = (request: { readonly root: string }): string =>
 
 const versionOfResolution = (request: { readonly resolution: string }): string =>
   request.resolution.slice(request.resolution.lastIndexOf("@") + 1);
+
+const packagePathOf = (request: { readonly key: string }): readonly string[] => request.key.match(PACKAGE_NAME_IN_KEY) ?? [];
+
+const resolvedKeyOf = (request: {
+  readonly dependent: readonly string[];
+  readonly name: string;
+  readonly locked: LockedPackages;
+}): string | undefined =>
+  request.dependent
+    .map((_, index) => [...request.dependent.slice(0, request.dependent.length - index), request.name].join(PACKAGE_PATH_SEPARATOR))
+    .concat(request.name)
+    .find((key) => Object.hasOwn(request.locked, key));
+
+const dependencyKeysOf = (request: { readonly key: string; readonly locked: LockedPackages }): readonly string[] => {
+  const dependencySections = request.locked[request.key]?.[2];
+  const dependent = packagePathOf({ key: request.key });
+  return Object.keys({ ...dependencySections?.dependencies, ...dependencySections?.optionalDependencies }).flatMap((name) => {
+    const resolved = resolvedKeyOf({ dependent, name, locked: request.locked });
+    return resolved === undefined ? [] : [resolved];
+  });
+};
+
+const closureOf = (request: {
+  readonly pending: readonly string[];
+  readonly reached: ReadonlySet<string>;
+  readonly locked: LockedPackages;
+}): ReadonlySet<string> => {
+  const [key, ...rest] = request.pending;
+  if (key === undefined) {
+    return request.reached;
+  }
+  return request.reached.has(key)
+    ? closureOf({ ...request, pending: rest })
+    : closureOf({
+        pending: [...rest, ...dependencyKeysOf({ key, locked: request.locked })],
+        reached: new Set([...request.reached, key]),
+        locked: request.locked,
+      });
+};
 
 type ExternalImport = "builtin" | "peer" | "unbundled";
 
@@ -75,29 +124,42 @@ export const misplacedEntriesOf = (request: {
 
 const lockProblemOf = (request: {
   readonly bundled: BundledPackageVersion;
-  readonly locked: Readonly<Record<string, readonly [string, ...unknown[]]>>;
+  readonly locked: LockedPackages;
+  readonly closure: ReadonlySet<string>;
 }): readonly string[] => {
   const label = `${request.bundled.name} ${request.bundled.version} at ${request.bundled.root}`;
-  const resolution = request.locked[lockKeyOf({ root: request.bundled.root })]?.[0];
+  const key = lockKeyOf({ root: request.bundled.root });
+  const resolution = request.locked[key]?.[0];
   const locked = resolution === undefined ? undefined : versionOfResolution({ resolution });
   if (locked === undefined) {
     return [`${label}, which the lock does not hold`];
   }
-  return locked === request.bundled.version ? [] : [`${label}, but the lock holds ${locked}`];
+  if (locked !== request.bundled.version) {
+    return [`${label}, but the lock holds ${locked}`];
+  }
+  return request.closure.has(key) ? [] : [`${label}, which is not in the closure of core's dependencies in the lock`];
 };
 
 export const unlockedPackagesOf = (request: {
   readonly bundled: readonly BundledPackageVersion[];
   readonly lockText: string;
+  readonly dependencies: readonly string[];
 }): Result<readonly string[], string> => {
   const document = jsonc.parse({ source: request.lockText });
   if (document.outcome === "failed") {
     return { outcome: "failed", error: document.error.detail };
   }
   const lock = lockSchema.safeParse(document.value);
-  return lock.success
-    ? { outcome: "ok", value: request.bundled.flatMap((bundled) => lockProblemOf({ bundled, locked: lock.data.packages })) }
-    : { outcome: "failed", error: z.prettifyError(lock.error) };
+  if (!lock.success) {
+    return { outcome: "failed", error: z.prettifyError(lock.error) };
+  }
+  const locked = lock.data.packages;
+  const unheld = request.dependencies.find((name) => !Object.hasOwn(locked, name));
+  if (unheld !== undefined) {
+    return { outcome: "failed", error: `core depends on ${unheld}, which the lock does not hold` };
+  }
+  const closure = closureOf({ pending: request.dependencies, reached: new Set(), locked });
+  return { outcome: "ok", value: request.bundled.flatMap((bundled) => lockProblemOf({ bundled, locked, closure })) };
 };
 
 const resolvedLink = (request: { readonly page: string; readonly link: string }): string => {

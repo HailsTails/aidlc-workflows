@@ -254,6 +254,28 @@ describe("buildPackage", () => {
     });
   });
 
+  it("fails naming a bundled package the lock holds only for development, outside the closure of core's dependencies, writing nothing", async () => {
+    const { files, built } = builtWith({
+      source: {
+        ...SOURCE,
+        "/package/bun.lock":
+          '{ "lockfileVersion": 1, "packages": { "is-glob": ["is-glob@4.0.3", "", {}, "sha512-b"], "zod": ["zod@4.4.3", "", {}, "sha512-a"], }, }',
+        "/deps/is-glob/package.json": '{ "name": "is-glob", "version": "4.0.3", "license": "MIT" }',
+        "/deps/is-glob/LICENSE": "MIT License\n",
+      },
+      bundler: bundlerReturning({ outcome: "ok", value: { ...BUNDLE, packageRoots: ["node_modules/zod", "node_modules/is-glob"] } }),
+    });
+
+    expect({ result: await built, written: files.textsUnder({ folder: "/out" }) }).toEqual({
+      result: {
+        outcome: "failed",
+        error:
+          "FAIL: bundle: a bundled package is not the one bun.lock locks: is-glob 4.0.3 at node_modules/is-glob, which is not in the closure of core's dependencies in the lock",
+      },
+      written: NOTHING_WRITTEN,
+    });
+  });
+
   it("fails naming a shipped page that links to a file the package does not ship, writing nothing", async () => {
     const { files, built } = builtWith({
       source: { ...SOURCE, "/package/README.md": "# Discipline core\n\n[Proof](tests/test-fixtures/walkthrough/)\n" },

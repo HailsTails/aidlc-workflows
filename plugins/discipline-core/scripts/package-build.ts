@@ -6,8 +6,8 @@ import type { Result } from "../core/values/result.ts";
 import type { Bundle, BundlerPort } from "./esbuild-bundler-port.ts";
 import type { CopiedEntry, ScratchFilesPort } from "./install-proof-ports.ts";
 import type { EntryDisposition } from "./install-proof-plan.ts";
-import { peerNamesOf, publishManifestOf } from "./published-manifest.ts";
 import { deadLinksOf, misplacedEntriesOf, unbundledImportsOf, unlockedPackagesOf } from "./package-guards.ts";
+import { dependencyNamesOf, peerNamesOf, publishManifestOf } from "./published-manifest.ts";
 import { PACKAGE_IDENTITY } from "./package-identity.ts";
 import {
   type BundledPackage,
@@ -302,13 +302,14 @@ const bundledPackageOf = (request: {
 const lockedPackagesOf = (request: {
   readonly context: BuildContext;
   readonly packages: readonly BundledPackageAt[];
+  readonly dependencies: readonly string[];
 }): Built<readonly BundledPackageAt[]> => {
   const lockPath = sourceFile({ context: request.context, path: INSTALL_LOCK.join("/") });
   const lockText = readText({ context: request.context, path: lockPath });
   if (lockText.outcome === "failed") {
     return lockText;
   }
-  const unlocked = unlockedPackagesOf({ bundled: request.packages, lockText: lockText.value });
+  const unlocked = unlockedPackagesOf({ bundled: request.packages, lockText: lockText.value, dependencies: request.dependencies });
   if (unlocked.outcome === "failed") {
     return failedWith({ label: `read ${lockPath}`, detail: unlocked.error });
   }
@@ -323,6 +324,7 @@ const bundledInStage = async (request: {
   readonly context: BuildContext;
   readonly plan: PackagePlan;
   readonly peers: readonly string[];
+  readonly dependencies: readonly string[];
   readonly sourceRoot: string;
 }): Promise<Built<StagedBundle>> => {
   const staged = stagedSource(request);
@@ -339,7 +341,7 @@ const bundledInStage = async (request: {
   if (packages.outcome === "failed") {
     return packages;
   }
-  const locked = lockedPackagesOf({ context: request.context, packages: packages.value });
+  const locked = lockedPackagesOf({ context: request.context, packages: packages.value, dependencies: request.dependencies });
   return locked.outcome === "failed" ? locked : { outcome: "ok", value: { bundle: bundle.value, packages: locked.value } };
 };
 
@@ -347,6 +349,7 @@ const stagedBundleOf = async (request: {
   readonly context: BuildContext;
   readonly plan: PackagePlan;
   readonly peers: readonly string[];
+  readonly dependencies: readonly string[];
 }): Promise<Built<StagedBundle>> => {
   const stage = request.context.scratch.createTemporaryDirectory({ prefix: STAGE_PREFIX });
   if (stage.outcome === "failed") {
@@ -455,7 +458,11 @@ const packageFilesOf = async (request: { readonly context: BuildContext }): Prom
   if (peers.outcome === "failed") {
     return failedWith({ label: MANIFEST, detail: peers.error.detail });
   }
-  const staged = await stagedBundleOf({ context: request.context, plan: plan.value, peers: peers.value });
+  const dependencies = dependencyNamesOf({ developmentManifest: developmentManifest.value });
+  if (dependencies.outcome === "failed") {
+    return failedWith({ label: MANIFEST, detail: dependencies.error.detail });
+  }
+  const staged = await stagedBundleOf({ context: request.context, plan: plan.value, peers: peers.value, dependencies: dependencies.value });
   if (staged.outcome === "failed") {
     return staged;
   }

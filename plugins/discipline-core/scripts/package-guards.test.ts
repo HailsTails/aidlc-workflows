@@ -89,9 +89,13 @@ const LOCK = `{
     "": { "dependencies": { "zod": "4.4.3" } },
   },
   "packages": {
-    "@eslint/plugin-kit": ["@eslint/plugin-kit@0.7.3", "", { "dependencies": { "levn": "^0.4.1" } }, "sha512-a"],
+    "@eslint/core": ["@eslint/core@0.9.0", "", {}, "sha512-e"],
+    "@eslint/plugin-kit": ["@eslint/plugin-kit@0.7.3", "", { "dependencies": { "@eslint/core": "^1.2.1", "levn": "^0.4.1" } }, "sha512-a"],
     "@eslint/plugin-kit/@eslint/core": ["@eslint/core@1.2.1", "", {}, "sha512-b"],
-    "levn": ["levn@0.4.1", "", {}, "sha512-c"],
+    "is-glob": ["is-glob@4.0.3", "", { "optionalDependencies": { "is-extglob": "^2.1.1" } }, "sha512-f"],
+    "is-extglob": ["is-extglob@2.1.1", "", {}, "sha512-g"],
+    "levn": ["levn@0.4.1", "", { "optionalDependencies": { "type-check": "~0.4.0" } }, "sha512-c"],
+    "type-check": ["type-check@0.4.0", "", {}, "sha512-h"],
     "zod": ["zod@4.4.3", "", {}, "sha512-d"],
   }
 }
@@ -105,10 +109,33 @@ describe("unlockedPackagesOf", () => {
           { root: "node_modules/zod", name: "zod", version: "4.4.3" },
           { root: "node_modules/levn", name: "levn", version: "0.4.1" },
           { root: "node_modules/@eslint/plugin-kit/node_modules/@eslint/core", name: "@eslint/core", version: "1.2.1" },
+          { root: "node_modules/type-check", name: "type-check", version: "0.4.0" },
         ],
         lockText: LOCK,
+        dependencies: ["zod", "@eslint/plugin-kit"],
       }),
     ).toEqual({ outcome: "ok", value: [] });
+  });
+
+  it("names a bundled package the lock holds only for development, outside the closure of core's dependencies", () => {
+    expect(
+      unlockedPackagesOf({
+        bundled: [
+          { root: "node_modules/is-glob", name: "is-glob", version: "4.0.3" },
+          { root: "node_modules/is-extglob", name: "is-extglob", version: "2.1.1" },
+          { root: "node_modules/@eslint/core", name: "@eslint/core", version: "0.9.0" },
+        ],
+        lockText: LOCK,
+        dependencies: ["zod", "@eslint/plugin-kit"],
+      }),
+    ).toEqual({
+      outcome: "ok",
+      value: [
+        "is-glob 4.0.3 at node_modules/is-glob, which is not in the closure of core's dependencies in the lock",
+        "is-extglob 2.1.1 at node_modules/is-extglob, which is not in the closure of core's dependencies in the lock",
+        "@eslint/core 0.9.0 at node_modules/@eslint/core, which is not in the closure of core's dependencies in the lock",
+      ],
+    });
   });
 
   it("names a package bundled at another version, one the lock does not hold, and one from outside core's own install", () => {
@@ -116,23 +143,31 @@ describe("unlockedPackagesOf", () => {
       unlockedPackagesOf({
         bundled: [
           { root: "node_modules/zod", name: "zod", version: "4.4.2" },
-          { root: "node_modules/type-check", name: "type-check", version: "0.4.0" },
+          { root: "node_modules/prelude-ls", name: "prelude-ls", version: "1.2.1" },
           { root: "../../node_modules/levn", name: "levn", version: "0.4.1" },
         ],
         lockText: LOCK,
+        dependencies: ["zod", "@eslint/plugin-kit"],
       }),
     ).toEqual({
       outcome: "ok",
       value: [
         "zod 4.4.2 at node_modules/zod, but the lock holds 4.4.3",
-        "type-check 0.4.0 at node_modules/type-check, which the lock does not hold",
+        "prelude-ls 1.2.1 at node_modules/prelude-ls, which the lock does not hold",
         "levn 0.4.1 at ../../node_modules/levn, which the lock does not hold",
       ],
     });
   });
 
+  it("fails naming a dependency of core the lock does not hold", () => {
+    expect(unlockedPackagesOf({ bundled: [], lockText: LOCK, dependencies: ["zod", "esbuild"] })).toEqual({
+      outcome: "failed",
+      error: "core depends on esbuild, which the lock does not hold",
+    });
+  });
+
   it("fails when the lock is not a bun lock", () => {
-    expect(unlockedPackagesOf({ bundled: [], lockText: "{}" })).toMatchObject({ outcome: "failed" });
+    expect(unlockedPackagesOf({ bundled: [], lockText: "{}", dependencies: [] })).toMatchObject({ outcome: "failed" });
   });
 });
 

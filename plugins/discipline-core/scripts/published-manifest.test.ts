@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { peerNamesOf, publishManifestOf } from "./published-manifest.ts";
+import { dependencyNamesOf, peerNamesOf, publishManifestOf } from "./published-manifest.ts";
 
 const DEVELOPMENT_MANIFEST = {
   version: "0.0.0",
@@ -74,5 +74,15 @@ describe("peerNamesOf", () => {
 
   it("names the development manifest invalid when it declares no peers", () => {
     expect(peerNamesOf({ developmentManifest: "{}" })).toMatchObject({ outcome: "failed", error: { kind: "manifest-invalid" } });
+  });
+});
+
+describe("dependencyNamesOf", () => {
+  it("names each runtime dependency, leaving out development ones", () => {
+    expect(dependencyNamesOf({ developmentManifest: JSON.stringify(DEVELOPMENT_MANIFEST) })).toEqual({ outcome: "ok", value: ["zod"] });
+  });
+
+  it("names the development manifest invalid when it declares no dependencies", () => {
+    expect(dependencyNamesOf({ developmentManifest: "{}" })).toMatchObject({ outcome: "failed", error: { kind: "manifest-invalid" } });
   });
 });
