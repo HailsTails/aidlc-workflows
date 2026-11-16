@@ -16,6 +16,8 @@ const HONED_RELEASE_URL = "https://github.com/HailsTails/hone/releases/download/
 
 const HONED_RELEASE_INTEGRITY = "sha512-GdDzVrkdpf0nx0f5W3xhJNyGWlFAiQpuUbaC+Bhhrxk8vo35AuHEjXk3jhbjn+ZZNYwUM3mMQhagZScNxV476Q==";
 
+const CONDITIONAL_KEY_LINE = /^\s*(?:-\s+)?["']?if["']?\s*:/m;
+
 const constitutionScopeSchema = z.object({ constitution: z.object({ include: z.array(z.string()) }) });
 
 const developmentManifestSchema = z.object({
@@ -32,9 +34,8 @@ const FORK_INSTALL_STEP = `      - name: Install dependencies
         run: bun install --frozen-lockfile
 `;
 
-const WINDOWS_JOB_STEPS = `  discipline-core-windows:
-    name: Discipline core on Windows
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+const WINDOWS_JOB_STEPS = `  hone-windows:
+    name: Hone on Windows
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -48,7 +49,6 @@ ${NODE_SETUP_STEP}${FORK_INSTALL_STEP}      - name: Prove rin's Hone check resol
 
 const SOURCE_CHECKS_JOB_START = `  source-checks:
     name: Source checks
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -68,6 +68,10 @@ describe("the fork as a consumer of the pinned honed release (CD-47: what this r
 
   it("goes straight from installing the fork to its source checks, with no core source to build, in the source-checks job", () => {
     expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(SOURCE_CHECKS_JOB_START);
+  });
+
+  it("never conditionally skips a required job or any of its steps, because a skipped job counts as a passing required check", () => {
+    expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).not.toMatch(CONDITIONAL_KEY_LINE);
   });
 
   it("runs the honed resolution tests by name", () => {

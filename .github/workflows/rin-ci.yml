@@ -14,9 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  discipline-core-windows:
-    name: Discipline core on Windows
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+  hone-windows:
+    name: Hone on Windows
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -34,7 +33,6 @@ jobs:
 
   source-checks:
     name: Source checks
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
