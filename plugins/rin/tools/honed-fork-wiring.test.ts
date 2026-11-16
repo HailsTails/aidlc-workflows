@@ -32,9 +32,8 @@ const FORK_INSTALL_STEP = `      - name: Install dependencies
         run: bun install --frozen-lockfile
 `;
 
-const WINDOWS_JOB_STEPS = `  discipline-core-windows:
-    name: Discipline core on Windows
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+const WINDOWS_JOB_STEPS = `  hone-windows:
+    name: Hone on Windows
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -48,7 +47,6 @@ ${NODE_SETUP_STEP}${FORK_INSTALL_STEP}      - name: Prove rin's Hone check resol
 
 const SOURCE_CHECKS_JOB_START = `  source-checks:
     name: Source checks
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -68,6 +66,10 @@ describe("the fork as a consumer of the pinned honed release (CD-47: what this r
 
   it("goes straight from installing the fork to its source checks, with no core source to build, in the source-checks job", () => {
     expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(SOURCE_CHECKS_JOB_START);
+  });
+
+  it("runs both required jobs on draft pull requests, because a skipped job counts as a passing required check", () => {
+    expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).not.toContain("pull_request.draft");
   });
 
   it("runs the honed resolution tests by name", () => {
