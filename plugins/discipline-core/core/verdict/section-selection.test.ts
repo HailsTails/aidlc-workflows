@@ -17,7 +17,7 @@ const excluded: ReportSection = { name: "excluded", lines: ["generated"] };
 
 const exempted: ReportSection = {
   name: "exempted",
-  lines: ["CD-17#clock-sources audit src/clock.ts:2:9 Date.now() exempted by authorised-location"],
+  lines: ["CD-23#export-test-sibling audit src/clock.ts:1:0 missing co-located test sibling exempted by authorised-location"],
 };
 
 describe("printedSectionLines", () => {
