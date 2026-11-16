@@ -28,7 +28,7 @@ describe("t-phase-check-has-one-owner", () => {
       }
       expect(governance).toContain("### Phase boundary checks");
       expect(read(join(protocols, "stage-protocol.md"))).not.toContain("stage-protocol-governance.md");
-      if (harness.manifest.harnessDir !== ".kiro") {
+      if (harness.manifest.tierFlavor !== "kiro") {
         for (const file of conductorSkillPaths(name, join(harness.skillsRoot, "aidlc"))) {
           expect(read(file), file).not.toContain("stage-protocol-governance.md");
         }

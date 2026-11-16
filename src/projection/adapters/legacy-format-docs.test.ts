@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { kiroKnowledgePreflightClause } from "../../../core/tools/aidlc-inline-context.ts";
 import { knowledgeReadingGuides, shippedFormatDocuments, delegatedSharedKnowledge } from "./legacy-format-docs.ts";
 
 test("the frozen format roster supplies the shared knowledge exclusions", () => {
@@ -14,8 +13,10 @@ test("delegated preflight reads its exact shared-knowledge exclusions from the f
 test("the in-parts reading guide is the shipped runtime's own Kiro preflight clause", () => {
   expect(knowledgeReadingGuides(".kiro")).toEqual({
     ["whole-files"]: "",
-    ["in-parts"]: kiroKnowledgePreflightClause(".kiro"),
+    ["in-parts"]: "To find them, list each of these folders with your file tool, one folder per call, and any "
+      + "folder inside one the same way; a folder that is not there has nothing to load, and a shell line that "
+      + "lists, searches or reads them can stop and ask the person to approve it. Kiro shows only part of a long "
+      + "file: read each one with your file tool in parts of at most 200 lines (offset and limit), from the "
+      + "first line to the last; a read that comes back cut short is not all of it. ",
   });
-  expect(knowledgeReadingGuides(".kiro")["in-parts"]).toStartWith(
-    "To find them, list each of these folders with your file tool, one folder per call");
 });

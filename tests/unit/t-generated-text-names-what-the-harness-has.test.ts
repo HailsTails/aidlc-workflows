@@ -75,7 +75,7 @@ describe("t-generated-text-names-what-the-harness-has", () => {
   });
 
   test.each(
-    HARNESS_MATRIX.filter((harness) => harness.manifest.harnessDir === ".kiro").map(
+    HARNESS_MATRIX.filter((harness) => harness.manifest.tierFlavor === "kiro").map(
       (harness) => [harness.name, harness] as const,
     ),
   )("%s: the native install names the aidlc agent it ships", (name) => {
