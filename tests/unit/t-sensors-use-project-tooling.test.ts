@@ -1,5 +1,6 @@
 // covers: tool:aidlc-project-tool, tool:aidlc-sensor-linter, tool:aidlc-sensor-type-check
 import { afterAll, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -102,19 +103,30 @@ describe("resolveProjectTool reads the project's own dependency tree", () => {
 		expect(resolveProjectTool({ projectRoot: project, packageName: "eslint", binName: "eslint" })).toBeNull();
 	});
 
-	test("an executable on PATH is never consulted", () => {
-		const shadow = temporaryProject();
-		installPackage({ directory: shadow, name: "eslint", version: "6.4.0",
-			bin: { eslint: "./bin/eslint.js" }, binFile: "bin/eslint.js" });
-		const previousPath = process.env.PATH;
-		process.env.PATH = [join(shadow, "node_modules", ".bin"), join(shadow, "node_modules", "eslint", "bin"), previousPath].join(
-			process.platform === "win32" ? ";" : ":");
-		try {
-			expect(resolveProjectTool({ projectRoot: temporaryProject(), packageName: "eslint", binName: "eslint" })).toBeNull();
-		} finally {
-			process.env.PATH = previousPath;
-		}
-	});
+	test.each([["eslint", "eslint"], ["typescript", "tsc"]])(
+		"a %s executable named %s on PATH is never adopted",
+		(packageName, binName) => {
+			const workspace = temporaryProject();
+			const shadowBin = join(workspace, "shadow-bin");
+			mkdirSync(shadowBin, { recursive: true });
+			writeFileSync(join(shadowBin, binName), "#!/bin/sh\necho shadow\n", { mode: 0o755 });
+			writeFileSync(join(shadowBin, `${binName}.cmd`), "@echo shadow\r\n");
+			const probe = join(workspace, "probe.ts");
+			writeFileSync(probe, [
+				`import { resolveProjectTool } from ${JSON.stringify(join(REPO_ROOT, "core", "tools", "aidlc-project-tool.ts"))};`,
+				`const request = ${JSON.stringify({ projectRoot: temporaryProject(), packageName, binName })};`,
+				`console.log(JSON.stringify({ onPath: Bun.which(request.binName), resolved: resolveProjectTool(request) }));`,
+			].join("\n"));
+			const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
+			const shadowedPath = [shadowBin, process.env[pathKey]].join(process.platform === "win32" ? ";" : ":");
+			const result = spawnSync(process.execPath, [probe], {
+				encoding: "utf-8", env: { ...process.env, [pathKey]: shadowedPath },
+			});
+			const observed = JSON.parse(result.stdout) as { onPath: string | null; resolved: unknown };
+			expect(observed.onPath, result.stderr).not.toBeNull();
+			expect(observed.resolved).toBeNull();
+		},
+	);
 
 	test("resolves this repository's lockfile-installed tools", () => {
 		for (const [packageName, binName] of [["eslint", "eslint"], ["typescript", "tsc"], ["@biomejs/biome", "biome"]]) {
@@ -123,10 +135,21 @@ describe("resolveProjectTool reads the project's own dependency tree", () => {
 	});
 });
 
-describe("projectToolCommand runs the installed CLI under the current runtime", () => {
-	test("names the resolved CLI file, never a fetch-and-run launcher", () => {
-		const command = projectToolCommand(eslintAt("10.11.0"), ["--version"]);
-		expect(command).toEqual({ executable: process.execPath, args: ["/repo/node_modules/eslint/bin/eslint.js", "--version"] });
+describe("projectToolCommand runs the installed CLI under a JavaScript runtime", () => {
+	test("from source, the running Bun runs the resolved CLI file", () => {
+		expect(projectToolCommand(eslintAt("10.11.0"), ["--version"], null)).toEqual({
+			executable: process.execPath,
+			args: ["/repo/node_modules/eslint/bin/eslint.js", "--version"],
+			environment: {},
+		});
+	});
+
+	test("from the compiled binary, the binary runs the CLI file as Bun", () => {
+		expect(projectToolCommand(eslintAt("10.11.0"), ["--version"], "/opt/aidlc/aidlc")).toEqual({
+			executable: "/opt/aidlc/aidlc",
+			args: ["/repo/node_modules/eslint/bin/eslint.js", "--version"],
+			environment: { BUN_BE_BUN: "1" },
+		});
 	});
 });
 

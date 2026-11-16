@@ -23,6 +23,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -843,6 +844,63 @@ function sensorFireGate(artifact: string): GateResult {
       {
         expected: "bundled required-sections script emits a real terminal sensor event",
         actual: /SENSOR_(PASSED|FAILED)/.test(audit) ? "terminal event emitted" : output.trim(),
+      },
+    );
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+}
+
+function failedSensorIds(audit: string): string[] {
+  return audit
+    .split(/^---$/m)
+    .filter((block) => block.includes("**Event**: SENSOR_FAILED"))
+    .map((block) => /\*\*Sensor ID\*\*: (\S+)/.exec(block)?.[1] ?? "");
+}
+
+function bundledCodeSensorsGate(artifact: string): GateResult {
+  const project = installedProject("aidlc-binary-code-sensors-");
+  try {
+    symlinkSync(
+      join(REPO_ROOT, "node_modules"),
+      join(project, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const code = join(project, "code");
+    mkdirSync(code, { recursive: true });
+    writeFileSync(join(code, "package.json"), '{"name":"binary-code-sensors","type":"module","private":true}\n');
+    writeFileSync(join(code, "eslint.config.js"), 'export default [{ files: ["**/*.js"], rules: { "no-unused-vars": "error" } }];\n');
+    writeFileSync(join(code, "tsconfig.json"), '{"compilerOptions":{"strict":true,"noEmit":true,"skipLibCheck":true},"include":["*.ts"]}\n');
+    writeFileSync(join(code, "lint.js"), "const unused = 1;\nexport const used = 2;\n");
+    writeFileSync(join(code, "typed.ts"), 'export const count: number = "not a number";\n');
+    const env = pathlessEnv(project);
+    const createResult = run(
+      artifact,
+      ["engine", "intent", "create", "--scope", "poc", "--label", "code-sensor-gate", "--project-dir", project],
+      { cwd: project, env, timeoutMs: DEFAULT_SUBPROCESS_TIMEOUT_MS },
+    );
+    const fire = (id: string, file: string): CommandResult =>
+      run(
+        artifact,
+        ["engine", "sensor", "fire", id, "--stage", "code-generation", "--output-path", join(code, file), "--project-dir", project],
+        { cwd: project, env, timeoutMs: LONG_SUBPROCESS_TIMEOUT_MS },
+      );
+    const linter = fire("linter", "lint.js");
+    const typeCheck = fire("type-check", "typed.ts");
+    const failed = failedSensorIds(textFilesUnder(join(project, "aidlc", "spaces")));
+    const output = [linter, typeCheck].map((result) => `${result.stdout}\n${result.stderr}`).join("\n");
+    return commandGate(
+      "bundled-code-sensors",
+      typeCheck,
+      createResult.status === 0 &&
+        linter.status === 0 &&
+        typeCheck.status === 0 &&
+        failed.includes("linter") &&
+        failed.includes("type-check") &&
+        !runtimeCrash(output),
+      {
+        expected: "bundled linter and type-check run the project's installed ESLint and tsc and report real findings",
+        actual: `failed sensors: ${failed.join(", ") || "none"}\n${output.trim()}`,
       },
     );
   } finally {
@@ -2450,6 +2508,7 @@ function buildTarget(target: TargetConfig): TargetResult {
     result.gates.push(helpGate(actual.artifact));
     result.gates.push(sensorListGate(actual.artifact));
     result.gates.push(sensorFireGate(actual.artifact));
+    result.gates.push(bundledCodeSensorsGate(actual.artifact));
     result.gates.push(graphCompileGate(actual.artifact));
     result.gates.push(packagedRuntimeImmutableGate(actual.artifact));
     result.gates.push(validateOutputsGate(actual.artifact));

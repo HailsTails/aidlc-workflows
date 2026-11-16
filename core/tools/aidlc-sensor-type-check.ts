@@ -187,6 +187,7 @@ function runTsc(opts: {
 		encoding: "utf-8",
 		timeout: LONG_SUBPROCESS_TIMEOUT_MS,
 		cwd: opts.cwd,
+		env: { ...process.env, ...command.environment },
 	});
 	// Partial diagnostics (or none) after a kill do not prove a clean compile.
 	// Preserve the dispatcher's script-error path instead of emitting pass:true.

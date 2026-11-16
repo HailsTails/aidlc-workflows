@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { compiledExecutable } from "./aidlc-runtime-paths.ts";
 
 export interface ProjectToolRequest {
 	readonly projectRoot: string;
@@ -22,6 +23,7 @@ export type ProjectToolSelection =
 export interface ProjectToolCommand {
 	readonly executable: string;
 	readonly args: readonly string[];
+	readonly environment: Readonly<Record<string, string>>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,6 +84,12 @@ export function selectProjectTool(input: {
 		: { kind: "unavailable", message: `${input.unavailableCode}: ${missingProjectToolMessage(input.request)}` };
 }
 
-export function projectToolCommand(tool: ProjectTool, args: readonly string[]): ProjectToolCommand {
-	return { executable: process.execPath, args: [tool.cliPath, ...args] };
+export function projectToolCommand(
+	tool: ProjectTool,
+	args: readonly string[],
+	aidlcExecutable: string | null = compiledExecutable(),
+): ProjectToolCommand {
+	return aidlcExecutable
+		? { executable: aidlcExecutable, args: [tool.cliPath, ...args], environment: { BUN_BE_BUN: "1" } }
+		: { executable: process.execPath, args: [tool.cliPath, ...args], environment: {} };
 }

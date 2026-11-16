@@ -204,6 +204,7 @@ function invokeEslint(eslint: ProjectTool, args: string[], cwd: string) {
 	const command = projectToolCommand(eslint, args);
 	return spawnSync(command.executable, command.args, {
 		encoding: "utf-8", timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS, cwd,
+		env: { ...process.env, ...command.environment },
 	});
 }
 
