@@ -246,7 +246,7 @@ The candidate's per-file results are compared with that reference's parsed resul
 | `2d9a859e1` | 43817932139, red | 43817936577, green | 43817940761, green | 1266 files and 41 skip on both. The one difference: unit-9 t294 failed 1 of 199. ad4a0ad02 #3906's case listed the retired manifests, fixed in `7aac16444`. |
 | `1fcb108a9` | 43827242879, 26 of 26 green | 43827247248, green | 43827251965, green | 1266 files, 41 skip, 0 fail on both; no file differs. |
 | `b085d715a` | 43835310216, 26 of 26 green | 43835317308, green | 43835323478, green | 1266 files, 41 skip, 0 fail on both; no file differs. |
-| `541aca150` | {{ci-final}} | {{md-final}} | {{sec-final}} | {{ci-final-compare}} |
+| `541aca150` | 43843854380: attempt 1 red, attempt 2 26 of 26 green | 43843860083, green | 43843865131, green | Attempt 1 failed one case: `ci-hooks-no-bash-Windows` t218 "T4: a null success flag follows the existing absent-value contract" (1 of 272), expecting `ARTIFACT_CREATED` and reading `ARTIFACT_UPDATED`. `core/` and `harness/` are byte-identical to `b085d715a`, where the job passed, and a rerun of that job alone passed. Attempt 2: 1266 files, 41 skip, 0 fail on both; no file differs. The restored files pass: t-package-sources 14 (base 12), t145 13 (13), t285 78 (73), t303 3 (3), counted as each runner reports them. |
 
 - `1fcb108a9` and `b085d715a` differ only by S7, the P1 fix.
 - `b085d715a` and `541aca150` differ only by the restored test cases (see [Test cases](#test-cases)).
