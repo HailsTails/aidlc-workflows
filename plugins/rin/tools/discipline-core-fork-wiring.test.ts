@@ -1,22 +1,18 @@
-import { assert, describe, expect, it } from "vitest";
-import { createDefaultFileTextPort } from "../../discipline-core/core/platform-ports/file-text-port.ts";
-import { createDefaultPathPort } from "../../discipline-core/core/platform-ports/path-port.ts";
-import { parsedJson } from "../../discipline-core/core/rule-set-reader/rule-set-reader.ts";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { defaultPathOperations } from "./rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "./rin-harness-sidecar-file-reader.ts";
 
-const resolvedForkRoot = (): string => {
-  const resolved = createDefaultPathPort({}).resolve({ path: `${import.meta.dirname}/../../..` });
-  assert(resolved.outcome === "ok", "the fork root resolves to an absolute path");
-  return resolved.value;
-};
+const pathOperations = defaultPathOperations();
 
-const forkRoot = resolvedForkRoot();
-const fileText = createDefaultFileTextPort({});
+const fileText = defaultFileTextPort();
 
-const trackedText = (request: { readonly path: string }): string => {
-  const read = fileText.read({ path: `${forkRoot}/${request.path}` });
-  assert(read.outcome === "ok", `${request.path} reads`);
-  return read.value;
-};
+const forkRoot = pathOperations.resolve({ segments: [import.meta.dirname, "..", "..", ".."] });
+
+const trackedText = (request: { readonly path: string }): string =>
+  fileText.read(pathOperations.join({ segments: [forkRoot, ...request.path.split("/")] }), "utf8");
+
+const constitutionScopeSchema = z.object({ constitution: z.object({ include: z.array(z.string()) }) });
 
 const NODE_SETUP_STEP = `      - uses: actions/setup-node@v4
         with:
@@ -72,9 +68,9 @@ describe("the fork's CI and audit wiring for discipline core (CD-47: what this r
   });
 
   it("puts discipline core inside the constitution audit's scope", () => {
-    expect(parsedJson({ text: trackedText({ path: "harness.config.json" }) })).toMatchObject({
-      outcome: "ok",
-      value: { constitution: { include: expect.arrayContaining(["plugins/discipline-core/**"]) } },
+    expect(constitutionScopeSchema.safeParse(JSON.parse(trackedText({ path: "harness.config.json" })))).toMatchObject({
+      success: true,
+      data: { constitution: { include: expect.arrayContaining(["plugins/discipline-core/**"]) } },
     });
   });
 });
