@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SECTION_NAMES, sectionRoleOf, sectionsWithRole } from "./section-roles.ts";
+import { SECTION_NAMES, type SectionName, sectionRoleOf, sectionsWithRole } from "./section-roles.ts";
 
 describe("SECTION_NAMES", () => {
   it("names every report section once, in the order the report prints them", () => {
@@ -20,11 +20,11 @@ describe("SECTION_NAMES", () => {
 });
 
 describe("sectionRoleOf", () => {
-  it.each(["excluded", "exempted"] as const)("is informational for %s, which never fails the run", (section) => {
+  it.each<SectionName>(["excluded", "exempted"])("is informational for %s, which never fails the run", (section) => {
     expect(sectionRoleOf({ section })).toBe("informational");
   });
 
-  it.each([
+  it.each<SectionName>([
     "findings",
     "uncovered",
     "stale",
@@ -34,7 +34,7 @@ describe("sectionRoleOf", () => {
     "invalidRecords",
     "unmeasured",
     "projectionProblems",
-  ] as const)("is failing for %s, which fails the run when it has an entry", (section) => {
+  ])("is failing for %s, which fails the run when it has an entry", (section) => {
     expect(sectionRoleOf({ section })).toBe("failing");
   });
 });

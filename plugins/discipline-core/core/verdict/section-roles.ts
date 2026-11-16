@@ -4,7 +4,7 @@ export type SectionName = keyof CheckReport;
 
 export type SectionRole = "failing" | "informational";
 
-const SECTION_ROLES = {
+const SECTION_ROLES: Readonly<Record<SectionName, SectionRole>> = {
   excluded: "informational",
   findings: "failing",
   exempted: "informational",
@@ -16,7 +16,7 @@ const SECTION_ROLES = {
   invalidRecords: "failing",
   unmeasured: "failing",
   projectionProblems: "failing",
-} as const satisfies Readonly<Record<SectionName, SectionRole>>;
+};
 
 const isSectionName = (key: string): key is SectionName => Object.hasOwn(SECTION_ROLES, key);
 
