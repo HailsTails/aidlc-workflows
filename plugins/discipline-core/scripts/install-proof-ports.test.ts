@@ -26,6 +26,7 @@ const surfaceOver = (surface: Partial<ScratchFilesSurface>): ScratchFilesSurface
   makeDirectory: vi.fn(),
   copyTree: vi.fn(),
   listTree: vi.fn(),
+  digestOf: vi.fn(),
   ...surface,
 });
 

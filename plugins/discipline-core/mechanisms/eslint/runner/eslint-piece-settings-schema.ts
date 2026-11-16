@@ -1,13 +1,12 @@
 import { z } from "zod";
+import { moduleFileForm } from "../../../core/values/install-layout.ts";
 import { isRepoPathText } from "../../../core/values/repo-path.ts";
 
-const TYPESCRIPT_MODULE_SUFFIX = ".ts";
-
 const pieceModulePathSchema = z.string().superRefine((text, context) => {
-  if (isRepoPathText({ text }) === "not-repo-path" || !text.endsWith(TYPESCRIPT_MODULE_SUFFIX)) {
+  if (isRepoPathText({ text }) === "not-repo-path" || moduleFileForm({ text }) === "not-module-file") {
     context.addIssue({
       code: "custom",
-      message: "not a path inside the piece folder ending in .ts",
+      message: "not a path inside the piece folder ending in .ts, or .js in a built install",
     });
   }
 });

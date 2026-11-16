@@ -24,10 +24,12 @@ export const TYPESCRIPT_REQUIREMENT: ToolchainRequirement = {
   lines: [{ floor: "4.8.4", below: "7.0.0" }],
 };
 
-export const defaultTypeScriptPeers: TypeScriptPeers = {
-  location: createDefaultPackageLocationPort({}),
-  modules: { typescript: () => import("typescript") },
-};
+export const defaultTypeScriptModules: TypeScriptModules = { typescript: () => import("typescript") };
+
+export const defaultTypeScriptPeers = (options: { readonly installRoot: string }): TypeScriptPeers => ({
+  location: createDefaultPackageLocationPort(options),
+  modules: defaultTypeScriptModules,
+});
 
 const directChildren = (request: { readonly syntaxApi: SyntaxApi; readonly node: SyntaxNode }): readonly SyntaxNode[] => {
   const collected: SyntaxNode[] = [];

@@ -1,5 +1,6 @@
 import type { PathPort } from "../platform-ports/path-port.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
+import { installRootAboveEntry } from "../values/install-layout.ts";
 import type { Result } from "../values/result.ts";
 import type { LoadFailure } from "./load-failure.ts";
 
@@ -11,9 +12,11 @@ const installRootUnresolvable = (request: {
   error: { kind: "install-root-unresolvable", url: request.url, detail: request.detail },
 });
 
-const threeLevelsAbove = (request: { readonly path: PathPort; readonly entry: string }): string =>
-  request.path.directoryOf({
-    path: request.path.directoryOf({ path: request.path.directoryOf({ path: request.entry }) }),
+const installRootAboveCommand = (request: { readonly path: PathPort; readonly entry: string }): string =>
+  installRootAboveEntry({
+    entryFile: request.entry,
+    entry: "command",
+    directoryOf: (path) => request.path.directoryOf({ path }),
   });
 
 export const installRootOf = (request: {
@@ -24,7 +27,7 @@ export const installRootOf = (request: {
   if (entry.outcome === "failed") {
     return installRootUnresolvable({ url: entry.error.url, detail: entry.error.detail });
   }
-  const resolved = request.path.resolve({ path: threeLevelsAbove({ path: request.path, entry: entry.value }) });
+  const resolved = request.path.resolve({ path: installRootAboveCommand({ path: request.path, entry: entry.value }) });
   if (resolved.outcome === "failed") {
     return installRootUnresolvable({
       url: request.moduleUrl,

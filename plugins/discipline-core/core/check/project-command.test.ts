@@ -16,7 +16,8 @@ const entrySource = import.meta.glob(["./project-command.ts"], {
   eager: true,
 });
 
-const WIRING = `import { createDefaultFileTextPort } from "../platform-ports/file-text-port.ts";
+const WIRING = `#!/usr/bin/env node
+import { createDefaultFileTextPort } from "../platform-ports/file-text-port.ts";
 import { createDefaultGitPort } from "../platform-ports/git-port.ts";
 import { createDefaultModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import { createDefaultPathPort } from "../platform-ports/path-port.ts";

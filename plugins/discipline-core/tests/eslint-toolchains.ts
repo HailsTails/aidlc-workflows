@@ -33,6 +33,8 @@ type LineDefinition = {
   readonly nativeRuleSources: () => Promise<NativeRuleSources>;
 };
 
+const DEVELOPMENT_PEERS: EslintToolchainPeers = defaultEslintToolchainPeers({ installRoot: `${import.meta.dirname}/..` });
+
 const RUNNER_MODULE_SUFFIX = "mechanisms/eslint/runner/runner.ts";
 
 type ExportPresence = "present" | "absent";
@@ -76,7 +78,7 @@ const floorTypescriptEslintRules = (): Promise<NativeRuleSources["typescriptEsli
 const LINES: Readonly<Record<EslintLine, LineDefinition>> = {
   "eslint-10": {
     eslintVersion: /^10\./,
-    modules: defaultEslintToolchainPeers.modules,
+    modules: DEVELOPMENT_PEERS.modules,
     nativeRuleSources: () => Promise.resolve(defaultNativeRuleSources),
   },
   "eslint-10-floor": {
@@ -89,7 +91,7 @@ const LINES: Readonly<Record<EslintLine, LineDefinition>> = {
   },
   "eslint-9": {
     eslintVersion: /^9\./,
-    modules: { ...defaultEslintToolchainPeers.modules, eslint: () => import("eslint-9") },
+    modules: { ...DEVELOPMENT_PEERS.modules, eslint: () => import("eslint-9") },
     nativeRuleSources: () =>
       import("eslint-9/use-at-your-own-risk").then((eslintCore) => ({
         eslintCore: eslintCore.builtinRules,
@@ -121,7 +123,7 @@ const nativeRulePieceSchema = z.object({
 });
 
 export const eslintPeersOn = (request: { readonly line: EslintLine }): EslintToolchainPeers => ({
-  location: defaultEslintToolchainPeers.location,
+  location: DEVELOPMENT_PEERS.location,
   modules: LINES[request.line].modules,
 });
 
@@ -165,6 +167,7 @@ export const eslintRunnerOn = (request: { readonly line: EslintLine }): Embedded
         modules: pieceModulesOn({ line: request.line, base: createDefaultModuleLoaderPort({}) }),
         path: createDefaultPathPort({}),
         eslint: createEslintPort({ toolchain }),
+        moduleExtension: ".ts",
       }),
   });
 

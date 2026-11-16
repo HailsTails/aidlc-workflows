@@ -137,6 +137,18 @@ export default [
 ];
 `;
 
+const PACKAGED_ENABLING_PROJECTION = `import piece0 from "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
+
+export default [
+  {
+    name: "discipline-core/piece/discipline",
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
+  },
+];
+`;
+
 const ENABLING_PROJECTION_CRLF = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";\r\n\r\nexport default [\r\n  {\r\n    name: "discipline-core/piece/discipline",\r\n    files: ["**/*.{ts,tsx,mts,cts}"],\r\n    plugins: { "discipline": piece0 },\r\n    rules: { "discipline/no-class-authoring": "error" },\r\n  },\r\n];\r\n`;
 
 const FACTORY_LOCATION_PROJECTION = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
@@ -303,6 +315,7 @@ const runnerOver = (overrides: Partial<EslintRunnerPorts>) =>
     modules: modulesOver(PLUGIN_MODULES),
     path: createPathPort({ flavour: "posix", workingDirectory: () => "/elsewhere" }),
     eslint: eslintOver({}),
+    moduleExtension: ".ts",
     ...overrides,
   });
 
@@ -1028,6 +1041,60 @@ describe("project", () => {
     expect({ write, fileWrites: vi.mocked(fileText.write).mock.calls }).toEqual({
       write: { outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } },
       fileWrites: [[{ path: PROJECTION_PATH, text: FACTORY_LOCATION_PROJECTION }]],
+    });
+  });
+
+  it("imports a shipped piece of a packaged core install by the package name the install's package.json gives", async () => {
+    const fileText = fileTextOver({
+      ...SOURCE_FILES,
+      [PROJECTION_PATH]: ABSENT_FILE,
+      "/repo/node_modules/discipline-core/package.json": presentFile({ text: '{ "name": "discipline-core" }' }),
+    });
+    await runnerOver({ fileText, moduleExtension: ".js" }).project({ repoRoot: REPO_ROOT, installRoot: INSTALL_ROOT, clauses: [CLASS_CLAUSE], records: [] });
+    expect(vi.mocked(fileText.write).mock.calls).toEqual([
+      [
+        {
+          path: PROJECTION_PATH,
+          text: PACKAGED_ENABLING_PROJECTION,
+        },
+      ],
+    ]);
+  });
+
+  it("keeps relative imports for a core run from source whose copied install's package.json names a package", async () => {
+    const fileText = fileTextOver({
+      ...SOURCE_FILES,
+      [PROJECTION_PATH]: ABSENT_FILE,
+      "/repo/node_modules/discipline-core/package.json": presentFile({ text: '{ "name": "tools-discipline-core" }' }),
+    });
+    await runnerOver({ fileText, moduleExtension: ".ts" }).project({ repoRoot: REPO_ROOT, installRoot: INSTALL_ROOT, clauses: [CLASS_CLAUSE], records: [] });
+    expect(vi.mocked(fileText.write).mock.calls).toEqual([[{ path: PROJECTION_PATH, text: ENABLING_PROJECTION }]]);
+  });
+
+  it("fails as tool-failed and writes nothing when the core install's package.json cannot be read", async () => {
+    const fileText = fileTextOver({
+      ...SOURCE_FILES,
+      [PROJECTION_PATH]: ABSENT_FILE,
+      "/repo/node_modules/discipline-core/package.json": {
+        read: { outcome: "failed", error: { kind: "unreadable", path: "package.json", detail: "EACCES" } },
+        presence: "present",
+      },
+    });
+    const write = await runnerOver({ fileText, moduleExtension: ".js" }).project({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      clauses: [CLASS_CLAUSE],
+      records: [],
+    });
+    expect({ write, fileWrites: vi.mocked(fileText.write).mock.calls }).toEqual({
+      write: {
+        outcome: "failed",
+        error: {
+          kind: "tool-failed",
+          detail: "the core install's /repo/node_modules/discipline-core/package.json cannot be read: EACCES",
+        },
+      },
+      fileWrites: [],
     });
   });
 

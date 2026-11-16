@@ -183,6 +183,7 @@ const select = (files: Readonly<Record<string, FakeFile>>) =>
     path: TABLE_PATH,
     repoRoot: REPO_ROOT,
     installRoot: INSTALL_ROOT,
+    moduleExtension: ".ts",
   });
 
 const selecting = (selection: unknown) =>
@@ -193,6 +194,7 @@ describe("createSelectionRepository", () => {
     const repository = createSelectionRepository({
       repoRoot: REPO_ROOT,
       installRoot: INSTALL_ROOT,
+      moduleExtension: ".ts",
       path: TABLE_PATH,
       fileText: fileTextOver({
         ...INSTALL,
@@ -244,6 +246,7 @@ describe("createSelectionRepository", () => {
     const repository = createSelectionRepository({
       repoRoot: REPO_ROOT,
       installRoot: INSTALL_ROOT,
+      moduleExtension: ".ts",
       path: TABLE_PATH,
       fileText: fileTextOver({
         ...INSTALL,
@@ -275,6 +278,7 @@ describe("createSelectionRepository", () => {
     const repository = createSelectionRepository({
       repoRoot: REPO_ROOT,
       installRoot: INSTALL_ROOT,
+      moduleExtension: ".ts",
       path: TABLE_PATH,
       fileText: fileTextOver({
         ...INSTALL,
@@ -295,6 +299,7 @@ describe("createSelectionRepository", () => {
     const repository = createSelectionRepository({
       repoRoot: REPO_ROOT,
       installRoot: INSTALL_ROOT,
+      moduleExtension: ".ts",
       path: TABLE_PATH,
       fileText: fileTextOver({
         ...INSTALL,
@@ -314,6 +319,7 @@ describe("createSelectionRepository", () => {
     const repository = createSelectionRepository({
       repoRoot: REPO_ROOT,
       installRoot: INSTALL_ROOT,
+      moduleExtension: ".ts",
       path: TABLE_PATH,
       fileText: fileTextOver({
         ...INSTALL,
@@ -334,6 +340,7 @@ describe("createSelectionRepository", () => {
     const repository = createSelectionRepository({
       repoRoot: REPO_ROOT,
       installRoot: INSTALL_ROOT,
+      moduleExtension: ".ts",
       path: TABLE_PATH,
       fileText: fileTextOver({ ...INSTALL, [SELECTION_PATH]: presentFile({ text: "{" }) }),
     });
@@ -539,6 +546,7 @@ describe("readSelection", () => {
       path: TABLE_PATH,
       repoRoot: REPO_ROOT,
       installRoot: INSTALL_ROOT,
+      moduleExtension: ".ts",
     });
     expect(read.mock.calls).toEqual([
       [{ path: SELECTION_PATH }],

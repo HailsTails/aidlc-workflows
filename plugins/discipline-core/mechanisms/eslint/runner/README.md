@@ -4,11 +4,11 @@ The ESLint runner is discipline-core's embedded mechanism: each selected clause 
 
 The native channels, the exception kind each maps to, and how the projection is adopted and checked are in [the guide](../../../docs/adding-a-discipline-or-mechanism.md#embedded-mechanisms).
 
-The projection imports each piece's plugin module by its path relative to the repository root, and the check compares the committed file byte for byte with what the runner would write now. The install must therefore sit at the same path relative to the repository root for every teammate and CI runner, for example a fixed `tools/discipline-core/` inside the repository; otherwise the projection reads `out-of-date` and its plugin import may not resolve.
+The check compares the committed projection byte for byte with what the runner would write now. The runner reads the install's `package.json`: when it names a package, the install is a packaged one and the projection imports each piece inside it by package name, `<name>/mechanisms/eslint/...`, which resolves wherever the package is installed. Otherwise the install is a copied folder and the projection imports each piece by its path relative to the repository root, so the copy must sit at the same path relative to the repository root for every teammate and CI runner, for example a fixed `tools/discipline-core/` inside the repository; otherwise the projection reads `out-of-date` and its plugin import may not resolve. A piece outside the install, in the repository's own rule set, is always imported by relative path.
 
 ## Runtime
 
-- Node 22.18.0 or later, which runs the `.ts` modules directly by stripping types.
+- From source or a copied install, Node 22.18.0 or later, which runs the `.ts` modules directly by stripping types. The built package is plain JavaScript.
 - `zod`, for the piece settings, the loaded plugin, ESLint's resolved configuration and the files the runner reads. A dependency of core.
 - `@eslint/plugin-kit`, for parsing inline configuration comments. A dependency of core, pinned at 0.7.3, because a transitive copy does not resolve under strict package managers.
 - The repository's own toolchain, as optional peers: `eslint` `^9.12.0 || ^10.0.0`, and `@typescript-eslint/parser` and `@typescript-eslint/eslint-plugin` `^8.56.0`, the first typescript-eslint release whose peer range accepts both ESLint majors. TypeScript is the parser's own peer, so the runner does not check it. The runner loads them once, when it is loaded, and answers every call with `toolchain-unavailable` naming the first that is missing, cannot load or is out of range, or with `toolchain-shadowed` when one resolves from inside the core install, before it loads any piece. The suite runs on four lines: ESLint 9.12.0 and 10.0.0 with typescript-eslint 8.56.0, and ESLint 9.39.5 and 10.11.0 with 8.71.2.
@@ -30,7 +30,7 @@ The projection imports each piece's plugin module by its path relative to the re
 
 ## Writing a piece
 
-An ESLint piece lives at `mechanisms/eslint/<DisciplineId>/` beside its `piece.json`. Each clause's settings are `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` path inside the piece folder whose default export is an ESLint plugin, and `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`.
+An ESLint piece lives at `mechanisms/eslint/<DisciplineId>/` beside its `piece.json`. Each clause's settings are `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` or `.js` path inside the piece folder whose default export is an ESLint plugin, and `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`.
 
 A clause's settings may also carry `options`, a JSON array passed to the rule after its severity. The governance run, the conformance run and the projection all enable the rule as `["error", ...options]`; without `options` the rule gets only the severity.
 

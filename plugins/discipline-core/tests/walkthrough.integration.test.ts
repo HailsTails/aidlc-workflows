@@ -54,6 +54,7 @@ const checkedText = async (request: { readonly repo: AbsolutePath; readonly trac
   const checked = await runCheck({
     repoRoot: request.repo,
     installRoot: INSTALL_ROOT,
+    moduleExtension: ".ts",
     baseRevision: undefined,
     fileText: createDefaultFileTextPort({}),
     modules: createDefaultModuleLoaderPort({}),

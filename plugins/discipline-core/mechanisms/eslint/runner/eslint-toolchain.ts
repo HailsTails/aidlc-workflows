@@ -41,14 +41,16 @@ export const ESLINT_TOOLCHAIN_REQUIREMENTS: readonly ToolchainRequirement[] = [
   TYPESCRIPT_ESLINT_PLUGIN_REQUIREMENT,
 ];
 
-export const defaultEslintToolchainPeers: EslintToolchainPeers = {
-  location: createDefaultPackageLocationPort({}),
-  modules: {
-    eslint: () => import("eslint"),
-    typescriptParser: () => import("@typescript-eslint/parser"),
-    typescriptEslintPlugin: () => import("@typescript-eslint/eslint-plugin"),
-  },
+export const defaultEslintToolchainModules: EslintToolchainModules = {
+  eslint: () => import("eslint"),
+  typescriptParser: () => import("@typescript-eslint/parser"),
+  typescriptEslintPlugin: () => import("@typescript-eslint/eslint-plugin"),
 };
+
+export const defaultEslintToolchainPeers = (options: { readonly installRoot: string }): EslintToolchainPeers => ({
+  location: createDefaultPackageLocationPort(options),
+  modules: defaultEslintToolchainModules,
+});
 const afterLoaded = <Loaded, Next>(request: {
   readonly loaded: ToolchainLoad<Loaded>;
   readonly next: (loaded: Loaded) => ToolchainLoad<Next>;

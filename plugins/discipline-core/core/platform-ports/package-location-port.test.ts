@@ -1,14 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { createDefaultPackageLocationPort } from "./package-location-port.ts";
+import { createDefaultPackageLocationPort, installRootOfRunnerEntry } from "./package-location-port.ts";
 import { createDefaultPathPort } from "./path-port.ts";
-
-const port = createDefaultPackageLocationPort({});
 
 const path = createDefaultPathPort({});
 
+const SOURCE_INSTALL_ROOT = path.resolve({ path: `${import.meta.dirname}/../..` });
+
+const port = createDefaultPackageLocationPort({ installRoot: "/given/install" });
+
+describe("installRootOfRunnerEntry", () => {
+  it("is the folder holding mechanisms/ above a built runner entry, wherever the code reading it was bundled", () => {
+    expect(
+      path.resolve({ path: installRootOfRunnerEntry({ entryFile: `${import.meta.dirname}/../../../installed-core/mechanisms/eslint/runner/runner.js` }) }),
+    ).toEqual(path.resolve({ path: `${import.meta.dirname}/../../../installed-core` }));
+  });
+
+  it("is this source install's root for a source runner entry", () => {
+    expect(
+      path.resolve({ path: installRootOfRunnerEntry({ entryFile: `${import.meta.dirname}/../../mechanisms/audit/runner/runner.ts` }) }),
+    ).toEqual(SOURCE_INSTALL_ROOT);
+  });
+});
+
 describe("createDefaultPackageLocationPort", () => {
-  it("names the core install root as the folder holding core/", () => {
-    expect(path.resolve({ path: `${import.meta.dirname}/../..` })).toEqual({ outcome: "ok", value: port.installRoot });
+  it("names the install root it is given", () => {
+    expect(port.installRoot).toBe("/given/install");
   });
 
   it("locates a package as the file node resolves from the core install", () => {

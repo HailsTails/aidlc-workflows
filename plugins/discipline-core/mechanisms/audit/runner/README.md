@@ -4,7 +4,7 @@ The audit runner is discipline-core's standalone mechanism for checks that read 
 
 ## Runtime
 
-- Node 22.18.0 or later, which runs the `.ts` modules directly by stripping types.
+- From source or a copied install, Node 22.18.0 or later, which runs the `.ts` modules directly by stripping types. The built package is plain JavaScript.
 - `zod`, for the piece settings and for every value a loaded check returns.
 - `typescript`, for parsing. Only `typescript-parse.ts` imports it.
 

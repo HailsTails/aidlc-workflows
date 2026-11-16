@@ -68,6 +68,7 @@ const checkOf = (request: { readonly name: string; readonly tracked: readonly Re
   runCheck({
     repoRoot: consumerRepo({ name: request.name }),
     installRoot: INSTALL_ROOT,
+    moduleExtension: ".ts",
     baseRevision: undefined,
     fileText,
     modules: runnerModulesOn({ line: request.line, base: modules }),
@@ -544,6 +545,7 @@ const monorepoRun = async (request: {
     modules: pieceModulesOn({ line: request.line, base: modules }),
     path,
     eslint: await eslintPortOn({ line: request.line }),
+    moduleExtension: ".ts",
   }).run({
     repoRoot: consumerRepo({ name: request.name }),
     installRoot: INSTALL_ROOT,

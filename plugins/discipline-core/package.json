@@ -2,7 +2,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Runs a project's selected disciplines against its own files. Self-contained so it builds and tests from this directory alone.",
+  "description": "Runs a project's selected disciplines against its own files.",
   "license": "MIT-0",
   "engines": {
     "node": ">=22.18.0"
@@ -13,7 +13,10 @@
     "test": "vitest run --config vitest.config.ts",
     "check": "tsc --noEmit -p tsconfig.json && biome check --error-on-warnings --config-path=lint.biome.json . && vitest run --config vitest.config.ts",
     "install-proof": "node scripts/install-proof.ts",
-    "install-manifest": "node scripts/write-install-manifest.ts && cd install && npm install --package-lock-only --ignore-scripts --no-audit --no-fund"
+    "install-manifest": "node scripts/write-install-manifest.ts && cd install && npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+    "build-package": "node scripts/build-package.ts",
+    "pack-package": "node scripts/pack-package.ts",
+    "package-determinism": "node scripts/check-package-determinism.ts"
   },
   "dependencies": {
     "@eslint/plugin-kit": "0.7.3",
@@ -45,6 +48,7 @@
     "@types/node": "25.9.1",
     "@typescript-eslint/eslint-plugin": "8.71.2",
     "@typescript-eslint/parser": "8.71.2",
+    "esbuild": "0.25.12",
     "eslint": "10.11.0",
     "eslint-10-floor": "npm:eslint@10.0.0",
     "eslint-9": "npm:eslint@9.39.5",

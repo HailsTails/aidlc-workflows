@@ -36,6 +36,7 @@ describe("the shipped CD-1 rule, read from rules/CD-1/discipline.json through a 
     const report = await runCheck({
       repoRoot: resolvedPath({ path: `${import.meta.dirname}/test-fixtures/cd1-exempted` }),
       installRoot: resolvedPath({ path: `${import.meta.dirname}/..` }),
+      moduleExtension: ".ts",
       baseRevision: undefined,
       fileText: createDefaultFileTextPort({}),
       modules: createDefaultModuleLoaderPort({}),
@@ -74,6 +75,7 @@ const cascadeCheck = (request: { readonly changed: readonly RepoPath[] }) => {
   return runCheck({
     repoRoot: CASCADE_REPO,
     installRoot: resolvedPath({ path: `${import.meta.dirname}/..` }),
+    moduleExtension: ".ts",
     baseRevision: "origin/main",
     fileText: createDefaultFileTextPort({}),
     modules: createDefaultModuleLoaderPort({}),

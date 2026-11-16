@@ -52,8 +52,8 @@ For each mechanism in a clause's `mechanisms` list, add a piece folder `mechanis
 
 `discipline` and `mechanism` must match the folder names, every `clause` must exist in the discipline, and no clause may appear twice. Core reads only this envelope. `settings` belongs to the runner, which parses it with its own schema:
 
-- **audit:** `{ "module": "<file>.ts" }`, a path inside the piece folder. The module exports `check`, typed with `import type { WalkerPiece }` from `mechanisms/audit/runner/walker-piece.ts`. See `mechanisms/audit/runner/README.md`.
-- **eslint:** `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` path inside the piece folder whose default export is an ESLint plugin; `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`. The namespace `discipline-core` is reserved, and two selected clauses may not share a rule id, or a namespace with different plugin modules. CD-14's piece is `mechanisms/eslint/CD-14/piece.json`, pointing at the rule `no-class-authoring` in `cd14/cd14.eslint-plugin.ts` under the namespace `discipline`.
+- **audit:** `{ "module": "<file>.ts" }`, a path inside the piece folder; a `.js` module is accepted too, which is what the built package's pieces name. The module exports `check`, typed with `import type { WalkerPiece }` from `mechanisms/audit/runner/walker-piece.ts`. See `mechanisms/audit/runner/README.md`.
+- **eslint:** `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` or `.js` path inside the piece folder whose default export is an ESLint plugin; `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`. The namespace `discipline-core` is reserved, and two selected clauses may not share a rule id, or a namespace with different plugin modules. CD-14's piece is `mechanisms/eslint/CD-14/piece.json`, pointing at the rule `no-class-authoring` in `cd14/cd14.eslint-plugin.ts` under the namespace `discipline`.
 
 A runner reports a bad `settings` value, a module that fails to load or does not match its schema, or a missing rule as `piece-invalid`.
 

@@ -13,6 +13,7 @@ import { type CheckRun, type CommandOutcome, checkCommandOutcome } from "./comma
 import { installRootOf } from "./install-root.ts";
 import type { LoadFailure } from "./load-failure.ts";
 import { runCheck } from "./run-check.ts";
+import { moduleExtensionOf } from "../values/install-layout.ts";
 
 export type CommandRequest = {
   readonly process: ProcessPort;
@@ -73,6 +74,7 @@ const checkResult = async (request: CommandRequest): Promise<Result<CheckRun, Lo
   const report = await runCheck({
     repoRoot: repoRoot.value,
     installRoot: installRoot.value,
+    moduleExtension: moduleExtensionOf({ moduleUrl: request.moduleUrl }),
     baseRevision: parsed.value.baseRevision,
     fileText: request.fileText,
     modules: request.modules,

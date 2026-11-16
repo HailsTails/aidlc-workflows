@@ -102,6 +102,7 @@ const probeCheck = () => {
   const report = runCheck({
     repoRoot: absolutePathSchema.parse("/repo"),
     installRoot: absolutePathSchema.parse("/install"),
+    moduleExtension: ".ts",
     baseRevision: undefined,
     fileText,
     modules: {

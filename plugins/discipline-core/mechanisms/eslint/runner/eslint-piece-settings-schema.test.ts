@@ -20,6 +20,7 @@ describe("eslintPieceSettingsSchema", () => {
 
   it.each([
     "../x.ts",
+    "../x.js",
     "cd14/../../x.ts",
     "./x.ts",
     "cd14//x.ts",
@@ -33,8 +34,14 @@ describe("eslintPieceSettingsSchema", () => {
     });
   });
 
-  it.each(["cd14/cd14.eslint-plugin.js", "cd14/cd14.eslint-plugin.mjs", "cd14/plugin"])(
-    "refuses the plugin module %s, which does not end in .ts, at the pluginModule key",
+  it("accepts a plugin module ending in .js, as a built install ships it", () => {
+    expect(
+      eslintPieceSettingsSchema.safeParse({ ...settings, pluginModule: "cd14/cd14.eslint-plugin.js" }),
+    ).toEqual({ success: true, data: { ...settings, pluginModule: "cd14/cd14.eslint-plugin.js" } });
+  });
+
+  it.each(["cd14/cd14.eslint-plugin.mjs", "cd14/cd14.eslint-plugin.cjs", "cd14/plugin"])(
+    "refuses the plugin module %s, which ends in neither .ts nor .js, at the pluginModule key",
     (pluginModule) => {
       expect(eslintPieceSettingsSchema.safeParse({ ...settings, pluginModule })).toMatchObject({
         success: false,

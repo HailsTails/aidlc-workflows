@@ -7,7 +7,9 @@ import {
   installPlacements,
   judgedStep,
   PROOF_CASES,
+  packagedConsumerManifest,
   parsedInstallList,
+  type ProofAction,
   type StepExpectation,
   toolchainManifest,
 } from "./install-proof-plan.ts";
@@ -258,15 +260,88 @@ describe("toolchainManifest, over this package's own package.json read as a buil
   });
 });
 
+const ESLINT_PROJECT: ProofAction = {
+  kind: "project",
+  expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } },
+};
+
+const ESLINT_AFTER_PROJECT: readonly ProofAction[] = [
+  { kind: "commit", message: "project" },
+  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  { kind: "remove", path: "src/kept.ts" },
+  { kind: "commit", message: "clean" },
+  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+];
+
+const PACKAGE_IMPORT_READ: ProofAction = {
+  kind: "read",
+  path: "disciplines.eslint.mjs",
+  contains: 'import piece0 from "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";',
+};
+
+const AUDIT_ACTIONS: readonly ProofAction[] = [
+  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  { kind: "remove", path: "src/kept.ts" },
+  { kind: "commit", message: "clean" },
+  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+  { kind: "project", expectation: { exitCode: 0, output: { kind: "empty" } } },
+];
+
+const ESLINT_MISSING_ACTIONS: readonly ProofAction[] = [
+  { kind: "project", expectation: { exitCode: 2, output: { kind: "contains", text: "toolchain-unavailable eslint found not installed" } } },
+];
+
 describe("the proof cases", () => {
-  it("cover an audit-only consumer, an ESLint consumer on each line's floor, one missing eslint and one missing the installed manifest, over three shared toolchains", () => {
+  it("cover, on the copy route, an audit-only consumer, an ESLint consumer on each line's floor, one missing eslint and one missing the installed manifest, and the same first four on the package route, over three shared toolchains", () => {
     expect(PROOF_CASES).toEqual([
-      expect.objectContaining({ consumer: "audit", toolchain: "typescript-floor" }),
-      expect.objectContaining({ consumer: "eslint-10", toolchain: "eslint-10-floor" }),
-      expect.objectContaining({ consumer: "eslint-9", toolchain: "eslint-9-floor" }),
-      expect.objectContaining({ consumer: "eslint-missing", toolchain: "typescript-floor" }),
-      expect.objectContaining({ consumer: "no-package-json", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "audit", route: "copy", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "eslint-10", route: "copy", toolchain: "eslint-10-floor" }),
+      expect.objectContaining({ consumer: "eslint-9", route: "copy", toolchain: "eslint-9-floor" }),
+      expect.objectContaining({ consumer: "eslint-missing", route: "copy", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "no-package-json", route: "copy", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "audit-package", route: "package", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "eslint-10-package", route: "package", toolchain: "eslint-10-floor" }),
+      expect.objectContaining({ consumer: "eslint-9-package", route: "package", toolchain: "eslint-9-floor" }),
+      expect.objectContaining({ consumer: "eslint-missing-package", route: "package", toolchain: "typescript-floor" }),
     ]);
+  });
+
+  it("assert the same command expectations on the package route as on the copy route, plus the projection's package import", () => {
+    expect(PROOF_CASES).toEqual([
+      expect.objectContaining({ consumer: "audit", actions: AUDIT_ACTIONS }),
+      expect.objectContaining({ consumer: "eslint-10", actions: [ESLINT_PROJECT, ...ESLINT_AFTER_PROJECT] }),
+      expect.objectContaining({ consumer: "eslint-9", actions: [ESLINT_PROJECT, ...ESLINT_AFTER_PROJECT] }),
+      expect.objectContaining({ consumer: "eslint-missing", actions: ESLINT_MISSING_ACTIONS }),
+      expect.objectContaining({ consumer: "no-package-json" }),
+      expect.objectContaining({ consumer: "audit-package", actions: AUDIT_ACTIONS }),
+      expect.objectContaining({ consumer: "eslint-10-package", actions: [ESLINT_PROJECT, PACKAGE_IMPORT_READ, ...ESLINT_AFTER_PROJECT] }),
+      expect.objectContaining({ consumer: "eslint-9-package", actions: [ESLINT_PROJECT, PACKAGE_IMPORT_READ, ...ESLINT_AFTER_PROJECT] }),
+      expect.objectContaining({ consumer: "eslint-missing-package", actions: ESLINT_MISSING_ACTIONS }),
+    ]);
+  });
+
+  it("record each copy-route report and hold each packaged consumer's reports to the copy-route consumer it mirrors, proved before it", () => {
+    expect(PROOF_CASES).toEqual([
+      expect.objectContaining({ consumer: "audit", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "eslint-10", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "eslint-9", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "eslint-missing", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "no-package-json", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "audit-package", reports: { kind: "same-as", consumer: "audit" } }),
+      expect.objectContaining({ consumer: "eslint-10-package", reports: { kind: "same-as", consumer: "eslint-10" } }),
+      expect.objectContaining({ consumer: "eslint-9-package", reports: { kind: "same-as", consumer: "eslint-9" } }),
+      expect.objectContaining({ consumer: "eslint-missing-package", reports: { kind: "same-as", consumer: "eslint-missing" } }),
+    ]);
+  });
+
+  it("give a packaged consumer scripts calling the two bins on the repository root", () => {
+    expect(packagedConsumerManifest({ identity: { name: "core", description: "Core.", checkBin: "core-check", projectBin: "core-project" } })).toBe(
+      `${JSON.stringify(
+        { private: true, type: "commonjs", scripts: { "discipline:check": "core-check --repo .", "discipline:project": "core-project --repo ." } },
+        null,
+        2,
+      )}\n`,
+    );
   });
 
   it("give each consumer a commonjs manifest with no dependencies of its own", () => {
