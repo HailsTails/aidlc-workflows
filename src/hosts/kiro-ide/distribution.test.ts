@@ -34,6 +34,7 @@ const EXPECTED_DISTRIBUTION: HostDistribution = {
         hash("sha256:a21217e44700aa0d6e703ebb524c4e07a3c4c12f7097d1923034b10b9a6d0549"),
         hash("sha256:6c6ff7641c17829d77fdd023f340b938db11dcc26c734a0c452d5213f9bd19cf"),
         hash("sha256:f9d49a8c823df8174ea7d8a83209380202e5673b5ee8c1ff6b9cce90bcfd550e"),
+        hash("sha256:e7c17271c65f778895fe75352413c03da8a3c37c37bca2b8bcb1c447f4c8b8f3"),
       ], entryHashes: {} },
       { integration: path("AGENTS.md"), wholeFileHashes: [
         hash("sha256:4d539288363565feb6cf1a8d2468d1aca4373d46d354936d89e609f9862b2b9f"),
@@ -51,6 +52,7 @@ const EXPECTED_DISTRIBUTION: HostDistribution = {
         hash("sha256:94f27a88ddba31149876da0609e0eb9a36ce153f52f27898579c846daec2ff59"),
         hash("sha256:5f6f076a5a9d8a11e1078f568c9dee091f399d9999fae89e9dffa62d8697b797"),
         hash("sha256:6de1298dfa4c2b6916f66d372b844faf23481c8f258eedd595c1423dab8e106d"),
+        hash("sha256:6d3bf5865f1836575715ea93d0042b9d08bcab918cc9a17a142848fe44e88bc7"),
       ], entryHashes: {} },
     ],
     listing: {

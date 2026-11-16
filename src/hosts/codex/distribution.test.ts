@@ -26,6 +26,7 @@ test("Codex declares its exact roots, authored history and native plugin discove
         hash("sha256:25e76c09640300e354ab34e3c67e89d2dfe473940b65bd56c227ca4d5ea92c7b"),
         hash("sha256:51cb399f2257236cbf63e18cb2e317d75913f1771b5402707a2508cf5f81fa57"),
         hash("sha256:345fbe9fe620718510ecfe9d478233ccf4a5318522884b50fc5540559ace3eed"),
+        hash("sha256:c2b1232b28a8b5474f7ef8363452f75399366ef227c59d75fa85d7aa2edca7ac"),
       ], entryHashes: {} },
       { integration: path("AGENTS.md"), wholeFileHashes: [
         hash("sha256:30a9f5f43d87cd29b63e75333b8ef6695f8f4e11909fd6af64e2b6cf0b8cb292"),
@@ -48,6 +49,7 @@ test("Codex declares its exact roots, authored history and native plugin discove
         hash("sha256:87563548299dd2a0c1fcd3cde480b612bd1ec767a2550dbc05a6a041a3d7f522"),
         hash("sha256:c7843449d549d4226be39169a9c31bf89694cd0b0754cb1ee68bdf61759538ce"),
         hash("sha256:6de1298dfa4c2b6916f66d372b844faf23481c8f258eedd595c1423dab8e106d"),
+        hash("sha256:6d3bf5865f1836575715ea93d0042b9d08bcab918cc9a17a142848fe44e88bc7"),
       ], entryHashes: {} },
     ],
     listing: {},

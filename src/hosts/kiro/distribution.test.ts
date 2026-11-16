@@ -25,6 +25,8 @@ test("Kiro declares the exact roots, prior shapes, listing and plugin distributi
         hash("sha256:f08d78b3e456c3a7cd7c998196c9bf6d59d24900e2ccf78cf30a1b189e766c2c"),
         hash("sha256:28a69800dcac189aa2a976820db237b45bcf6dd7d7e6d4fae5c1603225b9957a"),
         hash("sha256:99b4560aa1bd95f26077eb69a0c6c2a40f81146a212e70d876c27bb84f2b1789"),
+        hash("sha256:6df8b41c1c9011d8b6d386d389f96bbfa27812386f434103c260bf58641d6b5d"),
+        hash("sha256:91f5070ac1b7f2effcf608447a67261ab00dd92495385bf2277b53ca1723c6f0"),
       ], entryHashes: {} },
       { integration: path("AGENTS.md"), wholeFileHashes: [
         hash("sha256:4f7133cc1a9bb1243245c25c28fad57c3660b35e251ea36cea3aa2db431bf55f"),
@@ -42,6 +44,7 @@ test("Kiro declares the exact roots, prior shapes, listing and plugin distributi
         hash("sha256:9ad7daa07cbafe9f149311b679281eecd991d2ec77787fc7751226ea0622522b"),
         hash("sha256:c8777a03505f11dcbb4fb339fef1a8072d9d2500ce401b69a06073b523ea2c67"),
         hash("sha256:6de1298dfa4c2b6916f66d372b844faf23481c8f258eedd595c1423dab8e106d"),
+        hash("sha256:6d3bf5865f1836575715ea93d0042b9d08bcab918cc9a17a142848fe44e88bc7"),
       ], entryHashes: {} },
     ],
     listing: { choiceName: "Kiro CLI (V2)" },

@@ -26,6 +26,7 @@ test("OpenCode declares its exact roots, authored history and native plugin disc
         hash("sha256:25e76c09640300e354ab34e3c67e89d2dfe473940b65bd56c227ca4d5ea92c7b"),
         hash("sha256:51cb399f2257236cbf63e18cb2e317d75913f1771b5402707a2508cf5f81fa57"),
         hash("sha256:345fbe9fe620718510ecfe9d478233ccf4a5318522884b50fc5540559ace3eed"),
+        hash("sha256:c2b1232b28a8b5474f7ef8363452f75399366ef227c59d75fa85d7aa2edca7ac"),
       ], entryHashes: {} },
       { integration: path("AGENTS.md"), wholeFileHashes: [
         hash("sha256:d791057d6b667517197a450bc6ba633c36e148d62e09c90a8992d787c914a44f"),
@@ -33,6 +34,7 @@ test("OpenCode declares its exact roots, authored history and native plugin disc
         hash("sha256:db6e65ed85d6b47ca47d72b5a323ddc4dca76d021cce92591c1a28b26d9f237a"),
         hash("sha256:c5b990429fe6dfa084d58fc592d1d22c1170cc35aa98f9cbb2c82b9924520eda"),
         hash("sha256:6de1298dfa4c2b6916f66d372b844faf23481c8f258eedd595c1423dab8e106d"),
+        hash("sha256:6d3bf5865f1836575715ea93d0042b9d08bcab918cc9a17a142848fe44e88bc7"),
       ], entryHashes: {} },
       { integration: path("opencode.json"), wholeFileHashes: [
         hash("sha256:3be60b2be72b7a423fdaa90fd7d0d9d19613875c05ad5f1a2b6e20fcb54cd1e5"),

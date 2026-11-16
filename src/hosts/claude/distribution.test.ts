@@ -27,6 +27,7 @@ test("Claude declares its exact layout, prior signatures and plugin/native relea
         hash("sha256:051866aa49f8ed915ab5ae30707422068df814ca5be806a1fe28784c543a4aab"),
         hash("sha256:a618a3a615ef7159c7eed634a5a332bf9d017f8e28d6b0f0adad9db1d2d725e0"),
         hash("sha256:3cc1cbd212d2ca0dbf1e525eb9a40d4694a585eb7864d8b877f8fe8bd99122dc"),
+        hash("sha256:839f98012dd457ed13dcf19547b992130a2c44ef7afa73fb3faf000137a087d7"),
       ], entryHashes: {} },
       { integration: path(".mcp.json"), wholeFileHashes: [], entryHashes: {
         context7: [hash("sha256:8a440d21705f35c8f5649f118d17f786e08d589fb2dd888f5de5aa503233afbf")],

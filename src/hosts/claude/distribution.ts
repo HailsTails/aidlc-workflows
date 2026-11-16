@@ -14,6 +14,7 @@ const GITIGNORE_PRIOR_HASHES = [
   "sha256:051866aa49f8ed915ab5ae30707422068df814ca5be806a1fe28784c543a4aab",
   "sha256:a618a3a615ef7159c7eed634a5a332bf9d017f8e28d6b0f0adad9db1d2d725e0",
   "sha256:3cc1cbd212d2ca0dbf1e525eb9a40d4694a585eb7864d8b877f8fe8bd99122dc",
+  "sha256:839f98012dd457ed13dcf19547b992130a2c44ef7afa73fb3faf000137a087d7",
 ];
 
 const priorHashes = (values: readonly string[]): Result<readonly ContentHash[], KernelRefusal> =>

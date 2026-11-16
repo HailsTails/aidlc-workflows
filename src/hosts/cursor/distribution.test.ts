@@ -25,6 +25,7 @@ test("Cursor declares the exact roots, prior shapes, listing and plugin distribu
         hash("sha256:8c5a09fbee163fa2a02fbccb1695c2f66a79507a180456240dd380b681b97506"),
         hash("sha256:cf4554ef90011ebc4bc70c7fbc6ca572c513d5c1e7daa328e406d1069f98e635"),
         hash("sha256:ae1878ec98301ceb4510e711cf79f58dfb44cb486744007acd03ae5e61860665"),
+        hash("sha256:55d4cfabe04aca4193d53032c003002d3c9c7de4eef90be0afb411d8a6f7e340"),
       ], entryHashes: {} },
       { integration: path("AGENTS.md"), wholeFileHashes: [
         hash("sha256:78c906200a55665f3a3ce410272c71d4bdcb5764174407da0f69d8ad6d143184"),
@@ -32,6 +33,7 @@ test("Cursor declares the exact roots, prior shapes, listing and plugin distribu
         hash("sha256:2ef8a8cd1b72e59d017013b8d261721b1c5dedb82499b44dc9a97be01b6a73cb"),
         hash("sha256:eeabf9f9555124da3f5ad34eb3a26b9fcbf3e2ccd65610cb9f0182701cf3ef48"),
         hash("sha256:6de1298dfa4c2b6916f66d372b844faf23481c8f258eedd595c1423dab8e106d"),
+        hash("sha256:6d3bf5865f1836575715ea93d0042b9d08bcab918cc9a17a142848fe44e88bc7"),
       ], entryHashes: {} },
       { integration: path("install.ts"), wholeFileHashes: [
         hash("sha256:338e1d36257108ce908eb42992e87e5df7cf96003a45e04a72189e4d79110aba"),
