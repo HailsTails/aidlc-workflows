@@ -202,12 +202,26 @@ const wordsAfterWrapperOptions = ({
   });
 };
 
-const withoutEnvironmentAssignments = ({
+const LEADING_RESERVED_WORDS: ReadonlySet<string> = new Set([
+  "!",
+  "do",
+  "elif",
+  "else",
+  "if",
+  "then",
+  "until",
+  "while",
+]);
+
+const precedesTheCommand = ({ word }: { readonly word: string }): boolean =>
+  isEnvironmentAssignment({ word }) || LEADING_RESERVED_WORDS.has(word);
+
+const withoutLeadingReservedWordsAndAssignments = ({
   words,
 }: {
   readonly words: readonly string[];
 }): readonly string[] => {
-  const command = words.findIndex((word) => !isEnvironmentAssignment({ word }));
+  const command = words.findIndex((word) => !precedesTheCommand({ word }));
   return command < 0 ? [] : words.slice(command);
 };
 
@@ -308,7 +322,7 @@ const wordsRunAFetchAndRunLauncher = ({
 }: {
   readonly words: readonly string[];
 }): boolean => {
-  const [head, ...rest] = withoutEnvironmentAssignments({ words });
+  const [head, ...rest] = withoutLeadingReservedWordsAndAssignments({ words });
   if (head === undefined) return false;
   const executable = executableNameOf({ word: head });
   if (STANDALONE_LAUNCHERS.has(executable)) return true;
@@ -531,9 +545,9 @@ const segmentRunsInstalledHarnessTool = ({
   readonly command: string;
 }): boolean => {
   if (/[\r\n`()]/.test(segment)) return false;
-  if (/\b(?:AIDLC|CLAUDE)_PROJECT_DIR\s*=/i.test(command)) return false;
   const match = installedBunScriptPathRule.exec(segment);
   if (match === null) return false;
+  if (/\b(?:AIDLC|CLAUDE)_PROJECT_DIR\s*=/i.test(command)) return false;
   const captured = match[1];
   if (captured === undefined) return false;
   const prefix = installedHarnessToolPrefix();

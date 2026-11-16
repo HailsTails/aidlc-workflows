@@ -70,6 +70,19 @@ const FETCH_AND_RUN_LAUNCHES = [
   "eval npx pkg",
   'eval "npx pkg"',
   "command npx pkg",
+  "echo $'it\\'s'; npx pkg",
+  `echo \${X:-$(npx pkg)}`,
+  `echo \${X:-\`npx pkg\`}`,
+  "for f in a; do npx pkg; done",
+  "while true; do npx pkg; done",
+  "until false; do npx pkg; done",
+  "if true; then npx pkg; fi",
+  "if npx pkg; then :; fi",
+  "! npx pkg",
+  "if false; then :; elif npx pkg; then :; fi",
+  "if false; then :; else npx pkg; fi",
+  "n\\\npx pkg",
+  "cat <<A <<'B'\nx\nA\ny\nB\nnpx pkg",
 ] as const;
 
 const LAUNCHER_WORDS_AS_DATA = [
@@ -87,6 +100,13 @@ const LAUNCHER_WORDS_AS_DATA = [
   "echo '$(npx pkg)'",
   `echo \${HOME}/npx`,
   "git log --grep npx # npx in a comment; bunx too",
+  'cat <<< "npx pkg"',
+  "echo $'npx; bunx pkg'",
+  "for x in npx bunx; do echo \"$x\"; done",
+  'for f in a b; do echo "$f"; done',
+  'while read -r line; do echo "$line"; done < list.txt',
+  "if git diff --quiet; then echo clean; else echo dirty; fi",
+  "cat <<EOF\r\nnpx a\r\nEOF\r\ngit status",
 ] as const;
 
 const SUBCOMMAND_LOOKALIKES = [
@@ -237,6 +257,22 @@ describe("block-inline-exec judges only what the shell would run as a command", 
   test.each(SUBCOMMAND_LOOKALIKES)("passes %s", async (command) => {
     expect(await decisionFor({ command })).toBeUndefined();
   });
+});
+
+describe("block-inline-exec decides a megabyte command well inside the hook timeout", () => {
+  const BUDGET_MILLISECONDS = 15_000;
+
+  test.each([
+    { shape: "short commands", command: "a;".repeat(500_000) },
+    { shape: "a heredoc message", command: `git commit -F - <<'EOF'\n${"npx; (a) | b\n".repeat(80_000)}EOF\n` },
+  ])("a megabyte of $shape is decided within the budget", async ({ command }) => {
+    const started = performance.now();
+    const decision = await decisionFor({ command });
+    expect({ decision, withinBudget: performance.now() - started < BUDGET_MILLISECONDS }).toStrictEqual({
+      decision: undefined,
+      withinBudget: true,
+    });
+  }, 120_000);
 });
 
 describe("the launcher rule cannot be lifted by an authorised location", () => {

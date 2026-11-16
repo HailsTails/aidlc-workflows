@@ -33,7 +33,44 @@ describe("simpleCommandsOf keeps quoted and heredoc text as data", () => {
     },
     { source: "a \\; b", commands: [["a", "\\;", "b"]] },
     { source: '"C:\\Program Files\\x.cmd" y', commands: [["C:\\Program Files\\x.cmd", "y"]] },
+    { source: "cat <<A <<'B'\nnpx a\nA\nnpx b\nB\nnext", commands: [["cat"], ["next"]] },
+    { source: 'cat <<< "npx pkg"', commands: [["cat", "<<<", "npx pkg"]] },
+    { source: "cat <<EOF\r\nnpx a\r\nEOF\r\nb", commands: [["cat"], ["b"]] },
+    { source: "echo $'it\\'s; npx'", commands: [["echo", "it's; npx"]] },
   ])("$source", ({ source, commands }) => {
     expect(simpleCommandsOf({ source })).toStrictEqual(commands);
   });
+});
+
+describe("simpleCommandsOf finds commands the shell runs from inside expansions and quoting", () => {
+  test.each([
+    { source: "a b\r\nc", commands: [["a", "b"], ["c"]] },
+    { source: "np\\\nx pkg", commands: [["npx", "pkg"]] },
+    { source: "echo $'it\\'s'; npx pkg", commands: [["echo", "it's"], ["npx", "pkg"]] },
+    { source: `echo \${X:-$(npx pkg)}`, commands: [["npx", "pkg"], ["echo", `\${X:-}`]] },
+    { source: `echo \${X:-\`npx pkg\`}`, commands: [["npx", "pkg"], ["echo", `\${X:-}`]] },
+  ])("$source", ({ source, commands }) => {
+    expect(simpleCommandsOf({ source })).toStrictEqual(commands);
+  });
+});
+
+describe("simpleCommandsOf scans in time linear in the line's length", () => {
+  const MEGABYTE_OF_INPUT = 1_000_000;
+  const BUDGET_MILLISECONDS = 5_000;
+
+  const elapsedMillisecondsScanning = ({ source }: { readonly source: string }): number => {
+    const started = performance.now();
+    simpleCommandsOf({ source });
+    return performance.now() - started;
+  };
+
+  test.each([
+    { shape: "many short commands", source: "a;".repeat(MEGABYTE_OF_INPUT / 2) },
+    { shape: "one command with many words", source: "a ".repeat(MEGABYTE_OF_INPUT / 2) },
+    { shape: "one long word", source: "a".repeat(MEGABYTE_OF_INPUT) },
+    { shape: "a long heredoc", source: `cat <<'EOF'\n${"npx; (a)\n".repeat(MEGABYTE_OF_INPUT / 10)}EOF\n` },
+    { shape: "a long double-quoted message", source: `git commit -m "${"a; (b) | c ".repeat(MEGABYTE_OF_INPUT / 12)}"` },
+  ])("a megabyte of $shape scans within the budget", ({ source }) => {
+    expect(elapsedMillisecondsScanning({ source })).toBeLessThan(BUDGET_MILLISECONDS);
+  }, 120_000);
 });
