@@ -1,6 +1,5 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { compiledExecutable } from "./aidlc-runtime-paths.ts";
 
 export interface ProjectToolRequest {
 	readonly projectRoot: string;
@@ -57,7 +56,7 @@ function installedTool(packageDirectory: string, request: ProjectToolRequest): P
 	if (!manifest || manifest.name !== request.packageName || typeof manifest.version !== "string") return null;
 	const relativeCli = binRelativePath(manifest, request.binName);
 	if (!relativeCli) return null;
-	const cliPath = join(realpathSync(packageDirectory), relativeCli);
+	const cliPath = join(packageDirectory, relativeCli);
 	return existsSync(cliPath) ? { packageName: request.packageName, version: manifest.version, cliPath } : null;
 }
 
@@ -84,12 +83,6 @@ export function selectProjectTool(input: {
 		: { kind: "unavailable", message: `${input.unavailableCode}: ${missingProjectToolMessage(input.request)}` };
 }
 
-export function projectToolCommand(
-	tool: ProjectTool,
-	args: readonly string[],
-	aidlcExecutable: string | null = compiledExecutable(),
-): ProjectToolCommand {
-	return aidlcExecutable
-		? { executable: aidlcExecutable, args: [tool.cliPath, ...args], environment: { BUN_BE_BUN: "1" } }
-		: { executable: process.execPath, args: [tool.cliPath, ...args], environment: {} };
+export function projectToolCommand(tool: ProjectTool, args: readonly string[]): ProjectToolCommand {
+	return { executable: process.execPath, args: [tool.cliPath, ...args], environment: { BUN_BE_BUN: "1" } };
 }

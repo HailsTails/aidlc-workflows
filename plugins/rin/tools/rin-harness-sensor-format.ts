@@ -78,8 +78,28 @@ type FormatCommand =
       readonly kind: "run";
       readonly executable: string;
       readonly commandArguments: readonly string[];
+      readonly environment: Readonly<Record<string, string>>;
     }
   | { readonly kind: "unavailable"; readonly message: string };
+
+type FormatRunFailure = {
+  readonly exitCode: number;
+  readonly diagnostic: string;
+};
+
+const SENSOR_ERROR_EXIT_CODE = 1;
+
+const formatRunFailure = ({
+  status,
+}: {
+  readonly status: number | null;
+}): FormatRunFailure | null =>
+  status === null
+    ? {
+        exitCode: SENSOR_ERROR_EXIT_CODE,
+        diagnostic: "biome-execution-incomplete",
+      }
+    : null;
 
 const BIOME_PACKAGE = "@biomejs/biome";
 
@@ -135,7 +155,7 @@ const toolInstalledAt = ({
   )
     return null;
   const relativeCli = binRelativePath({ manifest, binName: request.binName });
-  if (relativeCli === null) return null;
+  if (relativeCli === null || relativeCli.length === 0) return null;
   const cliPath = paths.join({ segments: [packageDirectory, relativeCli] });
   return files.exists(cliPath)
     ? { version: manifest["version"], cliPath }
@@ -190,6 +210,7 @@ const biomeFormatCommand = ({
       "--no-errors-on-unmatched",
       filePath,
     ],
+    environment: { BUN_BE_BUN: "1" },
   };
 };
 
@@ -242,9 +263,13 @@ const runFormatSensor = (): void => {
     program: command.executable,
     args: command.commandArguments,
     cwd: projectRoot,
-    environment: processes.environment,
+    environment: { ...processes.environment, ...command.environment },
   });
-  if (formatted.status === null) unavailable("biome-unavailable");
+  const failure = formatRunFailure(formatted);
+  if (failure !== null) {
+    processes.diagnose(`${failure.diagnostic}\n`);
+    processes.exit(failure.exitCode);
+  }
 
   const after = files.read(filePath);
   emit({ pass: true, reformatted: before !== after, file: filePath });
@@ -255,6 +280,7 @@ if (import.meta.main) runFormatSensor();
 export {
   biomeFormatCommand,
   FORMATTED_EXTENSIONS,
+  formatRunFailure,
   installedProjectTool,
   nearestProjectRoot,
   targetPathFrom,

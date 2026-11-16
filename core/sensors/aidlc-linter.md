@@ -35,12 +35,14 @@ already be available. The sensor does not install a manager or change config.
 
 With no lint script, default `--runner auto` runs the ESLint the project
 itself installed, resolved from the nearest `node_modules` at or above the
-package directory, never from `PATH` and never downloaded. ESLint 9 and 10 are
-supported; flat config is the floor. When ESLint is not installed, or the
-installed version predates flat config, the sensor exits 127 with
-`eslint-unavailable` or `eslint-unsupported` and a message naming what to
-install, an unavailable check rather than a verified lint pass. Install
-`eslint` (9 or later) as a devDependency of the repository to enable it.
+package directory, never from `PATH` and never downloaded. It requires ESLint 9
+or later; ESLint 8 is not supported, even with a flat config. When ESLint is
+not installed, or the installed version is older than 9, the sensor exits 127
+with `eslint-unavailable` or `eslint-unsupported` and writes a message naming
+what to install to its stderr, which you see when you run the sensor directly.
+The dispatcher records only a `tool-unavailable` note for that fire, an
+unavailable check rather than a verified lint pass. Install `eslint` 9 or later
+as a devDependency of the repository to enable it.
 `--runner project` requires the script: a missing manifest or script exits 127
 with `no-lint-script`. An empty or malformed script/manifest, or unsupported
 manager, is a script error. `--runner eslint` explicitly selects the installed

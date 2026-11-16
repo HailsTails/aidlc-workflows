@@ -136,20 +136,23 @@ describe("resolveProjectTool reads the project's own dependency tree", () => {
 });
 
 describe("projectToolCommand runs the installed CLI under a JavaScript runtime", () => {
-	test("from source, the running Bun runs the resolved CLI file", () => {
-		expect(projectToolCommand(eslintAt("10.11.0"), ["--version"], null)).toEqual({
+	test("the running executable runs the resolved CLI file as Bun, from source or compiled", () => {
+		expect(projectToolCommand(eslintAt("10.11.0"), ["--version"])).toEqual({
 			executable: process.execPath,
-			args: ["/repo/node_modules/eslint/bin/eslint.js", "--version"],
-			environment: {},
-		});
-	});
-
-	test("from the compiled binary, the binary runs the CLI file as Bun", () => {
-		expect(projectToolCommand(eslintAt("10.11.0"), ["--version"], "/opt/aidlc/aidlc")).toEqual({
-			executable: "/opt/aidlc/aidlc",
 			args: ["/repo/node_modules/eslint/bin/eslint.js", "--version"],
 			environment: { BUN_BE_BUN: "1" },
 		});
+	});
+
+	test("Bun treats the compiled-binary switch as a no-op, so source runs are unchanged", () => {
+		const tsc = resolveProjectTool({ projectRoot: REPO_ROOT, packageName: "typescript", binName: "tsc" });
+		expect(tsc).not.toBeNull();
+		const command = projectToolCommand(tsc as ProjectTool, ["--version"]);
+		const result = spawnSync(command.executable, [...command.args], {
+			encoding: "utf-8", env: { ...process.env, ...command.environment },
+		});
+		expect(result.status, result.stderr).toBe(0);
+		expect(result.stdout).toMatch(/^Version \d+\.\d+\.\d+/);
 	});
 });
 

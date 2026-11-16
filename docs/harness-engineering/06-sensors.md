@@ -266,8 +266,8 @@ override the process defaults.
 Project mode reports missing scripts as unavailable instead of trying ESLint.
 Default `auto` runs the project's own installed ESLint (9 or later) when a
 script is absent; explicit `eslint` selects it. Neither ever downloads ESLint:
-without a local install the sensor reports unavailable and names what to
-install. Conflicting manager hints, malformed
+without a local install the fire is recorded as `tool-unavailable`, and running
+the sensor directly prints what to install. Conflicting manager hints, malformed
 metadata and failed commands are not verified lint passes. Configure CD
 coverage separately in the consumer's ESLint/Biome rules and discipline
 sensors. Full adoption and failure details: `core/sensors/aidlc-linter.md`.
