@@ -3,17 +3,21 @@ import type { PathPort } from "../core/platform-ports/path-port.ts";
 import type { ProcessPort } from "../core/platform-ports/process-port.ts";
 import type { Result } from "../core/values/result.ts";
 import {
-  consumerManifest,
+  CONSUMER_MANIFEST,
   type ExclusionRule,
   entryDisposition,
   exclusionRules,
   type InstallList,
-  installPaths,
+  type InstallPlacement,
+  installPlacements,
+  intoRootPlacements,
   judgedStep,
   type ProofAction,
   type ProofCase,
+  type ProofToolchain,
   parsedInstallList,
   type StepRun,
+  toolchainManifest,
 } from "./install-proof-plan.ts";
 import type { CommandRunPort, ProofCommand, ScratchFilesPort } from "./install-proof-ports.ts";
 
@@ -44,7 +48,9 @@ const INSTALL_DIRECTORY = ["tools", "discipline-core"];
 const TEMPORARY_PREFIX = "discipline-core-install-proof-";
 const GIT_IDENTITY = ["-c", "user.name=proof", "-c", "user.email=proof@invalid", "-c", "commit.gpgsign=false"];
 const NPM_INSTALL = ["install", "--no-audit", "--no-fund", "--ignore-scripts"];
-const NPM_CI = ["ci", "--omit=dev", "--legacy-peer-deps", "--no-audit", "--no-fund", "--ignore-scripts"];
+const NPM_CI = ["ci", "--ignore-scripts", "--no-audit", "--no-fund"];
+const CORE_PACKAGES = "core-packages";
+const NODE_MODULES = "node_modules";
 const PASS_LINE = "install proof: pass\n";
 
 const inOrder = (request: { readonly steps: readonly Step[] }): Result<null, string> =>
@@ -191,27 +197,26 @@ const performedAction = (request: {
   }
 };
 
-const copiedInstall = (request: {
+const copiedPlacements = (request: {
   readonly context: ProofContext;
-  readonly installDirectory: string;
-  readonly paths: readonly string[];
+  readonly targetDirectory: string;
+  readonly placements: readonly InstallPlacement[];
   readonly rules: readonly ExclusionRule[];
 }): Result<null, string> =>
   inOrder({
-    steps: request.paths.map(
-      (path): Step =>
+    steps: request.placements.map(
+      (placement): Step =>
         () =>
           labelled({
-            label: `copy ${path} into the install`,
+            label: `copy ${placement.from} into ${placement.to}`,
             result: request.context.scratch.copyTree({
-              from: request.context.path.join({ segments: [request.context.packageRoot, path] }),
-              to: request.context.path.join({ segments: [request.installDirectory, path] }),
+              from: request.context.path.join({ segments: [request.context.packageRoot, placement.from] }),
+              to: request.context.path.join({ segments: [request.targetDirectory, placement.to] }),
               disposition: (entry) => entryDisposition({ rules: request.rules, name: entry.name, entryKind: entry.entryKind }),
             }),
           }),
     ),
   });
-
 const installLeavesOut = (request: {
   readonly context: ProofContext;
   readonly consumer: string;
@@ -246,12 +251,10 @@ const writtenFile = (request: {
 
 const preparedConsumer = (request: {
   readonly context: ProofContext;
-  readonly consumer: string;
   readonly fixture: string;
   readonly repo: string;
-  readonly manifest: string;
 }): Result<null, string> => {
-  const label = `prepare the ${request.consumer} consumer`;
+  const label = `prepare the consumer ${request.repo}`;
   return inOrder({
     steps: [
       () =>
@@ -264,7 +267,7 @@ const preparedConsumer = (request: {
           context: request.context,
           label,
           path: request.context.path.join({ segments: [request.repo, "package.json"] }),
-          text: request.manifest,
+          text: CONSUMER_MANIFEST,
         }),
       () =>
         writtenFile({
@@ -273,13 +276,59 @@ const preparedConsumer = (request: {
           path: request.context.path.join({ segments: [request.repo, ".gitignore"] }),
           text: IGNORED_INSTALLS,
         }),
+    ],
+  });
+};
+
+const stagedCorePackages = (request: {
+  readonly context: ProofContext;
+  readonly temporaryRoot: string;
+  readonly installList: InstallList;
+}): Result<null, string> => {
+  const directory = request.context.path.join({ segments: [request.temporaryRoot, CORE_PACKAGES] });
+  return inOrder({
+    steps: [
+      () =>
+        copiedPlacements({
+          context: request.context,
+          targetDirectory: directory,
+          placements: intoRootPlacements({ installList: request.installList }),
+          rules: [],
+        }),
+      () => ranCommand({ context: request.context, label: "npm ci core's own packages", command: "npm", arguments: NPM_CI, directory }),
+    ],
+  });
+};
+
+const installedToolchain = (request: {
+  readonly context: ProofContext;
+  readonly temporaryRoot: string;
+  readonly packageManifest: string;
+  readonly toolchain: ProofToolchain;
+}): Result<null, string> => {
+  const manifest = toolchainManifest({ developmentManifest: request.packageManifest, toolchain: request.toolchain });
+  if (manifest.outcome === "failed") {
+    return { outcome: "failed", error: `FAIL: package.json: ${manifest.error.detail}` };
+  }
+  const directory = request.context.path.join({ segments: [request.temporaryRoot, request.toolchain] });
+  const label = `prepare the ${request.toolchain} toolchain`;
+  return inOrder({
+    steps: [
+      () => emptied({ result: labelled({ label, result: request.context.scratch.makeDirectory({ path: directory }) }) }),
+      () =>
+        writtenFile({
+          context: request.context,
+          label,
+          path: request.context.path.join({ segments: [directory, "package.json"] }),
+          text: manifest.value,
+        }),
       () =>
         ranCommand({
           context: request.context,
-          label: `npm install the toolchain in ${request.consumer}`,
+          label: `npm install the ${request.toolchain} toolchain`,
           command: "npm",
           arguments: NPM_INSTALL,
-          directory: request.repo,
+          directory,
         }),
     ],
   });
@@ -288,42 +337,38 @@ const preparedConsumer = (request: {
 const provenCase = (request: {
   readonly context: ProofContext;
   readonly temporaryRoot: string;
-  readonly packageManifest: string;
   readonly installList: InstallList;
   readonly rules: readonly ExclusionRule[];
   readonly proofCase: ProofCase;
 }): Result<null, string> => {
   const context = request.context;
   const consumer = request.proofCase.consumer;
-  const paths = installPaths({
+  const placements = installPlacements({
     installList: request.installList,
     disciplineId: request.proofCase.disciplineId,
     mechanism: request.proofCase.mechanism,
   });
-  if (paths.outcome === "failed") {
-    return { outcome: "failed", error: `FAIL: install path ${paths.error.path} keeps a placeholder` };
+  if (placements.outcome === "failed") {
+    return { outcome: "failed", error: `FAIL: install path ${placements.error.path} keeps a placeholder` };
   }
-  const manifest = consumerManifest({ packageManifest: request.packageManifest, toolchain: request.proofCase.toolchain });
-  if (manifest.outcome === "failed") {
-    return { outcome: "failed", error: `FAIL: package.json: ${manifest.error.detail}` };
-  }
-  const repo = context.path.join({ segments: [request.temporaryRoot, consumer] });
+  const repo = context.path.join({ segments: [request.temporaryRoot, request.proofCase.toolchain, consumer] });
   const installDirectory = context.path.join({ segments: [repo, ...INSTALL_DIRECTORY] });
   const fixture = context.path.join({
     segments: [context.packageRoot, "tests", "test-fixtures", "consumer-proof", request.proofCase.mechanism],
   });
   return inOrder({
     steps: [
-      () => preparedConsumer({ context, consumer, fixture, repo, manifest: manifest.value }),
-      () => copiedInstall({ context, installDirectory, paths: paths.value, rules: request.rules }),
+      () => preparedConsumer({ context, fixture, repo }),
+      () => copiedPlacements({ context, targetDirectory: installDirectory, placements: placements.value, rules: request.rules }),
       () => installLeavesOut({ context, consumer, installDirectory, installList: request.installList, rules: request.rules }),
       () =>
-        ranCommand({
-          context,
-          label: `npm ci the core install in ${consumer}`,
-          command: "npm",
-          arguments: NPM_CI,
-          directory: installDirectory,
+        labelled({
+          label: `copy core's own packages into the ${consumer} install`,
+          result: context.scratch.copyTree({
+            from: context.path.join({ segments: [request.temporaryRoot, CORE_PACKAGES, NODE_MODULES] }),
+            to: context.path.join({ segments: [installDirectory, NODE_MODULES] }),
+            disposition: () => "kept",
+          }),
         }),
       () => git({ context, repo, consumer, arguments: ["init", "-q"] }),
       () => commitAll({ context, repo, consumer, message: "consumer" }),
@@ -344,6 +389,10 @@ const provenCase = (request: {
   });
 };
 
+const toolchainsOf = (request: { readonly proofCases: readonly ProofCase[] }): readonly ProofToolchain[] => [
+  ...new Set(request.proofCases.map((proofCase) => proofCase.toolchain)),
+];
+
 const provenInside = (request: {
   readonly context: ProofContext;
   readonly temporaryRoot: string;
@@ -353,20 +402,28 @@ const provenInside = (request: {
 }): Result<null, string> => {
   const rules = exclusionRules({ leftOut: request.installList.leftOut });
   return inOrder({
-    steps: request.proofCases.map(
-      (proofCase): Step =>
-        () =>
-          provenCase({
-            context: request.context,
-            temporaryRoot: request.temporaryRoot,
-            packageManifest: request.packageManifest,
-            installList: request.installList,
-            rules,
-            proofCase,
-          }),
-    ),
+    steps: [
+      () => stagedCorePackages(request),
+      ...toolchainsOf(request).map(
+        (toolchain): Step =>
+          () =>
+            installedToolchain({ ...request, toolchain }),
+      ),
+      ...request.proofCases.map(
+        (proofCase): Step =>
+          () =>
+            provenCase({
+              context: request.context,
+              temporaryRoot: request.temporaryRoot,
+              installList: request.installList,
+              rules,
+              proofCase,
+            }),
+      ),
+    ],
   });
 };
+
 const provenWithin = (request: {
   readonly context: ProofContext;
   readonly packageManifest: string;
@@ -387,7 +444,6 @@ const provenWithin = (request: {
   });
   return proven.outcome === "failed" ? proven : removed;
 };
-
 const packageRootOf = (request: { readonly path: PathPort; readonly moduleUrl: string }): Result<string, string> => {
   const entryPath = request.path.fromFileUrl({ url: request.moduleUrl });
   if (entryPath.outcome === "failed") {

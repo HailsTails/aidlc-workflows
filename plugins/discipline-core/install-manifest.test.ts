@@ -1,8 +1,14 @@
 import { assert, describe, expect, it } from "vitest";
-import { supportedRange } from "./core/mechanism-port/toolchain-requirement.ts";
+import { supportedRange, type ToolchainRequirement } from "./core/mechanism-port/toolchain-requirement.ts";
 import { parsedJson } from "./core/rule-set-reader/rule-set-reader.ts";
-import { TYPESCRIPT_REQUIREMENT as AUDIT_TYPESCRIPT_REQUIREMENT } from "./mechanisms/audit/runner/typescript-parse.ts";
-import { ESLINT_TOOLCHAIN_REQUIREMENTS } from "./mechanisms/eslint/runner/eslint-toolchain.ts";
+import { TYPESCRIPT_REQUIREMENT } from "./mechanisms/audit/runner/typescript-parse.ts";
+import {
+  ESLINT_REQUIREMENT,
+  ESLINT_TOOLCHAIN_REQUIREMENTS,
+  TYPESCRIPT_ESLINT_PARSER_REQUIREMENT,
+  TYPESCRIPT_ESLINT_PLUGIN_REQUIREMENT,
+} from "./mechanisms/eslint/runner/eslint-toolchain.ts";
+import { installManifestOf } from "./scripts/install-manifest.ts";
 import { requiredEntry } from "./tests/required-entry.ts";
 
 declare global {
@@ -14,7 +20,7 @@ declare global {
   }
 }
 
-const installFiles = import.meta.glob(["./package.json", "./package-lock.json"], {
+const manifestFiles = import.meta.glob(["./package.json", "./package-lock.json", "./install/package.json", "./install/package-lock.json"], {
   base: "./",
   query: "?raw",
   import: "default",
@@ -22,7 +28,7 @@ const installFiles = import.meta.glob(["./package.json", "./package-lock.json"],
 });
 
 const jsonOf = (request: { readonly key: string }): unknown => {
-  const parsed = parsedJson({ text: requiredEntry({ table: installFiles, key: request.key }) });
+  const parsed = parsedJson({ text: requiredEntry({ table: manifestFiles, key: request.key }) });
   assert(parsed.outcome === "ok", `${request.key} parses as JSON`);
   return parsed.value;
 };
@@ -32,72 +38,105 @@ const sectionOf = (request: { readonly json: unknown; readonly name: string }): 
     ? Object.entries(request.json).find(([key]) => key === request.name)?.[1]
     : undefined;
 
-const MANIFEST = jsonOf({ key: "./package.json" });
-
-const LOCK = jsonOf({ key: "./package-lock.json" });
-
-const REQUIREMENTS = [...ESLINT_TOOLCHAIN_REQUIREMENTS, AUDIT_TYPESCRIPT_REQUIREMENT];
-
-const DEV_PINS_AT_EACH_FLOOR = {
-  typescript: "6.0.3",
-  eslint: "10.11.0",
-  "eslint-9": "npm:eslint@9.39.5",
-  "@typescript-eslint/parser": "8.71.2",
-  "@typescript-eslint/eslint-plugin": "8.71.2",
+const namesIn = (request: { readonly json: unknown; readonly name: string }): readonly string[] => {
+  const section = sectionOf(request);
+  return typeof section === "object" && section !== null ? Object.keys(section) : [];
 };
 
-const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
+const DEVELOPMENT_MANIFEST = jsonOf({ key: "./package.json" });
 
-describe("the install's own module type, read as build-time raw files (CD-47: this package's manifest is the assertion's subject and no fake can stand in for it; nothing is spawned or written)", () => {
-  it("declares package.json type module, so an install's .ts entries load as ES modules whatever the consumer's own package.json says", () => {
-    expect(MANIFEST).toMatchObject({ type: "module" });
+const INSTALL_MANIFEST = jsonOf({ key: "./install/package.json" });
+
+const INSTALL_LOCK = jsonOf({ key: "./install/package-lock.json" });
+
+const REQUIREMENTS: readonly ToolchainRequirement[] = [...ESLINT_TOOLCHAIN_REQUIREMENTS, TYPESCRIPT_REQUIREMENT];
+
+const floorAlias = (request: { readonly requirement: ToolchainRequirement; readonly line: number }): string =>
+  `npm:${request.requirement.packageName}@${request.requirement.lines[request.line]?.floor}`;
+
+const NODE_MODULES_PREFIX = "node_modules/";
+
+const lockedPackageNames = (): readonly string[] =>
+  namesIn({ json: INSTALL_LOCK, name: "packages" })
+    .filter((key) => key !== "")
+    .map((key) => key.slice(key.lastIndexOf(NODE_MODULES_PREFIX) + NODE_MODULES_PREFIX.length));
+
+describe("the install's own module type, read as build-time raw files (CD-47: this package's manifests are the assertion's subject and no fake can stand in for them; nothing is spawned or written)", () => {
+  it("declares type module in the install manifest, so an install's .ts entries load as ES modules whatever the consumer's own package.json says", () => {
+    expect(INSTALL_MANIFEST).toMatchObject({ type: "module" });
   });
 });
 
-describe("the install's dependency split, read as build-time raw files (CD-47: this package's manifest and lockfile are the assertion's subject; nothing is spawned or written)", () => {
+describe("the development manifest's toolchain declarations, read as build-time raw files (CD-47: this package's manifest is the assertion's subject; nothing is spawned or written)", () => {
   it("declares every toolchain package a mechanism loads as a peer whose range is the one the mechanism checks at run time", () => {
-    expect(MANIFEST).toMatchObject({
-      peerDependencies: Object.fromEntries(
-        REQUIREMENTS.map((requirement) => [requirement.packageName, supportedRange({ requirement })]),
-      ),
-    });
+    expect(sectionOf({ json: DEVELOPMENT_MANIFEST, name: "peerDependencies" })).toEqual(
+      Object.fromEntries(REQUIREMENTS.map((requirement) => [requirement.packageName, supportedRange({ requirement })])),
+    );
   });
 
-  it("marks the ESLint mechanism's peers optional, so an audit-only adopter installs only typescript", () => {
-    expect(MANIFEST).toMatchObject({
-      peerDependenciesMeta: {
-        eslint: { optional: true },
-        "@typescript-eslint/parser": { optional: true },
-        "@typescript-eslint/eslint-plugin": { optional: true },
+  it("marks every peer optional, so npm never installs a copy of the toolchain inside the core install, where it would shadow the repository's", () => {
+    expect(sectionOf({ json: DEVELOPMENT_MANIFEST, name: "peerDependenciesMeta" })).toEqual(
+      Object.fromEntries(REQUIREMENTS.map((requirement) => [requirement.packageName, { optional: true }])),
+    );
+  });
+
+  it("pins each peer's floor as a development dependency, so the tests run core on the oldest release each range admits", () => {
+    expect(DEVELOPMENT_MANIFEST).toMatchObject({
+      devDependencies: {
+        "typescript-floor": floorAlias({ requirement: TYPESCRIPT_REQUIREMENT, line: 0 }),
+        "eslint-9-floor": floorAlias({ requirement: ESLINT_REQUIREMENT, line: 0 }),
+        "eslint-10-floor": floorAlias({ requirement: ESLINT_REQUIREMENT, line: 1 }),
+        "typescript-eslint-parser-floor": floorAlias({ requirement: TYPESCRIPT_ESLINT_PARSER_REQUIREMENT, line: 0 }),
+        "typescript-eslint-plugin-floor": floorAlias({ requirement: TYPESCRIPT_ESLINT_PLUGIN_REQUIREMENT, line: 0 }),
       },
-    });
-  });
-
-  it("pins the floor of every supported release line as an exact development dependency, so the tests run on each line core supports", () => {
-    expect(MANIFEST).toMatchObject({
-      devDependencies: DEV_PINS_AT_EACH_FLOOR,
     });
   });
 
   it("ships only core's own implementation packages as exact-pinned dependencies, none of them a peer", () => {
-    expect(MANIFEST).toMatchObject({
+    expect(DEVELOPMENT_MANIFEST).toMatchObject({
       dependencies: {
-        "@eslint/plugin-kit": expect.stringMatching(EXACT_VERSION),
-        "jsonc-parser": expect.stringMatching(EXACT_VERSION),
-        zod: expect.stringMatching(EXACT_VERSION),
+        "@eslint/plugin-kit": expect.stringMatching(/^\d+\.\d+\.\d+$/),
+        "jsonc-parser": expect.stringMatching(/^\d+\.\d+\.\d+$/),
+        zod: expect.stringMatching(/^\d+\.\d+\.\d+$/),
       },
     });
   });
+});
 
-  it("ships a lockfile whose root entry declares exactly the manifest's dependencies, peers and development dependencies", () => {
-    expect(LOCK).toMatchObject({
-      packages: {
-        "": {
-          dependencies: sectionOf({ json: MANIFEST, name: "dependencies" }),
-          peerDependencies: sectionOf({ json: MANIFEST, name: "peerDependencies" }),
-          devDependencies: sectionOf({ json: MANIFEST, name: "devDependencies" }),
-        },
-      },
+describe("what an adopter installs, read as build-time raw files (CD-47: the shipped install manifest and lock are the assertion's subject; nothing is spawned or written)", () => {
+  it("ships no lock of the development tree beside the development manifest", () => {
+    expect(Object.keys(manifestFiles)).not.toContain("./package-lock.json");
+  });
+
+  it("ships the install manifest generated from the development manifest, with no scripts or development dependencies", () => {
+    expect(installManifestOf({ developmentManifest: requiredEntry({ table: manifestFiles, key: "./package.json" }) })).toEqual({
+      outcome: "ok",
+      value: requiredEntry({ table: manifestFiles, key: "./install/package.json" }),
     });
+  });
+
+  it("ships a lock whose root entry declares exactly the install manifest's dependencies and peers, and no development dependency", () => {
+    const root = sectionOf({ json: sectionOf({ json: INSTALL_LOCK, name: "packages" }), name: "" });
+    expect({
+      dependencies: sectionOf({ json: root, name: "dependencies" }),
+      peerDependencies: sectionOf({ json: root, name: "peerDependencies" }),
+      devDependencies: namesIn({ json: root, name: "devDependencies" }),
+    }).toEqual({
+      dependencies: sectionOf({ json: INSTALL_MANIFEST, name: "dependencies" }),
+      peerDependencies: sectionOf({ json: INSTALL_MANIFEST, name: "peerDependencies" }),
+      devDependencies: [],
+    });
+  });
+
+  it("locks no development package and no toolchain peer, only core's own packages and what they need", () => {
+    const excluded = [
+      ...namesIn({ json: DEVELOPMENT_MANIFEST, name: "devDependencies" }),
+      ...REQUIREMENTS.map((requirement) => requirement.packageName),
+    ];
+    expect(lockedPackageNames().filter((name) => excluded.includes(name))).toEqual([]);
+  });
+
+  it("locks each of core's own packages", () => {
+    expect(lockedPackageNames()).toEqual(expect.arrayContaining([...namesIn({ json: INSTALL_MANIFEST, name: "dependencies" })]));
   });
 });

@@ -23,6 +23,14 @@ export const runnerFailureSchema = z.discriminatedUnion("kind", [
       found: z.string(),
     })
     .readonly(),
+  z
+    .object({
+      kind: z.literal("toolchain-shadowed"),
+      packageName: z.string(),
+      location: z.string(),
+      installRoot: z.string(),
+    })
+    .readonly(),
 ]);
 
 export type RunnerFailure = z.infer<typeof runnerFailureSchema>;

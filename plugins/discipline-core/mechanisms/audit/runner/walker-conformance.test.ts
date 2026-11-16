@@ -3,6 +3,7 @@ import { checkConformance } from "../../../core/conformance/conformance.ts";
 import { runnerModuleSchema } from "../../../core/mechanism-port/runner-module-schema.ts";
 import { mechanismIdSchema } from "../../../core/values/identifiers.ts";
 import { conformanceRows, foldersUnder } from "../../../tests/conformance-rows.ts";
+import { auditRunnerOn } from "../../../tests/typescript-parse-port.ts";
 import * as walkerRunnerModule from "./runner.ts";
 
 declare global {
@@ -52,6 +53,17 @@ describe("every audit piece on disk is registered with a piece.json and a discip
 describe("the audit runner, loaded as core loads it, conforms to every registered clause's shared cases read as build-time raw modules (CD-47: the shipped runner and its pieces are the assertion's subject; nothing is spawned or written)", () => {
   it.each(CONFORMANCE_ROWS)("$name has no conformance failure over its flag and allow cases", async (row) => {
     expect(await checkConformance({ clause: row.clause, cases: row.cases, runner: walkerRunner })).toEqual({
+      outcome: "ok",
+      value: [],
+    });
+  });
+});
+
+describe("the audit runner on the oldest supported TypeScript, 4.8.4, conforms to every registered clause's shared cases (CD-47: the shipped runner and its pieces are the assertion's subject; nothing is spawned or written)", () => {
+  const floorRunner = runnerModuleSchema.parse(auditRunnerOn({ line: "typescript-floor" }));
+
+  it.each(CONFORMANCE_ROWS)("$name has no conformance failure over its flag and allow cases", async (row) => {
+    expect(await checkConformance({ clause: row.clause, cases: row.cases, runner: floorRunner })).toEqual({
       outcome: "ok",
       value: [],
     });

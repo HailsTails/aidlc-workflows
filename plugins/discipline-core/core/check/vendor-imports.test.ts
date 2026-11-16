@@ -129,6 +129,20 @@ const eslintToolchainSources = import.meta.glob(["./mechanisms/eslint/runner/esl
   eager: true,
 });
 
+const typescriptLineSources = import.meta.glob(["./tests/typescript-parse-port.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const eslintLineSources = import.meta.glob(["./tests/eslint-toolchains.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
 const pluginKitWrapperSources = import.meta.glob(["./mechanisms/eslint/runner/inline-config-parser.ts"], {
   base: "../../",
   query: "?raw",
@@ -173,8 +187,6 @@ const testSources = import.meta.glob(
     "./tests/required-entry.ts",
     "./tests/confinement.ts",
     "./tests/conformance-rows.ts",
-    "./tests/eslint-toolchains.ts",
-    "./tests/typescript-parse-port.ts",
     "!./node_modules/**",
     "!./**/test-fixtures/**",
   ],
@@ -198,6 +210,8 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       walkerPieceSources,
       eslintPieceSources,
       testSources,
+      eslintLineSources,
+      typescriptLineSources,
     }).toEqual({
       sourcesOutsideMechanisms: expect.objectContaining({
         "./core/check/run-check.ts": expect.any(String),
@@ -225,6 +239,8 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./tests/required-entry.ts": expect.any(String),
         "./tests/confinement.ts": expect.any(String),
       }),
+      eslintLineSources: { "./tests/eslint-toolchains.ts": expect.any(String) },
+      typescriptLineSources: { "./tests/typescript-parse-port.ts": expect.any(String) },
     });
   });
 
@@ -278,6 +294,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       }),
     ).toEqual([]);
   });
+
   it("finds jsonc-parse.ts importing only relative paths, zod and jsonc-parser", () => {
     expect(
       importsOutside({
@@ -294,7 +311,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         allowed: [
           relativeImport,
           packageTypeImport({ packageName: "eslint" }),
-          packageDynamicImport({ packageName: "typescript" }),
+          packageTypeImport({ packageName: "@typescript-eslint/eslint-plugin" }),
           packageDynamicImport({ packageName: "eslint" }),
           packageDynamicImport({ packageName: "@typescript-eslint/parser" }),
           packageDynamicImport({ packageName: "@typescript-eslint/eslint-plugin" }),
@@ -316,6 +333,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       }),
     ).toEqual([]);
   });
+
   it("finds inline-config-parser.ts the only file importing @eslint/plugin-kit by value", () => {
     expect(
       importsOutside({
@@ -351,6 +369,38 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       importsOutside({
         sources: eslintPieceSources,
         allowed: [relativeImport, zodImport, packageTypeImport({ packageName: "eslint" })],
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds tests/eslint-toolchains.ts the only test-support file loading the pinned ESLint lines, each by a dynamic import, and checking the floor copies' exports with zod", () => {
+    expect(
+      importsOutside({
+        sources: eslintLineSources,
+        allowed: [
+          relativeImportOfAnyForm,
+          vitestImport,
+          zodImport,
+          ...[
+            "eslint-9",
+            "eslint-9/use-at-your-own-risk",
+            "eslint-9-floor",
+            "eslint-9-floor/use-at-your-own-risk",
+            "eslint-10-floor",
+            "eslint-10-floor/use-at-your-own-risk",
+            "typescript-eslint-parser-floor",
+            "typescript-eslint-plugin-floor",
+          ].map((packageName) => packageDynamicImport({ packageName })),
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds tests/typescript-parse-port.ts the only test-support file loading the pinned TypeScript floor, by a dynamic import, and checking its exports with zod", () => {
+    expect(
+      importsOutside({
+        sources: typescriptLineSources,
+        allowed: [relativeImportOfAnyForm, vitestImport, zodImport, packageDynamicImport({ packageName: "typescript-floor" })],
       }),
     ).toEqual([]);
   });

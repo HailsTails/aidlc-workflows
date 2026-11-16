@@ -1,10 +1,11 @@
 import { z } from "zod";
+import type { PackageLocationPort } from "../platform-ports/package-location-port.ts";
 import type { Result } from "../values/result.ts";
 import type { RunnerFailure } from "./runner-failure.ts";
 
 export type ReleaseLine = {
   readonly floor: string;
-  readonly stays: "within-major" | "within-minor";
+  readonly below: string;
 };
 
 export type ToolchainRequirement = {
@@ -12,70 +13,65 @@ export type ToolchainRequirement = {
   readonly lines: readonly ReleaseLine[];
 };
 
+export type PeerToolchain<Modules> = {
+  readonly location: PackageLocationPort;
+  readonly modules: Modules;
+};
+
 export type VersionSupport = "supported" | "unsupported";
 
 type VersionParts = readonly [major: number, minor: number, patch: number];
 
-const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)/;
+type Placement = "inside-install" | "outside-install";
+
+const RELEASE_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
 
 const NOT_INSTALLED = "not installed";
 
 const MODULE_NOT_FOUND = "ERR_MODULE_NOT_FOUND";
 
+const BACKSLASH = /\\/g;
+
 const moduleErrorSchema = z.object({ code: z.string(), message: z.string() });
 
-const versionParts = (request: { readonly version: string }): VersionParts | undefined => {
-  const match = VERSION_PATTERN.exec(request.version);
+const releaseParts = (request: { readonly version: string }): VersionParts | undefined => {
+  const match = RELEASE_PATTERN.exec(request.version);
   return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
 };
 
 const partsOrder = (request: { readonly left: VersionParts; readonly right: VersionParts }): number =>
   request.left[0] - request.right[0] || request.left[1] - request.right[1] || request.left[2] - request.right[2];
 
-const sameLine = (request: {
-  readonly line: ReleaseLine;
-  readonly floor: VersionParts;
-  readonly found: VersionParts;
-}): VersionSupport => {
-  const sameMajor = request.found[0] === request.floor[0];
-  const sameMinor = request.found[1] === request.floor[1];
-  switch (request.line.stays) {
-    case "within-major":
-      return sameMajor ? "supported" : "unsupported";
-    case "within-minor":
-      return sameMajor && sameMinor ? "supported" : "unsupported";
-  }
-};
-
 const lineSupport = (request: { readonly line: ReleaseLine; readonly found: VersionParts }): VersionSupport => {
-  const floor = versionParts({ version: request.line.floor });
-  if (floor === undefined || partsOrder({ left: request.found, right: floor }) < 0) {
-    return "unsupported";
-  }
-  return sameLine({ line: request.line, floor, found: request.found });
+  const floor = releaseParts({ version: request.line.floor });
+  const below = releaseParts({ version: request.line.below });
+  return floor !== undefined &&
+    below !== undefined &&
+    partsOrder({ left: request.found, right: floor }) >= 0 &&
+    partsOrder({ left: request.found, right: below }) < 0
+    ? "supported"
+    : "unsupported";
 };
 
 export const versionSupport = (request: {
   readonly requirement: ToolchainRequirement;
   readonly version: string;
 }): VersionSupport => {
-  const found = versionParts({ version: request.version });
+  const found = releaseParts({ version: request.version });
   return found !== undefined && request.requirement.lines.some((line) => lineSupport({ line, found }) === "supported")
     ? "supported"
     : "unsupported";
 };
 
-const rangeOperator = (request: { readonly line: ReleaseLine }): string => {
-  switch (request.line.stays) {
-    case "within-major":
-      return "^";
-    case "within-minor":
-      return "~";
-  }
+const lineRange = (request: { readonly line: ReleaseLine }): string => {
+  const floor = releaseParts({ version: request.line.floor });
+  return floor !== undefined && request.line.below === `${floor[0] + 1}.0.0`
+    ? `^${request.line.floor}`
+    : `>=${request.line.floor} <${request.line.below}`;
 };
 
 export const supportedRange = (request: { readonly requirement: ToolchainRequirement }): string =>
-  request.requirement.lines.map((line) => `${rangeOperator({ line })}${line.floor}`).join(" || ");
+  request.requirement.lines.map((line) => lineRange({ line })).join(" || ");
 
 const toolchainUnavailable = (request: {
   readonly requirement: ToolchainRequirement;
@@ -99,6 +95,20 @@ const thrownState = (request: { readonly thrown: unknown; readonly packageName: 
   return `unloadable: ${detail}`;
 };
 
+const slashed = (request: { readonly path: string }): string => request.path.replace(BACKSLASH, "/");
+
+const placementOf = (request: { readonly location: string; readonly installRoot: string }): Placement =>
+  slashed({ path: request.location }).startsWith(`${slashed({ path: request.installRoot })}/`)
+    ? "inside-install"
+    : "outside-install";
+
+type PeerRequest<Module> = {
+  readonly requirement: ToolchainRequirement;
+  readonly location: PackageLocationPort;
+  readonly load: () => Promise<Module>;
+  readonly versionOf: (loaded: Module) => string;
+};
+
 type FoundPeer<Module> = { readonly loaded: Module; readonly version: string };
 
 const supportedPeer = <Module>(request: {
@@ -109,16 +119,37 @@ const supportedPeer = <Module>(request: {
     ? { outcome: "ok", value: request.found.loaded }
     : toolchainUnavailable({ requirement: request.requirement, found: request.found.version });
 
-export const loadedPeer = <Module>(request: {
-  readonly requirement: ToolchainRequirement;
-  readonly load: () => Promise<Module>;
-  readonly versionOf: (loaded: Module) => string;
-}): Promise<Result<Module, RunnerFailure>> =>
+const versionedPeer = <Module>(request: PeerRequest<Module>): Promise<Result<Module, RunnerFailure>> =>
   Promise.resolve()
     .then(request.load)
     .then((loaded): FoundPeer<Module> => ({ loaded, version: request.versionOf(loaded) }))
     .then(
       (found) => supportedPeer({ requirement: request.requirement, found }),
+      (thrown: unknown) =>
+        toolchainUnavailable({
+          requirement: request.requirement,
+          found: thrownState({ thrown, packageName: request.requirement.packageName }),
+        }),
+    );
+
+const placedPeer = <Module>(request: PeerRequest<Module> & { readonly resolved: string }): Promise<Result<Module, RunnerFailure>> =>
+  placementOf({ location: request.resolved, installRoot: request.location.installRoot }) === "inside-install"
+    ? Promise.resolve({
+        outcome: "failed",
+        error: {
+          kind: "toolchain-shadowed",
+          packageName: request.requirement.packageName,
+          location: request.resolved,
+          installRoot: request.location.installRoot,
+        },
+      })
+    : versionedPeer(request);
+
+export const loadedPeer = <Module>(request: PeerRequest<Module>): Promise<Result<Module, RunnerFailure>> =>
+  Promise.resolve()
+    .then(() => request.location.locate({ packageName: request.requirement.packageName }))
+    .then(
+      (resolved) => placedPeer({ ...request, resolved }),
       (thrown: unknown) =>
         toolchainUnavailable({
           requirement: request.requirement,

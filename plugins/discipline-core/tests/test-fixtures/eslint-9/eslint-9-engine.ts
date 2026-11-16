@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { eslintPieceSettingsSchema } from "../../../mechanisms/eslint/runner/eslint-piece-settings-schema.ts";
 import { type LoadedEslintPlugin, eslintPluginModuleSchema } from "../../../mechanisms/eslint/runner/eslint-plugin-schema.ts";
+import { defaultNativeRuleSources, type NativeRuleSources } from "../../../mechanisms/eslint/runner/native-rules.ts";
 import type { ConformanceRow } from "../../conformance-rows.ts";
 
 export const ESLINT_9_VERSION = ESLint.version;
@@ -15,17 +16,19 @@ export type CaseMismatch = {
   readonly flaggedLines: readonly number[];
 };
 
-const builtinRulesInjectedPieceSchema = z.object({
-  createPlugin: z.function({ input: [z.object({ builtinRules: z.instanceof(Map) })], output: z.unknown() }),
+const ESLINT_9_SOURCES: NativeRuleSources = { ...defaultNativeRuleSources, eslintCore: builtinRules };
+
+const nativeRulePieceSchema = z.object({
+  createPlugin: z.function({ input: [z.custom<NativeRuleSources>((value) => value === ESLINT_9_SOURCES)], output: z.unknown() }),
 });
 
 const distinctSorted = (lines: readonly number[]): readonly number[] => [...new Set(lines)].sort((left, right) => left - right);
 
 const pluginUnderEslint9 = async (request: { readonly modulePath: string }): Promise<LoadedEslintPlugin> => {
   const pieceModule: unknown = await import(request.modulePath);
-  const injected = builtinRulesInjectedPieceSchema.safeParse(pieceModule);
+  const injected = nativeRulePieceSchema.safeParse(pieceModule);
   return eslintPluginModuleSchema.parse(
-    injected.success ? { default: injected.data.createPlugin({ builtinRules }) } : pieceModule,
+    injected.success ? { default: injected.data.createPlugin(ESLINT_9_SOURCES) } : pieceModule,
   ).default;
 };
 

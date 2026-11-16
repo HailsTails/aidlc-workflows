@@ -3,10 +3,10 @@ import { createDefaultFileTextPort } from "../../../core/platform-ports/file-tex
 import { createDefaultModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import { createDefaultPathPort } from "../../../core/platform-ports/path-port.ts";
 import { createWalkerRunner } from "./create-walker-runner.ts";
-import { defaultTypeScriptModule, loadParsePort } from "./typescript-parse.ts";
+import { defaultTypeScriptPeers, loadParsePort } from "./typescript-parse.ts";
 
 export const runner = toolchainBoundStandaloneRunner({
-  toolchain: loadParsePort({ typescript: defaultTypeScriptModule }),
+  toolchain: loadParsePort({ peers: defaultTypeScriptPeers }),
   runnerOf: (parse) =>
     createWalkerRunner({
       fileText: createDefaultFileTextPort({}),

@@ -1,5 +1,5 @@
 import type { Rule } from "../../runner/eslint-instance.ts";
-import { typescriptEslintRules } from "../../runner/native-rules.ts";
+import { defaultNativeRuleSources, type NativeRuleSources, typescriptEslintRules } from "../../runner/native-rules.ts";
 
 type DeclaredBinding = {
   readonly init?: unknown;
@@ -51,10 +51,12 @@ const implicitAnyLet: Rule.RuleModule = {
   }),
 };
 
-export default {
+export const createPlugin = (sources: NativeRuleSources) => ({
   meta: { name: "discipline-cd1", version: "0.0.0-local" },
   rules: {
-    ...typescriptEslintRules({ names: ["no-explicit-any"] }),
+    ...typescriptEslintRules({ names: ["no-explicit-any"], sources }),
     "implicit-any-let": implicitAnyLet,
   },
-};
+});
+
+export default createPlugin(defaultNativeRuleSources);

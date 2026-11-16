@@ -1,6 +1,7 @@
 import type typescript from "typescript";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
-import { loadedPeer, type ToolchainRequirement } from "../../../core/mechanism-port/toolchain-requirement.ts";
+import { loadedPeer, type PeerToolchain, type ToolchainRequirement } from "../../../core/mechanism-port/toolchain-requirement.ts";
+import { createDefaultPackageLocationPort } from "../../../core/platform-ports/package-location-port.ts";
 import type { Result } from "../../../core/values/result.ts";
 
 export type SyntaxApi = typeof typescript;
@@ -14,14 +15,19 @@ export type TypeScriptParsePort = {
   readonly children: (request: { readonly node: SyntaxNode }) => readonly SyntaxNode[];
 };
 
-export type TypeScriptModule = { readonly default: SyntaxApi };
+export type TypeScriptModules = { readonly typescript: () => Promise<{ readonly default: SyntaxApi }> };
+
+export type TypeScriptPeers = PeerToolchain<TypeScriptModules>;
 
 export const TYPESCRIPT_REQUIREMENT: ToolchainRequirement = {
   packageName: "typescript",
-  lines: [{ floor: "6.0.3", stays: "within-minor" }],
+  lines: [{ floor: "4.8.4", below: "7.0.0" }],
 };
 
-export const defaultTypeScriptModule = (): Promise<TypeScriptModule> => import("typescript");
+export const defaultTypeScriptPeers: TypeScriptPeers = {
+  location: createDefaultPackageLocationPort({}),
+  modules: { typescript: () => import("typescript") },
+};
 
 const directChildren = (request: { readonly syntaxApi: SyntaxApi; readonly node: SyntaxNode }): readonly SyntaxNode[] => {
   const collected: SyntaxNode[] = [];
@@ -38,12 +44,11 @@ export const createParsePort = (options: { readonly syntaxApi: SyntaxApi }): Typ
   children: (request) => directChildren({ syntaxApi: options.syntaxApi, node: request.node }),
 });
 
-export const loadParsePort = (request: {
-  readonly typescript: () => Promise<TypeScriptModule>;
-}): Promise<Result<TypeScriptParsePort, RunnerFailure>> =>
+export const loadParsePort = (request: { readonly peers: TypeScriptPeers }): Promise<Result<TypeScriptParsePort, RunnerFailure>> =>
   loadedPeer({
     requirement: TYPESCRIPT_REQUIREMENT,
-    load: request.typescript,
+    location: request.peers.location,
+    load: request.peers.modules.typescript,
     versionOf: (loaded) => loaded.default.version,
   }).then((loaded) =>
     loaded.outcome === "failed" ? loaded : { outcome: "ok", value: createParsePort({ syntaxApi: loaded.value.default }) },

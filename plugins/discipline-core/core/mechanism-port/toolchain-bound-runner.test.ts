@@ -14,7 +14,7 @@ const LOADED: Result<Toolchain, RunnerFailure> = { outcome: "ok", value: { name:
 
 const UNAVAILABLE: Result<Toolchain, RunnerFailure> = {
   outcome: "failed",
-  error: { kind: "toolchain-unavailable", packageName: "eslint", supported: "^9.39.5 || ^10.11.0", found: "not installed" },
+  error: { kind: "toolchain-unavailable", packageName: "eslint", supported: "^9.12.0 || ^10.0.0", found: "not installed" },
 };
 
 const REPO = absolutePathSchema.parse("/repo");
@@ -51,10 +51,11 @@ const embeddedOver = (): EmbeddedRunner => ({
 });
 
 describe("toolchainBoundStandaloneRunner", () => {
-  it("builds the runner from the loaded toolchain and delegates run and conform to it", async () => {
+  it("builds the runner once from the loaded toolchain and delegates every run and conform to it", async () => {
     const inner = standaloneOver();
     const runnerOf = vi.fn<(toolchain: Toolchain) => StandaloneRunner>().mockReturnValue(inner);
     const bound = toolchainBoundStandaloneRunner({ toolchain: Promise.resolve(LOADED), runnerOf });
+    await bound.run(RUN);
     await bound.run(RUN);
     await bound.conform({ clause: CLAUSE, cases: [] });
     expect({
@@ -64,8 +65,8 @@ describe("toolchainBoundStandaloneRunner", () => {
       conform: vi.mocked(inner.conform).mock.calls,
     }).toEqual({
       exceptionPath: "standalone",
-      toolchains: [[{ name: "loaded-toolchain" }], [{ name: "loaded-toolchain" }]],
-      run: [[RUN]],
+      toolchains: [[{ name: "loaded-toolchain" }]],
+      run: [[RUN], [RUN]],
       conform: [[{ clause: CLAUSE, cases: [] }]],
     });
   });
@@ -84,10 +85,11 @@ describe("toolchainBoundStandaloneRunner", () => {
 describe("toolchainBoundEmbeddedRunner", () => {
   it("declares the projected kinds it is given and delegates run, conform and project to the runner built from the toolchain", async () => {
     const inner = embeddedOver();
+    const runnerOf = vi.fn<(toolchain: Toolchain) => EmbeddedRunner>().mockReturnValue(inner);
     const bound = toolchainBoundEmbeddedRunner({
       toolchain: Promise.resolve(LOADED),
       projectedKinds: ["config-override"],
-      runnerOf: () => inner,
+      runnerOf,
     });
     expect({
       exceptionPath: bound.exceptionPath,
@@ -95,12 +97,14 @@ describe("toolchainBoundEmbeddedRunner", () => {
       run: await bound.run({ ...RUN, records: [] }),
       conform: await bound.conform({ clause: CLAUSE, cases: [] }),
       project: await bound.project(PROJECTION),
+      built: runnerOf.mock.calls.length,
     }).toEqual({
       exceptionPath: "embedded",
       projectedKinds: ["config-override"],
       run: { outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "current" } },
       conform: { outcome: "ok", value: [] },
       project: { outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } },
+      built: 1,
     });
   });
 

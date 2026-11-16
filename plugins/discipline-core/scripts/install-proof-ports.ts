@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import type { Result } from "../core/values/result.ts";
@@ -15,6 +15,7 @@ export type ScratchFilesPort = {
   readonly createTemporaryDirectory: (request: { readonly prefix: string }) => Result<string, EffectFailure>;
   readonly removeTree: (request: { readonly path: string }) => Result<null, EffectFailure>;
   readonly removeFile: (request: { readonly path: string }) => Result<null, EffectFailure>;
+  readonly makeDirectory: (request: { readonly path: string }) => Result<null, EffectFailure>;
   readonly copyTree: (request: {
     readonly from: string;
     readonly to: string;
@@ -27,6 +28,7 @@ export type ScratchFilesSurface = {
   readonly makeTemporaryDirectory: (request: { readonly prefix: string }) => string;
   readonly removeTree: (request: { readonly path: string }) => void;
   readonly removeFile: (request: { readonly path: string }) => void;
+  readonly makeDirectory: (request: { readonly path: string }) => void;
   readonly copyTree: (request: {
     readonly from: string;
     readonly to: string;
@@ -85,6 +87,7 @@ export const createScratchFilesPort = (options: { readonly surface: ScratchFiles
     attempted({ action: () => options.surface.makeTemporaryDirectory({ prefix: request.prefix }) }),
   removeTree: (request) => completed({ action: () => options.surface.removeTree({ path: request.path }) }),
   removeFile: (request) => completed({ action: () => options.surface.removeFile({ path: request.path }) }),
+  makeDirectory: (request) => completed({ action: () => options.surface.makeDirectory({ path: request.path }) }),
   copyTree: (request) =>
     completed({
       action: () =>
@@ -139,6 +142,9 @@ export const defaultScratchFilesSurface: ScratchFilesSurface = {
   },
   removeFile: (request) => {
     rmSync(request.path);
+  },
+  makeDirectory: (request) => {
+    mkdirSync(request.path, { recursive: true });
   },
   copyTree: (request) => {
     cpSync(request.from, request.to, {

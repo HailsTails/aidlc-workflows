@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
-import { ESLINT_LINES, loadedEslintToolchain } from "../../../tests/eslint-toolchains.ts";
+import { ESLINT_LINES, type EslintLine, loadedEslintToolchain } from "../../../tests/eslint-toolchains.ts";
 import {
   type CreateEslint,
   createEslintPort,
   type EslintPort,
   type EslintSurface,
+  type EslintToolchain,
   governanceConfig,
   type LintedFile,
 } from "./eslint-instance.ts";
@@ -98,17 +99,19 @@ const throwsOnBuild = vi
   .fn<CreateEslint>()
   .mockThrow(new Error("Invalid Options: unknown option"));
 
-const TOOLCHAINS = {
+const TOOLCHAINS: Readonly<Record<EslintLine, EslintToolchain>> = {
   "eslint-10": await loadedEslintToolchain({ line: "eslint-10" }),
+  "eslint-10-floor": await loadedEslintToolchain({ line: "eslint-10-floor" }),
   "eslint-9": await loadedEslintToolchain({ line: "eslint-9" }),
+  "eslint-9-floor": await loadedEslintToolchain({ line: "eslint-9-floor" }),
 };
 
 const PARSER = TOOLCHAINS["eslint-10"].typescriptParser;
 
 const portWith = (request: { readonly createEslint: CreateEslint }): EslintPort =>
-  createEslintPort({ toolchain: { createEslint: request.createEslint, typescriptParser: PARSER } });
+  createEslintPort({ toolchain: { ...TOOLCHAINS["eslint-10"], createEslint: request.createEslint } });
 
-const lintsGovernanceText = (request: { readonly code: string; readonly line: keyof typeof TOOLCHAINS }) =>
+const lintsGovernanceText = (request: { readonly code: string; readonly line: EslintLine }) =>
   TOOLCHAINS[request.line].createEslint({
     options: {
       cwd: inlineConfigCwd,
@@ -472,7 +475,6 @@ describe("createGovernanceInstance", () => {
         cwd: "/repo",
         overrideConfigFile: true,
         ignore: false,
-        applySuppressions: false,
         allowInlineConfig: false,
         overrideConfig: expect.objectContaining({
           files: ["**/*.{ts,tsx,mts,cts}"],

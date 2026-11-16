@@ -3,6 +3,7 @@ import { checkConformance } from "../../../core/conformance/conformance.ts";
 import { runnerModuleSchema } from "../../../core/mechanism-port/runner-module-schema.ts";
 import { mechanismIdSchema } from "../../../core/values/identifiers.ts";
 import { conformanceRows, foldersUnder } from "../../../tests/conformance-rows.ts";
+import { ESLINT_LINES, eslintRunnerOn } from "../../../tests/eslint-toolchains.ts";
 import * as eslintRunnerModule from "./runner.ts";
 
 declare global {
@@ -43,6 +44,17 @@ describe("every ESLint piece on disk is registered against a discipline.json", (
 describe("the ESLint runner, loaded as core loads it, conforms to every registered ESLint clause's shared cases on real ESLint (CD-47: the shipped runner and its pieces are the assertion's subject; nothing is spawned or written)", () => {
   it.each(CONFORMANCE_ROWS)("$name has no conformance failure over its flag and allow cases", async (row) => {
     expect(await checkConformance({ clause: row.clause, cases: row.cases, runner: eslintRunner })).toEqual({
+      outcome: "ok",
+      value: [],
+    });
+  });
+});
+
+describe.each(ESLINT_LINES)("the ESLint runner on %s, its floor lines with the oldest supported typescript-eslint, conforms to every registered ESLint clause's shared cases (CD-47: the shipped runner and its pieces are the assertion's subject; nothing is spawned or written)", (line) => {
+  const lineRunner = runnerModuleSchema.parse(eslintRunnerOn({ line }));
+
+  it.each(CONFORMANCE_ROWS)("$name has no conformance failure over its flag and allow cases", async (row) => {
+    expect(await checkConformance({ clause: row.clause, cases: row.cases, runner: lineRunner })).toEqual({
       outcome: "ok",
       value: [],
     });

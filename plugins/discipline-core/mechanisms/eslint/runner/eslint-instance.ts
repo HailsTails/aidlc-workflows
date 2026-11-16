@@ -81,7 +81,6 @@ export type EslintSurfaceOptions = {
   readonly cwd?: AbsolutePath;
   readonly overrideConfigFile?: true | string;
   readonly ignore?: false;
-  readonly applySuppressions?: false;
   readonly allowInlineConfig?: false;
   readonly overrideConfig?: GovernanceBlock;
 };
@@ -115,6 +114,7 @@ export type EslintSurface = {
 export type CreateEslint = (request: { readonly options: EslintSurfaceOptions }) => EslintSurface;
 
 export type EslintToolchain = {
+  readonly eslintVersion: string;
   readonly createEslint: CreateEslint;
   readonly typescriptParser: TypescriptParser;
 };
@@ -282,7 +282,6 @@ const governanceOptions = (request: {
   cwd: request.cwd,
   overrideConfigFile: true,
   ignore: false,
-  applySuppressions: false,
   allowInlineConfig: false,
   overrideConfig: governanceConfig({ plugins: request.plugins, rules: request.rules, parser: request.parser }),
 });

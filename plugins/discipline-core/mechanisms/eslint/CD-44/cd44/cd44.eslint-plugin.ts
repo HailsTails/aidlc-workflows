@@ -1,8 +1,8 @@
-import { defaultEslintBuiltinRules, type EslintBuiltinRules, eslintCoreRules } from "../../runner/native-rules.ts";
+import { defaultNativeRuleSources, eslintCoreRules, type NativeRuleSources } from "../../runner/native-rules.ts";
 
-export const createPlugin = (dependencies: { readonly builtinRules: EslintBuiltinRules }) => ({
+export const createPlugin = (sources: NativeRuleSources) => ({
   meta: { name: "discipline-cd44", version: "0.0.0-local" },
-  rules: eslintCoreRules({ names: ["no-param-reassign"], builtinRules: dependencies.builtinRules }),
+  rules: eslintCoreRules({ names: ["no-param-reassign"], sources }),
 });
 
-export default createPlugin({ builtinRules: defaultEslintBuiltinRules });
+export default createPlugin(defaultNativeRuleSources);

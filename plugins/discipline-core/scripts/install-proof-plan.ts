@@ -4,6 +4,7 @@ import type { Result } from "../core/values/result.ts";
 
 export type InstallList = {
   readonly always: readonly string[];
+  readonly intoRoot: readonly string[];
   readonly perSharedClause: readonly string[];
   readonly leftOut: readonly string[];
 };
@@ -13,6 +14,8 @@ export type InstallListFailure =
   | { readonly kind: "line-missing"; readonly prefix: string };
 
 export type InstallPathFailure = { readonly kind: "unresolved-placeholder"; readonly path: string };
+
+export type InstallPlacement = { readonly from: string; readonly to: string };
 
 export type ExclusionRule =
   | { readonly kind: "folder"; readonly name: string }
@@ -37,7 +40,7 @@ export type ProofAction =
   | { readonly kind: "remove"; readonly path: string }
   | { readonly kind: "commit"; readonly message: string };
 
-export type ProofToolchain = "without-eslint" | "eslint-10" | "eslint-9";
+export type ProofToolchain = "typescript-floor" | "eslint-9-floor" | "eslint-10-floor";
 
 export type ProofCase = {
   readonly consumer: string;
@@ -52,6 +55,7 @@ export type ManifestFailure = { readonly kind: "manifest-invalid"; readonly deta
 
 const INSTALLING_HEADING = "## Installing";
 const ALWAYS_PREFIX = "- always: ";
+const INTO_ROOT_PREFIX = "- into the install root: ";
 const SHARED_CLAUSE_PREFIX = "- for each selected clause in the shared rule set: ";
 const LEFT_OUT_PREFIX = "Leave out ";
 const DISCIPLINE_PLACEHOLDER = "<DisciplineId>";
@@ -72,7 +76,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "audit",
     mechanism: "audit",
-    toolchain: "without-eslint",
+    toolchain: "typescript-floor",
     disciplineId: "CD-23",
     installedManifest: "kept",
     actions: [
@@ -86,7 +90,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "eslint-10",
     mechanism: "eslint",
-    toolchain: "eslint-10",
+    toolchain: "eslint-10-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
     actions: ESLINT_CONSUMER_ACTIONS,
@@ -94,7 +98,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "eslint-9",
     mechanism: "eslint",
-    toolchain: "eslint-9",
+    toolchain: "eslint-9-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
     actions: ESLINT_CONSUMER_ACTIONS,
@@ -102,7 +106,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "eslint-missing",
     mechanism: "eslint",
-    toolchain: "without-eslint",
+    toolchain: "typescript-floor",
     disciplineId: "CD-14",
     installedManifest: "kept",
     actions: [
@@ -115,7 +119,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "no-package-json",
     mechanism: "audit",
-    toolchain: "without-eslint",
+    toolchain: "typescript-floor",
     disciplineId: "CD-23",
     installedManifest: "removed",
     actions: [
@@ -165,6 +169,10 @@ export const parsedInstallList = (request: { readonly readme: string }): Result<
   if (always.outcome === "failed") {
     return always;
   }
+  const intoRoot = lineStartingWith({ lines: section, prefix: INTO_ROOT_PREFIX });
+  if (intoRoot.outcome === "failed") {
+    return intoRoot;
+  }
   const perSharedClause = lineStartingWith({ lines: section, prefix: SHARED_CLAUSE_PREFIX });
   if (perSharedClause.outcome === "failed") {
     return perSharedClause;
@@ -177,23 +185,47 @@ export const parsedInstallList = (request: { readonly readme: string }): Result<
     outcome: "ok",
     value: {
       always: codeSpans({ text: always.value }),
+      intoRoot: codeSpans({ text: intoRoot.value }),
       perSharedClause: codeSpans({ text: perSharedClause.value }),
       leftOut: codeSpans({ text: firstSentence({ line: leftOut.value }) }),
     },
   };
 };
 
-export const installPaths = (request: {
+const withoutTrailingSlash = (request: { readonly path: string }): string =>
+  request.path.endsWith("/") ? request.path.slice(0, -1) : request.path;
+
+const inPlace = (request: { readonly path: string }): InstallPlacement => {
+  const path = withoutTrailingSlash(request);
+  return { from: path, to: path };
+};
+
+const atInstallRoot = (request: { readonly path: string }): InstallPlacement => ({
+  from: request.path,
+  to: request.path.slice(request.path.lastIndexOf("/") + 1),
+});
+
+export const intoRootPlacements = (request: { readonly installList: InstallList }): readonly InstallPlacement[] =>
+  request.installList.intoRoot.map((path) => atInstallRoot({ path }));
+
+export const installPlacements = (request: {
   readonly installList: InstallList;
   readonly disciplineId: string;
   readonly mechanism: Mechanism;
-}): Result<readonly string[], InstallPathFailure> => {
-  const substituted = [...request.installList.always, ...request.installList.perSharedClause].map((path) =>
+}): Result<readonly InstallPlacement[], InstallPathFailure> => {
+  const substituted = request.installList.perSharedClause.map((path) =>
     path.replaceAll(DISCIPLINE_PLACEHOLDER, request.disciplineId).replaceAll(MECHANISM_PLACEHOLDER, request.mechanism),
   );
   const unresolved = substituted.find((path) => PLACEHOLDER_PATTERN.test(path));
   return unresolved === undefined
-    ? { outcome: "ok", value: substituted.map((path) => (path.endsWith("/") ? path.slice(0, -1) : path)) }
+    ? {
+        outcome: "ok",
+        value: [
+          ...request.installList.always.map((path) => inPlace({ path })),
+          ...intoRootPlacements(request),
+          ...substituted.map((path) => inPlace({ path })),
+        ],
+      }
     : { outcome: "failed", error: { kind: "unresolved-placeholder", path: unresolved } };
 };
 
@@ -279,66 +311,80 @@ export const judgedStep = (request: {
 
 const toolchainManifestSchema = z.object({
   peerDependencies: z.record(z.string(), z.string()),
-  peerDependenciesMeta: z.record(z.string(), z.object({ optional: z.boolean() })).default({}),
   devDependencies: z.record(z.string(), z.string()),
 });
 
 type ToolchainManifest = z.output<typeof toolchainManifestSchema>;
 
-const ESLINT_PACKAGE = "eslint";
+type FloorPins = Readonly<Record<string, string>>;
 
-const ESLINT_9_DEVELOPMENT_ALIAS = "eslint-9";
+const TYPESCRIPT_FLOOR: FloorPins = { typescript: "typescript-floor" };
 
-const toolchainPackages = (request: {
+const TYPESCRIPT_ESLINT_FLOOR: FloorPins = {
+  ...TYPESCRIPT_FLOOR,
+  "@typescript-eslint/parser": "typescript-eslint-parser-floor",
+  "@typescript-eslint/eslint-plugin": "typescript-eslint-plugin-floor",
+};
+
+const FLOOR_PINS: Readonly<Record<ProofToolchain, FloorPins>> = {
+  "typescript-floor": TYPESCRIPT_FLOOR,
+  "eslint-9-floor": { ...TYPESCRIPT_ESLINT_FLOOR, eslint: "eslint-9-floor" },
+  "eslint-10-floor": { ...TYPESCRIPT_ESLINT_FLOOR, eslint: "eslint-10-floor" },
+};
+
+export const CONSUMER_MANIFEST = `${JSON.stringify({ private: true, type: "commonjs" }, null, 2)}\n`;
+
+const manifestInvalid = (request: { readonly detail: string }): Result<never, ManifestFailure> => ({
+  outcome: "failed",
+  error: { kind: "manifest-invalid", detail: request.detail },
+});
+
+const floorVersion = (request: {
   readonly manifest: ToolchainManifest;
-  readonly toolchain: ProofToolchain;
-}): readonly string[] => {
-  const peers = Object.keys(request.manifest.peerDependencies);
-  switch (request.toolchain) {
-    case "without-eslint":
-      return peers.filter((name) => request.manifest.peerDependenciesMeta[name]?.optional !== true);
-    case "eslint-10":
-    case "eslint-9":
-      return peers;
+  readonly peer: string;
+  readonly pinName: string;
+}): Result<string, ManifestFailure> => {
+  const pin = request.manifest.devDependencies[request.pinName];
+  if (pin === undefined) {
+    return manifestInvalid({ detail: `no development pin ${request.pinName} for the peer ${request.peer}` });
   }
+  const aliasPrefix = `npm:${request.peer}@`;
+  if (!pin.startsWith(aliasPrefix)) {
+    return manifestInvalid({ detail: `the development pin ${request.pinName} is ${pin}, not an alias of ${request.peer}` });
+  }
+  return request.peer in request.manifest.peerDependencies
+    ? { outcome: "ok", value: pin.slice(aliasPrefix.length) }
+    : manifestInvalid({ detail: `${request.peer} is not a declared peer` });
 };
 
-const developmentPinName = (request: { readonly name: string; readonly toolchain: ProofToolchain }): string =>
-  request.toolchain === "eslint-9" && request.name === ESLINT_PACKAGE ? ESLINT_9_DEVELOPMENT_ALIAS : request.name;
-
-const pinnedToolchain = (request: {
+const floorVersions = (request: {
   readonly manifest: ToolchainManifest;
   readonly toolchain: ProofToolchain;
-}): Result<Readonly<Record<string, string>>, ManifestFailure> => {
-  const pins = toolchainPackages(request).map((name) => {
-    const pinName = developmentPinName({ name, toolchain: request.toolchain });
-    return { name, pinName, pin: request.manifest.devDependencies[pinName] };
-  });
-  const unpinned = pins.find((entry) => entry.pin === undefined);
-  return unpinned === undefined
-    ? { outcome: "ok", value: Object.fromEntries(pins.map((entry) => [entry.name, entry.pin])) }
-    : { outcome: "failed", error: { kind: "manifest-invalid", detail: `no development pin ${unpinned.pinName} for the peer ${unpinned.name}` } };
-};
+}): Result<FloorPins, ManifestFailure> =>
+  Object.entries(FLOOR_PINS[request.toolchain]).reduce<Result<FloorPins, ManifestFailure>>((sofar, [peer, pinName]) => {
+    if (sofar.outcome === "failed") {
+      return sofar;
+    }
+    const version = floorVersion({ manifest: request.manifest, peer, pinName });
+    return version.outcome === "failed" ? version : { outcome: "ok", value: { ...sofar.value, [peer]: version.value } };
+  }, { outcome: "ok", value: {} });
 
-export const consumerManifest = (request: {
-  readonly packageManifest: string;
+export const toolchainManifest = (request: {
+  readonly developmentManifest: string;
   readonly toolchain: ProofToolchain;
 }): Result<string, ManifestFailure> => {
-  const parsed = parsedJson({ text: request.packageManifest });
+  const parsed = parsedJson({ text: request.developmentManifest });
   if (parsed.outcome === "failed") {
-    return { outcome: "failed", error: { kind: "manifest-invalid", detail: parsed.error } };
+    return manifestInvalid({ detail: parsed.error });
   }
   const manifest = toolchainManifestSchema.safeParse(parsed.value);
   if (!manifest.success) {
-    return { outcome: "failed", error: { kind: "manifest-invalid", detail: manifest.error.message } };
+    return manifestInvalid({ detail: manifest.error.message });
   }
-  const pinned = pinnedToolchain({ manifest: manifest.data, toolchain: request.toolchain });
-  return pinned.outcome === "failed"
-    ? pinned
-    : {
-        outcome: "ok",
-        value: `${JSON.stringify({ private: true, type: "commonjs", devDependencies: pinned.value }, null, 2)}\n`,
-      };
+  const versions = floorVersions({ manifest: manifest.data, toolchain: request.toolchain });
+  return versions.outcome === "failed"
+    ? versions
+    : { outcome: "ok", value: `${JSON.stringify({ private: true, devDependencies: versions.value }, null, 2)}\n` };
 };
 export const environmentWithoutGit = (request: {
   readonly environment: Readonly<Record<string, string | undefined>>;

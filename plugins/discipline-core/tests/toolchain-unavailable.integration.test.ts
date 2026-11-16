@@ -4,16 +4,17 @@ import { loadFailureText } from "../core/check/load-failure-text.ts";
 import { toolchainBoundEmbeddedRunner, toolchainBoundStandaloneRunner } from "../core/mechanism-port/toolchain-bound-runner.ts";
 import { createDefaultFileTextPort } from "../core/platform-ports/file-text-port.ts";
 import type { GitPort } from "../core/platform-ports/git-port.ts";
+import type { PackageLocationPort } from "../core/platform-ports/package-location-port.ts";
 import { createDefaultModuleLoaderPort, type ModuleLoaderPort } from "../core/platform-ports/module-loader-port.ts";
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
 import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
-import { loadParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
+import { defaultTypeScriptPeers, loadParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
 import { createEslintRunner, ESLINT_PROJECTED_KINDS } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import { createEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
 import { loadEslintToolchain } from "../mechanisms/eslint/runner/eslint-toolchain.ts";
-import { toolchainModulesOn } from "./eslint-toolchains.ts";
+import { eslintPeersOn } from "./eslint-toolchains.ts";
 
 const INSTALL_ROOT = absolutePathSchema.parse(`${import.meta.dirname}/..`);
 
@@ -37,14 +38,24 @@ const pieceLoads = (): ModuleLoaderPort => ({
   load: vi.fn<ModuleLoaderPort["load"]>((request) => createDefaultModuleLoaderPort({}).load(request)),
 });
 
-const eslintRunnerWithoutEslint = (request: { readonly pieces: ModuleLoaderPort }) =>
+const unresolvedAs = (request: { readonly packageName: string }): PackageLocationPort => ({
+  installRoot: INSTALL_ROOT,
+  locate: (locate) => {
+    if (locate.packageName === request.packageName) {
+      throw notInstalled(request);
+    }
+    return `/repo/node_modules/${locate.packageName}/index.js`;
+  },
+});
+
+const shadowedEslint: PackageLocationPort = {
+  installRoot: INSTALL_ROOT,
+  locate: (locate) => `${INSTALL_ROOT}/node_modules/${locate.packageName}/lib/api.js`,
+};
+
+const eslintRunnerLocatingBy = (request: { readonly pieces: ModuleLoaderPort; readonly location: PackageLocationPort }) =>
   toolchainBoundEmbeddedRunner({
-    toolchain: loadEslintToolchain({
-      modules: {
-        ...toolchainModulesOn({ line: "eslint-10" }),
-        eslint: () => Promise.reject(notInstalled({ packageName: "eslint" })),
-      },
-    }),
+    toolchain: loadEslintToolchain({ peers: { ...eslintPeersOn({ line: "eslint-10" }), location: request.location } }),
     projectedKinds: ESLINT_PROJECTED_KINDS,
     runnerOf: (toolchain) =>
       createEslintRunner({ fileText, modules: request.pieces, path, eslint: createEslintPort({ toolchain }) }),
@@ -52,7 +63,7 @@ const eslintRunnerWithoutEslint = (request: { readonly pieces: ModuleLoaderPort 
 
 const auditRunnerWithoutTypescript = (request: { readonly pieces: ModuleLoaderPort }) =>
   toolchainBoundStandaloneRunner({
-    toolchain: loadParsePort({ typescript: () => Promise.reject(notInstalled({ packageName: "typescript" })) }),
+    toolchain: loadParsePort({ peers: { ...defaultTypeScriptPeers, location: unresolvedAs({ packageName: "typescript" }) } }),
     runnerOf: (parse) => createWalkerRunner({ fileText, modules: request.pieces, path, parse }),
   });
 
@@ -77,7 +88,7 @@ describe("a check whose adopter has not installed a toolchain peer the selected 
     const pieces = pieceLoads();
     const checked = await checkWith({
       fixture: "tests/test-fixtures/consumer-proof/eslint",
-      runner: eslintRunnerWithoutEslint({ pieces }),
+      runner: eslintRunnerLocatingBy({ pieces, location: unresolvedAs({ packageName: "eslint" }) }),
       tracked: [repoPathSchema.parse("src/plain.ts")],
     });
     expect({ checked, pieceLoads: vi.mocked(pieces.load).mock.calls }).toEqual({
@@ -86,7 +97,7 @@ describe("a check whose adopter has not installed a toolchain peer the selected 
         error: {
           kind: "runner-failed",
           mechanism: "eslint",
-          failure: { kind: "toolchain-unavailable", packageName: "eslint", supported: "^9.39.5 || ^10.11.0", found: "not installed" },
+          failure: { kind: "toolchain-unavailable", packageName: "eslint", supported: "^9.12.0 || ^10.0.0", found: "not installed" },
         },
       },
       pieceLoads: [],
@@ -96,12 +107,12 @@ describe("a check whose adopter has not installed a toolchain peer the selected 
   it("prints that failure as one load-failure line telling the adopter what to add, never a stack trace", async () => {
     const checked = await checkWith({
       fixture: "tests/test-fixtures/consumer-proof/eslint",
-      runner: eslintRunnerWithoutEslint({ pieces: pieceLoads() }),
+      runner: eslintRunnerLocatingBy({ pieces: pieceLoads(), location: unresolvedAs({ packageName: "eslint" }) }),
       tracked: [repoPathSchema.parse("src/plain.ts")],
     });
     assert(checked.outcome === "failed", "the check fails to load");
     expect(loadFailureText({ failure: checked.error })).toBe(
-      "load failure: runner-failed eslint toolchain-unavailable eslint found not installed, supported ^9.39.5 || ^10.11.0: add a supported version to the devDependencies of the repository root\n",
+      "load failure: runner-failed eslint toolchain-unavailable eslint found not installed, supported ^9.12.0 || ^10.0.0: add a supported version to the devDependencies of the repository root\n",
     );
   });
 
@@ -118,9 +129,23 @@ describe("a check whose adopter has not installed a toolchain peer the selected 
         error: {
           kind: "runner-failed",
           mechanism: "audit",
-          failure: { kind: "toolchain-unavailable", packageName: "typescript", supported: "~6.0.3", found: "not installed" },
+          failure: { kind: "toolchain-unavailable", packageName: "typescript", supported: ">=4.8.4 <7.0.0", found: "not installed" },
         },
       },
+      pieceLoads: [],
+    });
+  });
+
+  it("fails the ESLint mechanism as toolchain-shadowed when eslint resolves from inside the core install, and prints what to delete", async () => {
+    const pieces = pieceLoads();
+    const checked = await checkWith({
+      fixture: "tests/test-fixtures/consumer-proof/eslint",
+      runner: eslintRunnerLocatingBy({ pieces, location: shadowedEslint }),
+      tracked: [repoPathSchema.parse("src/plain.ts")],
+    });
+    assert(checked.outcome === "failed", "the check fails to load");
+    expect({ printed: loadFailureText({ failure: checked.error }), pieceLoads: vi.mocked(pieces.load).mock.calls }).toEqual({
+      printed: `load failure: runner-failed eslint toolchain-shadowed eslint resolved from ${INSTALL_ROOT}/node_modules/eslint/lib/api.js inside the core install ${INSTALL_ROOT}: delete ${INSTALL_ROOT}/node_modules and reinstall core with npm ci so the repository's own copy is used\n`,
       pieceLoads: [],
     });
   });

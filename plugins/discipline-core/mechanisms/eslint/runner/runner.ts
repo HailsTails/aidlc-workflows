@@ -4,10 +4,10 @@ import { createDefaultModuleLoaderPort } from "../../../core/platform-ports/modu
 import { createDefaultPathPort } from "../../../core/platform-ports/path-port.ts";
 import { createEslintRunner, ESLINT_PROJECTED_KINDS } from "./create-eslint-runner.ts";
 import { createEslintPort } from "./eslint-instance.ts";
-import { defaultEslintToolchainModules, loadEslintToolchain } from "./eslint-toolchain.ts";
+import { defaultEslintToolchainPeers, loadEslintToolchain } from "./eslint-toolchain.ts";
 
 export const runner = toolchainBoundEmbeddedRunner({
-  toolchain: loadEslintToolchain({ modules: defaultEslintToolchainModules }),
+  toolchain: loadEslintToolchain({ peers: defaultEslintToolchainPeers }),
   projectedKinds: ESLINT_PROJECTED_KINDS,
   runnerOf: (toolchain) =>
     createEslintRunner({
