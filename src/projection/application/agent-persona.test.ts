@@ -16,6 +16,7 @@ const personaAgent = (): CoreAgent => ({ slug: agent("aidlc-example-agent"),
   additions: { afterPreflight: [], endOfBody: [] } });
 
 const inputs = () => ({ sources: [], reviewerAgents: new Set<string>(), directory: ".claude", rulesFolder: null, sharedKnowledge: "shared",
+  readingGuides: { ["whole-files"]: "", ["in-parts"]: "Read each in parts. " },
   tokens: tokenBindingsFixture({ harnessDir: ".claude" }) });
 
 test("captured authored bytes retain their formatting and bind tokens rather than reconstructing the persona", () => {
@@ -95,4 +96,13 @@ test("captured UTF-8 bytes drop their leading BOM before persona preparation", (
       "\uFEFF---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody") } }] });
   expect(prepare({ agent, text: "authored-file", knowledge: "preflight-only", reading: "whole-files" }))
     .toEqual(accepted("---\nname: example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\nBody"));
+});
+
+test("a host that reads in parts gets the supplied in-parts guide, and one that reads whole files gets none", () => {
+  const preflight = { ...personaAgent(), persona: { headings: [], text: "Body" } };
+  const prepare = createAgentPersonaPreparer(inputs());
+  expect(prepare({ agent: preflight, text: "persona-body", knowledge: "preflight-only", reading: "in-parts" }))
+    .toEqual(accepted(expect.stringContaining("otherwise read the files now. Read each in parts. The dispatch brief")));
+  expect(prepare({ agent: preflight, text: "persona-body", knowledge: "preflight-only", reading: "whole-files" }))
+    .toEqual(accepted(expect.stringContaining("otherwise read the files now. The dispatch brief")));
 });

@@ -26,7 +26,7 @@ export const injectDelegatedKnowledgePreflight = (request: {
   readonly content: string;
   readonly agentName: string;
   readonly directory: string;
-  readonly reading: "whole-files" | "in-parts";
+  readonly readingGuide: string;
   readonly sharedKnowledge: string;
 }): string => {
   const { content, agentName, directory } = request;
@@ -39,9 +39,7 @@ export const injectDelegatedKnowledgePreflight = (request: {
     `\`aidlc/spaces/<active-space>/knowledge/aidlc-shared/\`, then `,
     `\`aidlc/spaces/<active-space>/knowledge/${agentName}/\`. `,
     `A native resource preload satisfies this requirement; otherwise read the files now. `,
-    (request.reading === "in-parts"
-      ? `Kiro shows only part of a long file: read each one with your file tool in parts of at most 200 lines (offset and limit), from the first line to the last; a read that comes back cut short is not all of it. `
-      : ""),
+    request.readingGuide,
     `The dispatch brief supplies rules and artifact paths separately.`,
   ].join("");
   const frontmatter = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);

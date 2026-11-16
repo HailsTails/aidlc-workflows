@@ -24,20 +24,20 @@ test("an absent reviewer knowledge folder leaves trailing persona bytes unchange
 
 test("the preflight keeps frontmatter first and uses the injected shared-knowledge vocabulary", () => {
   expect(injectDelegatedKnowledgePreflight({ content: "---\r\nname: worker\r\n---\r\nBody\n", agentName: "worker",
-    directory: ".host", reading: "whole-files", sharedKnowledge: "shared line" })).toBe(
+    directory: ".host", readingGuide: "", sharedKnowledge: "shared line" })).toBe(
     "---\r\nname: worker\r\n---\r\n<!-- aidlc-delegated-knowledge-preflight -->\n" +
     "**Delegated knowledge preflight (mandatory):** Before substantive work, ensure every readable Markdown file under these directories is loaded, in order: shared line, `.host/knowledge/worker/`, `aidlc/spaces/<active-space>/knowledge/aidlc-shared/`, then `aidlc/spaces/<active-space>/knowledge/worker/`. A native resource preload satisfies this requirement; otherwise read the files now. The dispatch brief supplies rules and artifact paths separately.\n\nBody\n");
 });
 
-test("in-parts reading is an explicit request rather than a host-name branch", () => {
+test("the reading guide is supplied whole and placed before the dispatch-brief line, never authored here", () => {
   expect(injectDelegatedKnowledgePreflight({ content: "  Body\n", agentName: "worker", directory: ".unfamiliar",
-    reading: "in-parts", sharedKnowledge: "shared line" })).toBe(
+    readingGuide: "Read each in parts. ", sharedKnowledge: "shared line" })).toBe(
     "<!-- aidlc-delegated-knowledge-preflight -->\n" +
-    "**Delegated knowledge preflight (mandatory):** Before substantive work, ensure every readable Markdown file under these directories is loaded, in order: shared line, `.unfamiliar/knowledge/worker/`, `aidlc/spaces/<active-space>/knowledge/aidlc-shared/`, then `aidlc/spaces/<active-space>/knowledge/worker/`. A native resource preload satisfies this requirement; otherwise read the files now. Kiro shows only part of a long file: read each one with your file tool in parts of at most 200 lines (offset and limit), from the first line to the last; a read that comes back cut short is not all of it. The dispatch brief supplies rules and artifact paths separately.\n\nBody\n");
+    "**Delegated knowledge preflight (mandatory):** Before substantive work, ensure every readable Markdown file under these directories is loaded, in order: shared line, `.unfamiliar/knowledge/worker/`, `aidlc/spaces/<active-space>/knowledge/aidlc-shared/`, then `aidlc/spaces/<active-space>/knowledge/worker/`. A native resource preload satisfies this requirement; otherwise read the files now. Read each in parts. The dispatch brief supplies rules and artifact paths separately.\n\nBody\n");
 });
 
 test("an existing preflight is not duplicated or reformatted", () => {
   expect(injectDelegatedKnowledgePreflight({ content: "<!-- aidlc-delegated-knowledge-preflight -->\r\nOriginal", agentName: "worker",
-    directory: ".host", reading: "in-parts", sharedKnowledge: "shared line" }))
+    directory: ".host", readingGuide: "Read each in parts. ", sharedKnowledge: "shared line" }))
     .toBe("<!-- aidlc-delegated-knowledge-preflight -->\r\nOriginal");
 });

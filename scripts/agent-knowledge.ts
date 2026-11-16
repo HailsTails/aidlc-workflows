@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
+import { kiroKnowledgePreflightClause } from "../core/tools/aidlc-inline-context.ts";
 import { delegatedSharedKnowledge } from "../src/projection/adapters/legacy-format-docs.ts";
 import { absorbReviewerKnowledge as absorbCapturedKnowledge,
   injectDelegatedKnowledgePreflight as injectPreflight,
@@ -23,7 +24,7 @@ export function injectDelegatedKnowledgePreflight(
   content: string, agentName: string, harnessDir: string,
 ): string {
   return injectPreflight({ content, agentName, directory: harnessDir,
-    reading: harnessDir === ".kiro" ? "in-parts" : "whole-files",
+    readingGuide: kiroKnowledgePreflightClause(harnessDir),
     sharedKnowledge: delegatedSharedKnowledge(harnessDir) });
 }
 

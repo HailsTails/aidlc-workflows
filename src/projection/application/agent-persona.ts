@@ -4,7 +4,7 @@ import { absorbReviewerKnowledge, injectDelegatedKnowledgePreflight } from "../d
 import { renameRulesFolder } from "../domain/rules-folder.ts";
 import { bindTemplateTokens } from "../domain/token-binding.ts";
 import type { TokenBindings } from "../domain/template-token.ts";
-import type { AgentPersonaPreparer } from "./ports/agents.ts";
+import type { AgentPersonaPreparer, KnowledgeReadingGuides } from "./ports/agents.ts";
 
 export const createAgentPersonaPreparer = (request: {
   readonly sources: readonly MethodSource[];
@@ -12,6 +12,7 @@ export const createAgentPersonaPreparer = (request: {
   readonly directory: string;
   readonly rulesFolder: string | null;
   readonly sharedKnowledge: string;
+  readonly readingGuides: KnowledgeReadingGuides;
   readonly tokens: TokenBindings;
 }): AgentPersonaPreparer => (persona) => {
   let text = persona.agent.persona.text;
@@ -29,7 +30,8 @@ export const createAgentPersonaPreparer = (request: {
   if (persona.knowledge === "absorbed") text = absorbReviewerKnowledge({ content: text,
     agentName: persona.agent.slug, reviewerAgents: request.reviewerAgents, sources: request.sources });
   text = injectDelegatedKnowledgePreflight({ content: text, agentName: persona.agent.slug,
-    directory: request.directory, reading: persona.reading, sharedKnowledge: request.sharedKnowledge });
+    directory: request.directory, readingGuide: request.readingGuides[persona.reading],
+    sharedKnowledge: request.sharedKnowledge });
   const bound = bindTemplateTokens({ text, tokens: request.tokens,
     selected: ["HARNESS_DIR", "INVOKE", "TOOL_PREFIX", "TRUSTED_NAMESPACE", "OPTION_LETTERS"] });
   return accepted(renameRulesFolder({ text: bound, harnessDir: request.directory, rulesFolder: request.rulesFolder }));
