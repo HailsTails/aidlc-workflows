@@ -123,6 +123,8 @@ describe("refresh", () => {
     for (const file of ["t-a.test.ts", "t-b.test.ts", "t-c.test.ts", "t-new.test.ts"]) write(join(root, "tests", "unit", file), "");
     for (const file of ["t-x.test.ts", "t-y.serial.test.ts"]) write(join(root, "tests", "integration", file), "");
     write(join(root, "plugins", "kit", "tests", "plugin.test.ts"), "");
+    write(join(root, "src", "hosts", "kiro", "host.test.ts"), "");
+    write(join(root, "scripts", "parity", "domain", "golden.test.ts"), "");
     write(join(root, "tests", "unit-shard-weights.json"), `${JSON.stringify({
       defaultSeconds: 1,
       weights: { "t-a.test.ts": 5, "t-c.test.ts": 40, "t-gone.test.ts": 9 },
@@ -141,11 +143,12 @@ describe("refresh", () => {
     artifact(join(evidence, "1"), "ci-deterministic-unit-7-macOS", [["t-a", "PASS", 30], ["t-b", "PASS", 10.04]]);
     artifact(join(evidence, "1"), "ci-deterministic-integration-Linux", [
       ["t-x", "PASS", 300], ["t-y.serial", "PASS", 20], ["plugin-kit-plugin", "PASS", 0.01], ["t-live", "SKIP", 0],
+      ["src-hosts-kiro-host", "PASS", 0.3], ["scripts-parity-domain-golden", "PASS", 1.2],
     ]);
     // Smoke and e2e evidence never feeds unit or integration weights.
     artifact(join(evidence, "1"), "ci-deterministic-e2e-Linux", [["t-a", "PASS", 5000]]);
 
-    expect(refreshWeights(evidence, root)).toEqual({ unit: 3, integration: 3 });
+    expect(refreshWeights(evidence, root)).toEqual({ unit: 3, integration: 5 });
     const unit = JSON.parse(readFileSync(join(root, "tests", "unit-shard-weights.json"), "utf8")) as ShardConfig;
     expect(unit).toEqual({
       defaultSeconds: 1,
@@ -163,7 +166,9 @@ describe("refresh", () => {
     const integration = JSON.parse(readFileSync(join(root, INTEGRATION_WEIGHTS), "utf8"));
     expect(integration).toEqual({
       defaultSeconds: 1,
-      weights: { "plugin-kit-plugin": 0.1, "t-x": 300, "t-y.serial": 20 },
+      weights: {
+        "plugin-kit-plugin": 0.1, "scripts-parity-domain-golden": 1.2, "src-hosts-kiro-host": 0.3, "t-x": 300, "t-y.serial": 20,
+      },
     });
     expect(Object.keys(unit.weights)).toEqual([...Object.keys(unit.weights)].sort());
   });

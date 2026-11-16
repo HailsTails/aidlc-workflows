@@ -8,9 +8,6 @@
 
 import { type spawn, spawnSync } from "node:child_process";
 import {
-  observeProgress, runnerProgress, RUNNER_PROGRESS_PREFIX, PROGRESS_INTERVAL_MS,
-} from "../lint/gate/adapters/runner-progress.ts";
-import {
   appendFileSync,
   copyFileSync,
   existsSync,
@@ -48,7 +45,6 @@ import {
   TestBudgetExhaustedError,
 } from "./harness/test-budget.ts";
 import { buildMeta, renderMeta } from "./lib/bun-junit-to-meta.ts";
-import { acquirePackageLock, processExists } from "../lint/gate/adapters/package-lock.ts";
 import { CASE_TIMEOUT_RETRY_MAX_MS, FILE_ATTEMPT_ENV, flakyLiveLine, ISOLATED_RETRY_MAX_MS, MODEL_API_REASON, modelApiFailed, modelApiLine, onlyModelApiFailures, onlyCaseTimeouts, ORDINARY_RETRY_MAX_MS, personTurnFailed, personTurnLine, preserveFirstAttempt, retryEligible, retryPassed } from "./lib/file-retry.ts";
 import {
   type OrderWeights,
@@ -166,9 +162,6 @@ OUTPUT MODIFIERS (combinable with any tier/profile):
   --matrix-job ID     Required job in that plan. Implies --require-coverage.
   --debug         Implies --verbose; streams per-test output and writes SDK/TUI
                   driver traces to tests/logs/
-  --test-name-pattern PAT  Forwarded to bun test: only run cases whose full name matches PAT.
-  --allow-empty-shard      With --test-name-pattern: a pattern that matches no case is a
-                           skip, not a failure.
   --filter PAT    Only run tests whose filename matches extended regex PAT
                   Fails if a selected file executes no cases or no files match.
                   The scope runs and the guard matrix (t-scope-run-*,
@@ -246,6 +239,7 @@ const args = parseArgs(process.argv.slice(2));
 // --release/--all acceptance; CI runs them as jobs of their own with a filter.
 const SELECTED_ONLY = /^t-(scope-run|scope-host|guard-matrix)-/;
 let selectedOnlyNoted = false;
+const PATH_NAMED_TEST_ROOTS = ["src", "scripts/parity"];
 
 // --exclude drops the files it matches from every tier, as if they were not
 // there: the rest run as an ordinary tier, so their optional skips stay SKIP
@@ -274,12 +268,16 @@ function matchesE2eFilter(file: string, filter: RegExp | null): boolean {
 function legacyResultName(file: string): string {
   const plugin = file.replaceAll("\\", "/").match(/\/plugins\/([^/]+)\/tests\//);
   const name = basename(file, ".test.ts");
+  const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
+  if (PATH_NAMED_TEST_ROOTS.some((root) => path.startsWith(`${root}/`))) {
+    return path.replace(/\.test\.ts$/, "").replaceAll("/", "-");
+  }
   return plugin ? `plugin-${plugin[1]}-${name}` : name;
 }
 
 function qualifiedResultName(file: string): string {
   const tier = relative(SCRIPT_DIR, file).replaceAll("\\", "/").split("/")[0];
-  return `${tier === ".." ? "plugins" : tier}-${legacyResultName(file)}`;
+  return `${tier === ".." ? relative(REPO_ROOT, file).replaceAll("\\", "/").split("/")[0] : tier}-${legacyResultName(file)}`;
 }
 
 function requestedTestFiles(): string[] {
@@ -365,33 +363,32 @@ if (args.e2ePlan) {
 
 function prepareGeneratedTrees(): void {
   if (process.env[PACKAGE_READY_ENV] === "1") return;
-  observeProgress(() => {
-    process.stderr.write(`${RUNNER_PROGRESS_PREFIX}setup: waiting for projection lock; ` +
-      `file total unknown; lock ${PACKAGE_LOCK}; ` +
-      `existing timeout ${NATIVE_COMPILE_TIMEOUT_MS / 1000}s\n`);
-  });
   mkdirSync(dirname(PACKAGE_LOCK), { recursive: true });
-  const lock = acquirePackageLock({
-    lockPath: PACKAGE_LOCK,
-    pid: process.pid,
-    isProcessAlive: processExists,
-    now: Date.now,
-    sleep: (milliseconds) => Bun.sleepSync(milliseconds),
-    timeoutMs: NATIVE_COMPILE_TIMEOUT_MS,
-    report: (line) => process.stderr.write(line),
-  });
-  if (lock.kind === "timed-out") {
-    process.stderr.write(
-      `ERROR: timed out waiting for projection regeneration lock ${PACKAGE_LOCK}\n`,
-    );
-    process.exit(2);
+  const deadline = Date.now() + NATIVE_COMPILE_TIMEOUT_MS;
+  let acquired = false;
+  while (!acquired) {
+    try {
+      mkdirSync(PACKAGE_LOCK);
+      acquired = true;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        error.code !== "EEXIST"
+      ) {
+        throw error;
+      }
+      if (Date.now() >= deadline) {
+        process.stderr.write(
+          `ERROR: timed out waiting for projection regeneration lock ${PACKAGE_LOCK}\n`,
+        );
+        process.exit(2);
+      }
+      Bun.sleepSync(100);
+    }
   }
   let generationFailed = false;
   try {
-    observeProgress(() => {
-      process.stderr.write(`${RUNNER_PROGRESS_PREFIX}setup: building generated projections; ` +
-        "file total unknown; synchronous stage, no intermediate progress available\n");
-    });
     const generated = spawnSync(BUN, [join(REPO_ROOT, "scripts", "package.ts")], {
       cwd: REPO_ROOT,
       env: process.env,
@@ -407,7 +404,7 @@ function prepareGeneratedTrees(): void {
       process.env[PACKAGE_READY_ENV] = "1";
     }
   } finally {
-    lock.release();
+    rmSync(PACKAGE_LOCK, { recursive: true, force: true });
   }
   // process.exit inside try would skip finally and strand the package lock.
   if (generationFailed) process.exit(2);
@@ -566,18 +563,6 @@ let totalTests = 0;
 let totalFailed = 0;
 const resultRows: ResultRow[] = [];
 const fileExecutions = new Map<string, FileExecution>();
-let progress: ReturnType<typeof runnerProgress> | undefined;
-let progressTimer: ReturnType<typeof setInterval> | undefined;
-
-function reportProgress(): void {
-  observeProgress(() => {
-    if (!progress || !effectiveTestFiles) return;
-    process.stderr.write(`${progress.line({
-      files: effectiveTestFiles.map(resultName), outcomes: fileExecutions,
-      logs: args.verbose ? logDir : "temporary logs; use --verbose to retain per-file logs",
-    })}\n`);
-  });
-}
 let isolatedRunError = false;
 let isolatedInterrupted = false;
 const isolatedAbort = new AbortController();
@@ -1068,18 +1053,6 @@ function writeTestLog(file: string, row: ResultRow, rc: number, body: string): v
 }
 
 async function runBunTestFile(
-  ...parameters: Parameters<typeof runBunTestFileBody>
-): Promise<FileExecution | undefined> {
-  const name = resultName(parameters[0]);
-  progress?.start(name);
-  try {
-    return await runBunTestFileBody(...parameters);
-  } finally {
-    progress?.finish(name);
-  }
-}
-
-async function runBunTestFileBody(
   file: string, parallelMode = false, context?: IsolatedFileContext, force = false, attempt = 1,
 ): Promise<FileExecution | undefined> {
   if (captureFailure) throw captureFailure;
@@ -1200,10 +1173,7 @@ async function runBunTestFileBody(
   if (streamPath) writeFileSync(streamPath, `Test: ${base}\nFile: ${actualFile}\nStatus: RUNNING\n\n--- Output ---\n`);
   const run = await runSpawnCapture(
     BUN,
-    [
-      "test", actualFile, `--timeout=${DEFAULT_CASE_TIMEOUT_MS}`, "--reporter=junit", `--reporter-outfile=${junitXml}`,
-      ...(args.testNamePattern ? ["--test-name-pattern", args.testNamePattern] : []),
-    ],
+    ["test", actualFile, `--timeout=${DEFAULT_CASE_TIMEOUT_MS}`, "--reporter=junit", `--reporter-outfile=${junitXml}`],
     env,
     debugPrefix,
     context,
@@ -1221,8 +1191,6 @@ async function runBunTestFileBody(
   } catch {
     xml = "";
   }
-  const emptyShard = args.allowEmptyShard && args.testNamePattern !== "" &&
-    run.rc !== 0 && /matched 0 tests/.test(run.output);
   const { e2eCaseCounts, validateJUnitEvidence } = await import("./lib/e2e-plan.ts");
   const evidence = validateJUnitEvidence(xml);
   const cases = evidence.complete ? evidence.cases : e2eCaseCounts(xml);
@@ -1232,10 +1200,6 @@ async function runBunTestFileBody(
     meta.status = "FAIL";
     meta.failed = Math.max(1, meta.failed, cases.failed);
     if (!evidence.complete) run.output += `\nerror: ${evidence.error}\n`;
-  }
-  if (emptyShard) {
-    meta.status = "SKIP";
-    meta.reason = "The shard pattern matched no case";
   }
   if (meta.status === "PASS" && meta.tests === meta.skipped) {
     meta.status = filterRegex ? "FAIL" : "SKIP";
@@ -1309,6 +1273,18 @@ function pluginTestFiles(): string[] {
   return out;
 }
 
+function pathNamedTestFiles(): string[] {
+  return PATH_NAMED_TEST_ROOTS.flatMap((root) => {
+    const rootDir = join(REPO_ROOT, root);
+    if (!existsSync(rootDir)) return [];
+    return readdirSync(rootDir, { recursive: true, encoding: "utf8" })
+      .map((f) => f.replaceAll("\\", "/"))
+      .filter((f) => f.endsWith(".test.ts"))
+      .sort()
+      .map((f) => join(rootDir, f));
+  });
+}
+
 function levelFiles(level: Level, excludes: string[] = []): string[] {
   const dir = join(SCRIPT_DIR, level);
   const excludeSet = new Set(excludes);
@@ -1340,6 +1316,7 @@ function levelFiles(level: Level, excludes: string[] = []): string[] {
       const qualified = m ? `plugin-${m[1]}-${basename(f).replace(/\.test\.ts$/, "")}` : basename(f);
       return args.shard !== null || !excludeSet.has(qualified);
     }));
+    files.push(...pathNamedTestFiles().filter((f) => args.shard !== null || !excludeSet.has(legacyResultName(f))));
   }
   if (level === "unit" && args.shard) {
     const config = unitShardConfig();
@@ -2078,10 +2055,6 @@ async function main(): Promise<number> {
   }
   effectiveTestFiles = [...new Set([...requested, ...requiredPrerequisites])];
   resultNames = undefined;
-  progress = runnerProgress(Date.now);
-  reportProgress();
-  progressTimer = setInterval(reportProgress, PROGRESS_INTERVAL_MS);
-  progressTimer.unref();
   if (args.matrixPlan) {
     matrixModule = await import("./lib/test-matrix.ts");
     const { planE2eFile } = await import("./lib/e2e-plan.ts");
@@ -2209,9 +2182,7 @@ async function main(): Promise<number> {
     }
   }
 
-  const emptyShardAllowed = args.allowEmptyShard && args.testNamePattern !== "";
-  const ranNothing = !resultRows.some((row) => row.tests > row.skipped);
-  if (filterRegex && failedFiles === 0 && !emptyShardAllowed && ranNothing) {
+  if (filterRegex && failedFiles === 0 && !resultRows.some((row) => row.tests > row.skipped)) {
     selectionErrors.push(totalFiles === 0
       ? `--filter ${JSON.stringify(args.filter)} matched no test files in the selected tiers/shard. Check the filename, tier and shard.`
       : `--filter ${JSON.stringify(args.filter)} executed no test cases. --no-llm excludes Claude-dependent files; select deterministic tests or enable the requested live coverage.`);
@@ -2221,8 +2192,6 @@ async function main(): Promise<number> {
 
 try {
   const rc = await main();
-  clearInterval(progressTimer);
-  reportProgress();
   if (isolatedGitConfig !== NULL_DEVICE) rmSync(isolatedGitConfig, { force: true });
   writeVerboseSummary();
   if (cleanupLogDir) rmSync(logDir, { recursive: true, force: true });
@@ -2232,8 +2201,6 @@ try {
   sealMatrixReceipt();
   process.exit(runFailed() ? runnerFailureExitCode(failedFiles) : rc);
 } catch (err) {
-  clearInterval(progressTimer);
-  reportProgress();
   isolatedRunError = true;
   runnerFailure ??= String(err);
   isolatedAbort.abort();

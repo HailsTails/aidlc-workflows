@@ -56,6 +56,7 @@ import {
   resolveIntentFlag,
 } from "../../dist/claude/.claude/tools/aidlc-knowledge.ts";
 import { intentsRegistryPath } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import { SESSION_SKILL_NAMES } from "../../src/projection/domain/neutral-surface.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -189,6 +190,15 @@ describe("t285 - the knowledge skill ships everywhere, and its prose matches the
       test(`${h.name}: no unsubstituted {{HARNESS_DIR}} token survives`, () => {
         const text = readFileSync(join(REPO, h.root, h.skill), "utf-8");
         expect(text).not.toContain("{{HARNESS_DIR}}");
+      });
+    }
+
+    for (const h of HARNESSES) {
+      test(`the ${h.name} session-skill list names the skill (the N-of-N trap)`, () => {
+        const renderer = readFileSync(join(REPO, "src", "hosts", h.name, "projection", "skill-renderer.ts"), "utf-8");
+        expect(renderer, `src/hosts/${h.name}/projection/skill-renderer.ts no longer renders session skills`)
+          .toContain("renderSessionSkill");
+        expect(SESSION_SKILL_NAMES, "the session-skill list omits aidlc-knowledge").toContain("aidlc-knowledge");
       });
     }
 
