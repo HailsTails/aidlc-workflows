@@ -6,19 +6,23 @@ import {
   type CloseReceipt,
   type CloseReceiptCheck,
   closeReceiptRefusalOf,
+  describeInvalidation,
+  describeRulingProblem,
   inboundRowsOf,
   laterBoardGatesOf,
   type LensReportCapture,
   type ReviewRow,
+  type RuledRow,
   ruledRowLineOf,
+  stepAttempt,
 } from "./rin-gates-bounded-close.ts";
 import { blockingFindingsWithPolicy } from "./rin-gates-finding-disposition.ts";
 
 const FRAMING = "rin-gate-1-framing";
 const OPTIONS = "rin-gate-2-plan-review";
 const DESIGN = "rin-gate-3-interface-lock";
-const BOARD_HEAD = "a".repeat(40);
-const CLOSED_HEAD = "b".repeat(40);
+const BOARD_HEAD = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const CLOSED_HEAD = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const STAGE_LENS = "rin-stage-reviewer-agent";
 const SYNTHESIS_LENS = "rin-intent-defense-reviewer-agent";
 const REQUIREMENTS =
@@ -57,19 +61,23 @@ const report = ({
   },
 });
 
+const STAGE_RAISES_AT_THE_BOARD = report({
+  lens: STAGE_LENS,
+  verdict: "NOT-READY",
+  findings: ["a.md:1 | the quote | DD-1 | the defect"],
+  headSha: BOARD_HEAD,
+});
+
+const SYNTHESIS_READY_AT_THE_BOARD = report({
+  lens: SYNTHESIS_LENS,
+  verdict: "READY",
+  findings: [],
+  headSha: BOARD_HEAD,
+});
+
 const BOARD_WITH_ONE_FINDING: readonly AttemptLedgerEntry[] = [
-  report({
-    lens: STAGE_LENS,
-    verdict: "NOT-READY",
-    findings: ["a.md:1 | the quote | DD-1 | the defect"],
-    headSha: BOARD_HEAD,
-  }),
-  report({
-    lens: SYNTHESIS_LENS,
-    verdict: "READY",
-    findings: [],
-    headSha: BOARD_HEAD,
-  }),
+  STAGE_RAISES_AT_THE_BOARD,
+  SYNTHESIS_READY_AT_THE_BOARD,
 ];
 
 const FORWARDED_ROW: ReviewRow = {
@@ -77,6 +85,15 @@ const FORWARDED_ROW: ReviewRow = {
   lens: STAGE_LENS,
   text: "a.md:1 | the quote | DD-1 | the defect",
   origin: { kind: "forwarded", fromGate: FRAMING },
+};
+
+const FORWARDED_RULED_ROW: RuledRow = {
+  id: "G1-R01",
+  lens: STAGE_LENS,
+  text: "a.md:1 | the quote | DD-1 | the defect",
+  origin: { kind: "raised" },
+  outcome: { kind: "forwarded", toGate: OPTIONS },
+  note: "",
 };
 
 const STANDING_RECEIPT: CloseReceipt = {
@@ -90,16 +107,7 @@ const STANDING_RECEIPT: CloseReceipt = {
   closedHeadSha: CLOSED_HEAD,
   closedAt: "2026-01-01T00:00:00.000Z",
   carriedLenses: [],
-  rows: [
-    {
-      id: "G1-R01",
-      lens: STAGE_LENS,
-      text: "a.md:1 | the quote | DD-1 | the defect",
-      origin: { kind: "raised" },
-      outcome: { kind: "forwarded", toGate: OPTIONS },
-      note: "",
-    },
-  ],
+  rows: [FORWARDED_RULED_ROW],
   rechecks: [],
   unadmitted: [],
   emittedBy: "rin-gates-review-scribe",
@@ -119,76 +127,80 @@ describe("the attempt ledger folds to one state per gate", () => {
   test("a board that is not yet covered is still boarding", () => {
     expect(
       attemptStateOf({
-        entries: BOARD_WITH_ONE_FINDING.slice(0, 1),
+        entries: [STAGE_RAISES_AT_THE_BOARD],
         policy: POLICY,
       }).phase,
     ).toBe("boarding");
   });
 
   test("a covered board with a finding opens one row and waits for the ruling", () => {
-    const state = attemptStateOf({
-      entries: BOARD_WITH_ONE_FINDING,
-      policy: POLICY,
+    expect(
+      attemptStateOf({ entries: BOARD_WITH_ONE_FINDING, policy: POLICY }),
+    ).toMatchObject({
+      phase: "closing",
+      rows: [
+        {
+          id: "G1-R01",
+          lens: "rin-stage-reviewer-agent",
+          text: "a.md:1 | the quote | DD-1 | the defect",
+          origin: { kind: "raised" },
+        },
+      ],
     });
-    expect(state.phase).toBe("closing");
-    expect(state.phase === "closing" && state.rows.map((row) => row.id)).toEqual(
-      ["G1-R01"],
-    );
   });
 
   test("a NOT-READY that cites nothing still opens a row", () => {
-    const state = attemptStateOf({
-      entries: [
-        report({
-          lens: STAGE_LENS,
-          verdict: "NOT-READY",
-          findings: [],
-          headSha: BOARD_HEAD,
-        }),
-        report({
-          lens: SYNTHESIS_LENS,
-          verdict: "READY",
-          findings: [],
-          headSha: BOARD_HEAD,
-        }),
-      ],
-      policy: POLICY,
-    });
     expect(
-      state.phase === "closing" && state.rows.map((row) => row.text),
-    ).toEqual([`${STAGE_LENS} returned NOT-READY and cited no finding`]);
+      attemptStateOf({
+        entries: [
+          report({
+            lens: STAGE_LENS,
+            verdict: "NOT-READY",
+            findings: [],
+            headSha: BOARD_HEAD,
+          }),
+          SYNTHESIS_READY_AT_THE_BOARD,
+        ],
+        policy: POLICY,
+      }),
+    ).toMatchObject({
+      phase: "closing",
+      rows: [
+        {
+          text: "rin-stage-reviewer-agent returned NOT-READY and cited no finding",
+        },
+      ],
+    });
   });
 
   test("a report at a new head before the board is covered restarts the board at that head", () => {
-    const state = attemptStateOf({
-      entries: [
-        BOARD_WITH_ONE_FINDING[0] ?? report({
-          lens: STAGE_LENS,
-          verdict: "READY",
-          findings: [],
-          headSha: BOARD_HEAD,
-        }),
-        report({
-          lens: SYNTHESIS_LENS,
-          verdict: "READY",
-          findings: [],
-          headSha: CLOSED_HEAD,
-        }),
-      ],
-      policy: POLICY,
-    });
-    expect(state.phase).toBe("boarding");
+    expect(
+      attemptStateOf({
+        entries: [
+          STAGE_RAISES_AT_THE_BOARD,
+          report({
+            lens: SYNTHESIS_LENS,
+            verdict: "READY",
+            findings: [],
+            headSha: CLOSED_HEAD,
+          }),
+        ],
+        policy: POLICY,
+      }).phase,
+    ).toBe("boarding");
   });
 
   test("a seat dispatch before the close leaves the attempt where it was", () => {
-    const state = attemptStateOf({
-      entries: [
-        ...BOARD_WITH_ONE_FINDING,
-        { kind: "seat-dispatch", agentType: "rin-architect-agent", at: "t" },
-      ],
-      policy: POLICY,
-    });
-    expect(state.phase).toBe("closing");
+    expect(
+      attemptStateOf({
+        entries: [
+          STAGE_RAISES_AT_THE_BOARD,
+          SYNTHESIS_READY_AT_THE_BOARD,
+          { kind: "seat-dispatch", agentType: "rin-architect-agent", at: "t" },
+        ],
+        policy: POLICY,
+      }).phase,
+    ).toBe("closing");
   });
 });
 
@@ -231,13 +243,7 @@ describe("forwarded rows reach only the gate they name", () => {
 });
 
 describe("a ruled row reads as disposed only where closing rulings are honoured", () => {
-  const forwardedLine = ruledRowLineOf({
-    ruledRow: STANDING_RECEIPT.rows[0] ?? {
-      ...FORWARDED_ROW,
-      outcome: { kind: "forwarded", toGate: OPTIONS },
-      note: "",
-    },
-  });
+  const forwardedLine = ruledRowLineOf({ ruledRow: FORWARDED_RULED_ROW });
 
   test("a forward disposes its row without a why-chain under the bounded close", () => {
     expect(
@@ -345,5 +351,428 @@ describe("the autonomy gate's reading of a closing receipt", () => {
     expect(
       closeReceiptRefusalOf({ ...HOLDING_CHECK, inboundRows: [FORWARDED_ROW] }),
     ).toBeNull();
+  });
+});
+
+const ruling = ({
+  verdict,
+  findings,
+}: Pick<LensReportCapture, "verdict" | "findings">): AttemptLedgerEntry =>
+  report({ lens: SYNTHESIS_LENS, verdict, findings, headSha: CLOSED_HEAD });
+
+const OPEN_BOARD = attemptStateOf({
+  entries: BOARD_WITH_ONE_FINDING,
+  policy: POLICY,
+});
+
+const CLOSED_GATE = attemptStateOf({
+  entries: [
+    STAGE_RAISES_AT_THE_BOARD,
+    SYNTHESIS_READY_AT_THE_BOARD,
+    ruling({
+      verdict: "READY",
+      findings: ["G1-R01 | fixed@bbbbbbb | the facts row now exists"],
+    }),
+  ],
+  policy: POLICY,
+});
+
+describe("a closing ruling settles every open row or is refused", () => {
+  test("a ruling that fixes the row at a later commit closes the gate on the ruling's head", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: ["G1-R01 | fixed@bbbbbbb | the facts row now exists"],
+        }),
+        policy: POLICY,
+      }),
+    ).toMatchObject({
+      state: { phase: "closed" },
+      event: {
+        kind: "closed",
+        closure: {
+          closedBy: "closing-ruling",
+          closedHeadSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          ruledRows: [
+            { id: "G1-R01", outcome: { kind: "fixed", commitSha: "bbbbbbb" } },
+          ],
+        },
+      },
+      invalidation: null,
+    });
+  });
+
+  test("a ruling that rejects the row with a ground closes the gate", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: ["G1-R01 | rejected(the figure is a requirement) | "],
+        }),
+        policy: POLICY,
+      }),
+    ).toMatchObject({
+      event: {
+        kind: "closed",
+        closure: {
+          ruledRows: [
+            {
+              outcome: { kind: "rejected", ground: "the figure is a requirement" },
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  test("a ruling that forwards the row to a later gate with a board closes the gate", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: ["G1-R01 | forwarded(rin-gate-2-plan-review) | later"],
+        }),
+        policy: POLICY,
+      }),
+    ).toMatchObject({
+      event: {
+        kind: "closed",
+        closure: {
+          ruledRows: [
+            {
+              outcome: { kind: "forwarded", toGate: "rin-gate-2-plan-review" },
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  test("a ruling whose own verdict is NOT-READY is refused", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "NOT-READY",
+          findings: ["G1-R01 | fixed@bbbbbbb | done"],
+        }),
+        policy: POLICY,
+      }),
+    ).toMatchObject({
+      state: { phase: "closing" },
+      event: {
+        kind: "ruling-refused",
+        problems: [{ kind: "ruling-not-ready" }],
+      },
+    });
+  });
+
+  test("a ruling that rules no row is refused", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({ verdict: "READY", findings: [] }),
+        policy: POLICY,
+      }).event,
+    ).toEqual({
+      kind: "ruling-refused",
+      problems: [{ kind: "row-unruled", rowId: "G1-R01" }],
+    });
+  });
+
+  test("a ruling that rules one row twice is refused", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: [
+            "G1-R01 | fixed@bbbbbbb | done",
+            "G1-R01 | rejected(not a defect) | ",
+          ],
+        }),
+        policy: POLICY,
+      }).event,
+    ).toEqual({
+      kind: "ruling-refused",
+      problems: [{ kind: "row-ruled-more-than-once", rowId: "G1-R01" }],
+    });
+  });
+
+  test("a ruling on a row this gate never opened is refused", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: [
+            "G1-R01 | fixed@bbbbbbb | done",
+            "G1-R07 | fixed@bbbbbbb | done",
+          ],
+        }),
+        policy: POLICY,
+      }).event,
+    ).toEqual({
+      kind: "ruling-refused",
+      problems: [{ kind: "unknown-row", rowId: "G1-R07" }],
+    });
+  });
+
+  test("an outcome outside the three is refused", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: ["G1-R01 | defer(ack:later) | later"],
+        }),
+        policy: POLICY,
+      }).event,
+    ).toEqual({
+      kind: "ruling-refused",
+      problems: [
+        {
+          kind: "outcome-unreadable",
+          rowId: "G1-R01",
+          claim: "defer(ack:later)",
+        },
+      ],
+    });
+  });
+
+  test("a fix claimed at the commit the board read is refused", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: ["G1-R01 | fixed@aaaaaaa | already there"],
+        }),
+        policy: POLICY,
+      }).event,
+    ).toEqual({
+      kind: "ruling-refused",
+      problems: [{ kind: "fixed-without-a-later-commit", rowId: "G1-R01" }],
+    });
+  });
+
+  test("a forward to an earlier gate is refused", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: ["G1-R01 | forwarded(rin-gate-0-reconcile) | later"],
+        }),
+        policy: POLICY,
+      }).event,
+    ).toEqual({
+      kind: "ruling-refused",
+      problems: [
+        {
+          kind: "forward-target-not-a-later-board-gate",
+          rowId: "G1-R01",
+          target: "rin-gate-0-reconcile",
+        },
+      ],
+    });
+  });
+
+  test("a forward to a later gate that runs no board is refused", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: ruling({
+          verdict: "READY",
+          findings: ["G1-R01 | forwarded(rin-gate-6-operate) | later"],
+        }),
+        policy: POLICY,
+      }).event,
+    ).toEqual({
+      kind: "ruling-refused",
+      problems: [
+        {
+          kind: "forward-target-not-a-later-board-gate",
+          rowId: "G1-R01",
+          target: "rin-gate-6-operate",
+        },
+      ],
+    });
+  });
+});
+
+describe("a raising lens rechecks its own rows and nothing new is admitted", () => {
+  test("its statement on its own row is recorded and its new finding is not admitted", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: report({
+          lens: STAGE_LENS,
+          verdict: "NOT-READY",
+          findings: [
+            "G1-R01 | STILL-OPEN | the row cites no command",
+            "a.md:9 | another quote | DD-2 | first raised after the board",
+          ],
+          headSha: CLOSED_HEAD,
+        }),
+        policy: POLICY,
+      }).event,
+    ).toEqual({
+      kind: "recheck-recorded",
+      rechecks: [
+        {
+          rowId: "G1-R01",
+          lens: "rin-stage-reviewer-agent",
+          headSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          claim: "STILL-OPEN",
+        },
+      ],
+      unadmitted: [
+        {
+          lens: "rin-stage-reviewer-agent",
+          headSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          text: "a.md:9 | another quote | DD-2 | first raised after the board",
+        },
+      ],
+    });
+  });
+});
+
+describe("a closed gate is invalidated by further review, and only by that", () => {
+  test("a reviewer reporting after the close invalidates it", () => {
+    expect(
+      stepAttempt({
+        state: CLOSED_GATE,
+        entry: report({
+          lens: STAGE_LENS,
+          verdict: "READY",
+          findings: [],
+          headSha: CLOSED_HEAD,
+        }),
+        policy: POLICY,
+      }).invalidation,
+    ).toEqual({
+      kind: "reviewer-dispatch",
+      agentType: "rin-stage-reviewer-agent",
+    });
+  });
+
+  test("a seat dispatched after the close invalidates it", () => {
+    expect(
+      stepAttempt({
+        state: CLOSED_GATE,
+        entry: {
+          kind: "seat-dispatch",
+          agentType: "rin-architect-agent",
+          at: "t",
+        },
+        policy: POLICY,
+      }).invalidation,
+    ).toEqual({ kind: "seat-dispatch", agentType: "rin-architect-agent" });
+  });
+
+  test("a seat dispatched before the close invalidates nothing", () => {
+    expect(
+      stepAttempt({
+        state: OPEN_BOARD,
+        entry: {
+          kind: "seat-dispatch",
+          agentType: "rin-architect-agent",
+          at: "t",
+        },
+        policy: POLICY,
+      }).invalidation,
+    ).toBeNull();
+  });
+});
+
+describe("refusals and invalidations read in plain words", () => {
+  test("a ruling that is not READY", () => {
+    expect(
+      describeRulingProblem({ problem: { kind: "ruling-not-ready" } }),
+    ).toBe("the closing ruling's own verdict is not READY");
+  });
+
+  test("a row with no outcome", () => {
+    expect(
+      describeRulingProblem({
+        problem: { kind: "row-unruled", rowId: "G1-R01" },
+      }),
+    ).toBe("G1-R01 has no outcome");
+  });
+
+  test("a row ruled twice", () => {
+    expect(
+      describeRulingProblem({
+        problem: { kind: "row-ruled-more-than-once", rowId: "G1-R01" },
+      }),
+    ).toBe("G1-R01 is ruled more than once");
+  });
+
+  test("a row the gate never opened", () => {
+    expect(
+      describeRulingProblem({
+        problem: { kind: "unknown-row", rowId: "G1-R07" },
+      }),
+    ).toBe("G1-R07 is not an open row of this gate");
+  });
+
+  test("an outcome outside the three", () => {
+    expect(
+      describeRulingProblem({
+        problem: {
+          kind: "outcome-unreadable",
+          rowId: "G1-R01",
+          claim: "defer(ack:later)",
+        },
+      }),
+    ).toBe(
+      "G1-R01 carries 'defer(ack:later)', which is not fixed@<sha>, rejected(<ground>) or forwarded(<later gate>)",
+    );
+  });
+
+  test("a fix with no later commit", () => {
+    expect(
+      describeRulingProblem({
+        problem: { kind: "fixed-without-a-later-commit", rowId: "G1-R01" },
+      }),
+    ).toBe("G1-R01 is ruled fixed without a commit made after the board");
+  });
+
+  test("a forward to a gate that cannot take it", () => {
+    expect(
+      describeRulingProblem({
+        problem: {
+          kind: "forward-target-not-a-later-board-gate",
+          rowId: "G1-R01",
+          target: "rin-gate-6-operate",
+        },
+      }),
+    ).toBe(
+      "G1-R01 is forwarded to 'rin-gate-6-operate', which is not a later gate with a board",
+    );
+  });
+
+  test("a reviewer reporting after the close", () => {
+    expect(
+      describeInvalidation({
+        reason: {
+          kind: "reviewer-dispatch",
+          agentType: "rin-stage-reviewer-agent",
+        },
+      }),
+    ).toBe("reviewer rin-stage-reviewer-agent reported after the gate closed");
+  });
+
+  test("a seat dispatched after the close", () => {
+    expect(
+      describeInvalidation({
+        reason: { kind: "seat-dispatch", agentType: "rin-architect-agent" },
+      }),
+    ).toBe("seat rin-architect-agent was dispatched after the gate closed");
   });
 });

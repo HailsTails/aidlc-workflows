@@ -1,0 +1,15 @@
+{
+  "defaultRoster": ["rin-stage-reviewer-agent"],
+  "byGate": {
+    "rin-gate-1-framing": [
+      "rin-stage-reviewer-agent",
+      "rin-customer-reviewer-agent",
+      "rin-intent-defense-reviewer-agent"
+    ],
+    "rin-gate-2-plan-review": [
+      "rin-stage-reviewer-agent",
+      "rin-customer-reviewer-agent",
+      "rin-intent-defense-reviewer-agent"
+    ]
+  }
+}

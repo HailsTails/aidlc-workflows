@@ -1,0 +1,7 @@
+{
+  "projectName": "ada",
+  "defaultScope": "rin-gates",
+  "rulesetRoot": "aidlc/spaces/default/memory",
+  "stageGraph": ".claude/tools/data/stage-graph.json",
+  "packageManager": { "primary": "bun", "runnerAllowlist": ["pnpm"] }
+}

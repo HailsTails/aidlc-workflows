@@ -83,8 +83,12 @@ import {
   resolveReviewRoster,
 } from "./shared-review-roster.ts";
 import { defaultReviewDecodersPort } from "../tools/rin-gates/review-decoders-port.ts";
-import { isGateSlug } from "../tools/rin-gates/rin-gate-namespace.ts";
 import {
+  type GateSlug,
+  isGateSlug,
+} from "../tools/rin-gates/rin-gate-namespace.ts";
+import {
+  type CloseReceipt,
   closeReceiptRefusalOf,
   SYNTHESIS_LENS,
 } from "../tools/rin-gates/rin-gates-bounded-close.ts";
@@ -833,6 +837,43 @@ const assertVerdictAuthorises = ({
   }
 };
 
+type BoundedCloseGatePorts = Pick<GatePorts, "changedPathsSince"> & {
+  readonly isBoundedCloseOnFor: (input: {
+    readonly recordName: string;
+  }) => boolean;
+  readonly readReceipt: (location: {
+    readonly recordDir: string;
+    readonly gate: GateSlug;
+  }) => CloseReceipt | null;
+  readonly reviewedArtifactPathsOf: (input: {
+    readonly gate: GateSlug;
+    readonly recordName: string;
+  }) => readonly string[];
+};
+
+const boundedCloseGatePorts = ({
+  invokingCheckout,
+}: {
+  readonly invokingCheckout: string;
+}): BoundedCloseGatePorts => ({
+  changedPathsSince: gatePorts().changedPathsSince,
+  isBoundedCloseOnFor: ({ recordName }) =>
+    configBoundedCloseOptIn({ projectDir: invokingCheckout, recordName })
+      .kind === "enabled",
+  readReceipt: closeReceiptReader({
+    ports: {
+      files: defaultFileTextPort(),
+      decoders: defaultReviewDecodersPort(),
+      join: (...segments) => join(...segments),
+    },
+  }),
+  reviewedArtifactPathsOf: ({ gate, recordName }) =>
+    declaredProducedArtifactPathsFor({
+      gate,
+      graph: loadStageGraphNodes(stageGraphPath()),
+    }).map((path) => `aidlc/spaces/${space}/intents/${recordName}/${path}`),
+});
+
 const boundedCloseRefusal = ({
   verdict,
   gate,
@@ -846,28 +887,18 @@ const boundedCloseRefusal = ({
   readonly recordDir: string;
   readonly invokingCheckout: string;
   readonly roster: RosterResolution;
-  readonly ports: Pick<GatePorts, "changedPathsSince">;
+  readonly ports: BoundedCloseGatePorts;
 }): string | null => {
-  const recordDirName = basename(recordDir);
+  const recordName = basename(recordDir);
   if (
     !isGateSlug(gate) ||
     roster.kind === "unreadable" ||
     !roster.roster.includes(SYNTHESIS_LENS) ||
-    configBoundedCloseOptIn({
-      projectDir: invokingCheckout,
-      recordName: recordDirName,
-    }).kind === "disabled"
+    !ports.isBoundedCloseOnFor({ recordName })
   ) {
     return null;
   }
-  const readReceipt = closeReceiptReader({
-    ports: {
-      files: defaultFileTextPort(),
-      decoders: defaultReviewDecodersPort(),
-      join: (...segments) => join(...segments),
-    },
-  });
-  const receipt = readReceipt({ recordDir, gate });
+  const receipt = ports.readReceipt({ recordDir, gate });
   const changed =
     receipt === null
       ? succeed<readonly string[]>([])
@@ -886,15 +917,10 @@ const boundedCloseRefusal = ({
     inboundRows: inboundRowsFor({
       gate,
       recordDir,
-      store: { readReceipt },
+      store: { readReceipt: ports.readReceipt },
     }),
     changedPathsSinceClose: changed.value,
-    reviewedArtifactPaths: declaredProducedArtifactPathsFor({
-      gate,
-      graph: loadStageGraphNodes(stageGraphPath()),
-    }).map(
-      (path) => `aidlc/spaces/${space}/intents/${recordDirName}/${path}`,
-    ),
+    reviewedArtifactPaths: ports.reviewedArtifactPathsOf({ gate, recordName }),
   });
 };
 
@@ -1076,7 +1102,7 @@ const main = async (): Promise<void> => {
     recordDir,
     invokingCheckout,
     roster: reviewRosterFor(gate),
-    ports: gatePorts(),
+    ports: boundedCloseGatePorts({ invokingCheckout }),
   });
   if (closeRefusal !== null) deny(closeRefusal);
 
@@ -1091,6 +1117,7 @@ export {
   gatedInvocationFrom,
   type BindingReadFailure,
   bindingOf,
+  type BoundedCloseGatePorts,
   boundedCloseRefusal,
   phaseOfGate,
   type RecordsOnlyDrift,
