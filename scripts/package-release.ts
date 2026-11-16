@@ -12,10 +12,21 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createTarGz, type ArchiveEntry } from "../core/tools/aidlc-archive.ts";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { HOSTS } from "../src/cli/host-table.ts";
 import { parseVersion, PREVIEW_CHANNEL, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
-import { copyChannelOmits, projectionFiles, walkFiles } from "../core/tools/aidlc-distribution.ts";
+import { projectionFiles } from "../core/tools/aidlc-distribution.ts";
+import { openPackageBuildRoot } from "../src/cli/main.ts";
+import { createPackageBuildRoot } from "../src/cli/package-build-root.ts";
+import { createNodeFileSystem } from "../src/kernel/file-system.ts";
+import { createNodeProcessRunner } from "../src/kernel/process-runner.ts";
+import { createBunYamlParser } from "../src/kernel/yaml-parser.ts";
+import { createBunContentDigester } from "../src/kernel/content-digester.ts";
+import { createProcessTerminal } from "../src/kernel/terminal.ts";
+import { createLegacyPluginProjector } from "../src/projection/adapters/legacy-plugin-emit.ts";
+import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
+import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
+import { frameworkVersion } from "../src/kernel/values.ts";
 import { targetTriple } from "../core/tools/aidlc-install-paths.ts";
 import {
   digest,
@@ -26,6 +37,7 @@ import {
   type ReleaseManifest,
 } from "../core/tools/aidlc-release.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
+import { readMemoryCap } from "../core/tools/aidlc-tiers.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Stable builds publish the source version; a preview build carries the id
@@ -39,15 +51,6 @@ const RELEASE_SOURCE_REF = parseVersion(BUILD_VERSION).channel === PREVIEW_CHANN
 function valueAfter(argv: string[], flag: string): string | undefined {
   const index = argv.indexOf(flag);
   return index >= 0 ? argv[index + 1] : undefined;
-}
-
-function entriesFor(root: string): ArchiveEntry[] {
-  return walkFiles(root).map((path) => ({
-    path: path.replaceAll("\\", "/"),
-    type: "file",
-    mode: statSync(join(root, path)).mode & 0o777,
-    data: readFileSync(join(root, path)),
-  }));
 }
 
 function outputName(target: string, source: string): string {
@@ -80,8 +83,7 @@ function versionedInstaller(
 }
 
 function sourceHarnesses(): string[] {
-  return directoryNames(join(REPO_ROOT, "harness"))
-    .filter((name) => existsSync(join(REPO_ROOT, "harness", name, "manifest.ts")));
+  return HOSTS.map((module) => module.host.distribution).sort();
 }
 
 function sourcePlugins(): string[] {
@@ -259,7 +261,7 @@ function buildVerification(
   };
 }
 
-function build(argv: string[]): void {
+async function build(argv: string[]): Promise<void> {
   const output = valueAfter(argv, "--output") || join(REPO_ROOT, "build", "release");
   const binaries = valueAfter(argv, "--binaries") || join(REPO_ROOT, "build", "binaries");
   const requireReleaseMatrix = argv.includes("--require-release-matrix");
@@ -283,8 +285,6 @@ function build(argv: string[]): void {
   const assets: ReleaseAsset[] = [];
   const distributions: ReleaseManifest["distributions"] = [];
 
-  const copyRuntimeEntries: ArchiveEntry[] = [];
-  const runtimeEntries: ArchiveEntry[] = [];
   for (const distribution of generated.harnesses) {
     const root = join(REPO_ROOT, "dist", distribution);
     const nativeRoot = join(REPO_ROOT, "dist-release", distribution);
@@ -300,53 +300,28 @@ function build(argv: string[]): void {
       name: projection.stamp.distribution,
       productName: projection.descriptor.productName,
     });
-    const omitted = copyChannelOmits(projection.descriptor);
-    copyRuntimeEntries.push(...entriesFor(root).filter((entry) => !omitted.has(entry.path)).map((entry) => ({
-      ...entry,
-      path: `runtime/${distribution}/${entry.path}`,
-    })));
-    runtimeEntries.push(...entriesFor(nativeRoot).map((entry) => ({
-      ...entry,
-      path: `runtime/${distribution}/${entry.path}`,
-    })));
-  }
-  const pluginsRoot = join(REPO_ROOT, "dist", "plugins");
-  if (existsSync(pluginsRoot)) {
-    for (const plugin of generated.plugins) {
-      const pluginRoot = join(pluginsRoot, plugin);
-      if (!statSync(pluginRoot).isDirectory()) continue;
-      for (const harness of readdirSync(pluginRoot).sort()) {
-        const harnessRoot = join(pluginRoot, harness);
-        if (!statSync(harnessRoot).isDirectory()) continue;
-        const entries = entriesFor(harnessRoot).map((entry) => ({
-          ...entry,
-          path: `plugins/${plugin}/${harness}/${entry.path}`,
-        }));
-        copyRuntimeEntries.push(...entries);
-        runtimeEntries.push(...entries);
-      }
-    }
-    for (const folder of directoryNames(pluginsRoot).filter((name) => name.startsWith("."))) {
-      const entries = entriesFor(join(pluginsRoot, folder)).map((entry) => ({
-        ...entry,
-        path: `plugins/${folder}/${entry.path}`,
-      }));
-      copyRuntimeEntries.push(...entries);
-      runtimeEntries.push(...entries);
-    }
   }
   const runtimeName = releaseRuntimeAsset(BUILD_VERSION);
   const runtimePath = join(output, runtimeName);
-  writeFileSync(runtimePath, createTarGz(runtimeEntries));
+  const copyRuntimeName = releaseCopyRuntimeAsset(BUILD_VERSION);
+  const copyRuntimePath = join(output, copyRuntimeName);
+  const stampedAs = frameworkVersion(BUILD_VERSION);
+  if (!stampedAs.ok) throw new Error(JSON.stringify(stampedAs.refusal));
+  const root = openPackageBuildRoot({ workingDirectory: pathToFileURL(`${process.cwd()}/`),
+    outliner: createMarkdownOutliner(markdownBlocks), createNodeFileSystem, createNodeProcessRunner,
+    createBunYamlParser, createBunContentDigester, createProcessTerminal: () => createProcessTerminal(),
+    createPluginProjector: createLegacyPluginProjector, createPackageBuildRoot });
+  const archives = await root.buildReleaseArchives({ archives: pathToFileURL(`${output}/`),
+    pluginTrees: pathToFileURL(`${join(REPO_ROOT, "dist", "plugins")}/`),
+    names: { runtime: runtimeName, copyRuntime: copyRuntimeName }, stampedAs: stampedAs.value,
+    modelCap: readMemoryCap(join(REPO_ROOT, "core", "memory")) });
+  if (!archives.ok) throw new Error(JSON.stringify(archives.refusal));
   assets.push({
     name: runtimeName,
     sha256: digest(runtimePath),
     bytes: statSync(runtimePath).size,
     kind: "runtime",
   });
-  const copyRuntimeName = releaseCopyRuntimeAsset(BUILD_VERSION);
-  const copyRuntimePath = join(output, copyRuntimeName);
-  writeFileSync(copyRuntimePath, createTarGz(copyRuntimeEntries));
   writeFileSync(
     `${copyRuntimePath}.sha256`,
     `${digest(copyRuntimePath)}  ${copyRuntimeName}\n`,
@@ -466,7 +441,7 @@ function build(argv: string[]): void {
 }
 
 try {
-  build(process.argv.slice(2));
+  await build(process.argv.slice(2));
 } catch (error) {
   console.error(`package-release: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);

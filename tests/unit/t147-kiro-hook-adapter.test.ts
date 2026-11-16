@@ -76,7 +76,7 @@ import { envWithoutCommandOnPath } from "../harness/test-command-paths.ts";
 import { listMessages } from "../../core/tools/aidlc-message-store.ts";
 import { withoutCommentBlocks } from "../../core/tools/aidlc-markdown.ts";
 import { resolveAction } from "../../core/tools/aidlc.ts";
-import kiroManifest from "../../harness/kiro/manifest.ts";
+import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -2053,19 +2053,19 @@ if (args[0] === "engine" && args[1] === "orchestrate") {
       expect(config.hooks?.preToolUse ?? [], name).toContainEqual({
         matcher: "execute_bash",
         command:
-          `bun .kiro/tools/aidlc.ts engine adapter kiro state-transition-guard ${config.name}${kiroManifest.hookCommandSuffix}`,
+          `bun .kiro/tools/aidlc.ts engine adapter kiro state-transition-guard ${config.name}${KIRO_HOOK_COMMAND_SUFFIX}`,
         timeout_ms: EXTENDED_SUBPROCESS_TIMEOUT_MS,
       });
       expect(config.hooks?.preToolUse ?? [], name).toContainEqual({
         matcher: "fs_write",
         command:
-          `bun .kiro/tools/aidlc.ts engine adapter kiro plan-approval-guard${kiroManifest.hookCommandSuffix}`,
+          `bun .kiro/tools/aidlc.ts engine adapter kiro plan-approval-guard${KIRO_HOOK_COMMAND_SUFFIX}`,
         timeout_ms: EXTENDED_SUBPROCESS_TIMEOUT_MS,
       });
       expect(config.hooks?.preToolUse ?? [], name).toContainEqual({
         matcher: "execute_bash",
         command:
-          `bun .kiro/tools/aidlc.ts engine adapter kiro plan-approval-guard${kiroManifest.hookCommandSuffix}`,
+          `bun .kiro/tools/aidlc.ts engine adapter kiro plan-approval-guard${KIRO_HOOK_COMMAND_SUFFIX}`,
         timeout_ms: EXTENDED_SUBPROCESS_TIMEOUT_MS,
       });
     }

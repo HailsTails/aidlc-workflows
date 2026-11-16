@@ -1,7 +1,36 @@
-import { existsSync, readdirSync } from "node:fs";
+import {
+  DELEGATE_SHELL_FACTS,
+} from "../../src/projection/fixtures/delegate-shell-facts.fixture.ts";
+import { tokenBindingsFixture } from "../../src/projection/fixtures/token-bindings.fixture.ts";
+import { methodSliceFixture } from "../../src/workflow-definition/fixtures/method.fixture.ts";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { frontmatterBlock } from "../../core/tools/aidlc-lib.ts";
+import {
+  hostModule, HOSTS,
+} from "../../src/cli/host-table.ts";
+import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
+import { validateProjectionDescriptor, type ProjectionDescriptor, type ProjectionStamp }
+  from "../../core/tools/aidlc-distribution.ts";
+import type { PluginTargetTable } from "../../core/tools/aidlc-plugin-emit.ts";
+import { distributionId, projectPath } from "../../src/kernel/values.ts";
+import { accepted, refused } from "../../src/kernel/result.ts";
+
+export type ShippedOnboarding = {
+  dst: string;
+  projectRoot?: true;
+  harnessDst?: string;
+  fills: OnboardingFills;
+};
+
+export type ShippedManifest = {
+  name: string;
+  harnessDir: string;
+  rootIntegrations: ProjectionDescriptor["rootIntegrations"];
+  orchestratorSkillPath: string;
+  onboarding: ShippedOnboarding;
+};
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const HARNESS_ROOT = join(REPO_ROOT, "harness");
@@ -18,11 +47,9 @@ type ReviewerScopeRegistration =
 type HarnessCapabilities = {
   harnessDir: string;
   onboarding: {
-    mode: "manifest" | "emit";
-    fills: string;
     dist: string;
     harnessDist: string;
-  };
+  } & ({ mode: "manifest" | "emit"; fills: string } | { mode: "projection" });
   rootFiles: readonly string[];
   skillsRoot: string;
   plugin: {
@@ -51,8 +78,7 @@ const HARNESS_CAPABILITIES = {
   claude: {
     harnessDir: ".claude",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: ".claude/CLAUDE.md",
       harnessDist: ".claude/CLAUDE.md",
     },
@@ -72,8 +98,7 @@ const HARNESS_CAPABILITIES = {
   codex: {
     harnessDir: ".codex",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".codex/onboarding.md",
     },
@@ -93,8 +118,7 @@ const HARNESS_CAPABILITIES = {
   copilot: {
     harnessDir: ".aidlc",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: "AGENTS.md",
     },
@@ -114,8 +138,7 @@ const HARNESS_CAPABILITIES = {
   cursor: {
     harnessDir: ".cursor",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".cursor/rules/aidlc-onboarding.mdc",
     },
@@ -135,8 +158,7 @@ const HARNESS_CAPABILITIES = {
   "kiro-ide": {
     harnessDir: ".kiro",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".kiro/steering/aidlc-onboarding.md",
     },
@@ -156,8 +178,7 @@ const HARNESS_CAPABILITIES = {
   kiro: {
     harnessDir: ".kiro",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".kiro/steering/aidlc-onboarding.md",
     },
@@ -177,8 +198,7 @@ const HARNESS_CAPABILITIES = {
   opencode: {
     harnessDir: ".aidlc",
     onboarding: {
-      mode: "manifest",
-      fills: "onboarding.fills.ts",
+      mode: "projection",
       dist: "AGENTS.md",
       harnessDist: ".aidlc/onboarding.md",
     },
@@ -201,124 +221,175 @@ export type ShippedHarnessName = keyof typeof HARNESS_CAPABILITIES;
 
 export type ShippedHarness = {
   name: ShippedHarnessName;
-  manifest: HarnessManifest;
+  manifest: ShippedManifest;
   capabilities: HarnessCapabilities;
   authoredRoot: string;
   distRoot: string;
   engineRoot: string;
   skillsRoot: string;
-  onboardingFills: string;
+  fills: OnboardingFills;
   onboardingDist: string;
   harnessOnboardingDist: string;
 };
 
 function discoverManifestNames(): string[] {
-  return readdirSync(HARNESS_ROOT)
-    .filter((name) => existsSync(join(HARNESS_ROOT, name, "manifest.ts")))
-    .sort();
+  return HOSTS
+    .map((member) => member.host.distribution).sort();
 }
 
 function fail(name: string, message: string): never {
   throw new Error(`harness matrix [${name}]: ${message}`);
 }
 
-export function manifestGrantsIdeAgentTools(
-  manifest: Pick<HarnessManifest, "frontmatterAdditions">,
-): boolean {
-  return (
-    manifest.frontmatterAdditions?.some(
-      ({ file, lines }) =>
-        /^agents\/[^/]+\.md$/.test(file) &&
-        lines.some((line) => line.split(":", 1)[0]?.trim() === "tools"),
-    ) ?? false
-  );
+export function agentFrontmatterGrantsIdeTools(file: string, lines: readonly string[]): boolean {
+  return /^agents\/[^/]+\.md$/.test(file)
+    && lines.some((line) => line.split(":", 1)[0]?.trim() === "tools");
 }
 
-function validateManifest(
-  name: ShippedHarnessName,
-  manifest: HarnessManifest,
-  capabilities: HarnessCapabilities,
-): void {
-  if (manifest.name !== name) fail(name, `manifest.name is "${manifest.name}"`);
-  if (manifest.harnessDir !== capabilities.harnessDir) {
-    fail(
-      name,
-      `metadata harnessDir "${capabilities.harnessDir}" != manifest "${manifest.harnessDir}"`,
-    );
-  }
+export function manifestGrantsIdeAgentTools(
+  manifest: { frontmatterAdditions?: ReadonlyArray<{ file: string; lines: readonly string[] }> },
+): boolean {
+  return manifest.frontmatterAdditions?.some(({ file, lines }) =>
+    agentFrontmatterGrantsIdeTools(file, lines)) ?? false;
+}
 
-  const usesEmittedSkills = manifest.skipRunnerGen === true;
-  if (usesEmittedSkills !== (capabilities.skillsRoot !== `${manifest.harnessDir}/skills`)) {
-    fail(name, "skillsRoot does not agree with manifest.skipRunnerGen");
+function validateEmittedAgentTools(name: ShippedHarnessName,
+  manifest: Pick<ShippedManifest, "harnessDir">,
+  capabilities: HarnessCapabilities): void {
+  const directory = join(REPO_ROOT, "dist", name, manifest.harnessDir, "agents");
+  const files = existsSync(directory)
+    ? readdirSync(directory).filter((file) => file.endsWith(".md")) : [];
+  if (capabilities.ideAgentTools && files.length === 0) {
+    fail(name, "tools-capable emitted agent documents are missing");
   }
-
-  const onboarding = manifest.onboarding ?? null;
-  if (capabilities.onboarding.mode === "manifest") {
-    if (!onboarding) fail(name, "metadata expects manifest onboarding");
-    const dist = onboarding.projectRoot
-      ? onboarding.dst
-      : `${manifest.harnessDir}/${onboarding.dst}`;
-    if (dist !== capabilities.onboarding.dist) {
-      fail(name, `onboarding dist "${capabilities.onboarding.dist}" != manifest "${dist}"`);
-    }
-    const harnessDist = onboarding.harnessDst
-      ? `${manifest.harnessDir}/${onboarding.harnessDst}`
-      : dist;
-    if (harnessDist !== capabilities.onboarding.harnessDist) {
-      fail(name, `harness onboarding "${capabilities.onboarding.harnessDist}" != manifest "${harnessDist}"`);
-    }
-  } else if (onboarding || !manifest.emit) {
-    fail(name, "emitted onboarding requires onboarding:null and an emit function");
-  }
-
-  for (const file of manifest.harnessFiles.filter((file) => file.projectRoot)) {
-    if (!capabilities.rootFiles.includes(file.dst)) {
-      fail(name, `project-root manifest file "${file.dst}" is absent from rootFiles metadata`);
+  for (const file of files) {
+    const header = frontmatterBlock(readFileSync(join(directory, file), "utf8")) ?? "";
+    const grantsTools = agentFrontmatterGrantsIdeTools(`agents/${file}`, header.split(/\r?\n/));
+    if (grantsTools !== capabilities.ideAgentTools) {
+      fail(name, `ideAgentTools does not agree with emitted agent ${file}`);
     }
   }
-  if (onboarding?.projectRoot && !capabilities.rootFiles.includes(onboarding.dst)) {
-    fail(name, `project-root onboarding "${onboarding.dst}" is absent from rootFiles metadata`);
-  }
+}
 
-  const hasKiroAgentJson = manifest.harnessFiles.some(
-    (file) => file.dst === "agents/aidlc.json",
-  );
-  if (hasKiroAgentJson !== capabilities.kiroAgentJson) {
-    fail(name, "kiroAgentJson does not agree with manifest harnessFiles");
+function producesConductorAgent(name: ShippedHarnessName,
+  manifest: Pick<ShippedManifest, "harnessDir">): boolean {
+  const distribution = distributionId(name);
+  const directory = projectPath(manifest.harnessDir);
+  if (!distribution.ok || !directory.ok) fail(name, "agent producer needs a valid host identity");
+  const host = { distribution: distribution.value, directory: directory.value };
+  const agents = hostModule(host)?.projection.agents;
+  if (agents === undefined) return false;
+  const conductor = agents.inputs.find((source) => source === "agents/aidlc.json");
+  if (conductor === undefined) return false;
+  const authored = join(HARNESS_ROOT, name, conductor);
+  if (!existsSync(authored)) fail(name, "agent producer's captured conductor source is missing");
+  const rendered = agents.render({ host, channel: "copy",
+    delegateShellFacts: DELEGATE_SHELL_FACTS,
+    tokens: tokenBindingsFixture({ harnessDir: manifest.harnessDir }),
+    persona: () => accepted(""), documents: () => accepted(""),
+    modelCap: null, method: methodSliceFixture,
+    files: [{ source: conductor,
+      content: { kind: "text", text: readFileSync(authored, "utf8") } }],
+    prepare: accepted, formatDocuments: new Set(),
+    allows: { dispatcherCommands: [], toolScripts: [] },
+    models: () => refused({ kind: "render-failed", concept: "agent", name: "aidlc",
+      reason: "The conductor must preserve its model without persona model policy." }),
+  }).renderConductorAgent({ knowledge: [] });
+  if (!rendered.ok) {
+    fail(name, `conductor producer was refused: ${JSON.stringify(rendered.refusal)}`);
   }
-  if (
-    (capabilities.memoryInclude === "kiro-resources") !== hasKiroAgentJson ||
-    (capabilities.memoryInclude === "kiro-steering") !==
-      manifest.harnessFiles.some(
-        (file) => file.dst === "steering/aidlc-active-memory.md",
-      ) ||
-    (capabilities.memoryInclude === "claude-import") !==
-      manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.md") ||
-    (capabilities.memoryInclude === "codex-engine") !==
-      (manifest.orchestratorSkillPath === ".agents/skills/aidlc/SKILL.md") ||
-    (capabilities.memoryInclude === "opencode-instructions") !==
-      manifest.harnessFiles.some((file) => file.dst === "opencode.json") ||
-    (capabilities.memoryInclude === "copilot-agents-md") !==
-      (manifest.onboarding?.projectRoot === true &&
-        manifest.onboarding.dst === "AGENTS.md" &&
-        manifest.harnessDir === ".aidlc" &&
-        manifest.skipRunnerGen === true) ||
-    (capabilities.memoryInclude === "cursor-rule") !==
-      manifest.harnessFiles.some((file) => file.dst === "rules/aidlc.mdc")
-  ) {
-    fail(name, "memoryInclude does not agree with manifest-owned include surfaces");
+  return rendered.value.some((file) => file.path === `${manifest.harnessDir}/agents/aidlc.json`);
+}
+
+function fullHostDescriptor(name: ShippedHarnessName, directory: string): ProjectionDescriptor {
+  const engine = join(REPO_ROOT, "dist", name, directory);
+  const descriptorPath = join(engine, "tools/data/aidlc-projection.json");
+  const stampPath = join(engine, "tools/data/aidlc-stamp.json");
+  const descriptor = JSON.parse(readFileSync(descriptorPath, "utf8")) as ProjectionDescriptor;
+  const stamp = JSON.parse(readFileSync(stampPath, "utf8")) as ProjectionStamp;
+  validateProjectionDescriptor(join(REPO_ROOT, "dist", name), stamp, descriptor);
+  return descriptor;
+}
+
+function validateFullHostAgentsAndPlugin(name: ShippedHarnessName,
+  capabilities: HarnessCapabilities): void {
+  const identity = { harnessDir: capabilities.harnessDir };
+  if (producesConductorAgent(name, identity) !== capabilities.kiroAgentJson) {
+    fail(name, "kiroAgentJson does not agree with the registered conductor producer");
   }
-  if (manifestGrantsIdeAgentTools(manifest) !== capabilities.ideAgentTools) {
-    fail(name, "ideAgentTools does not agree with manifest agent tools grants");
+  validateEmittedAgentTools(name, identity, capabilities);
+  const targetPath = join(REPO_ROOT, "dist", name, capabilities.harnessDir,
+    "tools/data/plugin-targets.json");
+  const targets = JSON.parse(readFileSync(targetPath, "utf8")) as PluginTargetTable;
+  const plugin = targets[name];
+  if (!plugin || plugin.kind !== capabilities.plugin.kind
+    || plugin.manifestDir !== capabilities.plugin.manifestDir
+    || plugin.marketplaceDir !== capabilities.plugin.marketplaceDir) {
+    fail(name, "full-host plugin metadata disagrees");
   }
-  if (
-    manifest.plugin &&
-    (manifest.plugin.kind !== capabilities.plugin.kind ||
-      manifest.plugin.manifestDir !== capabilities.plugin.manifestDir ||
-      (manifest.plugin.marketplaceDir ?? manifest.plugin.manifestDir) !== capabilities.plugin.marketplaceDir)
-  ) {
-    fail(name, "plugin metadata does not agree with the manifest plugin block");
+}
+
+function nativeOnboardingPath(capabilities: HarnessCapabilities): string | undefined {
+  const { harnessDist } = capabilities.onboarding;
+  return harnessDist.startsWith(`${capabilities.harnessDir}/`) ? harnessDist : undefined;
+}
+
+function validateFullHostLayout({ name, descriptor, capabilities }: {
+  name: ShippedHarnessName; descriptor: ProjectionDescriptor; capabilities: HarnessCapabilities;
+}): void {
+  if (descriptor.distribution !== name || descriptor.harnessDir !== capabilities.harnessDir) {
+    fail(name, "full-host identity does not agree with the generated descriptor");
   }
+  if (descriptor.onboarding !== nativeOnboardingPath(capabilities)) {
+    fail(name, "full-host onboarding does not agree with the generated descriptor");
+  }
+  const roots = descriptor.rootIntegrations.map((root) => root.path).sort();
+  if (roots.join("\n") !== [...capabilities.rootFiles].sort().join("\n")) {
+    fail(name, "full-host root files do not agree with the generated descriptor");
+  }
+}
+
+function insideDirectory(directory: string, path: string): string | null {
+  return path.startsWith(`${directory}/`) ? path.slice(directory.length + 1) : null;
+}
+
+export function onboardingSpec({ directory, onboarding, fills }: {
+  directory: string; onboarding: { dist: string; harnessDist: string }; fills: OnboardingFills;
+}): ShippedOnboarding {
+  const neutral = insideDirectory(directory, onboarding.dist);
+  const native = onboarding.harnessDist === onboarding.dist
+    ? null : insideDirectory(directory, onboarding.harnessDist);
+  return { dst: neutral ?? onboarding.dist, ...(neutral === null ? { projectRoot: true } : {}),
+    ...(native === null ? {} : { harnessDst: native }), fills };
+}
+
+export function onboardingFillsSource(name: ShippedHarnessName): string {
+  return `src/hosts/${name}/onboarding-fills.ts`;
+}
+
+export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapabilities): {
+  manifest: ShippedManifest; fills: OnboardingFills;
+} | null {
+  const member = HOSTS.find((candidate) =>
+    candidate.host.distribution === name);
+  if (!member) return null;
+  if (capabilities.onboarding.mode !== "projection") {
+    fail(name, "full-host onboarding needs projection metadata");
+  }
+  const descriptor = fullHostDescriptor(name, member.host.directory);
+  validateFullHostLayout({ name, descriptor, capabilities });
+  const includes = new Set(member.projection.placements.map((placement) => placement.destination));
+  const importsMemory = includes.has(`${member.host.directory}/rules/aidlc.md`);
+  if ((capabilities.memoryInclude === "claude-import") !== importsMemory) {
+    fail(name, "memoryInclude does not agree with the registered include surfaces");
+  }
+  validateFullHostAgentsAndPlugin(name, capabilities);
+  return { fills: member.projection.fills, manifest: { name, harnessDir: descriptor.harnessDir,
+    rootIntegrations: descriptor.rootIntegrations,
+    orchestratorSkillPath: `${capabilities.skillsRoot}/aidlc/SKILL.md`,
+    onboarding: onboardingSpec({ directory: descriptor.harnessDir,
+      onboarding: capabilities.onboarding, fills: member.projection.fills }),
+  } };
 }
 
 const discoveredNames = discoverManifestNames();
@@ -337,22 +408,19 @@ if (discoveredNames.join("\n") !== metadataNames.join("\n")) {
 export const HARNESS_MATRIX: readonly ShippedHarness[] = discoveredNames.map((rawName) => {
   const name = rawName as ShippedHarnessName;
   const authoredRoot = join(HARNESS_ROOT, name);
-  const manifest = (
-    require(join(authoredRoot, "manifest.ts")) as { default: HarnessManifest }
-  ).default;
   const capabilities: HarnessCapabilities = HARNESS_CAPABILITIES[name];
-  validateManifest(name, manifest, capabilities);
+  const view = fullHostView(name, capabilities);
+  if (!view) fail(name, "the declared complete host is not registered");
+  const { manifest, fills } = view;
 
   const distRoot = join(REPO_ROOT, "dist", name);
   const engineRoot = join(distRoot, manifest.harnessDir);
-  const onboardingFills = join(authoredRoot, capabilities.onboarding.fills);
   const onboardingDist = join(distRoot, capabilities.onboarding.dist);
   const harnessOnboardingDist = join(distRoot, capabilities.onboarding.harnessDist);
   const skillsRoot = join(distRoot, capabilities.skillsRoot);
   for (const [label, path] of [
     ["dist root", distRoot],
     ["engine root", engineRoot],
-    ["onboarding fills", onboardingFills],
     ["onboarding dist", onboardingDist],
     ["harness onboarding dist", harnessOnboardingDist],
     ["skills root", skillsRoot],
@@ -368,7 +436,7 @@ export const HARNESS_MATRIX: readonly ShippedHarness[] = discoveredNames.map((ra
     distRoot,
     engineRoot,
     skillsRoot,
-    onboardingFills,
+    fills,
     onboardingDist,
     harnessOnboardingDist,
   };
