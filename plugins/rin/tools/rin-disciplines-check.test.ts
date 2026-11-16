@@ -5,16 +5,22 @@ import { pathOperationsFor } from "./rin-harness-path-operations.ts";
 
 const TIMEOUT_MILLISECONDS = 1000;
 
+const PACKAGED_CHECK = "/repo/node_modules/discipline-core/core/check/check-command.js";
+
+const VENDORED_CHECK = "/repo/tools/discipline-core/core/check/check-command.ts";
+
+const PASSING_OUTPUT: CommandOutput = { status: 0, stdout: "verdict: pass\n", stderr: "" };
+
 const portsReturning = ({
   output,
-  installed,
+  installedFiles,
 }: {
   readonly output: CommandOutput;
-  readonly installed: boolean;
+  readonly installedFiles: readonly string[];
 }): DisciplinesCheckPorts => ({
   runSync: vi.fn<(input: SyncCommandInput) => CommandOutput>().mockReturnValue(output),
   pathOperations: pathOperationsFor({ flavour: "posix" }),
-  fileKind: { isFile: () => installed, isDirectory: () => false },
+  fileKind: { isFile: (path) => installedFiles.includes(path), isDirectory: () => false },
   timeoutMilliseconds: TIMEOUT_MILLISECONDS,
 });
 
@@ -61,22 +67,43 @@ describe("disciplinesCheckOutcomeOf", () => {
 });
 
 describe("runDisciplinesCheck", () => {
-  test("runs the checkout's own check-command with its base revision, in that checkout", () => {
-    const ports = portsReturning({ output: { status: 0, stdout: "verdict: pass\n", stderr: "" }, installed: true });
-    runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: "origin/main" }, ports });
+  test("runs the installed package's built check-command with its base revision, in that checkout", () => {
+    const ports = portsReturning({ output: PASSING_OUTPUT, installedFiles: [PACKAGED_CHECK, VENDORED_CHECK] });
+    expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: "origin/main" }, ports })).toEqual({ kind: "passed" });
     expect(ports.runSync).toHaveBeenCalledWith({
       program: "node",
-      args: ["/repo/tools/discipline-core/core/check/check-command.ts", "--repo", "/repo", "--base-revision", "origin/main"],
+      args: [PACKAGED_CHECK, "--repo", "/repo", "--base-revision", "origin/main"],
       cwd: "/repo",
       timeoutMilliseconds: TIMEOUT_MILLISECONDS,
     });
   });
 
-  test("an uninstalled core reaches no verdict and runs nothing", () => {
-    const ports = portsReturning({ output: { status: 0, stdout: "", stderr: "" }, installed: false });
+  test("a vendored copy alone that passes is unverified, never a pass, and names the move to the package", () => {
+    const ports = portsReturning({ output: PASSING_OUTPUT, installedFiles: [VENDORED_CHECK] });
     expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: undefined }, ports })).toEqual({
       kind: "unverified",
-      reason: "discipline-core is not installed: /repo/tools/discipline-core/core/check/check-command.ts does not exist",
+      reason:
+        "the vendored copy at /repo/tools/discipline-core passed, but a vendored copy is not a verified install: move it to the discipline-core package as tools/discipline-core/MIGRATING.md says",
+    });
+    expect(ports.runSync).toHaveBeenCalledWith({
+      program: "node",
+      args: [VENDORED_CHECK, "--repo", "/repo"],
+      cwd: "/repo",
+      timeoutMilliseconds: TIMEOUT_MILLISECONDS,
+    });
+  });
+
+  test("a vendored copy alone that fails keeps its failing report", () => {
+    const report = "findings (1)\nCD-15#loops audit a.ts:1:0 for\nverdict: fail\n";
+    const ports = portsReturning({ output: { status: 1, stdout: report, stderr: "" }, installedFiles: [VENDORED_CHECK] });
+    expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: undefined }, ports })).toEqual({ kind: "failed", report });
+  });
+
+  test("an uninstalled core reaches no verdict and runs nothing", () => {
+    const ports = portsReturning({ output: PASSING_OUTPUT, installedFiles: [] });
+    expect(runDisciplinesCheck({ request: { checkoutRoot: "/repo", baseRevision: undefined }, ports })).toEqual({
+      kind: "unverified",
+      reason: `discipline-core is not installed: neither ${PACKAGED_CHECK} nor ${VENDORED_CHECK} exists`,
     });
     expect(ports.runSync).not.toHaveBeenCalled();
   });
