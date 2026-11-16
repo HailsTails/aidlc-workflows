@@ -9,11 +9,13 @@ const settings = { source: source("opencode.json"), content: { kind: "text" as c
   text: '{"permission":{"bash":{"{{TOOL_PREFIX}}*":"allow"}}}\r\n' } };
 const adapter = { source: source("plugin/aidlc-opencode-adapter.ts"), content: { kind: "text" as const,
   text: 'import { launch } from "../../../core/tools/aidlc-executable-path.ts";\n'
+    + 'import { patchTargets } from "../../../core/hooks/review-freeze-command.ts";\n'
     + 'const entries = /* @aidlc-shipped-entrypoints@ */ [];\n'
     + 'const tokens = "{{HARNESS_DIR}}|{{INVOKE}}|{{TOOL_PREFIX}}|{{TRUSTED_NAMESPACE}}|{{OPTION_LETTERS}}|{{SKILL_INVOKE}}";\n' } };
 const inputs = settingsRenderingInputsFixture({ harnessDir: ".aidlc", files: [settings, adapter] });
 
 const copyAdapter = 'import { launch } from "../../.aidlc/tools/aidlc-executable-path.ts";\n'
+  + 'import { patchTargets } from "../../.aidlc/hooks/review-freeze-command.ts";\n'
   + 'const entries = /* @aidlc-shipped-entrypoints@ */ [\n'
   + '    "hooks/aidlc-session-start.ts",\n'
   + '    "tools/aidlc.ts"\n'
@@ -21,6 +23,7 @@ const copyAdapter = 'import { launch } from "../../.aidlc/tools/aidlc-executable
   + 'const tokens = ".aidlc|bun .aidlc/tools/aidlc.ts|bun .aidlc/tools/|aidlc|A-E|{{SKILL_INVOKE}}";\n';
 
 const nativeAdapter = 'import { launch } from "../../.aidlc/tools/aidlc-executable-path.ts";\n'
+  + 'import { patchTargets } from "../../.aidlc/hooks/review-freeze-command.ts";\n'
   + 'const entries = /* @aidlc-shipped-entrypoints@ */ [\n'
   + '    "hooks/aidlc-session-start.ts",\n'
   + '    "tools/aidlc.ts"\n'
@@ -109,9 +112,20 @@ test("the plugin refuses an absent engine-directory token", () => {
 
 test("the plugin refuses a missing authored tool import", () => {
   expect(createOpenCodeSettingsRenderer({ ...inputs, files: [{ ...adapter,
-    content: { kind: "text", text: 'const entries = /* @aidlc-shipped-entrypoints@ */ [];\n' },
+    content: { kind: "text", text: 'import { patchTargets } from "../../../core/hooks/review-freeze-command.ts";\n'
+      + 'const entries = /* @aidlc-shipped-entrypoints@ */ [];\n' },
   }] }).renderHookRegistrations({ hooks: [] })).toEqual(refused({
     kind: "render-failed", concept: "hook-registration", name: adapter.source,
-    reason: "opencode adapter no longer imports aidlc-executable-path.ts from core/tools.",
+    reason: "opencode adapter no longer imports tools/aidlc-executable-path.ts from core.",
+  }));
+});
+
+test("the plugin refuses a missing authored review-freeze hook import", () => {
+  expect(createOpenCodeSettingsRenderer({ ...inputs, files: [{ ...adapter,
+    content: { kind: "text", text: 'import { launch } from "../../../core/tools/aidlc-executable-path.ts";\n'
+      + 'const entries = /* @aidlc-shipped-entrypoints@ */ [];\n' },
+  }] }).renderHookRegistrations({ hooks: [] })).toEqual(refused({
+    kind: "render-failed", concept: "hook-registration", name: adapter.source,
+    reason: "opencode adapter no longer imports hooks/review-freeze-command.ts from core.",
   }));
 });

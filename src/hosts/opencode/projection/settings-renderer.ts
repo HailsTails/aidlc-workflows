@@ -26,7 +26,11 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
 
 const pluginSource = "plugin/aidlc-opencode-adapter.ts";
 const entrypointMarker = "/* @aidlc-shipped-entrypoints@ */ []";
-const authoredToolImport = '"../../../core/tools/aidlc-executable-path.ts"';
+const ENGINE_LEAF_IMPORTS = ["tools/aidlc-executable-path.ts", "hooks/review-freeze-command.ts"] as const;
+
+const authoredLeafImport = (leaf: string): string => `"../../../core/${leaf}"`;
+
+const projectedLeafImport = (harnessDir: string, leaf: string): string => `"../../${harnessDir}/${leaf}"`;
 
 const renderHookRegistrations = (inputs: SettingsRenderingInputs): Rendering => {
   const file = inputs.files.find((candidate) => candidate.source === pluginSource);
@@ -38,14 +42,16 @@ const renderHookRegistrations = (inputs: SettingsRenderingInputs): Rendering => 
   const harnessDir = inputs.tokens.HARNESS_DIR;
   if (harnessDir === null) return refused({ kind: "render-failed", concept: "hook-registration",
     name: pluginSource, reason: "The OpenCode engine directory token is required." });
-  if (!raw.includes(authoredToolImport)) return refused({ kind: "render-failed", concept: "hook-registration",
-    name: pluginSource, reason: "opencode adapter no longer imports aidlc-executable-path.ts from core/tools." });
+  const missing = ENGINE_LEAF_IMPORTS.find((leaf) => !raw.includes(authoredLeafImport(leaf)));
+  if (missing !== undefined) return refused({ kind: "render-failed", concept: "hook-registration",
+    name: pluginSource, reason: `opencode adapter no longer imports ${missing} from core.` });
   const entrypoints = JSON.stringify(inputs.entrypoints, null, 2)
     .split("\n")
     .map((line, index) => index === 0 ? line : `  ${line}`)
     .join("\n");
   const embedded = raw.replace(entrypointMarker, `/* @aidlc-shipped-entrypoints@ */ ${entrypoints}`);
-  const imports = embedded.replaceAll(authoredToolImport, `"../../${harnessDir}/tools/aidlc-executable-path.ts"`);
+  const imports = ENGINE_LEAF_IMPORTS.reduce((text, leaf) =>
+    text.replaceAll(authoredLeafImport(leaf), projectedLeafImport(harnessDir, leaf)), embedded);
   const text = bindTemplateTokens({ text: imports, tokens: inputs.tokens, selected: TEMPLATE_TOKENS });
   const path = projectPath(`.opencode/${pluginSource}`);
   return path.ok ? accepted([{ path: path.value, content: { kind: "text", text },
