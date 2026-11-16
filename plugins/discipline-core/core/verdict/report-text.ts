@@ -14,7 +14,9 @@ const importNote = (request: { readonly record: ExceptionRecord }): string => {
   switch (request.record.kind) {
     case "authorised-location":
     case "file-carve-out":
-      return request.record.whyChain === undefined ? ` imported from ${request.record.provenance.source}` : "";
+      return request.record.whyChain === undefined && request.record.provenance !== undefined
+        ? ` imported from ${request.record.provenance.source}`
+        : "";
     case "clause-wide-carve-out":
       return "";
   }

@@ -1,4 +1,5 @@
 import { eslintConfigLookupSchema } from "../values/eslint-config-lookup.ts";
+import { fileExceptionWhyChainsSchema } from "../values/file-exception-why-chains.ts";
 import { z } from "zod";
 import type { LoadFailure } from "../check/load-failure.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../platform-ports/file-text-port.ts";
@@ -98,6 +99,7 @@ const consumerSelectionFileSchema = z.strictObject({
     )
     .default([]),
   eslintConfigLookup: eslintConfigLookupSchema.optional(),
+  fileExceptionWhyChains: fileExceptionWhyChainsSchema.default("required"),
 });
 
 type ConsumerSelectionFile = z.infer<typeof consumerSelectionFileSchema>;
@@ -387,7 +389,7 @@ const parsedSelectionFile = (request: {
 
 const selectionReadingOf = (request: {
   readonly resolved: readonly ResolvedClause[];
-  readonly excluded: readonly RepoPath[];
+  readonly file: ConsumerSelectionFile;
 }): SelectionReading => ({
   selection: {
     selected: request.resolved.map(({ binding, exceptions }) => ({
@@ -398,7 +400,8 @@ const selectionReadingOf = (request: {
     uncovered: uncoveredClauses(request),
   },
   bindings: request.resolved.map(({ binding }) => binding),
-  excluded: request.excluded,
+  excluded: request.file.exclude,
+  fileExceptionWhyChains: request.file.fileExceptionWhyChains,
 });
 
 export const readSelection = (request: {
@@ -418,5 +421,5 @@ export const readSelection = (request: {
   if (resolved.outcome === "failed") {
     return resolved;
   }
-  return { outcome: "ok", value: selectionReadingOf({ resolved: resolved.value, excluded: file.value.exclude }) };
+  return { outcome: "ok", value: selectionReadingOf({ resolved: resolved.value, file: file.value }) };
 };
