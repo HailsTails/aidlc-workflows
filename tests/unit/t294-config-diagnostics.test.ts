@@ -26,6 +26,7 @@ import { appendAuditEntry } from "../../core/tools/aidlc-audit.ts";
 import { sha256Bytes } from "../../core/tools/aidlc-distribution.ts";
 import { hooksHealthReadDir } from "../../core/tools/aidlc-lib.ts";
 import { EARLIER_KIRO_IDE_DROPS } from "../harness/earlier-kiro-plugin-drops.ts";
+import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 import { doctorCommandLines, vscodeVisibleOutput } from "../harness/vscode-output-trim.ts";
 import {
   applyConfigDiagnosticRecords,
@@ -1204,10 +1205,7 @@ describe("t294 runtime diagnostics", () => {
   // update hint on a second line. Every line that shows it shows the version
   // alone, on every harness the release ships.
   test("a Harness CLI row and setup's runtime issue show the CLI's version alone, on every harness", () => {
-    const harnesses = readdirSync(join(REPO_ROOT, "harness"), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && existsSync(join(REPO_ROOT, "harness", entry.name, "manifest.ts")))
-      .map((entry) => entry.name)
-      .sort();
+    const harnesses = HARNESS_MATRIX.map((harness) => harness.name).sort();
     expect(harnesses.length).toBeGreaterThanOrEqual(7);
     for (const harness of harnesses) {
       const spec = probeHarnessCli(harness as Parameters<typeof probeHarnessCli>[0], { which: () => null });
