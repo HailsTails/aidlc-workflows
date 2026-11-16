@@ -85,7 +85,7 @@ const LAUNCHER_WORDS_AS_DATA = [
   "printf 'a\\n' && printf \"%s\" \"(npx foo)\"",
   "cat <<'EOF' > docs/x.md\nRun npx foo to see the old way.\nnpx bar\nEOF",
   "echo '$(npx pkg)'",
-  "echo ${HOME}/npx",
+  `echo \${HOME}/npx`,
   "git log --grep npx # npx in a comment; bunx too",
 ] as const;
 

@@ -1,213 +1,301 @@
 type SimpleCommand = readonly string[];
 
+type Closer = ")" | "`" | null;
+
 type PendingHeredoc = {
   readonly delimiter: string;
   readonly stripsTabs: boolean;
   readonly expands: boolean;
 };
 
-type Closer = ")" | "`" | null;
+type CommandFrame = {
+  readonly kind: "command";
+  readonly closer: Closer;
+  readonly words: readonly string[];
+  readonly word: string;
+  readonly inWord: boolean;
+};
 
-const COMMAND_SEPARATORS = new Set([";", "&", "|", "(", ")"]);
-const BRACE_GROUP_MARKERS = new Set(["{", "}"]);
-const WORD_BOUNDARY = /[\s;&|()<>]/;
+type TextFrame = {
+  readonly kind: "single-quote" | "double-quote" | "comment" | "parameter";
+};
+
+type EscapeFrame = {
+  readonly kind: "escape";
+  readonly inDoubleQuotes: boolean;
+};
+
+type HeredocDelimiterFrame = {
+  readonly kind: "heredoc-delimiter";
+  readonly delimiter: string;
+  readonly openQuote: string | null;
+  readonly quoted: boolean;
+  readonly stripsTabs: boolean;
+};
+
+type HeredocBodyFrame = {
+  readonly kind: "heredoc-body";
+  readonly heredoc: PendingHeredoc;
+  readonly line: string;
+};
+
+type Frame =
+  | CommandFrame
+  | TextFrame
+  | EscapeFrame
+  | HeredocDelimiterFrame
+  | HeredocBodyFrame;
+
+type ScanState = {
+  readonly frames: readonly Frame[];
+  readonly commands: readonly SimpleCommand[];
+  readonly pendingHeredocs: readonly PendingHeredoc[];
+  readonly skip: number;
+};
+
+type Cursor = {
+  readonly current: string;
+  readonly next: string;
+  readonly afterNext: string;
+};
+
+const COMMAND_SEPARATORS: ReadonlySet<string> = new Set([";", "&", "|", "(", ")"]);
+const BRACE_GROUP_MARKERS: ReadonlySet<string> = new Set(["{", "}"]);
+const DELIMITER_BOUNDARY = /[\s;&|()<>]/;
+const DOUBLE_QUOTE_ESCAPABLE = '"\\$`';
+
+const commandFrame = ({ closer }: { readonly closer: Closer }): CommandFrame => ({
+  kind: "command",
+  closer,
+  words: [],
+  word: "",
+  inWord: false,
+});
+
+const topOf = ({ frames }: ScanState): Frame | undefined => frames[frames.length - 1];
+
+const pushed = (state: ScanState, frame: Frame): ScanState => ({
+  ...state,
+  frames: [...state.frames, frame],
+});
+
+const popped = (state: ScanState): ScanState => ({
+  ...state,
+  frames: state.frames.slice(0, -1),
+});
+
+const withTop = (state: ScanState, frame: Frame): ScanState =>
+  pushed(popped(state), frame);
+
+const skipping = (state: ScanState, skip: number): ScanState => ({ ...state, skip });
+
+const nearestCommandIndex = ({ frames }: ScanState): number =>
+  frames.reduce(
+    (found, frame, index) => (frame.kind === "command" ? index : found),
+    0,
+  );
+
+const withNearestCommand = (
+  state: ScanState,
+  update: (frame: CommandFrame) => {
+    readonly frame: CommandFrame;
+    readonly completed: readonly SimpleCommand[];
+  },
+): ScanState => {
+  const index = nearestCommandIndex(state);
+  const frame = state.frames[index];
+  if (frame?.kind !== "command") return state;
+  const updated = update(frame);
+  return {
+    ...state,
+    frames: state.frames.map((existing, position) =>
+      position === index ? updated.frame : existing,
+    ),
+    commands: [...state.commands, ...updated.completed],
+  };
+};
+
+const appendedToWord = (state: ScanState, text: string): ScanState =>
+  withNearestCommand(state, (frame) => ({
+    frame: { ...frame, word: frame.word + text, inWord: true },
+    completed: [],
+  }));
+
+const withWordEnded = (frame: CommandFrame): CommandFrame => ({
+  ...frame,
+  words: frame.inWord ? [...frame.words, frame.word] : frame.words,
+  word: "",
+  inWord: false,
+});
+
+const completedCommandsOf = (frame: CommandFrame): readonly SimpleCommand[] => {
+  const { words } = withWordEnded(frame);
+  return words.length > 0 ? [words] : [];
+};
+
+const wordEnded = (state: ScanState): ScanState =>
+  withNearestCommand(state, (frame) => ({ frame: withWordEnded(frame), completed: [] }));
+
+const commandEnded = (state: ScanState): ScanState =>
+  withNearestCommand(state, (frame) => ({
+    frame: { ...withWordEnded(frame), words: [] },
+    completed: completedCommandsOf(frame),
+  }));
+
+const withNextHeredocBody = (state: ScanState): ScanState => {
+  const [heredoc, ...remaining] = state.pendingHeredocs;
+  if (heredoc === undefined) return state;
+  return pushed({ ...state, pendingHeredocs: remaining }, { kind: "heredoc-body", heredoc, line: "" });
+};
+
+const isHeredocTerminator = ({ heredoc, line }: HeredocBodyFrame): boolean =>
+  (heredoc.stripsTabs ? line.replace(/^\t+/, "") : line).replace(/\r$/, "") ===
+  heredoc.delimiter;
+
+const afterEscape = (state: ScanState, frame: EscapeFrame, { current }: Cursor): ScanState => {
+  const unescaped = popped(state);
+  if (current === "\n") return unescaped;
+  if (frame.inDoubleQuotes)
+    return appendedToWord(unescaped, DOUBLE_QUOTE_ESCAPABLE.includes(current) ? current : `\\${current}`);
+  return appendedToWord(unescaped, `\\${current}`);
+};
+
+const inDoubleQuotes = (state: ScanState, { current, next }: Cursor): ScanState => {
+  if (current === '"') return popped(state);
+  if (current === "\\") return pushed(state, { kind: "escape", inDoubleQuotes: true });
+  if (current === "$" && next === "(")
+    return skipping(pushed(state, commandFrame({ closer: ")" })), 1);
+  if (current === "`") return pushed(state, commandFrame({ closer: "`" }));
+  return appendedToWord(state, current);
+};
+
+const finishedDelimiter = (state: ScanState, frame: HeredocDelimiterFrame): ScanState => ({
+  ...popped(state),
+  pendingHeredocs: [
+    ...state.pendingHeredocs,
+    { delimiter: frame.delimiter, stripsTabs: frame.stripsTabs, expands: !frame.quoted },
+  ],
+});
+
+const inHeredocDelimiter = (
+  state: ScanState,
+  frame: HeredocDelimiterFrame,
+  cursor: Cursor,
+): ScanState => {
+  const { current } = cursor;
+  if (frame.openQuote !== null)
+    return withTop(state, current === frame.openQuote
+      ? { ...frame, openQuote: null }
+      : { ...frame, delimiter: frame.delimiter + current });
+  if (current === "'" || current === '"')
+    return withTop(state, { ...frame, openQuote: current, quoted: true });
+  if (current === "\\") return withTop(state, { ...frame, quoted: true });
+  if (frame.delimiter === "" && (current === " " || current === "\t")) return state;
+  if (DELIMITER_BOUNDARY.test(current))
+    return scannedCharacter(finishedDelimiter(state, frame), cursor);
+  return withTop(state, { ...frame, delimiter: frame.delimiter + current });
+};
+
+const inHeredocBody = (state: ScanState, frame: HeredocBodyFrame, { current, next }: Cursor): ScanState => {
+  if (current === "\n")
+    return isHeredocTerminator(frame)
+      ? withNextHeredocBody(popped(state))
+      : withTop(state, { ...frame, line: "" });
+  if (frame.heredoc.expands && current === "\\")
+    return skipping(withTop(state, { ...frame, line: frame.line + current + next }), 1);
+  if (frame.heredoc.expands && current === "$" && next === "(")
+    return skipping(pushed(state, commandFrame({ closer: ")" })), 1);
+  if (frame.heredoc.expands && current === "`")
+    return pushed(state, commandFrame({ closer: "`" }));
+  return withTop(state, { ...frame, line: frame.line + current });
+};
+
+const closedSubstitution = (state: ScanState): ScanState => {
+  const parent = popped(commandEnded(state));
+  return topOf(parent)?.kind === "command" ? appendedToWord(parent, "") : parent;
+};
+
+const openedHeredoc = (state: ScanState, { afterNext }: Cursor): ScanState => {
+  const stripsTabs = afterNext === "-";
+  return skipping(
+    pushed(wordEnded(state), {
+      kind: "heredoc-delimiter",
+      delimiter: "",
+      openQuote: null,
+      quoted: false,
+      stripsTabs,
+    }),
+    stripsTabs ? 2 : 1,
+  );
+};
+
+const inCommand = (state: ScanState, frame: CommandFrame, cursor: Cursor): ScanState => {
+  const { current, next, afterNext } = cursor;
+  if (frame.closer !== null && current === frame.closer) return closedSubstitution(state);
+  if (current === "\n") return withNextHeredocBody(commandEnded(state));
+  if (current === "\\") return pushed(state, { kind: "escape", inDoubleQuotes: false });
+  if (current === "'") return pushed(appendedToWord(state, ""), { kind: "single-quote" });
+  if (current === '"') return pushed(appendedToWord(state, ""), { kind: "double-quote" });
+  if (current === "$" && next === "(")
+    return skipping(pushed(appendedToWord(state, ""), commandFrame({ closer: ")" })), 1);
+  if (current === "$" && next === "{") return pushed(appendedToWord(state, current), { kind: "parameter" });
+  if (current === "`") return pushed(appendedToWord(state, ""), commandFrame({ closer: "`" }));
+  if (current === "<" && next === "<" && afterNext === "<")
+    return skipping(appendedToWord(state, "<<<"), 2);
+  if (current === "<" && next === "<") return openedHeredoc(state, cursor);
+  if (current === "#" && !frame.inWord) return pushed(state, { kind: "comment" });
+  if (COMMAND_SEPARATORS.has(current)) return commandEnded(state);
+  if (BRACE_GROUP_MARKERS.has(current) && !frame.inWord) return commandEnded(state);
+  if (/\s/.test(current)) return wordEnded(state);
+  return appendedToWord(state, current);
+};
+
+const scannedCharacter = (state: ScanState, cursor: Cursor): ScanState => {
+  const frame = topOf(state);
+  const { current } = cursor;
+  switch (frame?.kind) {
+    case "escape":
+      return afterEscape(state, frame, cursor);
+    case "single-quote":
+      return current === "'" ? popped(state) : appendedToWord(state, current);
+    case "double-quote":
+      return inDoubleQuotes(state, cursor);
+    case "comment":
+      return current === "\n" ? scannedCharacter(popped(state), cursor) : state;
+    case "parameter":
+      return current === "}" ? popped(appendedToWord(state, current)) : appendedToWord(state, current);
+    case "heredoc-delimiter":
+      return inHeredocDelimiter(state, frame, cursor);
+    case "heredoc-body":
+      return inHeredocBody(state, frame, cursor);
+    case "command":
+      return inCommand(state, frame, cursor);
+    default:
+      return state;
+  }
+};
+
+const unfinishedCommandsOf = ({ frames }: ScanState): readonly SimpleCommand[] =>
+  frames.flatMap((frame) => (frame.kind === "command" ? completedCommandsOf(frame) : []));
 
 const simpleCommandsOf = ({
   source,
 }: {
   readonly source: string;
 }): readonly SimpleCommand[] => {
-  const commands: SimpleCommand[] = [];
-  const pendingHeredocs: PendingHeredoc[] = [];
-  let cursor = 0;
-
-  const charAt = (offset: number): string => source[cursor + offset] ?? "";
-
-  const lineAt = (start: number): { readonly text: string; readonly end: number } => {
-    const newline = source.indexOf("\n", start);
-    const end = newline < 0 ? source.length : newline;
-    return { text: source.slice(start, end).replace(/\r$/, ""), end };
-  };
-
-  const scanSubstitutionsUntil = (end: number): void => {
-    while (cursor < end) {
-      if (charAt(0) === "\\") {
-        cursor += 2;
-      } else if (charAt(0) === "$" && charAt(1) === "(") {
-        cursor += 2;
-        scanSequence(")");
-      } else if (charAt(0) === "`") {
-        cursor += 1;
-        scanSequence("`");
-      } else {
-        cursor += 1;
-      }
-    }
-  };
-
-  const skipHeredocBody = ({ delimiter, stripsTabs, expands }: PendingHeredoc): void => {
-    while (cursor < source.length) {
-      const line = lineAt(cursor);
-      const candidate = stripsTabs ? line.text.replace(/^\t+/, "") : line.text;
-      if (candidate === delimiter) {
-        cursor = line.end + 1;
-        return;
-      }
-      if (expands) scanSubstitutionsUntil(line.end);
-      cursor = Math.max(cursor, line.end + 1);
-    }
-  };
-
-  const skipPendingHeredocBodies = (): void => {
-    pendingHeredocs.splice(0).forEach((heredoc) => {
-      skipHeredocBody(heredoc);
-    });
-  };
-
-  const readHeredocDelimiter = (): { readonly delimiter: string; readonly quoted: boolean } => {
-    while (charAt(0) === " " || charAt(0) === "\t") cursor += 1;
-    let delimiter = "";
-    let quoted = false;
-    while (cursor < source.length && !WORD_BOUNDARY.test(charAt(0))) {
-      const quote = charAt(0);
-      if (quote === "'" || quote === '"') {
-        quoted = true;
-        const close = source.indexOf(quote, cursor + 1);
-        const end = close < 0 ? source.length : close;
-        delimiter += source.slice(cursor + 1, end);
-        cursor = end + 1;
-      } else if (quote === "\\") {
-        quoted = true;
-        delimiter += charAt(1);
-        cursor += 2;
-      } else {
-        delimiter += quote;
-        cursor += 1;
-      }
-    }
-    return { delimiter, quoted };
-  };
-
-  const readSingleQuoted = (): string => {
-    const close = source.indexOf("'", cursor + 1);
-    const end = close < 0 ? source.length : close;
-    const text = source.slice(cursor + 1, end);
-    cursor = end + 1;
-    return text;
-  };
-
-  const readDoubleQuoted = (): string => {
-    cursor += 1;
-    let text = "";
-    while (cursor < source.length && charAt(0) !== '"') {
-      if (charAt(0) === "\\") {
-        text += '"\\$`\n'.includes(charAt(1)) ? charAt(1) : `\\${charAt(1)}`;
-        cursor += 2;
-      } else if (charAt(0) === "$" && charAt(1) === "(") {
-        cursor += 2;
-        scanSequence(")");
-      } else if (charAt(0) === "`") {
-        cursor += 1;
-        scanSequence("`");
-      } else {
-        text += charAt(0);
-        cursor += 1;
-      }
-    }
-    cursor += 1;
-    return text;
-  };
-
-  const readParameterExpansion = (): string => {
-    const close = source.indexOf("}", cursor);
-    const end = close < 0 ? source.length : close;
-    const text = source.slice(cursor, end + 1);
-    cursor = end + 1;
-    return text;
-  };
-
-  const scanSequence = (closer: Closer): void => {
-    let words: string[] = [];
-    let word = "";
-    let inWord = false;
-
-    const endWord = (): void => {
-      if (inWord) words.push(word);
-      word = "";
-      inWord = false;
-    };
-
-    const endCommand = (): void => {
-      endWord();
-      if (words.length > 0) commands.push(words);
-      words = [];
-    };
-
-    while (cursor < source.length) {
-      const current = charAt(0);
-      if (closer !== null && current === closer) {
-        cursor += 1;
-        endCommand();
-        return;
-      }
-      if (current === "\n") {
-        cursor += 1;
-        endCommand();
-        skipPendingHeredocBodies();
-      } else if (current === "\\") {
-        if (charAt(1) === "\n") {
-          cursor += 2;
-        } else {
-          word += `\\${charAt(1)}`;
-          inWord = true;
-          cursor += 2;
-        }
-      } else if (current === "'") {
-        word += readSingleQuoted();
-        inWord = true;
-      } else if (current === '"') {
-        word += readDoubleQuoted();
-        inWord = true;
-      } else if (current === "$" && charAt(1) === "(") {
-        cursor += 2;
-        scanSequence(")");
-        inWord = true;
-      } else if (current === "$" && charAt(1) === "{") {
-        word += readParameterExpansion();
-        inWord = true;
-      } else if (current === "`") {
-        cursor += 1;
-        scanSequence("`");
-        inWord = true;
-      } else if (current === "<" && charAt(1) === "<" && charAt(2) !== "<") {
-        endWord();
-        cursor += 2;
-        const stripsTabs = charAt(0) === "-";
-        if (stripsTabs) cursor += 1;
-        const { delimiter, quoted } = readHeredocDelimiter();
-        pendingHeredocs.push({ delimiter, stripsTabs, expands: !quoted });
-      } else if (current === "#" && !inWord) {
-        cursor = lineAt(cursor).end;
-      } else if (COMMAND_SEPARATORS.has(current)) {
-        cursor += 1;
-        endCommand();
-      } else if (BRACE_GROUP_MARKERS.has(current) && !inWord) {
-        cursor += 1;
-        endCommand();
-      } else if (/\s/.test(current)) {
-        cursor += 1;
-        endWord();
-      } else {
-        word += current;
-        inWord = true;
-        cursor += 1;
-      }
-    }
-    endCommand();
-  };
-
-  while (cursor < source.length) scanSequence(null);
-  return commands;
+  const characters = Array.from(source);
+  const scanned = characters.reduce<ScanState>(
+    (state, current, index) =>
+      state.skip > 0
+        ? skipping(state, state.skip - 1)
+        : scannedCharacter(state, {
+            current,
+            next: characters[index + 1] ?? "",
+            afterNext: characters[index + 2] ?? "",
+          }),
+    { frames: [commandFrame({ closer: null })], commands: [], pendingHeredocs: [], skip: 0 },
+  );
+  return [...scanned.commands, ...unfinishedCommandsOf(scanned)];
 };
 
 export type { SimpleCommand };

@@ -22,7 +22,7 @@ describe("simpleCommandsOf keeps quoted and heredoc text as data", () => {
     { source: "rg 'a|b' src", commands: [["rg", "a|b", "src"]] },
     { source: "echo '$(a)'", commands: [["echo", "$(a)"]] },
     { source: "FOO='a b' c", commands: [["FOO=a b", "c"]] },
-    { source: "echo ${HOME}/x", commands: [["echo", "${HOME}/x"]] },
+    { source: `echo \${HOME}/x`, commands: [["echo", `\${HOME}/x`]] },
     { source: "a # b; c", commands: [["a"]] },
     { source: "cat <<'EOF' > f\nb; c\n(d)\nEOF\ne", commands: [["cat", ">", "f"], ["e"]] },
     { source: "cat <<-EOF\n\tb\n\tEOF\ne", commands: [["cat"], ["e"]] },
