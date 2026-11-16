@@ -11,7 +11,6 @@ const shippedAllows = {
       "--doctor",
       "--doctor --verbose",
       "--version",
-      "status",
       "--status",
       "config --help",
       "config --show",
