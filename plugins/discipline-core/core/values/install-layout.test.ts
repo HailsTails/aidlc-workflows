@@ -37,12 +37,12 @@ describe("moduleExtensionOf", () => {
 });
 
 describe("installFormOf", () => {
-  it("is a package for a module of a built install", () => {
-    expect(installFormOf({ moduleUrl: "file:///project/node_modules/core/mechanisms/audit/runner/runner.js" })).toBe("package");
+  it("is a package for built modules", () => {
+    expect(installFormOf({ moduleExtension: ".js" })).toBe("package");
   });
 
-  it("is a source checkout for a module run from source", () => {
-    expect(installFormOf({ moduleUrl: "file:///core/mechanisms/audit/runner/runner.ts" })).toBe("source");
+  it("is a source checkout for modules run from source", () => {
+    expect(installFormOf({ moduleExtension: ".ts" })).toBe("source");
   });
 });
 

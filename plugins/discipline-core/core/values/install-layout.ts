@@ -26,8 +26,8 @@ export const moduleExtensionOf = (request: { readonly moduleUrl: string }): Modu
 
 export type InstallForm = "package" | "source";
 
-export const installFormOf = (request: { readonly moduleUrl: string }): InstallForm =>
-  moduleExtensionOf(request) === BUILT_MODULE_EXTENSION ? "package" : "source";
+export const installFormOf = (request: { readonly moduleExtension: ModuleExtension }): InstallForm =>
+  request.moduleExtension === BUILT_MODULE_EXTENSION ? "package" : "source";
 
 export const runnerModuleSegmentsOf = (request: {
   readonly installRoot: string;

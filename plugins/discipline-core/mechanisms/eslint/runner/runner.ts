@@ -12,7 +12,7 @@ export const runner = toolchainBoundEmbeddedRunner({
   toolchain: loadEslintToolchain({
     peers: defaultEslintToolchainPeers({
       installRoot: installRootOfRunnerEntry({ entryFile: import.meta.filename }),
-      installForm: installFormOf({ moduleUrl: import.meta.url }),
+      installForm: installFormOf({ moduleExtension: moduleExtensionOf({ moduleUrl: import.meta.url }) }),
     }),
   }),
   projectedKinds: ESLINT_PROJECTED_KINDS,

@@ -4,7 +4,7 @@ The ESLint runner is discipline-core's embedded mechanism: each selected clause 
 
 The native channels, the exception kind each maps to, and how the projection is adopted and checked are in [the guide](../../../docs/adding-a-discipline-or-mechanism.md#embedded-mechanisms).
 
-The check compares the committed projection byte for byte with what the runner would write now. The runner reads the install's `package.json`: when it names a package, the install is a packaged one and the projection imports each piece inside it by package name, `<name>/mechanisms/eslint/...`, which resolves wherever the package is installed. Otherwise the install is a copied folder and the projection imports each piece by its path relative to the repository root, so the copy must sit at the same path relative to the repository root for every teammate and CI runner, for example a fixed `tools/discipline-core/` inside the repository; otherwise the projection reads `out-of-date` and its plugin import may not resolve. A piece outside the install, in the repository's own rule set, is always imported by relative path.
+The check compares the committed projection byte for byte with what the runner would write now. Built core is the installed package: the runner reads the package's `package.json` for its name, and the projection imports each piece inside it by package name, `<name>/mechanisms/eslint/...`, which resolves wherever the package is installed. A `package.json` that cannot be read or names no package is a `tool-failed` failure. Core run from source, as in its own tests, imports each piece by its path relative to the repository root. A piece outside the install, in the repository's own rule set, is always imported by relative path.
 
 ## Runtime
 
