@@ -24,7 +24,7 @@ if (resolution.outcome === "failed") {
   processPort.exit(0);
 }
 
-if (resolution.outcome === "resolved" && resolution.constitutionEngine.engine === "discipline-core") {
+if (resolution.outcome === "resolved" && resolution.constitutionEngine.engine === "hone") {
   processPort.publish(`${JSON.stringify(DISCIPLINE_CORE_DECAY_WIRE)}\n`);
   processPort.exit(0);
 }

@@ -51,27 +51,27 @@ describe("resolveConstitutionEngine", () => {
     });
   });
 
-  test("discipline-core carries its base revision", () => {
+  test.each(["hone", "discipline-core"])("%s selects Hone and carries its base revision", (spelling) => {
     expect(
       resolveConstitutionEngine({
-        projectDir: projectWithConstitution({ constitution: { engine: "discipline-core", baseRevision: "origin/main" } }),
+        projectDir: projectWithConstitution({ constitution: { engine: spelling, baseRevision: "origin/main" } }),
       }),
     ).toEqual({
       outcome: "resolved",
-      constitutionEngine: { engine: "discipline-core", baseRevision: "origin/main" },
+      constitutionEngine: { engine: "hone", baseRevision: "origin/main" },
     });
   });
 
   test("an unknown engine fails instead of falling back to the walker", () => {
     expect(
-      resolveConstitutionEngine({ projectDir: projectWithConstitution({ constitution: { engine: "discipline-cor" } }) }),
-    ).toEqual({ outcome: "failed", reason: '"constitution.engine" must be "rin-walker" or "discipline-core" (the value that selects Hone)' });
+      resolveConstitutionEngine({ projectDir: projectWithConstitution({ constitution: { engine: "hon" } }) }),
+    ).toEqual({ outcome: "failed", reason: '"constitution.engine" must be "rin-walker" or "hone" ("discipline-core" is still accepted for "hone")' });
   });
 
   test("a blank base revision fails", () => {
     expect(
       resolveConstitutionEngine({
-        projectDir: projectWithConstitution({ constitution: { engine: "discipline-core", baseRevision: " " } }),
+        projectDir: projectWithConstitution({ constitution: { engine: "hone", baseRevision: " " } }),
       }),
     ).toEqual({ outcome: "failed", reason: '"constitution.baseRevision" must be a non-empty string' });
   });

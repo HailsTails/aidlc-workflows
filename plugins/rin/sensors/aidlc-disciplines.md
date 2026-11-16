@@ -3,7 +3,7 @@ id: disciplines
 kind: deterministic
 command: bun {{HARNESS_DIR}}/tools/rin-harness-sensor-disciplines.ts
 default_severity: advisory
-description: Runs the repository's own Hone check (the npm package honed) when harness.config.json sets constitution.engine to discipline-core, and reports the findings in the edited file. Under the default rin-walker engine it is not evaluated, and the cd-* sensors apply.
+description: Runs the repository's own Hone check (the npm package honed) when harness.config.json sets constitution.engine to hone, and reports the findings in the edited file. Under the default rin-walker engine it is not evaluated, and the cd-* sensors apply.
 category: constitution
 matches: "**/*.{ts,tsx,mts,cts}"
 input_schema:
@@ -23,10 +23,10 @@ timeout_seconds: 180
 
 This sensor binds rin's per-edit constitution feedback to Hone
 (https://github.com/HailsTails/hone, the npm package `honed`) in a repository
-that adopted it. The engine value keeps its earlier name, `discipline-core`. It reads `constitution.engine` from
+that adopted it. The earlier engine spelling `discipline-core` is still accepted. It reads `constitution.engine` from
 `harness.config.json` in the checkout that holds the edited file.
 
-- **`discipline-core`.** The sensor runs the installed package's check,
+- **`hone`.** The sensor runs the installed package's check,
   `node node_modules/honed/core/check/tool-command.js check --repo <checkout>`,
   adding `--base-revision` when `constitution.baseRevision` is set. It runs in
   that checkout with its own packages. It reports the `findings` lines whose

@@ -53,7 +53,7 @@ const gatePorts = ({
 
 const DISCIPLINE_CORE: EngineReading = {
   kind: "read",
-  constitutionEngine: { engine: "discipline-core", baseRevision: "origin/main" },
+  constitutionEngine: { engine: "hone", baseRevision: "origin/main" },
 };
 
 const RIN_WALKER: EngineReading = { kind: "read", constitutionEngine: { engine: "rin-walker" } };
@@ -86,14 +86,14 @@ describe("constitutionGateDecisionOf", () => {
     expect(ports.readEngine).not.toHaveBeenCalled();
   });
 
-  test("under discipline-core a passing check allows the completion", async () => {
+  test("under hone a passing check allows the completion", async () => {
     const ports = gatePorts({ engine: DISCIPLINE_CORE });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toEqual({ kind: "allow" });
     expect(ports.runDisciplinesCheck).toHaveBeenCalledWith({ checkoutRoot: "/repo", baseRevision: "origin/main" });
     expect(ports.runWalkerGate).not.toHaveBeenCalled();
   });
 
-  test("under discipline-core a failing check denies with only the failing sections and their remedies", async () => {
+  test("under hone a failing check denies with only the failing sections and their remedies", async () => {
     const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "failed", report: FAILING_REPORT } });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toEqual({
       kind: "deny",
@@ -110,7 +110,7 @@ describe("constitutionGateDecisionOf", () => {
     });
   });
 
-  test("under discipline-core an unverified check denies", async () => {
+  test("under hone an unverified check denies", async () => {
     const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "unverified", reason: "exit 2: load failure" } });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toMatchObject({
       kind: "deny",
@@ -118,7 +118,7 @@ describe("constitutionGateDecisionOf", () => {
     });
   });
 
-  test("under discipline-core the verdict is recorded as gate-run telemetry", async () => {
+  test("under hone the verdict is recorded as gate-run telemetry", async () => {
     const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "failed", report: FAILING_REPORT } });
     await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports });
     expect(ports.recordGateRun).toHaveBeenCalledWith({
@@ -170,8 +170,9 @@ describe("gateRunVerdictOf", () => {
 describe("constitutionEngineFromWire", () => {
   test.each([
     ['{"engine":"rin-walker"}', { engine: "rin-walker" }],
-    ['{"engine":"discipline-core","baseRevision":"origin/main"}', { engine: "discipline-core", baseRevision: "origin/main" }],
-    ['{"engine":"discipline-core"}', { engine: "discipline-core", baseRevision: undefined }],
+    ['{"engine":"hone","baseRevision":"origin/main"}', { engine: "hone", baseRevision: "origin/main" }],
+    ['{"engine":"hone"}', { engine: "hone", baseRevision: undefined }],
+    ['{"engine":"discipline-core","baseRevision":"origin/main"}', { engine: "hone", baseRevision: "origin/main" }],
     ['{"engine":"other"}', undefined],
     ["not json", undefined],
   ])("reads %s", (text, expected) => {

@@ -38,7 +38,7 @@ const resolution = resolveConstitutionEngine({ projectDir: checkoutRoot });
 if (resolution.outcome === "failed") {
   publish(unverifiedWireOf({ reason: resolution.reason }));
 }
-if (resolution.outcome === "resolved" && resolution.constitutionEngine.engine === "discipline-core") {
+if (resolution.outcome === "resolved" && resolution.constitutionEngine.engine === "hone") {
   const targetFile =
     targetPath === undefined
       ? "(project)"

@@ -185,7 +185,7 @@ const engineDecisionOf = async ({
   switch (constitutionEngine.engine) {
     case "rin-walker":
       return walkerDecisionOf({ outcome: ports.runWalkerGate({ checkoutRoot, hookInput }) });
-    case "discipline-core": {
+    case "hone": {
       const outcome = ports.runDisciplinesCheck({
         checkoutRoot,
         baseRevision: constitutionEngine.baseRevision,
@@ -234,8 +234,9 @@ const constitutionEngineFromWire = ({ text }: { readonly text: string }): Consti
   switch (engine) {
     case "rin-walker":
       return { engine };
+    case "hone":
     case "discipline-core":
-      return { engine, baseRevision: stringFieldOf({ container: wire, key: "baseRevision" }) };
+      return { engine: "hone", baseRevision: stringFieldOf({ container: wire, key: "baseRevision" }) };
     default:
       return undefined;
   }

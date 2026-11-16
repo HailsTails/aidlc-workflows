@@ -53,7 +53,7 @@ const runEngineBoundCdSensor = ({ cdId }: { readonly cdId: string }): never => {
     processPort.publish(unreadableEngineCdWireLineOf({ cdId, reason: resolution.reason }));
     return processPort.exit(0);
   }
-  if (resolution.constitutionEngine.engine === "discipline-core") {
+  if (resolution.constitutionEngine.engine === "hone") {
     processPort.publish(
       cdSensorWireLineOf({ sensorResult: delegatedCdSensorResultOf({ cdId, scanned: DELEGATED_SCANNED_TEXT }) }),
     );
