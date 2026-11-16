@@ -8,13 +8,13 @@ import {
 } from "./rin-harness-engine-bound-cd-sensor.ts";
 
 describe("delegatedCdSensorResultOf", () => {
-  test("a CD sensor under discipline-core passes, not evaluated, naming the disciplines sensor", () => {
+  test("a CD sensor under hone passes, not evaluated, naming the disciplines sensor", () => {
     expect(cdSensorWireOf({ result: delegatedCdSensorResultOf({ cdId: "CD-15", scanned: DELEGATED_SCANNED_TEXT }) })).toEqual({
       pass: true,
       cd: "CD-15",
       findings_count: 0,
       findings: [],
-      scanned: "(constitution.engine is discipline-core: the disciplines sensor applies)",
+      scanned: "(constitution.engine is hone: the disciplines sensor applies)",
       stale_authorised_paths: [],
       stale_carved_paths: [],
       doubly_held_paths: [],

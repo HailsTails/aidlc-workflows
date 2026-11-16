@@ -51,9 +51,9 @@ const gatePorts = ({
   recordGateRun: vi.fn<ConstitutionGatePorts["recordGateRun"]>().mockResolvedValue(undefined),
 });
 
-const DISCIPLINE_CORE: EngineReading = {
+const HONE: EngineReading = {
   kind: "read",
-  constitutionEngine: { engine: "discipline-core", baseRevision: "origin/main" },
+  constitutionEngine: { engine: "hone", baseRevision: "origin/main" },
 };
 
 const RIN_WALKER: EngineReading = { kind: "read", constitutionEngine: { engine: "rin-walker" } };
@@ -81,20 +81,20 @@ describe("gatedCompletionOf", () => {
 
 describe("constitutionGateDecisionOf", () => {
   test("an ordinary command is allowed without reading the engine", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE });
+    const ports = gatePorts({ engine: HONE });
     expect(await constitutionGateDecisionOf({ hookInput: hookInputOf({ command: "ls" }), ports })).toEqual({ kind: "allow" });
     expect(ports.readEngine).not.toHaveBeenCalled();
   });
 
-  test("under discipline-core a passing check allows the completion", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE });
+  test("under hone a passing check allows the completion", async () => {
+    const ports = gatePorts({ engine: HONE });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toEqual({ kind: "allow" });
     expect(ports.runDisciplinesCheck).toHaveBeenCalledWith({ checkoutRoot: "/repo", baseRevision: "origin/main" });
     expect(ports.runWalkerGate).not.toHaveBeenCalled();
   });
 
-  test("under discipline-core a failing check denies with only the failing sections and their remedies", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "failed", report: FAILING_REPORT } });
+  test("under hone a failing check denies with only the failing sections and their remedies", async () => {
+    const ports = gatePorts({ engine: HONE, check: { kind: "failed", report: FAILING_REPORT } });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toEqual({
       kind: "deny",
       reason: [
@@ -110,16 +110,16 @@ describe("constitutionGateDecisionOf", () => {
     });
   });
 
-  test("under discipline-core an unverified check denies", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "unverified", reason: "exit 2: load failure" } });
+  test("under hone an unverified check denies", async () => {
+    const ports = gatePorts({ engine: HONE, check: { kind: "unverified", reason: "exit 2: load failure" } });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toMatchObject({
       kind: "deny",
       reason: expect.stringContaining("  Hone: exit 2: load failure. Run `npm run --silent hone:check` in the checkout to see it yourself."),
     });
   });
 
-  test("under discipline-core the verdict is recorded as gate-run telemetry", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE, check: { kind: "failed", report: FAILING_REPORT } });
+  test("under hone the verdict is recorded as gate-run telemetry", async () => {
+    const ports = gatePorts({ engine: HONE, check: { kind: "failed", report: FAILING_REPORT } });
     await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports });
     expect(ports.recordGateRun).toHaveBeenCalledWith({
       command: COMPLETION_COMMAND,
@@ -150,7 +150,7 @@ describe("constitutionGateDecisionOf", () => {
   });
 
   test("a working directory in no checkout denies instead of checking another tree", async () => {
-    const ports = gatePorts({ engine: DISCIPLINE_CORE, checkoutRoot: null });
+    const ports = gatePorts({ engine: HONE, checkoutRoot: null });
     expect(await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports })).toMatchObject({ kind: "deny" });
     expect(ports.readEngine).not.toHaveBeenCalled();
   });
@@ -170,8 +170,9 @@ describe("gateRunVerdictOf", () => {
 describe("constitutionEngineFromWire", () => {
   test.each([
     ['{"engine":"rin-walker"}', { engine: "rin-walker" }],
-    ['{"engine":"discipline-core","baseRevision":"origin/main"}', { engine: "discipline-core", baseRevision: "origin/main" }],
-    ['{"engine":"discipline-core"}', { engine: "discipline-core", baseRevision: undefined }],
+    ['{"engine":"hone","baseRevision":"origin/main"}', { engine: "hone", baseRevision: "origin/main" }],
+    ['{"engine":"hone"}', { engine: "hone", baseRevision: undefined }],
+    ['{"engine":"discipline-core","baseRevision":"origin/main"}', { engine: "hone", baseRevision: "origin/main" }],
     ['{"engine":"other"}', undefined],
     ["not json", undefined],
   ])("reads %s", (text, expected) => {

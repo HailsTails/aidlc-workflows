@@ -414,14 +414,15 @@ using the walker and the records described above, and they disagree with CI:
 ```json
 {
   "constitution": {
-    "engine": "discipline-core",
+    "engine": "hone",
     "baseRevision": "origin/main"
   }
 }
 ```
 
-- `engine` is `"rin-walker"` (the default when absent) or `"discipline-core"`,
-  which names Hone and keeps its earlier name so existing configs stay valid.
+- `engine` is `"rin-walker"` (the default when absent) or `"hone"`,
+  which names Hone. The earlier spelling `"discipline-core"` is still accepted
+  and means the same thing, so existing configs stay valid.
   Any other value fails the stage gate rather than silently choosing one.
 - `baseRevision` is passed to core as `--base-revision`. Set it whenever
   `discipline-exceptions.json` holds a file carve-out, an entry imported with
@@ -438,7 +439,7 @@ using the walker and the records described above, and they disagree with CI:
   `authorised-location` with `{ "kind": "existing-authorisation", "source" }`.
   MIGRATING step 3 gives the exact shapes.
 - `constitution.include`, `exclude`, `scriptGlobs` and `uiGlobs` no longer set
-  the scope under discipline-core: `disciplines.json` and its `exclude` do.
+  the scope under hone: `disciplines.json` and its `exclude` do.
 
 With the engine flipped, the stage gate runs the installed package's check,
 `node node_modules/honed/core/check/tool-command.js check --repo <checkout>`,

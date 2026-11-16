@@ -16,7 +16,7 @@ Each rule is a `cd-*.md` file. A rule belongs to a lens when its frontmatter
 and the records under `.constitution-carve-outs/` and
 `.constitution-authorised-locations/`.
 
-## `discipline-core`
+## `hone`
 
 This engine value names Hone (https://github.com/HailsTails/hone), installed as the npm package `honed`. The ruleset is the codebase's adopted disciplines:
 

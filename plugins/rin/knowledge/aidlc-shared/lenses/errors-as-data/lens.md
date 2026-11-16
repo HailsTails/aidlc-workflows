@@ -32,7 +32,7 @@ intuition.
 
 ## Loading the ruleset
 
-Under `constitution.engine: discipline-core`, resolve every rule and exception named below through [`../ruleset-source.md`](../ruleset-source.md) (by the `Review lens:` match for `errors-as-data`); otherwise follow the steps as written.
+Under `constitution.engine: hone`, resolve every rule and exception named below through [`../ruleset-source.md`](../ruleset-source.md) (by the `Review lens:` match for `errors-as-data`); otherwise follow the steps as written.
 
 1. Resolve the codebase's code-discipline directory (the convention is
    `code-discipline/` beside the constitution; the dispatching workflow states

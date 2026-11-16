@@ -117,7 +117,7 @@
         {
           "why": "Why an authorised location rather than a carve-out?",
           "because": "An adapter importing the runtime it wraps is permanent structure, not debt that should decay on touch",
-          "evidence": "plugins/discipline-core/rules/CD-19/README.md says to use authorised-location for the wrapping file"
+          "evidence": "node_modules/honed/rules/CD-19/README.md says to use authorised-location for the wrapping file"
         },
         {
           "why": "Why one file rather than a second node:fs site for the writes?",
@@ -154,7 +154,7 @@
         {
           "why": "Why an authorised location rather than a carve-out?",
           "because": "An adapter importing the runtime it wraps is permanent structure, not debt that should decay on touch",
-          "evidence": "plugins/discipline-core/rules/CD-19/README.md says to use authorised-location for the wrapping file"
+          "evidence": "node_modules/honed/rules/CD-19/README.md says to use authorised-location for the wrapping file"
         },
         {
           "why": "Why only this file?",
@@ -191,7 +191,7 @@
         {
           "why": "Why an authorised location rather than a carve-out?",
           "because": "An adapter importing the runtime it wraps is permanent structure, not debt that should decay on touch",
-          "evidence": "plugins/discipline-core/rules/CD-19/README.md says to use authorised-location for the wrapping file"
+          "evidence": "node_modules/honed/rules/CD-19/README.md says to use authorised-location for the wrapping file"
         },
         {
           "why": "Why only this file?",
@@ -233,7 +233,7 @@
         {
           "why": "Why an authorised location rather than a carve-out?",
           "because": "An adapter importing the runtime it wraps is permanent structure, not debt that should decay on touch, and only this file sees the node:os surface",
-          "evidence": "plugins/discipline-core/rules/CD-19/README.md says to use an authorised location for the wrapping file"
+          "evidence": "node_modules/honed/rules/CD-19/README.md says to use an authorised location for the wrapping file"
         }
       ],
       "rootCause": "The GitHub bot tooling inverts environment and home-directory access behind the UserEnvironment port, and this adapter is the one place that port is implemented",

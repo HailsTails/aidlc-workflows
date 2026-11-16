@@ -43,6 +43,8 @@ type ConstitutionGatePorts = {
   }) => Promise<void>;
 };
 
+const LEGACY_HONE_ENGINE_SPELLING = "discipline-core";
+
 const MAX_LINES_SHOWN_PER_SECTION = 5;
 
 const ALLOW: GateDecision = { kind: "allow" };
@@ -185,7 +187,7 @@ const engineDecisionOf = async ({
   switch (constitutionEngine.engine) {
     case "rin-walker":
       return walkerDecisionOf({ outcome: ports.runWalkerGate({ checkoutRoot, hookInput }) });
-    case "discipline-core": {
+    case "hone": {
       const outcome = ports.runDisciplinesCheck({
         checkoutRoot,
         baseRevision: constitutionEngine.baseRevision,
@@ -234,8 +236,9 @@ const constitutionEngineFromWire = ({ text }: { readonly text: string }): Consti
   switch (engine) {
     case "rin-walker":
       return { engine };
-    case "discipline-core":
-      return { engine, baseRevision: stringFieldOf({ container: wire, key: "baseRevision" }) };
+    case "hone":
+    case LEGACY_HONE_ENGINE_SPELLING:
+      return { engine: "hone", baseRevision: stringFieldOf({ container: wire, key: "baseRevision" }) };
     default:
       return undefined;
   }

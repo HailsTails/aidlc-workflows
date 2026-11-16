@@ -106,7 +106,7 @@ type ResolvedReviewCommand =
 type ConstitutionEngine =
   | { readonly engine: "rin-walker" }
   | {
-      readonly engine: "discipline-core";
+      readonly engine: "hone";
       readonly baseRevision: string | undefined;
     };
 
@@ -123,6 +123,8 @@ type ConstitutionScopeConfig = {
 };
 
 const RIN_WALKER_ENGINE: ConstitutionEngine = { engine: "rin-walker" };
+
+const LEGACY_HONE_ENGINE_SPELLING = "discipline-core";
 
 const rinGatesSchema = z.object({
   exceptionWhyChains: z.boolean().default(false),
@@ -644,15 +646,16 @@ const validateConstitutionEngine = ({
     case undefined:
     case "rin-walker":
       return { ok: true, value: RIN_WALKER_ENGINE };
-    case "discipline-core":
+    case "hone":
+    case LEGACY_HONE_ENGINE_SPELLING:
       return {
         ok: true,
-        value: { engine: "discipline-core", baseRevision: baseRevision.value },
+        value: { engine: "hone", baseRevision: baseRevision.value },
       };
     default:
       return {
         ok: false,
-        error: `"constitution.engine" must be "rin-walker" or "discipline-core" (the value that selects Hone)`,
+        error: `"constitution.engine" must be "rin-walker" or "hone" ("${LEGACY_HONE_ENGINE_SPELLING}" is still accepted for "hone")`,
       };
   }
 };
