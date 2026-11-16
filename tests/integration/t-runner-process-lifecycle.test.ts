@@ -40,7 +40,9 @@ async function fixture(files: Record<string, string>, preparing = false): Promis
   const dir = await root();
   cpSync(join(SOURCE, "tests", "lib"), join(dir, "tests", "lib"), { recursive: true });
   for (const path of [
-    "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts", "scripts/package-sources.ts",
+    "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts",
+    "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts", "src/kernel/file-system-port.ts",
+    "src/kernel/content-digester.ts", "src/kernel/values.ts", "src/kernel/brand.ts", "src/kernel/result.ts",
     "tests/harness/claude-gate.ts", "tests/harness/tui-runtime.ts", "tests/harness/tui-record-file.ts",
     "tests/harness/tui-windows-private-file.ts",
     "tests/harness/runner-profile.ts",
