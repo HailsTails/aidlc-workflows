@@ -193,7 +193,6 @@
     "t234-reviewer-adversarial-contract.test.ts": 0.1,
     "t235-ensemble-modes.test.ts": 0.4,
     "t236-ensemble-evidence-gate.test.ts": 8.6,
-    "t237-linter-sensor-version-pin.test.ts": 0.1,
     "t238-build-binaries.test.ts": 331.6,
     "t239-documentation-parity.test.ts": 0.1,
     "t240-opencode-packaging.test.ts": 6.4,

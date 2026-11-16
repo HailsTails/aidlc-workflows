@@ -3,7 +3,7 @@
 // Owns the type-check itself; the dispatcher (aidlc-sensor.ts) routes a
 // SENSOR fire to this script via the manifest's `command:` field. It uses the
 // shared project resolver to keep incremental state under the active record,
-// then wraps `bunx --package typescript@6 tsc --project <tsconfig> --noEmit
+// then wraps the project's installed `tsc --project <tsconfig> --noEmit
 // --pretty false --incremental --tsBuildInfoFile <record cache path>` and
 // prints the locked stdout JSON shape:
 //
@@ -16,7 +16,7 @@
 //   The dispatcher's branch e reclassifies non-zero/non-127 to PASSED
 //   with Note=script-error: exit-1.
 //
-// * Why --project (not bare-file): `bunx tsc --noEmit foo.ts` ignores
+// * Why --project (not bare-file): `tsc --noEmit foo.ts` ignores
 //   tsconfig and falls back to default options (target ES3, no strict,
 //   no module resolution, no path mappings). Verdict is checked-but-
 //   meaningless on any real project. --project tsconfig.json honours the
@@ -36,13 +36,10 @@
 //   re-check only changed files instead of the entire project. This doesn't
 //   fix cross-file attribution, but it cuts re-reporting noise.
 //
-// * Tool-unavailable detection: probe `bunx --package typescript@6 tsc
-//   --version` once at
-//   startup. `bunx <tool>` returns non-127 codes for several failure
-//   modes (network-fetch, package-resolution, registry timeout) so the
-//   dispatcher's `result.status === 127` won't catch them. On any
-//   non-zero probe we exit 127 ourselves, propagating to dispatcher
-//   branch b (PASSED Note=tool-unavailable).
+// * Tool-unavailable detection: TypeScript is resolved from the project's
+//   own node_modules tree, never PATH and never fetched. When it is not
+//   installed we exit 127 with a message naming what to install,
+//   propagating to dispatcher branch b (PASSED Note=tool-unavailable).
 //
 // * Continuation-line append: tsc with --pretty false emits one primary
 //   diagnostic line followed by 0+ indented continuation lines for
@@ -76,9 +73,14 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import { resolveProjectDir, sensorsDir } from "./aidlc-lib.ts";
 import {
-	DEFAULT_SUBPROCESS_TIMEOUT_MS,
-	LONG_SUBPROCESS_TIMEOUT_MS,
-} from "./aidlc-runtime-budget.ts";
+	type ProjectTool,
+	type ProjectToolResolver,
+	type ProjectToolSelection,
+	projectToolCommand,
+	resolveProjectTool,
+	selectProjectTool,
+} from "./aidlc-project-tool.ts";
+import { LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 
 interface ParsedError {
 	file: string;
@@ -131,7 +133,7 @@ function parseArgs(argv: string[]): Args {
 function printHelp(): void {
 	process.stdout.write(
 		`Usage: aidlc-sensor-type-check --stage <slug> --file-path <path>\n\n` +
-			`Wraps \`bunx --package typescript@6 tsc --project <tsconfig> --noEmit --pretty false\` and\n` +
+			`Wraps the project's installed \`tsc --project <tsconfig> --noEmit --pretty false\` and\n` +
 			`prints {pass, errors[]} JSON to stdout (filtered to --file-path).\n`,
 	);
 }
@@ -154,48 +156,38 @@ function findTsconfig(filePath: string): string | null {
 
 // --- tsc subprocess wrappers ------------------------------------------------
 
-// A bare `bunx tsc` installs the unrelated npm package named "tsc" when
-// the target project has no local TypeScript dependency. Name TypeScript
-// explicitly and pin its major, matching the linter sensor's deterministic
-// tool resolution.
-const TSC_ARGS = ["--package", "typescript@6", "tsc"] as const;
-
-// Probe the same TypeScript command used for the real compile. `bunx`
-// returns non-127 codes for several failure modes (network-fetch, package-
-// resolution, registry timeout). The dispatcher's branch b (status === 127)
-// won't catch those — propagate by exiting 127 ourselves on any non-zero.
-function probeTscAvailable(cwd: string): void {
-	const result = spawnSync("bunx", [...TSC_ARGS, "--version"], {
-		encoding: "utf-8",
-		timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS,
-		cwd,
+export function selectInstalledTsc(
+	projectRoot: string,
+	resolveTool: ProjectToolResolver = resolveProjectTool,
+): ProjectToolSelection {
+	return selectProjectTool({
+		request: { projectRoot, packageName: "typescript", binName: "tsc" },
+		unavailableCode: "tsc-unavailable",
+		resolveTool,
 	});
-	if (result.status !== 0) {
-		process.stderr.write("tsc-unavailable\n");
-		process.exit(127);
-	}
 }
 
 function runTsc(opts: {
+	tsc: ProjectTool;
 	tsconfigPath: string;
 	tsBuildInfoFile: string;
 	cwd: string;
 }): { output: string; status: number | null } {
-	const result = spawnSync(
-		"bunx",
-		[
-			...TSC_ARGS,
-			"--project",
-			opts.tsconfigPath,
-			"--noEmit",
-			"--pretty",
-			"false",
-			"--incremental",
-			"--tsBuildInfoFile",
-			opts.tsBuildInfoFile,
-		],
-		{ encoding: "utf-8", timeout: LONG_SUBPROCESS_TIMEOUT_MS, cwd: opts.cwd },
-	);
+	const command = projectToolCommand(opts.tsc, [
+		"--project",
+		opts.tsconfigPath,
+		"--noEmit",
+		"--pretty",
+		"false",
+		"--incremental",
+		"--tsBuildInfoFile",
+		opts.tsBuildInfoFile,
+	]);
+	const result = spawnSync(command.executable, command.args, {
+		encoding: "utf-8",
+		timeout: LONG_SUBPROCESS_TIMEOUT_MS,
+		cwd: opts.cwd,
+	});
 	// Partial diagnostics (or none) after a kill do not prove a clean compile.
 	// Preserve the dispatcher's script-error path instead of emitting pass:true.
 	if (result.error || result.signal || result.status === null) {
@@ -300,10 +292,14 @@ export function main(argv: string[]): void {
 	}
 	const tsBuildInfoFile = join(sensorsBaseDir, `.tsbuildinfo-${tsconfigHash}`);
 
-	// Probe tsc availability first. cwd doesn't matter for --version.
-	probeTscAvailable(tsconfigDir);
+	const tsc = selectInstalledTsc(tsconfigDir);
+	if (tsc.kind === "unavailable") {
+		process.stderr.write(`${tsc.message}\n`);
+		process.exit(127);
+	}
 
 	const { output, status } = runTsc({
+		tsc: tsc.tool,
 		tsconfigPath,
 		tsBuildInfoFile,
 		cwd: tsconfigDir,
