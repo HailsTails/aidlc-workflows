@@ -49,11 +49,11 @@ describe("copilotAgents", () => {
     ]));
   });
 
-  test("requests the native persona preflight-only, model omitted, with the Task denial as a worker allowlist", () => {
+  test("requests the native persona with its reviewer knowledge absorbed, model omitted, with the Task denial as a worker allowlist", () => {
     const documents = surfaces();
     render(delivery, documents);
     expect(documents).toHaveBeenCalledWith({
-      agent: delivery, text: "authored-file", knowledge: "preflight-only", reading: "whole-files",
+      agent: delivery, text: "authored-file", knowledge: "absorbed", reading: "whole-files",
       frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
         removeKeys: ["disallowedTools"],
         afterProjectionLines: ['tools: ["read", "edit", "search", "execute", "web", "todo"]'] },
@@ -73,8 +73,8 @@ describe("copilotAgents", () => {
   test("an agent that denies nothing gets no native allowlist", () => {
     const documents = surfaces();
     render(unrestricted, documents);
-    expect(documents).toHaveBeenCalledWith(expect.objectContaining({ knowledge: "preflight-only",
-      frontmatter: expect.objectContaining({ afterProjectionLines: [] }) }));
+    expect(documents).toHaveBeenCalledWith(expect.objectContaining({ knowledge: "absorbed",
+      frontmatter: expect.objectContaining({ model: "omitted", afterProjectionLines: [] }) }));
   });
 
   test("has no separate conductor agent file", () => {
