@@ -25,7 +25,7 @@ test("kiroIde module gathers the identity, distribution and every projection par
       placements: KIRO_IDE_AUTHORED_PLACEMENTS,
       agents: { inputs: [source("agents/aidlc-aidlc.md")], render: expect.any(Function) },
       commands: kiroIdeCommandPath,
-      skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createKiroIdeSkillRenderer },
+      skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/workflow.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createKiroIdeSkillRenderer },
       settings: { inputs: [source("settings/cli.json"), source("hooks/aidlc-record-human-turn.json"), source("hooks/aidlc-guard-tool-call.json"), source("hooks/aidlc-log-subagent.json"), source("hooks/aidlc-session-start.json"), source("hooks/aidlc-continue-workflow.json")], render: createKiroIdeSettingsRenderer },
       documents: { inputs: [], render: createKiroIdeDocumentRenderer },
       fills: KIRO_IDE_ONBOARDING_FILLS,

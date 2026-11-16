@@ -9,6 +9,7 @@ import { createKiroIdeSkillRenderer } from "./skill-renderer.ts";
 
 const files: readonly AuthoredHostFile[] = [
   { source: source("skills/aidlc/SKILL.md"), content: { kind: "text", text: "Door\n" } },
+  { source: source("skills/aidlc/workflow.md"), content: { kind: "text", text: "Workflow\n" } },
   { source: source("skills/aidlc/question-rendering.md"), content: { kind: "text", text: "Question\n" } },
   { source: source("skills/aidlc/composer.md"), content: { kind: "text", text: "Composer\n" } },
   { source: source("skills/aidlc/tables.md"), content: { kind: "text", text: "Tables\r\n" } },
@@ -24,6 +25,9 @@ test("Kiro IDE places captured documents with authored provenance and the existi
     { path: path(".kiro/skills/aidlc/SKILL.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Door\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/SKILL.md") } },
+    { path: path(".kiro/skills/aidlc/workflow.md"), mode: "regular",
+      content: { kind: "bytes", bytes: new TextEncoder().encode("Workflow\n") },
+      origin: { kind: "harness-authored", source: source("skills/aidlc/workflow.md") } },
     { path: path(".kiro/skills/aidlc/question-rendering.md"), mode: "regular",
       content: { kind: "bytes", bytes: new TextEncoder().encode("Question\n") },
       origin: { kind: "harness-authored", source: source("skills/aidlc/question-rendering.md") } },

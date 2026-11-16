@@ -12,7 +12,7 @@ import type { TokenBindings, TemplateToken } from "../../../projection/domain/te
 import { refreshSkillRegions, finishEarlierReleaseSkill } from "../../../projection/domain/skill-regions.ts";
 
 export const KIRO_IDE_SKILL_INPUTS = [
-  "skills/aidlc/SKILL.md", "skills/aidlc/question-rendering.md",
+  "skills/aidlc/SKILL.md", "skills/aidlc/workflow.md", "skills/aidlc/question-rendering.md",
   "skills/aidlc/composer.md", "skills/aidlc/tables.md",
 ] as const;
 

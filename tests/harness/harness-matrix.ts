@@ -16,6 +16,7 @@ import { validateProjectionDescriptor, type ProjectionDescriptor, type Projectio
 import type { PluginTargetTable } from "../../core/tools/aidlc-plugin-emit.ts";
 import { distributionId, projectPath } from "../../src/kernel/values.ts";
 import { accepted, refused } from "../../src/kernel/result.ts";
+import { CONDUCTOR_SKILL_FILES } from "./conductor-skill.ts";
 
 export type ShippedOnboarding = {
   dst: string;
@@ -367,6 +368,16 @@ export function onboardingFillsSource(name: ShippedHarnessName): string {
   return `src/hosts/${name}/onboarding-fills.ts`;
 }
 
+function validateConductorSkillFiles(name: ShippedHarnessName, inputs: readonly string[]): void {
+  const skillFiles = (CONDUCTOR_SKILL_FILES as Record<string, readonly string[] | undefined>)[name];
+  if (skillFiles?.[0] !== "SKILL.md") fail(name, "CONDUCTOR_SKILL_FILES has no entry starting with SKILL.md");
+  for (const file of skillFiles.slice(1)) {
+    if (!inputs.includes(`skills/aidlc/${file}`)) {
+      fail(name, `CONDUCTOR_SKILL_FILES names ${file}, which the registered skill renderer does not capture`);
+    }
+  }
+}
+
 export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapabilities): {
   manifest: ShippedManifest; fills: OnboardingFills;
 } | null {
@@ -384,6 +395,7 @@ export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapa
     fail(name, "memoryInclude does not agree with the registered include surfaces");
   }
   validateFullHostAgentsAndPlugin(name, capabilities);
+  validateConductorSkillFiles(name, member.projection.skills.inputs);
   return { fills: member.projection.fills, manifest: { name, harnessDir: descriptor.harnessDir,
     rootIntegrations: descriptor.rootIntegrations,
     orchestratorSkillPath: `${capabilities.skillsRoot}/aidlc/SKILL.md`,
