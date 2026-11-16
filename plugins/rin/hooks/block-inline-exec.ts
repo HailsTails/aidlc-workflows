@@ -89,6 +89,163 @@ const arbitraryExecutionRules = [
 const pipeIntoInterpreterRule =
   /\|\s*(python3?|node|ruby|perl|php|bash|sh)\b(?!\s+-m\b)/i;
 
+const fetchAndRunDenyReason = [
+  "BLOCKED: fetch-and-run package launchers are not runnable here.",
+  "",
+  "This was stopped at the PreToolUse gate on purpose. npx, pnpx, bunx, `bun x`, `pnpm dlx`,",
+  "`yarn dlx`, the `create` initialisers, uvx, `uv tool run`, `pipx run`, and `npm exec` / `npm x`",
+  "without `--no` all download a package from a registry and run it unreviewed. The operator's",
+  "rule for agents in their repositories is: never use these launchers; in-repo tooling only.",
+  "",
+  "The next action is: run the tool through the repository's own package scripts",
+  "(`bun run <script>`, `npm run <script>`, `pnpm <script>`, `yarn <script>`) or an installed",
+  "dependency's bin (`pnpm exec <bin>`, `npm exec --no -- <bin>`).",
+  "",
+  "If the tool is not already a dependency, do not fetch it. STOP and surface the need to the",
+  "operator — say which package you need and why — so it can be added and reviewed. There is",
+  "NO self-granted bypass: no settings.json entry, authorised location or trial token lifts this.",
+].join("\n");
+
+const COMMAND_HEAD_SEPARATORS = /&&|\|\||\$\(|[;&|()`{}\n\r]/;
+
+const COMMAND_WRAPPERS: ReadonlySet<string> = new Set([
+  "call",
+  "cmd",
+  "command",
+  "corepack",
+  "env",
+  "exec",
+  "nohup",
+  "start",
+  "sudo",
+  "time",
+  "xargs",
+]);
+
+const STANDALONE_LAUNCHERS: ReadonlySet<string> = new Set([
+  "bunx",
+  "npx",
+  "pnpx",
+  "uvx",
+]);
+
+const SHELL_WORD = /"([^"]*)"|'([^']*)'|(\S+)/g;
+
+const shellWordsOf = ({
+  segment,
+}: {
+  readonly segment: string;
+}): readonly string[] =>
+  [...segment.matchAll(SHELL_WORD)].map(
+    (match) => match[1] ?? match[2] ?? match[3] ?? "",
+  );
+
+const executableNameOf = ({ word }: { readonly word: string }): string =>
+  (word.split(/[\\/]/).pop() ?? "")
+    .toLowerCase()
+    .replace(/\.(?:cmd|exe|ps1|bat|com)$/, "");
+
+const isWrapperArgument = ({ word }: { readonly word: string }): boolean =>
+  word.startsWith("-") ||
+  /^\/[a-z]$/i.test(word) ||
+  /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
+
+const launchedWordsOf = ({
+  words,
+}: {
+  readonly words: readonly string[];
+}): readonly string[] => {
+  const [head, ...rest] = words;
+  if (head === undefined) return [];
+  if (!COMMAND_WRAPPERS.has(executableNameOf({ word: head }))) return words;
+  const launched = rest.findIndex((word) => !isWrapperArgument({ word }));
+  return launched < 0 ? [] : launchedWordsOf({ words: rest.slice(launched) });
+};
+
+const optionsBeforeOperand = ({
+  words,
+}: {
+  readonly words: readonly string[];
+}): readonly string[] => {
+  const operand = words.findIndex(
+    (word) => word === "--" || !word.startsWith("-"),
+  );
+  return operand < 0 ? words : words.slice(0, operand);
+};
+
+const npmExecForbidsInstalling = ({
+  options,
+}: {
+  readonly options: readonly string[];
+}): boolean =>
+  options.some((option) => option === "--no" || option === "--yes=false") &&
+  !options.some(
+    (option) => option === "-y" || option === "--yes" || option === "--yes=true",
+  );
+
+const npmFetchesAndRuns = ({
+  subcommand,
+  afterSubcommand,
+}: {
+  readonly subcommand: string | undefined;
+  readonly afterSubcommand: readonly string[];
+}): boolean => {
+  if (subcommand === "exec" || subcommand === "x")
+    return !npmExecForbidsInstalling({
+      options: optionsBeforeOperand({ words: afterSubcommand }),
+    });
+  if (subcommand === "create") return true;
+  if (subcommand === "init")
+    return afterSubcommand.some((word) => !word.startsWith("-"));
+  return false;
+};
+
+const wordsRunAFetchAndRunLauncher = ({
+  words,
+}: {
+  readonly words: readonly string[];
+}): boolean => {
+  const [head, ...rawArguments] = launchedWordsOf({ words });
+  if (head === undefined) return false;
+  const executable = executableNameOf({ word: head });
+  if (STANDALONE_LAUNCHERS.has(executable)) return true;
+  const lowered = rawArguments.map((word) => word.toLowerCase());
+  const subcommandIndex = lowered.findIndex((word) => !word.startsWith("-"));
+  const subcommand = subcommandIndex < 0 ? undefined : lowered[subcommandIndex];
+  const afterSubcommand =
+    subcommandIndex < 0 ? [] : lowered.slice(subcommandIndex + 1);
+  switch (executable) {
+    case "bun":
+      return subcommand === "x" || subcommand === "create";
+    case "pnpm":
+    case "yarn":
+      return lowered.includes("dlx") || subcommand === "create";
+    case "npm":
+      return npmFetchesAndRuns({ subcommand, afterSubcommand });
+    case "uv":
+      return subcommand === "tool" && afterSubcommand[0] === "run";
+    case "pipx":
+      return subcommand === "run";
+    default:
+      return false;
+  }
+};
+
+const commandRunsAFetchAndRunLauncher = ({
+  command,
+}: {
+  readonly command: string;
+}): boolean =>
+  command
+    .split(COMMAND_HEAD_SEPARATORS)
+    .some((segment) =>
+      wordsRunAFetchAndRunLauncher({
+        words: shellWordsOf({
+          segment: segment.replace(leadingEnvAssignments, ""),
+        }),
+      }),
+    );
+
 const splitTopLevelSegments = ({
   command,
 }: {
@@ -469,6 +626,8 @@ const main = async (): Promise<void> => {
 
   if (invocation.toolName !== "Bash") process.exit(0);
   const { command } = invocation;
+  if (commandRunsAFetchAndRunLauncher({ command }))
+    denyCall({ reason: fetchAndRunDenyReason });
   const breachRule = breachedRuleOf({ command });
   if (breachRule === null) process.exit(0);
   // The relax branch IS the deny branch: a line is written exactly where the
