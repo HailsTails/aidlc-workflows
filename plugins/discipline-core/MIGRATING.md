@@ -185,6 +185,16 @@ A core install from before the [why-chain contract](docs/why-chain-contract.md) 
 
 An install from before core declared `peerDependencies` carries its own `eslint` 10, `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin` and `typescript` in `tools/discipline-core/node_modules`, and core's own ESLint run used that copy whatever the repository ran. From this version core uses the repository's own copies. To move:
 
-1. **Make sure the toolchain resolves from the repository root**, in the ranges [ADOPTING.md](ADOPTING.md#2-vendor-the-core-at-a-pinned-commit) step 2 lists: TypeScript 4.8.4 up to 6.x, ESLint 9.12.0 or later on 9 or any 10, and typescript-eslint 8.56.0 or later on 8. Keep the versions the repository already uses.
+1. **Make sure the toolchain resolves from the repository root**, in the ranges [ADOPTING.md](ADOPTING.md#2-install-the-core-package) step 2 lists: TypeScript 4.8.4 up to 6.x, ESLint 9.12.0 or later on 9 or any 10, and typescript-eslint 8.56.0 or later on 8. Keep the versions the repository already uses.
 2. **Refresh core** as [ADOPTING.md](ADOPTING.md#10-update-and-remove) step 10 says. Copy `install/package.json` and `install/package-lock.json` to the top of `tools/discipline-core/` in place of the old `package.json` and `package-lock.json`, and install with `npm ci`: it removes the old `tools/discipline-core/node_modules`, whose `eslint` would otherwise shadow the repository's. If a stale copy is left there, the check stops with `toolchain-shadowed` and names it.
 3. **Run the check.** It gives the same report as before on ESLint 9 or 10: core picks the configuration lookup the same way, and its governance run behaves the same on both lines. A `toolchain-unavailable` load failure names a package to install.
+
+## 10. Moving from a copied core to the package
+
+A core copied into `tools/discipline-core/` keeps working, but that route is deprecated. The package gives the same reports from the same `disciplines.json` and `discipline-exceptions.json`. To move:
+
+1. **Install the package** as [ADOPTING.md](ADOPTING.md#2-install-the-core-package) step 2 says, including the two `discipline:` scripts.
+2. **Repoint every command.** In scripts, CI and the pre-push hook, replace `node tools/discipline-core/core/check/check-command.ts --repo .` with `npm run --silent discipline:check` (pass flags after `--`, as in `npm run --silent discipline:check -- --base-revision origin/main`), and `project-command.ts` with `npm run --silent discipline:project`. Point agent instructions at `node_modules/discipline-core/rules/`.
+3. **Remove the copy.** Delete `tools/discipline-core/`, its line in `.gitignore`, and its entry in `disciplines.json`'s `exclude`.
+4. **Re-project** if any clause is `eslint`: run `npm run --silent discipline:project`. The projection now imports each piece by package name instead of by a path into `tools/discipline-core/`, so it changes once; commit it.
+5. **Run the check.** It must give the same report as the last run on the copy.

@@ -10,52 +10,42 @@ Discipline core reads `disciplines.json` in `<repo>`, runs the selected discipli
 node --version
 ```
 
-It must print `v22.18.0` or later; Node runs the core's `.ts` files directly. Also needed: git 2.24 or later and npm. `<repo>` must be a git repository, and the files to check must be committed or staged: untracked files are not checked.
+It must print `v22.13.0` or a later 22.x, or `v24.0.0` or later. Also needed: git 2.24 or later and npm. `<repo>` must be a git repository, and the files to check must be committed or staged: untracked files are not checked.
 
-## 2. Vendor the core at a pinned commit
+## 2. Install the core package
 
-Pick a commit of `https://github.com/HailsTails/aidlc-workflows` and write its full SHA down; that SHA is your pin. Copy the core into `<repo>/tools/discipline-core/`. The install must not be under any `node_modules` folder, because Node does not run TypeScript there.
+Core ships as one npm package tarball: built JavaScript with its own packages bundled in, so it has no dependencies of its own and needs no TypeScript support from Node. No registry release exists yet. Until one does, the tarball is a file you are given or build yourself, and this page writes its location as `<discipline-core-tarball>`: a path such as `vendor/discipline-core/discipline-core-0.0.0.tgz`, or an `https://` URL your team serves it from.
 
-Fetch only `plugins/discipline-core`, with long paths allowed:
-
-```bash
-git clone -c core.longpaths=true --filter=blob:none --no-checkout https://github.com/HailsTails/aidlc-workflows.git /tmp/discipline-core-source
-```
+To build the tarball yourself, at a pinned commit of `https://github.com/HailsTails/aidlc-workflows` with [bun](https://bun.sh) installed:
 
 ```bash
-git -C /tmp/discipline-core-source sparse-checkout set plugins/discipline-core
-```
-
-```bash
+git clone -c core.longpaths=true https://github.com/HailsTails/aidlc-workflows.git /tmp/discipline-core-source
 git -C /tmp/discipline-core-source checkout <pinned-sha>
+cd /tmp/discipline-core-source && bun install --frozen-lockfile && bun run --cwd plugins/discipline-core pack-package && cd -
 ```
 
-The commands in this guide are POSIX shell; on Windows run them in Git Bash. On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
+The last command prints `pack package: wrote <path>/plugins/discipline-core/artefacts/discipline-core-0.0.0.tgz`. Copy that file into `<repo>/vendor/discipline-core/` and commit it with a message naming the pinned SHA, so every teammate and CI runner installs the same bytes. The commands in this guide are POSIX shell; on Windows run them in Git Bash.
 
-Copy the install manifest and lock from `install/` to the top of the install folder, then `README.md`, `core/`, the why-chain contract page, every rule page, both mechanisms and the review methods, then remove the core's own tests:
+Install it as a development dependency of the repository root, beside the toolchain:
 
 ```bash
-SRC=/tmp/discipline-core-source/plugins/discipline-core
-DEST=tools/discipline-core
-mkdir -p "$DEST/docs"
-cp "$SRC/install/package.json" "$SRC/install/package-lock.json" "$SRC/README.md" "$DEST/"
-cp "$SRC/docs/why-chain-contract.md" "$DEST/docs/"
-cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
-find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
-find "$DEST" -name '*.test.ts' -delete
+npm install --save-dev <discipline-core-tarball>
 ```
 
-Copying everything is the simplest install. [README.md](README.md#installing) lists the smaller set a selection strictly needs, if you would rather copy only that.
+npm records it in `package.json` and the lockfile. With pnpm or Yarn, add the same tarball with their own `add -D` command at the workspace root.
 
-Install the core's own packages inside the install folder from its lockfile. The lock holds `zod`, `jsonc-parser`, `@eslint/plugin-kit` and the five packages they need, and nothing of the toolchain:
+Add the two commands to the root `package.json` scripts:
 
-```bash
-cd tools/discipline-core
-npm ci --no-audit --no-fund --ignore-scripts
-cd -
+```json
+"scripts": {
+  "discipline:check": "discipline-core-check --repo .",
+  "discipline:project": "discipline-core-project --repo ."
+}
 ```
 
-Core runs on the toolchain the repository already uses, which `package.json` declares as optional peer dependencies. Keep the versions you have; core supports these ranges:
+`discipline-core-check` and `discipline-core-project` are the package's two commands. The package name and command names are provisional until the tool is named.
+
+Core runs on the toolchain the repository already uses, which the package declares as optional peer dependencies. Keep the versions you have; core supports these ranges:
 
 | Package | Needed for | Range |
 | --- | --- | --- |
@@ -66,9 +56,9 @@ Core runs on the toolchain the repository already uses, which `package.json` dec
 
 A repository that already has them in range needs nothing more. A package that is missing or out of range is named when the check runs; add it at a version inside its range and inside the range your other tooling accepts, without moving ESLint or TypeScript to another major for core's sake.
 
-Core finds these by Node's resolution upward from `tools/discipline-core/`, so in a monorepo they must resolve from the repository root: declare them in the root `package.json` (with pnpm, `pnpm add -Dw` at the versions the packages already use), even where packages also declare their own. Yarn Plug'n'Play is not supported, because core resolves the toolchain through `node_modules`.
+Core finds these by Node's resolution upward from where the package is installed, so in a monorepo they must resolve from the repository root: declare them in the root `package.json` (with pnpm, `pnpm add -Dw` at the versions the packages already use), even where packages also declare their own. Yarn Plug'n'Play is not supported, because core resolves the toolchain through `node_modules`.
 
-Add `tools/discipline-core/node_modules/` to `<repo>/.gitignore`, and commit `tools/discipline-core/` with a message that names the pinned SHA. To update later, repeat this step with a newer SHA.
+Commit `package.json`, the lockfile and the tarball if it is a file in the repository. To update later, repeat this step with a newer tarball.
 
 ## 3. Read what each discipline means
 
@@ -80,7 +70,7 @@ Where to start: for an API, boundary validation (CD-4, CD-45), result-shaped fai
 
 ## 4. Write disciplines.json
 
-Create `<repo>/disciplines.json`. Map every clause you adopt to the mechanism that checks it, and exclude the vendored core so it is not checked as your code:
+Create `<repo>/disciplines.json`. Map every clause you adopt to the mechanism that checks it:
 
 ```json
 {
@@ -90,8 +80,7 @@ Create `<repo>/disciplines.json`. Map every clause you adopt to the mechanism th
     "CD-15#loops": "audit",
     "CD-17#clock-sources": "audit",
     "CD-23#export-test-sibling": "audit"
-  },
-  "exclude": ["tools/discipline-core"]
+  }
 }
 ```
 
@@ -133,7 +122,7 @@ Starting with a few disciplines and adding more once the run passes is easier th
 Skip this if every selected clause is `audit`. Otherwise, after writing `disciplines.json`, write the ESLint projection:
 
 ```bash
-node tools/discipline-core/core/check/project-command.ts --repo .
+npm run --silent discipline:project
 ```
 
 It prints `disciplines.eslint.mjs written`. Spread its default export last in the repository's flat config. A repository with no ESLint config yet can start from this `eslint.config.mjs`:
@@ -155,12 +144,12 @@ In a monorepo, every `eslint.config.*` that applies to checked files spreads the
 
 Use `"nearest-to-file"` when ESLint runs per package, with ESLint 10, or with ESLint 9 and `--flag v10_config_lookup_from_file` (on 9.12 to 9.29, `--flag unstable_config_lookup_from_file`). Use `"repository-root"` for one ESLint 9 run from the repository root, whose root `eslint.config.*` then applies to every file. To confirm the setting, lint a package file the way the team does (for example `pnpm exec eslint packages/a/src/x.ts` from where the lint script runs) and check that it reports the same finding the core check lists for that file.
 
-Commit both files. Core's check reads this configuration and fails if the projection is missing, not in effect, or out of date, so re-run `project-command` whenever `disciplines.json` or `discipline-exceptions.json` changes. Core's own ESLint run uses the repository's root `eslint` from step 2, the same copy the projection's pieces load; its verdict is the same on 9.x and 10.x. [README.md](README.md#adopting-the-eslint-mechanism) has the details.
+Commit both files. Core's check reads this configuration and fails if the projection is missing, not in effect, or out of date, so re-run `discipline:project` whenever `disciplines.json` or `discipline-exceptions.json` changes or core is updated. The projection imports each piece from the package by name, for example `discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js`, so the repository's ESLint must resolve `discipline-core` from the repository root. Core's own ESLint run uses the repository's root `eslint` from step 2, the same copy the projection's pieces load; its verdict is the same on 9.x and 10.x. [README.md](README.md#adopting-the-eslint-mechanism) has the details.
 
 ## 5. Run the check
 
 ```bash
-node tools/discipline-core/core/check/check-command.ts --repo .
+npm run --silent discipline:check
 ```
 
 | Exit code | Meaning |
@@ -169,19 +158,17 @@ node tools/discipline-core/core/check/check-command.ts --repo .
 | `1` | `verdict: fail`: the report says why |
 | `2` | an input could not be loaded or a check crashed; the output is one line starting `load failure:` or names the failing piece |
 
-A Node stack trace such as `ERR_MODULE_NOT_FOUND ... 'zod'` instead of a report means the core's own packages from step 2 are not installed in `tools/discipline-core/node_modules`. A `load failure: runner-failed <mechanism> toolchain-unavailable <package> ...` line names a toolchain package that is missing from the repository root or outside its range; install a version in the range it prints. A `toolchain-shadowed <package> resolved from ...` line means a copy of that package sits inside `tools/discipline-core/node_modules`, left by an older install: delete that folder and run step 2's `npm ci` again.
-
-If the report lists findings under `tools/discipline-core/`, the `exclude` entry from step 4 is missing.
+`npm run` passes the exit code through. `sh: discipline-core-check: not found` or `'discipline-core-check' is not recognized` means step 2's install is missing; run `npm install`. A `load failure: runner-failed <mechanism> toolchain-unavailable <package> ...` line names a toolchain package that is missing from the repository root or outside its range; install a version in the range it prints. A `toolchain-shadowed <package> resolved from ...` line means a copy of that package sits inside core's own install folder, which the line names: delete that `node_modules` folder and reinstall.
 
 In CI, pass the branch's base so that debt recorded per file is forfeited once that file changes:
 
 ```bash
-node tools/discipline-core/core/check/check-command.ts --repo . --base-revision origin/main
+npm run --silent discipline:check -- --base-revision origin/main
 ```
 
 Add the command to the repository's existing validation script, and run that same script in CI and in any pre-push hook the repository already has, so the check runs wherever the other checks run. With `eslint` clauses, the repository's own `eslint` run also reports them in the editor, from the projection.
 
-Tell any coding agent working in the repository, in its project instructions: "Read the rule pages under `tools/discipline-core/rules/` for the disciplines in `disciplines.json` before editing. Before handing off, run the repository's validation command, report its exit code and findings, and apply the judgement rules listed in this file with their review lenses." Copying the rule pages does not make an agent read them; the instruction does.
+Tell any coding agent working in the repository, in its project instructions: "Read the rule pages under `node_modules/discipline-core/rules/` for the disciplines in `disciplines.json` before editing. Before handing off, run the repository's validation command, report its exit code and findings, and apply the judgement rules listed in this file with their review lenses." Copying the rule pages does not make an agent read them; the instruction does.
 
 ## 6. Read the report
 
@@ -248,7 +235,7 @@ Stage it, since only tracked files are checked, and run the check:
 
 ```bash
 git add src/discipline-probe.ts
-node tools/discipline-core/core/check/check-command.ts --repo .
+npm run --silent discipline:check
 ```
 
 It must exit `1` with the line `CD-17#clock-sources audit src/discipline-probe.ts:1:0 const probeStartedAt = Date.now();` among its findings. Change the same file to `const probeStartedAt = 0;`, stage it, and run the check again: that finding must be gone. Then remove the probe with `git rm -f src/discipline-probe.ts`. A run that never showed the finding proves nothing: check that the file was staged and is not under an `exclude` entry. For another discipline, take a flag case from its `rules/<ID>/discipline.json`.
@@ -269,15 +256,36 @@ To use an agent, give it the lens file, the rule pages it names, the change and 
 
 ## 10. Update and remove
 
-To update, repeat step 2 on a branch with a newer pinned SHA, compare the copied rule pages with the old ones, re-run `project-command` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages. Before updating to a pin that has the causal why-chain contract, follow [MIGRATING.md section 8](MIGRATING.md#8-moving-to-causal-why-chains): pass `--base-revision` first, or the update's check reports `legacy-chain-unmeasured`. Before updating to a pin that ships `install/package.json`, follow [MIGRATING.md section 9](MIGRATING.md#9-moving-core-onto-the-repositorys-toolchain).
+To update, repeat step 2 on a branch with a tarball built from a newer pinned SHA, compare the installed rule pages under `node_modules/discipline-core/rules/` with the old ones, re-run `discipline:project` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages. Before updating to a pin that has the causal why-chain contract, follow [MIGRATING.md section 8](MIGRATING.md#8-moving-to-causal-why-chains): pass `--base-revision` first, or the update's check reports `legacy-chain-unmeasured`. Before updating to a pin that ships `install/package.json`, follow [MIGRATING.md section 9](MIGRATING.md#9-moving-core-onto-the-repositorys-toolchain).
 
-To remove, delete `tools/discipline-core/`, `disciplines.json`, `discipline-exceptions.json` and, with `eslint` clauses, `disciplines.eslint.mjs` and its spread in the flat config, and take the check out of the validation script.
+To remove, run `npm uninstall discipline-core`, delete the two `discipline:` scripts, the tarball, `disciplines.json`, `discipline-exceptions.json` and, with `eslint` clauses, `disciplines.eslint.mjs` and its spread in the flat config, and take the check out of the validation script.
+
+## Deprecated: copying the source
+
+Before the package, core was installed by copying its TypeScript source into the repository. That route still works but is deprecated; new adopters use step 2, and [MIGRATING.md](MIGRATING.md#10-moving-from-a-copied-core-to-the-package) moves an existing copy onto the package. It needs Node 22.18.0 or later, which runs the `.ts` source by stripping types, and the copy must not sit under any `node_modules` folder:
+
+```bash
+git clone -c core.longpaths=true --filter=blob:none --no-checkout https://github.com/HailsTails/aidlc-workflows.git /tmp/discipline-core-source
+git -C /tmp/discipline-core-source sparse-checkout set plugins/discipline-core
+git -C /tmp/discipline-core-source checkout <pinned-sha>
+SRC=/tmp/discipline-core-source/plugins/discipline-core
+DEST=tools/discipline-core
+mkdir -p "$DEST/docs"
+cp "$SRC/install/package.json" "$SRC/install/package-lock.json" "$SRC/README.md" "$DEST/"
+cp "$SRC/docs/why-chain-contract.md" "$DEST/docs/"
+cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
+find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
+find "$DEST" -name '*.test.ts' -delete
+(cd "$DEST" && npm ci --no-audit --no-fund --ignore-scripts)
+```
+
+Add `tools/discipline-core/node_modules/` to `.gitignore`, commit `tools/discipline-core/` naming the pinned SHA, and add `"exclude": ["tools/discipline-core"]` to `disciplines.json`. The commands are then `node tools/discipline-core/core/check/check-command.ts --repo .` and `node tools/discipline-core/core/check/project-command.ts --repo .`, with the same flags and exit codes. [README.md](README.md#installing) lists the smaller set of paths a selection strictly needs.
 
 ## Worked example
 
 In the discipline-core source, [tests/test-fixtures/walkthrough/](tests/test-fixtures/walkthrough/) is a small repository before and after its fix, selecting CD-2, CD-15, CD-17 and CD-23 through the audit, with a `generated/` folder excluded. `tests/walkthrough.integration.test.ts` pins both reports exactly.
 
-Before, `node tools/discipline-core/core/check/check-command.ts --repo .` prints, and exits `1`:
+Before, `npm run --silent discipline:check` prints, and exits `1`:
 
 ```text
 excluded (1)
