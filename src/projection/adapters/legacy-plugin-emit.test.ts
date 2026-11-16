@@ -14,11 +14,11 @@ test("an unsupported target is refused before the shipped emitter can touch the 
   expect(projector.project({ ...unsupported, plugin, pluginFolder: new URL("file:///H:/unused-plugin/"),
     output: new URL("file:///H:/unused-output/"), boundary: new URL("file:///H:/unused-output/"), reviewerAgents: new Set(),
   })).toEqual({ ok: false, refusal: { kind: "plugin-emit-failed", plugin, host: identity.distribution,
-    reason: expect.stringContaining("Invalid option") } });
+    reason: "The shipped plugin emitter has no unsupported target." } });
 });
 
 test("a catalogue target error has no fabricated plugin identity", () => {
   expect(projector.writeCatalogues({ output: new URL("file:///H:/unused-output/"), targets: [unsupported] }))
     .toEqual({ ok: false, refusal: { kind: "render-failed", concept: "host-data", name: "plugin-catalogues",
-      reason: expect.stringContaining("Invalid option") } });
+      reason: "The shipped plugin emitter has no unsupported target." } });
 });
