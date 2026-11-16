@@ -121,12 +121,14 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 
 Fetch these paths from a pinned commit of this repository into one install directory, keeping their layout:
 
-- always: `package.json`, `README.md`, `core/` and `docs/why-chain-contract.md`
+- always: `package.json`, `package-lock.json`, `README.md`, `core/` and `docs/why-chain-contract.md`
 - for each selected clause in the shared rule set: `rules/<DisciplineId>/`, `mechanisms/<MechanismId>/runner/` and `mechanisms/<MechanismId>/<DisciplineId>/`
 - for each selected clause in the repository's own rule set: `mechanisms/<MechanismId>/runner/` only, since the discipline and its piece live in that rule set
 - to apply judgement rules in review: `rules/<DisciplineId>/` for each adopted judgement rule, and `methods/`; the check itself never reads them
 
 `package.json` is fetched for its `"type": "module"`. Every runtime file is an ES module, and Node takes a file's module type from the nearest `package.json` above it; without this one, that is the consumer's own, and under `"type": "commonjs"` the check crashes.
+
+`package-lock.json` pins core's own packages. Install them inside the install directory with `npm ci --omit=dev --legacy-peer-deps --ignore-scripts`, which installs exactly those and nothing of the toolchain. The toolchain is declared as peer dependencies and comes from the repository being checked; see [Runtime](#runtime).
 
 Leave out test files (`*.test.ts`), `tests/` folders and `test-fixtures/` folders. The install must not sit under a `node_modules` path, because Node does not strip types there. Nothing core reads or writes is under a harness directory.
 
@@ -141,13 +143,14 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 - Windows, Linux, macOS or WSL. Core keeps absolute paths in the platform's own form and repository paths in POSIX form, as git reports them.
 - Node 22.18.0 or later, which runs `.ts` source by stripping types (`engines.node` in `package.json`). The team's own ESLint run needs it too, since the projection imports each piece's `.ts` plugin module.
 - git 2.24 or later. Older git rejects `--end-of-options`, so the changed-file query fails and forfeiture is reported unmeasured.
-- `zod`, for core.
-- The audit mechanism adds `typescript`.
-- The ESLint mechanism adds the team's `eslint` 9.x or 10.x, an `@typescript-eslint/parser` that supports it, and `@eslint/plugin-kit`. The team's own ESLint run, which loads the projection and the pieces' plugin modules, is tested on 9.39.5 (every piece's shared cases, in `eslint-9-compatibility.test.ts`) and on 10.11.0; core's own check run always uses the `eslint` it ships with, whatever the team runs. Versions before 9.0 are not supported.
+- Core's own packages, `zod`, `jsonc-parser` and `@eslint/plugin-kit`, exact-pinned in `dependencies`, locked by `package-lock.json` and installed inside the install directory. They are implementation details: nothing of theirs crosses into the repository's code or configuration.
+- The repository's own toolchain, declared in `peerDependencies`: `typescript` `~6.0.3` for both mechanisms, and for the ESLint mechanism `eslint` `^9.39.5 || ^10.11.0`, `@typescript-eslint/parser` `^8.71.2` and `@typescript-eslint/eslint-plugin` `^8.71.2`. The ESLint peers are optional, so an audit-only selection needs only `typescript`.
+
+Core loads the toolchain by Node's own resolution, upward from the install directory, which is the same resolution the pieces' plugin modules get when the team's ESLint loads the projection. Core's query of the team's configuration, its governance run and the pieces therefore all use one copy, the repository's. Keep the toolchain resolvable from the repository root: declare it in the root `package.json` (in a pnpm workspace, `pnpm add -Dw`). A package may install a different ESLint for its own lint script; core's verdict still comes from the root's, and its governance behaviour is the same on either supported line. Core's tests run the governance path, every piece's shared cases and the consumer fixtures on ESLint 9.39.5 and 10.11.0.
+
+A peer that is missing, cannot load, or is outside its range stops the mechanism before any piece loads, with one line such as `load failure: runner-failed eslint toolchain-unavailable eslint found not installed, supported ^9.39.5 || ^10.11.0: add a supported version to the devDependencies of the repository root`.
 
 A repository can hold one `eslint.config.*` at its root or one per package. Core resolves the team's configuration the way the team's own ESLint run does. ESLint 10, and ESLint 9 started with `--flag v10_config_lookup_from_file` (or `unstable_config_lookup_from_file`), use the `eslint.config.*` nearest each checked file. Plain ESLint 9 uses only the one in the directory it runs from, so for a repository whose `eslint` resolves to 9.x at `node_modules/eslint` and whose lint scripts carry no such flag, core reads the root `eslint.config.*` for every file, and fails the run as `team-config-unloadable` if there is none. When core cannot read an installed `eslint` at the repository root it assumes the nearest-to-file lookup. Each config that applies to a file must spread the projection. Detection cannot see how a task runner starts ESLint, so `disciplines.json` can state the lookup: `"eslintConfigLookup": "nearest-to-file"` or `"repository-root"`, which overrides detection. Both lookups are tested against monorepo fixtures with a config per package.
-
-The packages must resolve from the install directory.
 
 ## Known limits
 
@@ -180,4 +183,4 @@ This directory builds and tests on its own, using only its own configuration: `p
 | `lint` | Biome with `lint.biome.json` |
 | `test` | Vitest with `vitest.config.ts` |
 | `check` | all three in that order |
-| `install-proof` | `node scripts/install-proof.ts`: reads the install path list from § Installing in this README, builds CommonJS consumers in an OS temporary directory outside the working tree, installs the `dependencies` from this package's `package.json` there with `npm`, copies the listed paths into each consumer, and runs both commands under both mechanisms, expecting a fail on a class, a pass once it is removed, and a crash when the installed `package.json` is missing; the temporary directory is removed afterwards |
+| `install-proof` | `node scripts/install-proof.ts`: reads the install path list from § Installing in this README, builds CommonJS consumers in an OS temporary directory outside the working tree, each with its toolchain (the peers, at this package's development pins) in its own `devDependencies`: `typescript` alone for the audit consumers, ESLint 10 for one ESLint consumer and ESLint 9 for another. It installs that with `npm install`, copies the listed paths into the consumer, installs core's own packages there with `npm ci` from `package-lock.json`, and runs both commands, expecting a fail on a class, a pass once it is removed, a crash when the installed `package.json` is missing, and `toolchain-unavailable` for an ESLint consumer without `eslint`; the temporary directory is removed afterwards |

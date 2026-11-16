@@ -180,3 +180,11 @@ A core install from before the [why-chain contract](docs/why-chain-contract.md) 
 2. **Refresh core** as [ADOPTING.md](ADOPTING.md#10-update-and-remove) step 10 says, and run the check. Every chain that is unchanged since the base passes. If the run lists `legacy-chain-unmeasured`, step 1 is missing somewhere. Any `why-chain-refused` entry is a legacy chain that is new or edited since the base.
 3. **Rewrite each chain when you next touch its entry.** An edited entry with a legacy chain is refused until the chain follows the contract. Write the chain from the symptom down: ask why the exception exists, then ask why that answer is true, four more times. Add the `rootCheck` you ran today and the `readback`.
 4. **Queue a rewrite of the rest.** Nothing ends the grace period: a legacy chain whose entry is never touched stays accepted. To make every chain causal, rewrite the remaining ones as tracked work. Rewriting a chain is an edit, so each rewritten chain must pass the contract in that change.
+
+## 9. Moving core onto the repository's toolchain
+
+An install from before core declared `peerDependencies` carries its own `eslint` 10, `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin` and `typescript` in `tools/discipline-core/node_modules`, and core's own ESLint run used that copy whatever the repository ran. From this version core uses the repository's own copies. To move:
+
+1. **Put the toolchain in the repository root's `devDependencies`**, in the ranges [ADOPTING.md](ADOPTING.md#2-vendor-the-core-at-a-pinned-commit) step 2 lists. A repository that lints with ESLint 9.39.5 or later, or 10.11.0 or later, keeps its version.
+2. **Refresh core** as [ADOPTING.md](ADOPTING.md#10-update-and-remove) step 10 says. Copy `package-lock.json` with the other files, do not run `npm pkg delete`, and install with `npm ci`: it removes the old `tools/discipline-core/node_modules`, whose `eslint` would otherwise shadow the repository's.
+3. **Run the check.** It gives the same report as before on ESLint 9 or 10: core picks the configuration lookup the same way, and its governance run behaves the same on both lines. A `toolchain-unavailable` load failure names a package to install.
