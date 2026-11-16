@@ -82,13 +82,13 @@ const VERDICT_PATH_IN_COMMAND = /(?:^|[^\w.-])review-verdict\.json/i;
 // rather than the accumulation itself. The directory must be followed by a
 // separator or end the operand, and preceded by a separator or the operand start.
 const CAPTURES_PATH_IN_FILE_PATH =
-  /(?:^|[\\/])\.rin-gates-review-captures(?:[\\/]|$)/i;
+  /(?:^|[\\/])(?:\.rin-gates-review-captures(?:[\\/]|$)|review-close\.json$)/i;
 const CAPTURES_PATH_IN_COMMAND =
-  /(?:^|[^\w.-])\.rin-gates-review-captures(?:[\\/]|[^\w.-]|$)/i;
+  /(?:^|[^\w.-])(?:\.rin-gates-review-captures(?:[\\/]|[^\w.-]|$)|review-close\.json)/i;
 // A cheap substring pre-filter only — never an identity test. It exists so the
 // common command carries no anchored-regex cost, and every positive it produces
 // is re-tested by the anchored pattern above.
-const CAPTURES_SUBSTRING = /\.rin-gates-review-captures/i;
+const CAPTURES_SUBSTRING = /\.rin-gates-review-captures|review-close\.json/i;
 const FD_ONLY_REDIRECT = /\d*>>?\s*(?:\/dev\/null|nul)\b|\d*>&\d+/gi;
 const MUTATING_SHELL =
   /(>>?|\btee\b|\bcp\b|\bmv\b|\binstall\b|\btruncate\b|\brm\b|\bsed\b\s+[^\n|;&]*-i|\bdd\b)/i;

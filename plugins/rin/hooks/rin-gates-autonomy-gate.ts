@@ -82,6 +82,27 @@ import {
   type RosterResolution,
   resolveReviewRoster,
 } from "./shared-review-roster.ts";
+import { defaultReviewDecodersPort } from "../tools/rin-gates/review-decoders-port.ts";
+import {
+  type GateSlug,
+  isGateSlug,
+} from "../tools/rin-gates/rin-gate-namespace.ts";
+import {
+  type CloseReceipt,
+  closeReceiptRefusalOf,
+  SYNTHESIS_LENS,
+} from "../tools/rin-gates/rin-gates-bounded-close.ts";
+import {
+  declaredProducedArtifactPathsFor,
+  loadStageGraphNodes,
+  stageGraphPath,
+} from "../tools/rin-gates/rin-gates-reviewer-identity.ts";
+import { configBoundedCloseOptIn } from "../tools/rin-harness-config.ts";
+import { defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
+import {
+  closeReceiptReader,
+  inboundRowsFor,
+} from "./review-scribe-bounded-close.ts";
 
 type HookInput = {
   readonly tool_name?: string;
@@ -114,6 +135,7 @@ type ReviewVerdict = {
   readonly blockingFindings?: readonly string[];
   readonly emittedBy?: string;
   readonly binding?: unknown;
+  readonly boundedClose?: unknown;
 };
 
 type Result<T, E> =
@@ -522,6 +544,10 @@ type GatePorts = {
     readonly sha: string;
     readonly cwd: string;
   }) => Result<Buffer, string>;
+  readonly changedPathsSince: (input: {
+    readonly from: string;
+    readonly cwd: string;
+  }) => Result<readonly string[], string>;
 };
 
 // isAncestor maps exit 1 to a legitimate `false`, never to a failure — collapsing
@@ -546,6 +572,21 @@ const gatePorts = (): GatePorts => ({
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
+    return spawned.status === 0
+      ? succeed(
+          (spawned.stdout ?? "")
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line !== ""),
+        )
+      : failWith((spawned.stderr ?? "").trim());
+  },
+  changedPathsSince: ({ from, cwd }) => {
+    const spawned = spawnSync("git", ["diff", "--name-only", from], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     return spawned.status === 0
       ? succeed(
           (spawned.stdout ?? "")
@@ -796,6 +837,93 @@ const assertVerdictAuthorises = ({
   }
 };
 
+type BoundedCloseGatePorts = Pick<GatePorts, "changedPathsSince"> & {
+  readonly isBoundedCloseOnFor: (input: {
+    readonly recordName: string;
+  }) => boolean;
+  readonly readReceipt: (location: {
+    readonly recordDir: string;
+    readonly gate: GateSlug;
+  }) => CloseReceipt | null;
+  readonly reviewedArtifactPathsOf: (input: {
+    readonly gate: GateSlug;
+    readonly recordName: string;
+  }) => readonly string[];
+};
+
+const boundedCloseGatePorts = ({
+  invokingCheckout,
+}: {
+  readonly invokingCheckout: string;
+}): BoundedCloseGatePorts => ({
+  changedPathsSince: gatePorts().changedPathsSince,
+  isBoundedCloseOnFor: ({ recordName }) =>
+    configBoundedCloseOptIn({ projectDir: invokingCheckout, recordName })
+      .kind === "enabled",
+  readReceipt: closeReceiptReader({
+    ports: {
+      files: defaultFileTextPort(),
+      decoders: defaultReviewDecodersPort(),
+      join: (...segments) => join(...segments),
+    },
+  }),
+  reviewedArtifactPathsOf: ({ gate, recordName }) =>
+    declaredProducedArtifactPathsFor({
+      gate,
+      graph: loadStageGraphNodes(stageGraphPath()),
+    }).map((path) => `aidlc/spaces/${space}/intents/${recordName}/${path}`),
+});
+
+const boundedCloseRefusal = ({
+  verdict,
+  gate,
+  recordDir,
+  invokingCheckout,
+  roster,
+  ports,
+}: {
+  readonly verdict: ReviewVerdict;
+  readonly gate: string;
+  readonly recordDir: string;
+  readonly invokingCheckout: string;
+  readonly roster: RosterResolution;
+  readonly ports: BoundedCloseGatePorts;
+}): string | null => {
+  const recordName = basename(recordDir);
+  if (
+    !isGateSlug(gate) ||
+    roster.kind === "unreadable" ||
+    !roster.roster.includes(SYNTHESIS_LENS) ||
+    !ports.isBoundedCloseOnFor({ recordName })
+  ) {
+    return null;
+  }
+  const receipt = ports.readReceipt({ recordDir, gate });
+  const changed =
+    receipt === null
+      ? succeed<readonly string[]>([])
+      : ports.changedPathsSince({
+          from: receipt.closedHeadSha,
+          cwd: invokingCheckout,
+        });
+  if (changed.outcome === "failed") {
+    return `the gate could not derive what changed since '${gate}' closed (${changed.error}) — a diff that cannot be derived is never vacuously allowed.`;
+  }
+  return closeReceiptRefusalOf({
+    gate,
+    receipt,
+    verdictHeadSha: typeof verdict.headSha === "string" ? verdict.headSha : null,
+    verdictNamesReceipt: verdict.boundedClose !== undefined,
+    inboundRows: inboundRowsFor({
+      gate,
+      recordDir,
+      store: { readReceipt: ports.readReceipt },
+    }),
+    changedPathsSinceClose: changed.value,
+    reviewedArtifactPaths: ports.reviewedArtifactPathsOf({ gate, recordName }),
+  });
+};
+
 type ScopeCoverage =
   | { readonly kind: "covered" }
   | { readonly kind: "not-covered" }
@@ -968,6 +1096,15 @@ const main = async (): Promise<void> => {
     recordDirName: basename(recordDir),
     ports: gatePorts(),
   });
+  const closeRefusal = boundedCloseRefusal({
+    verdict,
+    gate,
+    recordDir,
+    invokingCheckout,
+    roster: reviewRosterFor(gate),
+    ports: boundedCloseGatePorts({ invokingCheckout }),
+  });
+  if (closeRefusal !== null) deny(closeRefusal);
 
   process.exit(0);
 };
@@ -980,6 +1117,8 @@ export {
   gatedInvocationFrom,
   type BindingReadFailure,
   bindingOf,
+  type BoundedCloseGatePorts,
+  boundedCloseRefusal,
   phaseOfGate,
   type RecordsOnlyDrift,
   type ReviewVerdict,

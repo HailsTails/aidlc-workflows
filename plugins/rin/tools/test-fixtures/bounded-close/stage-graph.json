@@ -1,0 +1,20 @@
+[
+  {
+    "slug": "rin-gate-1-framing",
+    "phase": "inception",
+    "scopes": ["rin-gates"],
+    "reviewer": "rin-decorrelated-review-agent",
+    "lead_agent": "rin-product-agent",
+    "support_agents": ["rin-architect-agent"],
+    "produces": ["rin-requirements"]
+  },
+  {
+    "slug": "rin-gate-2-plan-review",
+    "phase": "inception",
+    "scopes": ["rin-gates"],
+    "reviewer": "rin-decorrelated-review-agent",
+    "lead_agent": "rin-product-agent",
+    "support_agents": ["rin-architect-agent"],
+    "produces": ["rin-solution-options"]
+  }
+]

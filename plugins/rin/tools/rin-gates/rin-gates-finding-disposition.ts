@@ -21,6 +21,18 @@ const DEFER_WITH_ACK = /^DEFER(?:RED)?\s*\([^)]*\S[^)]*\)/i;
 
 const WITHDRAWN_WITH_REASON = /^WITHDRAWN\s*\([^)]*\S[^)]*\)/i;
 
+const FORWARDED_TO_GATE =
+  /^FORWARDED\s*\(\s*(rin-gate-[0-9]-[a-z0-9-]+)\s*\)/i;
+
+const REJECTED_WITH_GROUND = /^REJECTED\s*\(\s*(\S(?:.*\S)?)\s*\)$/i;
+
+const CLOSING_RULING_SHAPES: readonly RegExp[] = [
+  FORWARDED_TO_GATE,
+  REJECTED_WITH_GROUND,
+];
+
+const CLOSING_RULING_WORDS = ["FORWARDED", "REJECTED"] as const;
+
 const DISPOSITION_SHAPES: readonly RegExp[] = [
   FIXED_WITH_SHA,
   PUSH_BACK_WITH_GROUND,
@@ -135,27 +147,65 @@ const DISPOSITION_PREFIX = new RegExp(
 const claimedJudgements = (finding: string): number =>
   [...finding.matchAll(DISPOSITION_PREFIX)].length;
 
+const CLOSING_RULING_PREFIX = new RegExp(
+  `\\b(?:${[...DISPOSITION_WORDS, ...CLOSING_RULING_WORDS].join("|")})\\b\\s*[(@:]`,
+  "gi",
+);
+
+const forwardTargetOf = ({
+  disposition,
+}: {
+  readonly disposition: string;
+}): string | null =>
+  disposition.trim().match(FORWARDED_TO_GATE)?.[1]?.toLowerCase() ?? null;
+
+const rejectionGroundOf = ({
+  disposition,
+}: {
+  readonly disposition: string;
+}): string | null =>
+  disposition.trim().match(REJECTED_WITH_GROUND)?.[1] ?? null;
+
+const isForwardPlacement = ({
+  disposition,
+}: {
+  readonly disposition: string;
+}): boolean => forwardTargetOf({ disposition }) !== null;
+
+const disposesByClosingRuling = ({
+  disposition,
+}: {
+  readonly disposition: string;
+}): boolean =>
+  [...disposition.matchAll(CLOSING_RULING_PREFIX)].length <= 1 &&
+  CLOSING_RULING_SHAPES.some((shape) => shape.test(disposition.trim()));
+
 const disposes = ({
   disposition,
   chainComplete,
   exceptionWhyChainsEnabled,
+  closingRulingOutcomesEnabled,
 }: {
   readonly disposition: string;
   readonly chainComplete: boolean;
   readonly exceptionWhyChainsEnabled: boolean;
+  readonly closingRulingOutcomesEnabled: boolean;
 }): boolean =>
-  claimedJudgements(disposition) <= 1 &&
-  DISPOSITION_SHAPES.some((shape) => shape.test(disposition)) &&
-  (!exceptionWhyChainsEnabled ||
-    !isExceptionDisposition(disposition) ||
-    chainComplete);
+  (closingRulingOutcomesEnabled && disposesByClosingRuling({ disposition })) ||
+  (claimedJudgements(disposition) <= 1 &&
+    DISPOSITION_SHAPES.some((shape) => shape.test(disposition)) &&
+    (!exceptionWhyChainsEnabled ||
+      !isExceptionDisposition(disposition) ||
+      chainComplete));
 
 const isDisposed = ({
   finding,
   exceptionWhyChainsEnabled,
+  closingRulingOutcomesEnabled,
 }: {
   readonly finding: string;
   readonly exceptionWhyChainsEnabled: boolean;
+  readonly closingRulingOutcomesEnabled: boolean;
 }): boolean => {
   const row = judgedRowOf(finding);
   switch (row.kind) {
@@ -164,12 +214,14 @@ const isDisposed = ({
         disposition: row.disposition,
         chainComplete: carriesNumberedChain(row.chain),
         exceptionWhyChainsEnabled,
+        closingRulingOutcomesEnabled,
       });
     case "prose":
       return disposes({
         disposition: row.text,
         chainComplete: carriesCompleteChain(row.text),
         exceptionWhyChainsEnabled,
+        closingRulingOutcomesEnabled,
       });
   }
 };
@@ -177,12 +229,19 @@ const isDisposed = ({
 const blockingFindingsWithPolicy = ({
   findings,
   exceptionWhyChainsEnabled,
+  closingRulingOutcomesEnabled = false,
 }: {
   readonly findings: readonly string[];
   readonly exceptionWhyChainsEnabled: boolean;
+  readonly closingRulingOutcomesEnabled?: boolean;
 }): readonly string[] =>
   findings.filter(
-    (finding) => !isDisposed({ finding, exceptionWhyChainsEnabled }),
+    (finding) =>
+      !isDisposed({
+        finding,
+        exceptionWhyChainsEnabled,
+        closingRulingOutcomesEnabled,
+      }),
   );
 
 export const blockingFindingsIn = (
@@ -193,5 +252,8 @@ export const blockingFindingsIn = (
 export {
   blockingFindingsWithPolicy,
   carriesCompleteChain,
+  forwardTargetOf,
   isExceptionDisposition,
+  isForwardPlacement,
+  rejectionGroundOf,
 };

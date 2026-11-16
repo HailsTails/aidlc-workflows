@@ -45,13 +45,37 @@ import {
   declaredBoardStageSegmentsFor,
   declaredReviewArtifactPathFor,
   declaredReviewerFor,
+  declaredSeatsFor,
   loadStageGraphNodes,
   stageGraphPath,
 } from "../tools/rin-gates/rin-gates-reviewer-identity.ts";
 import {
+  configBoundedCloseOptIn,
   configR7OptIn,
   requiresExceptionWhyChains,
 } from "../tools/rin-harness-config.ts";
+import {
+  type AttemptLedgerEntry,
+  type AttemptState,
+  type AttemptStep,
+  attemptStateOf,
+  type BoundedClosePolicy,
+  CLOSE_RECEIPT_FILENAME,
+  closeReceiptOf,
+  describeInvalidation,
+  describeRulingProblem,
+  invalidatedReceiptOf,
+  type LensReportCapture,
+  openRowLineOf,
+  type ReceiptInvalidation,
+  ruledRowLineOf,
+  stepAttempt,
+  SYNTHESIS_LENS,
+} from "../tools/rin-gates/rin-gates-bounded-close.ts";
+import {
+  boundedClosePolicyFor,
+  boundedCloseStore,
+} from "./review-scribe-bounded-close.ts";
 import {
   type LensReport,
   lensReportFromHookPayload,
@@ -870,13 +894,387 @@ const engineReceiptFor = ({
   return receipt;
 };
 
+const closeStore = boundedCloseStore({
+  ports: { files, decoders, join, dirname },
+  capturesDirectory: CAPTURES_DIR,
+});
+
+const boundedClosePolicyOf = ({
+  checkoutRoot,
+  recordDir,
+  recordName,
+  gate,
+}: {
+  readonly checkoutRoot: string;
+  readonly recordDir: string;
+  readonly recordName: string;
+  readonly gate: string;
+}): BoundedClosePolicy | null => {
+  const boundedClose = configBoundedCloseOptIn({
+    projectDir: checkoutRoot,
+    recordName,
+  });
+  if (boundedClose.kind === "disabled") return null;
+  const whyChains = configR7OptIn({ projectDir: checkoutRoot });
+  if (whyChains.kind === "invalid") return null;
+  return boundedClosePolicyFor({
+    gate,
+    recordDir,
+    rosterFor: reviewRosterFor,
+    store: closeStore,
+    exceptionWhyChainsEnabled: requiresExceptionWhyChains({
+      optIn: whyChains,
+    }),
+  });
+};
+
+type BoundedCloseVerdict = {
+  readonly context: ReviewContext;
+  readonly headSha: string;
+  readonly aggregate: "READY" | "NOT-READY";
+  readonly findings: readonly string[];
+  readonly blockingFindings: readonly string[];
+  readonly reports: readonly LensReportCapture[];
+  readonly attempt: number;
+  readonly boardHeadSha: string;
+};
+
+const writeBoundedCloseVerdict = ({
+  context,
+  headSha,
+  aggregate,
+  findings,
+  blockingFindings,
+  reports,
+  attempt,
+  boardHeadSha,
+}: BoundedCloseVerdict): readonly string[] => {
+  const gateDir = join(context.recordDir, ...context.gateSegments);
+  mkdirSync(gateDir, { recursive: true });
+  const lenses = [...new Set(reports.map((report) => report.lens))];
+  const verdict = {
+    gate: context.gate,
+    taskId: context.recordName,
+    headSha,
+    verdict: aggregate,
+    lenses,
+    findings,
+    blockingFindings,
+    reports: reports.map((report) => ({ ...report, gate: context.gate })),
+    reportsComplete:
+      reports.length > 0 &&
+      reports.every(
+        (report) =>
+          report.reportText !== null && report.reportText.trim() !== "",
+      ),
+    emittedBy: "rin-gates-review-scribe",
+    reviewedAt: nowIso(),
+    boundedClose: { receipt: CLOSE_RECEIPT_FILENAME, attempt, boardHeadSha },
+  };
+  writeFileSync(
+    join(gateDir, "review-verdict.json"),
+    `${JSON.stringify(verdict, null, 2)}\n`,
+    "utf-8",
+  );
+  return lenses;
+};
+
+const publishInvalidation = ({
+  context,
+  gate,
+  reason,
+}: {
+  readonly context: ReviewContext;
+  readonly gate: BoundedClosePolicy["gate"];
+  readonly reason: ReceiptInvalidation;
+}): void => {
+  const receipt = closeStore.readReceipt({
+    recordDir: context.recordDir,
+    gate,
+  });
+  if (receipt === null || receipt.validity.kind === "invalidated") return;
+  const description = describeInvalidation({ reason });
+  closeStore.writeReceipt({
+    recordDir: context.recordDir,
+    receipt: invalidatedReceiptOf({ receipt, reason, at: nowIso() }),
+  });
+  writeBoundedCloseVerdict({
+    context,
+    headSha: receipt.closedHeadSha,
+    aggregate: "NOT-READY",
+    findings: [],
+    blockingFindings: [`the closing receipt was invalidated: ${description}`],
+    reports: [],
+    attempt: receipt.attempt,
+    boardHeadSha: receipt.boardHeadSha,
+  });
+  runtime.diagnose(
+    `rin-gates review-scribe: the closing receipt for ${context.gate} is INVALIDATED — ${description}. The gate is no longer closed and its approve will be refused until its board runs again.\n`,
+  );
+};
+
+const openedAttemptOf = (
+  state: AttemptState,
+): Exclude<AttemptState, { readonly phase: "boarding" }> | null =>
+  state.phase === "boarding" ? null : state;
+
+const publishAttemptStep = ({
+  context,
+  policy,
+  capture,
+  step,
+}: {
+  readonly context: ReviewContext;
+  readonly policy: BoundedClosePolicy;
+  readonly capture: LensReportCapture;
+  readonly step: AttemptStep;
+}): never => {
+  if (step.invalidation !== null) {
+    publishInvalidation({
+      context,
+      gate: policy.gate,
+      reason: step.invalidation,
+    });
+  }
+  const opened = openedAttemptOf(step.state);
+  const traced = {
+    agentType: context.agentType,
+    gate: context.gate,
+    recordName: context.recordName,
+    headSha: capture.headSha,
+    boundedClose: step.event.kind,
+  };
+  switch (step.event.kind) {
+    case "board-incomplete":
+      return exitTraced({
+        outcome: "captured, roster incomplete",
+        captured: step.event.reported,
+        roster: policy.roster,
+        ...traced,
+      });
+    case "seat-dispatch-recorded":
+      return exitTraced({ outcome: "seat dispatch recorded", ...traced });
+    case "recheck-recorded": {
+      if (step.event.unadmitted.length > 0) {
+        runtime.diagnose(
+          `rin-gates review-scribe: ${step.event.unadmitted.length} finding(s) from ${context.agentType} were NOT ADMITTED at ${context.gate} — the first board is the only full board, and after it a lens speaks only to its own open rows by id.\n`,
+        );
+      }
+      return exitTraced({
+        outcome: "recheck recorded",
+        rechecked: step.event.rechecks.map((recheck) => recheck.rowId),
+        unadmitted: step.event.unadmitted.length,
+        ...traced,
+      });
+    }
+    case "ruling-refused":
+      return exitDiscarded({
+        reason: "closing ruling refused",
+        remedy: `Every open row needs exactly one outcome — fixed@<sha>, rejected(<ground>) or forwarded(<later gate>): ${step.event.problems.map((problem) => describeRulingProblem({ problem })).join("; ")}. Re-dispatch ${SYNTHESIS_LENS} for the ruling alone; do not re-run the board.`,
+        entry: traced,
+      });
+    case "board-open": {
+      if (opened === null) return exitTraced({ outcome: "no board", ...traced });
+      const rowLines = step.event.rows.map((row) => openRowLineOf({ row }));
+      const lenses = writeBoundedCloseVerdict({
+        context,
+        headSha: opened.board.headSha,
+        aggregate: "NOT-READY",
+        findings: rowLines,
+        blockingFindings: rowLines,
+        reports: opened.board.reports,
+        attempt: opened.attempt,
+        boardHeadSha: opened.board.headSha,
+      });
+      runtime.diagnose(
+        `rin-gates review-scribe: the board for ${context.gate} is complete and NOT-READY with ${rowLines.length} open row(s). This was the gate's one full board. Fix what you will fix and commit; a raising lens may recheck its own rows by id; then dispatch ${SYNTHESIS_LENS} alone for the closing ruling, which gives every row exactly one of fixed@<sha>, rejected(<ground>) or forwarded(<later gate>).\n${rowLines.map((line) => `  - ${line}`).join("\n")}\n`,
+      );
+      return exitTraced({
+        outcome: "verdict-written",
+        verdict: "NOT-READY",
+        lenses,
+        checkoutRoot: context.checkoutRoot,
+        receipt: engineReceiptFor({ context, aggregate: "NOT-READY" }),
+        ...traced,
+      });
+    }
+    case "closed": {
+      if (opened === null || opened.phase !== "closed") {
+        return exitTraced({ outcome: "no closure", ...traced });
+      }
+      closeStore.writeReceipt({
+        recordDir: context.recordDir,
+        receipt: closeReceiptOf({
+          state: opened,
+          record: context.recordName,
+          gate: policy.gate,
+        }),
+      });
+      const findings = step.event.closure.ruledRows.map((ruledRow) =>
+        ruledRowLineOf({ ruledRow }),
+      );
+      const lenses = writeBoundedCloseVerdict({
+        context,
+        headSha: step.event.closure.closedHeadSha,
+        aggregate: "READY",
+        findings,
+        blockingFindings: blockingFindingsWithPolicy({
+          findings,
+          exceptionWhyChainsEnabled: policy.exceptionWhyChainsEnabled,
+          closingRulingOutcomesEnabled: true,
+        }),
+        reports: [
+          ...opened.board.reports.filter(
+            (report) => report.lens !== capture.lens,
+          ),
+          capture,
+        ],
+        attempt: opened.attempt,
+        boardHeadSha: opened.board.headSha,
+      });
+      return exitTraced({
+        outcome: "verdict-written",
+        verdict: "READY",
+        closedBy: step.event.closure.closedBy,
+        lenses,
+        checkoutRoot: context.checkoutRoot,
+        receipt: engineReceiptFor({ context, aggregate: "READY" }),
+        ...traced,
+      });
+    }
+  }
+};
+
+const closeBoundedly = ({
+  report,
+  context,
+  block,
+  headSha,
+  policy,
+}: {
+  readonly report: LensReport;
+  readonly context: ReviewContext;
+  readonly block: LensVerdict;
+  readonly headSha: string;
+  readonly policy: BoundedClosePolicy;
+}): never => {
+  const capture: LensReportCapture = {
+    lens: context.agentType,
+    verdict: block.verdict,
+    findings: [...block.findings],
+    headSha,
+    at: nowIso(),
+    sessionId: report.sessionId,
+    agentId: report.agentId,
+    channel: report.channel,
+    reportText: report.reportText ?? null,
+  };
+  const entry: AttemptLedgerEntry = { kind: "report", capture };
+  const step = stepAttempt({
+    state: attemptStateOf({
+      entries: closeStore.readLedger({
+        recordName: context.recordName,
+        gate: policy.gate,
+      }),
+      policy,
+    }),
+    entry,
+    policy,
+  });
+  closeStore.appendLedger({
+    recordName: context.recordName,
+    gate: policy.gate,
+    entry,
+  });
+  return publishAttemptStep({ context, policy, capture, step });
+};
+
+const recordSeatDispatch = ({
+  report,
+}: {
+  readonly report: LensReport;
+}): never => {
+  const checkoutRoot = checkoutRootFromCwd(report.cwd) ?? WORKSPACE_ROOT;
+  if (
+    IS_TEST_MODE &&
+    (checkoutRoot === WORKSPACE_ROOT || checkoutRoot === PROJECT_DIR)
+  ) {
+    return runtime.exit(0);
+  }
+  const recordDir = activeRecordDir(checkoutRoot);
+  if (recordDir === null) return runtime.exit(0);
+  const recordName = recordNameOf(recordDir);
+  const gate = currentGate(recordDir);
+  const gateSegments = gate === null ? null : gateDirSegments(gate);
+  if (recordName === null || gate === null || gateSegments === null) {
+    return runtime.exit(0);
+  }
+  const policy = boundedClosePolicyOf({
+    checkoutRoot,
+    recordDir,
+    recordName,
+    gate,
+  });
+  if (policy === null) return runtime.exit(0);
+  const seats = declaredSeatsFor({
+    gate,
+    graph: loadStageGraphNodes(stageGraphPath()),
+  });
+  if (!seats.includes(report.agentType)) return runtime.exit(0);
+  const entry: AttemptLedgerEntry = {
+    kind: "seat-dispatch",
+    agentType: report.agentType,
+    at: nowIso(),
+  };
+  const step = stepAttempt({
+    state: attemptStateOf({
+      entries: closeStore.readLedger({ recordName, gate: policy.gate }),
+      policy,
+    }),
+    entry,
+    policy,
+  });
+  if (step.invalidation === null) return runtime.exit(0);
+  closeStore.appendLedger({ recordName, gate: policy.gate, entry });
+  publishInvalidation({
+    context: {
+      agentType: report.agentType,
+      checkoutRoot,
+      recordDir,
+      recordName,
+      gate,
+      gateSegments,
+    },
+    gate: policy.gate,
+    reason: step.invalidation,
+  });
+  return exitTraced({
+    outcome: "closing receipt invalidated",
+    agentType: report.agentType,
+    gate,
+    recordName,
+  });
+};
+
 const main = async (): Promise<void> => {
   const report = await lensReportFromStdin();
+  if (!isReviewerLens(report.agentType)) recordSeatDispatch({ report });
   const context = reviewContextFor({ report });
   recordHandbackDelivered(report);
 
   const block = lensVerdictFor({ report, context });
   const headSha = reviewedHeadShaFor({ report, context, block });
+
+  const boundedClosePolicy = boundedClosePolicyOf(context);
+  if (boundedClosePolicy !== null) {
+    closeBoundedly({
+      report,
+      context,
+      block,
+      headSha,
+      policy: boundedClosePolicy,
+    });
+  }
 
   const { captures, roster } = captureBoardReview({
     report,

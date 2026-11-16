@@ -119,6 +119,38 @@ describe("reads are allowed — the verdict is writable-only, not readable-only"
   });
 });
 
+const CLOSE_RECEIPT =
+  "aidlc/spaces/default/intents/260724-support-router/inception/rin-gate-1-framing/review-close.json";
+
+describe("the closing receipt is written and removed by the scribe alone", () => {
+  test("denies a Write at a closing receipt", async () => {
+    const outcome = await runGuard(writePayload(CLOSE_RECEIPT));
+    expect(outcome.exitCode).toBe(2);
+  });
+
+  test("denies deleting a closing receipt, which would erase its forwarded rows", async () => {
+    const outcome = await runGuard(bashPayload(`rm "${CLOSE_RECEIPT}"`));
+    expect(outcome.exitCode).toBe(2);
+  });
+
+  test("allows reading a closing receipt", async () => {
+    const outcome = await runGuard(bashPayload(`cat "${CLOSE_RECEIPT}"`));
+    expect(outcome.exitCode).toBe(0);
+  });
+
+  test("allows committing a closing receipt", async () => {
+    const outcome = await runGuard(bashPayload(`git add "${CLOSE_RECEIPT}"`));
+    expect(outcome.exitCode).toBe(0);
+  });
+
+  test("allows a Write at a file that only ends with the receipt's name", async () => {
+    const outcome = await runGuard(
+      writePayload("docs/sample-review-close.json"),
+    );
+    expect(outcome.exitCode).toBe(0);
+  });
+});
+
 describe("hand-authoring a verdict stays denied", () => {
   test("denies a Write at a verdict path", async () => {
     const outcome = await runGuard(writePayload(VERDICT));

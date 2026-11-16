@@ -180,6 +180,17 @@ the predicate to each lens's own verdict section. Collate every cited finding;
 omitting one does not remove it from the scribe's guarded verdict. Non-rin-gates
 scopes use the ordinary reviewer receipt and approval ritual.
 
+## One board, then a bounded close (flagged)
+
+This section applies only to a record that `rinGates.oneBoardBoundedClose` in `harness.config.json` covers (`"all"`, or `{ "records": [...] }` naming it), at a gate whose roster carries `rin-intent-defense-reviewer-agent`. For every other record Step 5 above applies unchanged. The review-scribe and the autonomy gate read the same flag and enforce what follows; nothing here is left to the lane.
+
+- **At entry, read the rows forwarded to this gate.** Each earlier gate's `review-close.json` lists its rows; a row whose outcome is `forwarded(<this gate>)` is owed here. Pass those rows, with their ids, to intent-defense in its board dispatch. The gate's approve is refused until its closing ruling gives each one an outcome.
+- **The first board is the only full board.** When it completes NOT-READY the scribe prints the open rows with their ids (`G<gate>-R<nn>`). A lens that returned READY keeps that READY across later commits and is not dispatched again.
+- **Fix, commit, and recheck only by row.** A lens that raised a row may read the fix and answer for its own rows, one line each: `- <row id> | FIXED or STILL-OPEN | <reason>`. Anything else it says after the first board is recorded as not admitted and blocks nothing.
+- **One closing ruling ends the gate.** Dispatch `rin-intent-defense-reviewer-agent` alone, on the open rows and the diff since the board. Its `## Verdict` is READY, echoes the current head, and carries one line per open row: `- <row id> | fixed@<sha> | <ground>`, `- <row id> | rejected(<ground>) | <note>`, or `- <row id> | forwarded(<later gate slug>) | <what that gate owes>`. `fixed` names a commit made after the board. A forward names a later gate that runs a board, and needs no why-chain: the receipt carries the row and the target gate cannot be approved until it rules on it. A ruling that leaves a row without exactly one of these outcomes is refused and names the row; re-dispatch the ruling alone.
+- **After the ruling, stop.** Editing a reviewed artefact, or dispatching any reviewer or seat for this record and gate, invalidates the receipt and the approve is refused until the board runs again. There is no agent reset and no park on this path.
+- **Engine iterations.** The board is the review's first iteration and the closing ruling its second; record each through the request the engine opened for it.
+
 ## Model selection (per each lens's projected frontmatter)
 
 Each lens runs on the model its own projected agent definition declares. Dispatch
