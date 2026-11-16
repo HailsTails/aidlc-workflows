@@ -1,7 +1,7 @@
 {
-  "release": "2.11.2",
-  "sourceCommit": "10a9bc9d85395a601de2624cf5bdd35292c10db4",
-  "location": "aidlc-release-v2.11.2/dist",
+  "release": "2.11.3",
+  "sourceCommit": "a8721be3631e6a254cf524ea57e5932aa56b4149",
+  "location": "aidlc-study-release-v2.11.3/dist",
   "stamps": [
     "claude/.claude/tools/data/aidlc-stamp.json",
     "codex/.codex/tools/data/aidlc-stamp.json",
