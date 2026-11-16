@@ -88,7 +88,9 @@ describe("the questions file fits the harness's question box", () => {
       for (const letter of (example ?? "").split(", ")) expect(letter <= last, `${name}: ${letter} past ${last}`).toBe(true);
     }
   });
+});
 
+describe("each host's letters are its own question box's", () => {
   test("each host's question box size is the one its question-rendering annex names", () => {
     for (const name of HARNESS_NAMES) {
       const path = join(REPO_ROOT, "harness", name, "skills", "aidlc", "question-rendering.md");
