@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createPathPort } from "../core/platform-ports/path-port.ts";
 import type { Result } from "../core/values/result.ts";
-import { type InMemoryFiles, inMemoryFiles } from "../tests/in-memory-files.ts";
+import { inMemoryFiles } from "../tests/in-memory-files.ts";
+import { recordingBundler } from "../tests/recording-bundler.ts";
 import type { Bundle, BundledOutput, BundleFailure, BundlerPort } from "./esbuild-bundler-port.ts";
 import { buildPackage } from "./package-build.ts";
 
@@ -24,7 +25,7 @@ const DEVELOPMENT_MANIFEST = JSON.stringify({
 
 const LOCK = JSON.stringify({ lockfileVersion: 3, packages: { "": { version: "0.0.0" }, "node_modules/zod": { version: "4.4.3" } } });
 
-const SOURCE: Readonly<Record<string, string>> = {
+const SOURCE_WITHOUT_ZOD_LICENCE: Readonly<Record<string, string>> = {
   "/package/package.json": DEVELOPMENT_MANIFEST,
   "/package/tsconfig.json": "{}\n",
   "/package/README.md": "# Discipline core\n\n[Rules](rules/CD-15/README.md)\n",
@@ -41,11 +42,12 @@ const SOURCE: Readonly<Record<string, string>> = {
   "/package/rules/CD-15/README.md": "# CD-15\n",
   "/package/docs/why-chain-contract.md": "# Why-chain contract\n",
   "/deps/zod/package.json": '{ "name": "zod", "version": "4.4.3", "license": "MIT" }',
-  "/deps/zod/LICENSE": "MIT License\n",
 };
 
-const entryOutput = (request: { readonly source: string; readonly text: string }): BundledOutput => ({
-  path: request.source.replace(/\.ts$/, ".js"),
+const SOURCE: Readonly<Record<string, string>> = { ...SOURCE_WITHOUT_ZOD_LICENCE, "/deps/zod/LICENSE": "MIT License\n" };
+
+const entryOutput = (request: { readonly source: string; readonly path: string; readonly text: string }): BundledOutput => ({
+  path: request.path,
   text: request.text,
   entryPoint: request.source,
   inputs: [request.source],
@@ -60,14 +62,24 @@ const CHUNK: BundledOutput = {
   externalImports: ["typescript", "eslint/use-at-your-own-risk"],
 };
 
+const CHECK_COMMAND = entryOutput({
+  source: "core/check/check-command.ts",
+  path: "core/check/check-command.js",
+  text: "#!/usr/bin/env node\nawait run();\n",
+});
+
+const PROJECT_COMMAND = entryOutput({
+  source: "core/check/project-command.ts",
+  path: "core/check/project-command.js",
+  text: "#!/usr/bin/env node\nawait project();\n",
+});
+
+const RUNNER = entryOutput({ source: "mechanisms/audit/runner/runner.ts", path: "mechanisms/audit/runner/runner.js", text: "export const runner = {};\n" });
+
+const LOOPS = entryOutput({ source: "mechanisms/audit/CD-15/loops.ts", path: "mechanisms/audit/CD-15/loops.js", text: "export const check = {};\n" });
+
 const BUNDLE: Bundle = {
-  outputs: [
-    entryOutput({ source: "core/check/check-command.ts", text: "#!/usr/bin/env node\nawait run();\n" }),
-    entryOutput({ source: "core/check/project-command.ts", text: "#!/usr/bin/env node\nawait project();\n" }),
-    entryOutput({ source: "mechanisms/audit/runner/runner.ts", text: "export const runner = {};\n" }),
-    entryOutput({ source: "mechanisms/audit/CD-15/loops.ts", text: "export const check = {};\n" }),
-    CHUNK,
-  ],
+  outputs: [CHECK_COMMAND, PROJECT_COMMAND, RUNNER, LOOPS, CHUNK],
   packageRoots: ["node_modules/zod"],
 };
 
@@ -90,50 +102,37 @@ const builtWith = (request: { readonly source: Readonly<Record<string, string>>;
   };
 };
 
-const outputOf = (request: { readonly texts: Readonly<Record<string, string>> }): Readonly<Record<string, string>> =>
-  Object.fromEntries(Object.entries(request.texts).filter(([path]) => path.startsWith("/out/")));
-
-const stagedPaths = (request: { readonly files: InMemoryFiles }): readonly string[] =>
-  Object.keys(request.files.texts())
-    .filter((path) => path.startsWith(`${STAGE_SOURCE}/`))
-    .map((path) => path.slice(STAGE_SOURCE.length + 1))
-    .sort();
-
 const NOTHING_WRITTEN = { "/out/stale.js": "stale\n" };
 
 describe("buildPackage", () => {
   it("bundles the commands, runners and shipped piece modules from a stage holding core's code and core's own installed packages, with each peer external", async () => {
     const files = inMemoryFiles({ initial: SOURCE });
-    const seen: { staged: readonly string[] } = { staged: [] };
-    const bundler: BundlerPort = {
-      bundle: vi.fn<BundlerPort["bundle"]>().mockImplementation(() => {
-        seen.staged = stagedPaths({ files });
-        return Promise.resolve({ outcome: "ok", value: BUNDLE });
-      }),
-    };
+    const recording = recordingBundler({ files, stage: STAGE_SOURCE, bundle: { outcome: "ok", value: BUNDLE } });
 
     await buildPackage({
-      ports: { path: posixPath, fileText: files.fileText, scratch: files.scratch, bundler },
+      ports: { path: posixPath, fileText: files.fileText, scratch: files.scratch, bundler: recording.bundler },
       packageRoot: "/package",
       outputRoot: "/out",
       dependencies: "/deps",
     });
 
-    expect({ calls: vi.mocked(bundler.bundle).mock.calls, staged: seen.staged, left: stagedPaths({ files }) }).toEqual({
-      calls: [
-        [
-          {
-            sourceRoot: STAGE_SOURCE,
-            entryPoints: [
-              "core/check/check-command.ts",
-              "core/check/project-command.ts",
-              "mechanisms/audit/runner/runner.ts",
-              "mechanisms/audit/CD-15/loops.ts",
-            ],
-            external: ["eslint", "eslint/*", "typescript", "typescript/*"],
-            target: "node22.13",
-          },
-        ],
+    expect({
+      requests: recording.requests(),
+      staged: recording.stagedWhenBundled(),
+      left: files.pathsUnder({ folder: STAGE_SOURCE }),
+    }).toEqual({
+      requests: [
+        {
+          sourceRoot: STAGE_SOURCE,
+          entryPoints: [
+            "core/check/check-command.ts",
+            "core/check/project-command.ts",
+            "mechanisms/audit/runner/runner.ts",
+            "mechanisms/audit/CD-15/loops.ts",
+          ],
+          external: ["eslint", "eslint/*", "typescript", "typescript/*"],
+          target: "node22.13",
+        },
       ],
       staged: [
         "core/check/check-command.ts",
@@ -153,10 +152,10 @@ describe("buildPackage", () => {
   it("replaces the output root with the bundle, the shipped documents and data, the built pieces, the notices and the published manifest", async () => {
     const { files, built } = builtWith({ source: SOURCE, bundler: bundlerReturning({ outcome: "ok", value: BUNDLE }) });
 
-    const result = await built;
+    const packaged = await built;
 
-    expect({ result, written: Object.keys(outputOf({ texts: files.texts() })).sort() }).toEqual({
-      result: {
+    expect({ packaged, written: files.pathsUnder({ folder: "/out" }) }).toEqual({
+      packaged: {
         outcome: "ok",
         value: {
           outputRoot: "/out",
@@ -178,19 +177,19 @@ describe("buildPackage", () => {
         },
       },
       written: [
-        "/out/LICENSE",
-        "/out/README.md",
-        "/out/THIRD-PARTY-NOTICES.md",
-        "/out/chunks/chunk-A.js",
-        "/out/core/check/check-command.js",
-        "/out/core/check/project-command.js",
-        "/out/docs/why-chain-contract.md",
-        "/out/mechanisms/audit/CD-15/loops.js",
-        "/out/mechanisms/audit/CD-15/piece.json",
-        "/out/mechanisms/audit/runner/runner.js",
-        "/out/package.json",
-        "/out/rules/CD-15/README.md",
-        "/out/rules/CD-15/discipline.json",
+        "LICENSE",
+        "README.md",
+        "THIRD-PARTY-NOTICES.md",
+        "chunks/chunk-A.js",
+        "core/check/check-command.js",
+        "core/check/project-command.js",
+        "docs/why-chain-contract.md",
+        "mechanisms/audit/CD-15/loops.js",
+        "mechanisms/audit/CD-15/piece.json",
+        "mechanisms/audit/runner/runner.js",
+        "package.json",
+        "rules/CD-15/README.md",
+        "rules/CD-15/discipline.json",
       ],
     });
   });
@@ -212,10 +211,10 @@ describe("buildPackage", () => {
   it("fails naming each output that imports a package it neither bundles nor declares as a peer, writing nothing", async () => {
     const { files, built } = builtWith({
       source: SOURCE,
-      bundler: withOutputs([...BUNDLE.outputs.slice(0, 4), { ...CHUNK, externalImports: ["levn", "typescript"] }]),
+      bundler: withOutputs([CHECK_COMMAND, PROJECT_COMMAND, RUNNER, LOOPS, { ...CHUNK, externalImports: ["levn", "typescript"] }]),
     });
 
-    expect({ result: await built, written: outputOf({ texts: files.texts() }) }).toEqual({
+    expect({ result: await built, written: files.textsUnder({ folder: "/out" }) }).toEqual({
       result: {
         outcome: "failed",
         error: "FAIL: bundle: an output imports what is neither bundled, a node: builtin nor a declared peer: chunks/chunk-A.js imports levn",
@@ -225,13 +224,12 @@ describe("buildPackage", () => {
   });
 
   it("fails naming an entry whose code was moved into a shared chunk, writing nothing", async () => {
-    const [checkCommand, projectCommand, runner, loops] = BUNDLE.outputs;
     const { files, built } = builtWith({
       source: SOURCE,
-      bundler: withOutputs([checkCommand, projectCommand, { ...runner, inputs: [] }, loops, CHUNK]),
+      bundler: withOutputs([CHECK_COMMAND, PROJECT_COMMAND, { ...RUNNER, inputs: [] }, LOOPS, CHUNK]),
     });
 
-    expect({ result: await built, written: outputOf({ texts: files.texts() }) }).toEqual({
+    expect({ result: await built, written: files.textsUnder({ folder: "/out" }) }).toEqual({
       result: {
         outcome: "failed",
         error:
@@ -247,7 +245,7 @@ describe("buildPackage", () => {
       bundler: bundlerReturning({ outcome: "ok", value: BUNDLE }),
     });
 
-    expect({ result: await built, written: outputOf({ texts: files.texts() }) }).toEqual({
+    expect({ result: await built, written: files.textsUnder({ folder: "/out" }) }).toEqual({
       result: {
         outcome: "failed",
         error: "FAIL: bundle: a bundled package is not the one install/package-lock.json locks: zod 4.4.2 at node_modules/zod, but the lock holds 4.4.3",
@@ -262,7 +260,7 @@ describe("buildPackage", () => {
       bundler: bundlerReturning({ outcome: "ok", value: BUNDLE }),
     });
 
-    expect({ result: await built, written: outputOf({ texts: files.texts() }) }).toEqual({
+    expect({ result: await built, written: files.textsUnder({ folder: "/out" }) }).toEqual({
       result: {
         outcome: "failed",
         error: "FAIL: a shipped page links to a file the package does not ship: README.md links to tests/test-fixtures/walkthrough",
@@ -273,11 +271,11 @@ describe("buildPackage", () => {
 
   it("fails naming a bundled package that ships no licence file, writing nothing", async () => {
     const { files, built } = builtWith({
-      source: Object.fromEntries(Object.entries(SOURCE).filter(([path]) => path !== "/deps/zod/LICENSE")),
+      source: SOURCE_WITHOUT_ZOD_LICENCE,
       bundler: bundlerReturning({ outcome: "ok", value: BUNDLE }),
     });
 
-    expect({ result: await built, written: outputOf({ texts: files.texts() }) }).toEqual({
+    expect({ result: await built, written: files.textsUnder({ folder: "/out" }) }).toEqual({
       result: { outcome: "failed", error: "FAIL: bundle zod: it ships no licence file to reproduce" },
       written: NOTHING_WRITTEN,
     });
@@ -289,7 +287,7 @@ describe("buildPackage", () => {
       bundler: bundlerReturning({ outcome: "failed", error: { kind: "bundle-failed", detail: 'Could not resolve "x"' } }),
     });
 
-    expect({ result: await built, written: outputOf({ texts: files.texts() }), staged: stagedPaths({ files }) }).toEqual({
+    expect({ result: await built, written: files.textsUnder({ folder: "/out" }), staged: files.pathsUnder({ folder: STAGE_SOURCE }) }).toEqual({
       result: { outcome: "failed", error: 'FAIL: bundle: Could not resolve "x"' },
       written: NOTHING_WRITTEN,
       staged: [],

@@ -73,7 +73,7 @@ const copiedInstallFile = (request: CommandPorts & {
 };
 
 const installedDependenciesIn = (request: CommandPorts & { readonly packageRoot: string; readonly folder: string }): Done<string> => {
-  const copied = INSTALL_FILES.map((name) => copiedInstallFile({ ...request, name })).find((result) => result.outcome === "failed");
+  const copied = INSTALL_FILES.map((name) => copiedInstallFile({ ...request, name })).find((staged) => staged.outcome === "failed");
   if (copied !== undefined) {
     return copied;
   }

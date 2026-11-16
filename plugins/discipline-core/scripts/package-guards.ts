@@ -24,11 +24,14 @@ const lockSchema = z.object({
   packages: z.record(z.string(), z.looseObject({ version: z.string().optional() })),
 });
 
-const isPeerImport = (request: { readonly specifier: string; readonly peers: readonly string[] }): boolean =>
-  request.peers.some((peer) => request.specifier === peer || request.specifier.startsWith(`${peer}/`));
+type ExternalImport = "builtin" | "peer" | "unbundled";
 
-const isAllowedImport = (request: { readonly specifier: string; readonly peers: readonly string[] }): boolean =>
-  request.specifier.startsWith(BUILTIN_PREFIX) || isPeerImport(request);
+const externalImportOf = (request: { readonly specifier: string; readonly peers: readonly string[] }): ExternalImport => {
+  if (request.specifier.startsWith(BUILTIN_PREFIX)) {
+    return "builtin";
+  }
+  return request.peers.some((peer) => request.specifier === peer || request.specifier.startsWith(`${peer}/`)) ? "peer" : "unbundled";
+};
 
 export const unbundledImportsOf = (request: {
   readonly outputs: readonly BundledOutput[];
@@ -36,24 +39,28 @@ export const unbundledImportsOf = (request: {
 }): readonly string[] =>
   request.outputs.flatMap((output) =>
     output.externalImports
-      .filter((specifier) => !isAllowedImport({ specifier, peers: request.peers }))
+      .filter((specifier) => externalImportOf({ specifier, peers: request.peers }) === "unbundled")
       .map((specifier) => `${output.path} imports ${specifier}`),
   );
 
-const emittedInPlace = (request: { readonly entryPoint: string; readonly outputs: readonly BundledOutput[] }): boolean =>
+type EntryPlacement = "in-place" | "misplaced";
+
+const entryPlacementOf = (request: { readonly entryPoint: string; readonly outputs: readonly BundledOutput[] }): EntryPlacement =>
   request.outputs.some(
     (output) =>
       output.path === builtModulePath({ path: request.entryPoint }) &&
       output.entryPoint === request.entryPoint &&
       output.inputs.includes(request.entryPoint),
-  );
+  )
+    ? "in-place"
+    : "misplaced";
 
 export const misplacedEntriesOf = (request: {
   readonly entryPoints: readonly string[];
   readonly outputs: readonly BundledOutput[];
 }): readonly string[] =>
   request.entryPoints
-    .filter((entryPoint) => !emittedInPlace({ entryPoint, outputs: request.outputs }))
+    .filter((entryPoint) => entryPlacementOf({ entryPoint, outputs: request.outputs }) === "misplaced")
     .map((entryPoint) => `${entryPoint} is not emitted with its own code at ${builtModulePath({ path: entryPoint })}`);
 
 const lockProblemOf = (request: {
@@ -88,8 +95,10 @@ const resolvedLink = (request: { readonly page: string; readonly link: string })
   return inside.endsWith("/") ? inside.slice(0, -1) : inside;
 };
 
-const isShipped = (request: { readonly target: string; readonly paths: readonly string[] }): boolean =>
-  request.paths.some((path) => path === request.target || path.startsWith(`${request.target}/`));
+type LinkTarget = "shipped" | "dead";
+
+const linkTargetOf = (request: { readonly target: string; readonly paths: readonly string[] }): LinkTarget =>
+  request.paths.some((path) => path === request.target || path.startsWith(`${request.target}/`)) ? "shipped" : "dead";
 
 export const deadLinksOf = (request: { readonly files: readonly ShippedText[] }): readonly string[] => {
   const paths = request.files.map((file) => file.path);
@@ -100,7 +109,7 @@ export const deadLinksOf = (request: { readonly files: readonly ShippedText[] })
         .map((match) => match[1])
         .filter((link) => !NOT_RELATIVE.test(link))
         .map((link) => resolvedLink({ page: file.path, link }))
-        .filter((target) => !isShipped({ target, paths }))
+        .filter((target) => linkTargetOf({ target, paths }) === "dead")
         .map((target) => `${file.path} links to ${target}`),
     );
 };

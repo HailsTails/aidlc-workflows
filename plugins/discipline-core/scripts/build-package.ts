@@ -10,7 +10,7 @@ await runBuildPackage({
   path: createDefaultPathPort({}),
   fileText: createDefaultFileTextPort({}),
   scratch: createDefaultScratchFilesPort({}),
-  bundler: createEsbuildBundlerPort({}),
+  bundler: createEsbuildBundlerPort({ path: createDefaultPathPort({}) }),
   commands: createDefaultCommandRunPort({}),
   moduleUrl: import.meta.url,
 });

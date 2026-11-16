@@ -9,6 +9,7 @@ import {
   PROOF_CASES,
   packagedConsumerManifest,
   parsedInstallList,
+  type ProofAction,
   type StepExpectation,
   toolchainManifest,
 } from "./install-proof-plan.ts";
@@ -259,55 +260,77 @@ describe("toolchainManifest, over this package's own package.json read as a buil
   });
 });
 
-const expectationsOf = (consumer: string) =>
-  PROOF_CASES.find((proofCase) => proofCase.consumer === consumer)?.actions.filter((action) => action.kind !== "read");
+const ESLINT_PROJECT: ProofAction = {
+  kind: "project",
+  expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } },
+};
+
+const ESLINT_AFTER_PROJECT: readonly ProofAction[] = [
+  { kind: "commit", message: "project" },
+  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  { kind: "remove", path: "src/kept.ts" },
+  { kind: "commit", message: "clean" },
+  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+];
+
+const PACKAGE_IMPORT_READ: ProofAction = {
+  kind: "read",
+  path: "disciplines.eslint.mjs",
+  contains: 'import piece0 from "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";',
+};
+
+const AUDIT_ACTIONS: readonly ProofAction[] = [
+  { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
+  { kind: "remove", path: "src/kept.ts" },
+  { kind: "commit", message: "clean" },
+  { kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } },
+  { kind: "project", expectation: { exitCode: 0, output: { kind: "empty" } } },
+];
+
+const ESLINT_MISSING_ACTIONS: readonly ProofAction[] = [
+  { kind: "project", expectation: { exitCode: 2, output: { kind: "contains", text: "toolchain-unavailable eslint found not installed" } } },
+];
 
 describe("the proof cases", () => {
   it("cover, on the copy route, an audit-only consumer, an ESLint consumer on each line's floor, one missing eslint and one missing the installed manifest, and the same first four on the package route, over three shared toolchains", () => {
-    expect(PROOF_CASES.map((proofCase) => [proofCase.consumer, proofCase.route, proofCase.toolchain])).toEqual([
-      ["audit", "copy", "typescript-floor"],
-      ["eslint-10", "copy", "eslint-10-floor"],
-      ["eslint-9", "copy", "eslint-9-floor"],
-      ["eslint-missing", "copy", "typescript-floor"],
-      ["no-package-json", "copy", "typescript-floor"],
-      ["audit-package", "package", "typescript-floor"],
-      ["eslint-10-package", "package", "eslint-10-floor"],
-      ["eslint-9-package", "package", "eslint-9-floor"],
-      ["eslint-missing-package", "package", "typescript-floor"],
+    expect(PROOF_CASES).toEqual([
+      expect.objectContaining({ consumer: "audit", route: "copy", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "eslint-10", route: "copy", toolchain: "eslint-10-floor" }),
+      expect.objectContaining({ consumer: "eslint-9", route: "copy", toolchain: "eslint-9-floor" }),
+      expect.objectContaining({ consumer: "eslint-missing", route: "copy", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "no-package-json", route: "copy", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "audit-package", route: "package", toolchain: "typescript-floor" }),
+      expect.objectContaining({ consumer: "eslint-10-package", route: "package", toolchain: "eslint-10-floor" }),
+      expect.objectContaining({ consumer: "eslint-9-package", route: "package", toolchain: "eslint-9-floor" }),
+      expect.objectContaining({ consumer: "eslint-missing-package", route: "package", toolchain: "typescript-floor" }),
     ]);
   });
 
   it("assert the same command expectations on the package route as on the copy route, plus the projection's package import", () => {
-    expect([
-      expectationsOf("audit-package"),
-      expectationsOf("eslint-10-package"),
-      expectationsOf("eslint-9-package"),
-      expectationsOf("eslint-missing-package"),
-      PROOF_CASES.find((proofCase) => proofCase.consumer === "eslint-10-package")?.actions.find((action) => action.kind === "read"),
-    ]).toEqual([
-      expectationsOf("audit"),
-      expectationsOf("eslint-10"),
-      expectationsOf("eslint-9"),
-      expectationsOf("eslint-missing"),
-      {
-        kind: "read",
-        path: "disciplines.eslint.mjs",
-        contains: 'import piece0 from "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.js";',
-      },
+    expect(PROOF_CASES).toEqual([
+      expect.objectContaining({ consumer: "audit", actions: AUDIT_ACTIONS }),
+      expect.objectContaining({ consumer: "eslint-10", actions: [ESLINT_PROJECT, ...ESLINT_AFTER_PROJECT] }),
+      expect.objectContaining({ consumer: "eslint-9", actions: [ESLINT_PROJECT, ...ESLINT_AFTER_PROJECT] }),
+      expect.objectContaining({ consumer: "eslint-missing", actions: ESLINT_MISSING_ACTIONS }),
+      expect.objectContaining({ consumer: "no-package-json" }),
+      expect.objectContaining({ consumer: "audit-package", actions: AUDIT_ACTIONS }),
+      expect.objectContaining({ consumer: "eslint-10-package", actions: [ESLINT_PROJECT, PACKAGE_IMPORT_READ, ...ESLINT_AFTER_PROJECT] }),
+      expect.objectContaining({ consumer: "eslint-9-package", actions: [ESLINT_PROJECT, PACKAGE_IMPORT_READ, ...ESLINT_AFTER_PROJECT] }),
+      expect.objectContaining({ consumer: "eslint-missing-package", actions: ESLINT_MISSING_ACTIONS }),
     ]);
   });
 
   it("record each copy-route report and hold each packaged consumer's reports to the copy-route consumer it mirrors, proved before it", () => {
-    expect(PROOF_CASES.map((proofCase) => [proofCase.consumer, proofCase.reports])).toEqual([
-      ["audit", { kind: "recorded" }],
-      ["eslint-10", { kind: "recorded" }],
-      ["eslint-9", { kind: "recorded" }],
-      ["eslint-missing", { kind: "recorded" }],
-      ["no-package-json", { kind: "recorded" }],
-      ["audit-package", { kind: "same-as", consumer: "audit" }],
-      ["eslint-10-package", { kind: "same-as", consumer: "eslint-10" }],
-      ["eslint-9-package", { kind: "same-as", consumer: "eslint-9" }],
-      ["eslint-missing-package", { kind: "same-as", consumer: "eslint-missing" }],
+    expect(PROOF_CASES).toEqual([
+      expect.objectContaining({ consumer: "audit", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "eslint-10", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "eslint-9", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "eslint-missing", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "no-package-json", reports: { kind: "recorded" } }),
+      expect.objectContaining({ consumer: "audit-package", reports: { kind: "same-as", consumer: "audit" } }),
+      expect.objectContaining({ consumer: "eslint-10-package", reports: { kind: "same-as", consumer: "eslint-10" } }),
+      expect.objectContaining({ consumer: "eslint-9-package", reports: { kind: "same-as", consumer: "eslint-9" } }),
+      expect.objectContaining({ consumer: "eslint-missing-package", reports: { kind: "same-as", consumer: "eslint-missing" } }),
     ]);
   });
 

@@ -6,22 +6,42 @@ export type InMemoryFiles = {
   readonly fileText: FileTextPort;
   readonly scratch: ScratchFilesPort;
   readonly texts: () => Readonly<Record<string, string>>;
+  readonly pathsUnder: (request: { readonly folder: string }) => readonly string[];
+  readonly textsUnder: (request: { readonly folder: string }) => Readonly<Record<string, string>>;
 };
 
-const isUnder = (request: { readonly path: string; readonly folder: string }): boolean =>
-  request.path === request.folder || request.path.startsWith(`${request.folder}/`);
+type Placement = "inside" | "outside";
 
-const keptInCopy = (request: {
+const placementOf = (request: { readonly path: string; readonly folder: string }): Placement =>
+  request.path === request.folder || request.path.startsWith(`${request.folder}/`) ? "inside" : "outside";
+
+const copyDispositionOf = (request: {
   readonly relative: string;
   readonly disposition: (entry: CopiedEntry) => EntryDisposition;
-}): boolean => {
+}): EntryDisposition => {
   const segments = request.relative.split("/");
   return segments.every(
     (name, index) => request.disposition({ name, entryKind: index === segments.length - 1 ? "file" : "folder" }) === "kept",
-  );
+  )
+    ? "kept"
+    : "left-out";
 };
 
-const listedUnder =(request: { readonly files: ReadonlyMap<string, string>; readonly folder: string }): readonly ListedEntry[] =>
+const copiedInto = (request: {
+  readonly files: ReadonlyMap<string, string>;
+  readonly from: string;
+  readonly to: string;
+  readonly disposition: (entry: CopiedEntry) => EntryDisposition;
+}): readonly (readonly [string, string])[] =>
+  [...request.files.entries()]
+    .filter(
+      ([candidate]) =>
+        placementOf({ path: candidate, folder: request.from }) === "inside" &&
+        copyDispositionOf({ relative: candidate.slice(request.from.length + 1), disposition: request.disposition }) === "kept",
+    )
+    .map(([path, text]): readonly [string, string] => [`${request.to}${path.slice(request.from.length)}`, text]);
+
+const listedUnder = (request: { readonly files: ReadonlyMap<string, string>; readonly folder: string }): readonly ListedEntry[] =>
   [...request.files.keys()]
     .filter((path) => path.startsWith(`${request.folder}/`))
     .sort()
@@ -36,6 +56,8 @@ export const inMemoryFiles = (request: { readonly initial: Readonly<Record<strin
   const temporaryRoots = { created: 0 };
   return {
     texts: () => Object.fromEntries(files),
+    pathsUnder: ({ folder }) => listedUnder({ files, folder }).map((entry) => entry.path),
+    textsUnder: ({ folder }) => Object.fromEntries([...files.entries()].filter(([path]) => path.startsWith(`${folder}/`))),
     fileText: {
       read: ({ path }) => {
         const text = files.get(path);
@@ -55,9 +77,11 @@ export const inMemoryFiles = (request: { readonly initial: Readonly<Record<strin
         return { outcome: "ok", value: `/tmp/${prefix}${temporaryRoots.created}` };
       },
       removeTree: ({ path }) => {
-        for (const key of [...files.keys()].filter((candidate) => isUnder({ path: candidate, folder: path }))) {
-          files.delete(key);
-        }
+        [...files.keys()]
+          .filter((candidate) => placementOf({ path: candidate, folder: path }) === "inside")
+          .forEach((key) => {
+            files.delete(key);
+          });
         return { outcome: "ok", value: null };
       },
       removeFile: ({ path }) => {
@@ -66,11 +90,9 @@ export const inMemoryFiles = (request: { readonly initial: Readonly<Record<strin
       },
       makeDirectory: () => ({ outcome: "ok", value: null }),
       copyTree: ({ from, to, disposition }) => {
-        for (const [path, text] of [...files.entries()].filter(
-          ([candidate]) => isUnder({ path: candidate, folder: from }) && keptInCopy({ relative: candidate.slice(from.length + 1), disposition }),
-        )) {
-          files.set(`${to}${path.slice(from.length)}`, text);
-        }
+        copiedInto({ files, from, to, disposition }).forEach(([path, text]) => {
+          files.set(path, text);
+        });
         return { outcome: "ok", value: null };
       },
       listTree: ({ path }) => ({ outcome: "ok", value: listedUnder({ files, folder: path }) }),

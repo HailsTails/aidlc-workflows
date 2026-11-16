@@ -137,6 +137,18 @@ export default [
 ];
 `;
 
+const PACKAGED_ENABLING_PROJECTION = `import piece0 from "discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
+
+export default [
+  {
+    name: "discipline-core/piece/discipline",
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
+  },
+];
+`;
+
 const ENABLING_PROJECTION_CRLF = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";\r\n\r\nexport default [\r\n  {\r\n    name: "discipline-core/piece/discipline",\r\n    files: ["**/*.{ts,tsx,mts,cts}"],\r\n    plugins: { "discipline": piece0 },\r\n    rules: { "discipline/no-class-authoring": "error" },\r\n  },\r\n];\r\n`;
 
 const FACTORY_LOCATION_PROJECTION = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
@@ -1043,10 +1055,7 @@ describe("project", () => {
       [
         {
           path: PROJECTION_PATH,
-          text: ENABLING_PROJECTION.replace(
-            '"./node_modules/discipline-core/mechanisms/',
-            '"discipline-core/mechanisms/',
-          ),
+          text: PACKAGED_ENABLING_PROJECTION,
         },
       ],
     ]);

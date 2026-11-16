@@ -1,5 +1,5 @@
 import { build, type Metafile, type OutputFile } from "esbuild";
-import { relative, resolve, sep } from "node:path";
+import type { PathPort } from "../core/platform-ports/path-port.ts";
 import type { Result } from "../core/values/result.ts";
 
 export type BundleRequest = {
@@ -27,19 +27,25 @@ const LAYOUT_OUTPUT_FOLDER = "dist";
 
 const BUNDLED_PACKAGE_ROOT = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//;
 
-const repositoryForm = (request: { readonly path: string }): string => request.path.split(sep).join("/");
+const repositoryPathBetween = (request: { readonly path: PathPort; readonly from: string; readonly to: string }): string => {
+  const location = request.path.relative({ from: request.from, to: request.to });
+  return location.relation === "within-root" ? location.path : request.to;
+};
 
 const NO_OUTPUT_META: Metafile["outputs"][string] = { bytes: 0, inputs: {}, imports: [], exports: [] };
 
 const bundledOutputOf = (request: {
+  readonly path: PathPort;
   readonly outputFile: OutputFile;
   readonly outdir: string;
   readonly sourceRoot: string;
   readonly metafile: Metafile;
 }): BundledOutput => {
-  const meta = request.metafile.outputs[repositoryForm({ path: relative(request.sourceRoot, request.outputFile.path) })] ?? NO_OUTPUT_META;
+  const meta =
+    request.metafile.outputs[repositoryPathBetween({ path: request.path, from: request.sourceRoot, to: request.outputFile.path })] ??
+    NO_OUTPUT_META;
   return {
-    path: repositoryForm({ path: relative(request.outdir, request.outputFile.path) }),
+    path: repositoryPathBetween({ path: request.path, from: request.outdir, to: request.outputFile.path }),
     text: request.outputFile.text,
     entryPoint: meta.entryPoint,
     inputs: Object.keys(meta.inputs),
@@ -57,9 +63,9 @@ const packageRootsOf = (request: { readonly metafile: Metafile }): readonly stri
     ),
   ].sort();
 
-const bundled = async (request: BundleRequest): Promise<Bundle> => {
-  const outdir = resolve(request.sourceRoot, LAYOUT_OUTPUT_FOLDER);
-  const result = await build({
+const bundled = async (request: BundleRequest & { readonly path: PathPort }): Promise<Bundle> => {
+  const outdir = request.path.join({ segments: [request.sourceRoot, LAYOUT_OUTPUT_FOLDER] });
+  const built = await build({
     absWorkingDir: request.sourceRoot,
     entryPoints: [...request.entryPoints],
     outdir,
@@ -79,16 +85,16 @@ const bundled = async (request: BundleRequest): Promise<Bundle> => {
     logLevel: "silent",
   });
   return {
-    outputs: result.outputFiles.map((outputFile) =>
-      bundledOutputOf({ outputFile, outdir, sourceRoot: request.sourceRoot, metafile: result.metafile }),
+    outputs: built.outputFiles.map((outputFile) =>
+      bundledOutputOf({ path: request.path, outputFile, outdir, sourceRoot: request.sourceRoot, metafile: built.metafile }),
     ),
-    packageRoots: packageRootsOf({ metafile: result.metafile }),
+    packageRoots: packageRootsOf({ metafile: built.metafile }),
   };
 };
 
-export const createEsbuildBundlerPort = (_options: Record<string, never>): BundlerPort => ({
+export const createEsbuildBundlerPort = (options: { readonly path: PathPort }): BundlerPort => ({
   bundle: (request) =>
-    bundled(request).then(
+    bundled({ ...request, path: options.path }).then(
       (bundle): Result<Bundle, BundleFailure> => ({ outcome: "ok", value: bundle }),
       (thrown: unknown): Result<Bundle, BundleFailure> => ({
         outcome: "failed",

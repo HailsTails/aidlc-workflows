@@ -11,11 +11,8 @@ const MANIFEST = "/repo/node_modules/discipline-core/package.json";
 const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
 
 const fileTextHolding = (request: { readonly text: string }): FileTextPort => ({
-  read: ({ path }) =>
-    path === MANIFEST
-      ? { outcome: "ok", value: request.text }
-      : { outcome: "failed", error: { kind: "unreadable", path, detail: "ENOENT" } },
-  exists: ({ path }) => (path === MANIFEST ? "present" : "absent"),
+  read: vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: request.text }),
+  exists: vi.fn<FileTextPort["exists"]>().mockReturnValue("present"),
   write: vi.fn<FileTextPort["write"]>(),
 });
 
@@ -33,9 +30,15 @@ const fileTextFailingToRead: FileTextPort = {
 
 describe("coreInstallOf", () => {
   it("is a package when built core runs from an install whose package.json names it, as a built package install ships it", () => {
-    expect(
-      coreInstallOf({ fileText: fileTextHolding({ text: '{ "name": "discipline-core", "type": "module" }' }), path: posixPath, installRoot: INSTALL_ROOT, moduleExtension: ".js" }),
-    ).toEqual({ outcome: "ok", value: { form: "package", root: INSTALL_ROOT, name: "discipline-core" } });
+    const fileText = fileTextHolding({ text: '{ "name": "discipline-core", "type": "module" }' });
+
+    const install = coreInstallOf({ fileText, path: posixPath, installRoot: INSTALL_ROOT, moduleExtension: ".js" });
+
+    expect({ install, asked: vi.mocked(fileText.exists).mock.calls, read: vi.mocked(fileText.read).mock.calls }).toEqual({
+      install: { outcome: "ok", value: { form: "package", root: INSTALL_ROOT, name: "discipline-core" } },
+      asked: [[{ path: MANIFEST }]],
+      read: [[{ path: MANIFEST }]],
+    });
   });
 
   it("is a folder when the install's package.json names no package, as the copy route's install manifest does", () => {

@@ -399,7 +399,8 @@ describe("runInstallProof over the packaged route", () => {
 
     await runInstallProof(packagedRequest({ fileText }));
 
-    expect(vi.mocked(fileText.write).mock.calls.slice(1)).toEqual([
+    expect(vi.mocked(fileText.write).mock.calls).toEqual([
+      [{ path: "/scratch/typescript-floor/package.json", text: TOOLCHAIN_MANIFEST }],
       [
         {
           path: `${PACKAGED_CONSUMER}/package.json`,
@@ -427,7 +428,9 @@ describe("runInstallProof over the packaged route", () => {
 
     await runInstallProof(packagedRequest({ commands }));
 
-    expect(vi.mocked(commands.run).mock.calls.slice(2)).toEqual([
+    expect(vi.mocked(commands.run).mock.calls).toEqual([
+      [{ command: "npm", arguments: ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], directory: "/scratch/core-packages" }],
+      [{ command: "npm", arguments: ["install", "--no-audit", "--no-fund", "--ignore-scripts"], directory: "/scratch/typescript-floor" }],
       [
         {
           command: "npm",
@@ -454,8 +457,9 @@ describe("runInstallProof over the packaged route", () => {
 
     await runInstallProof(packagedRequest({ scratch }));
 
-    expect(copiesOf({ scratch }).slice(1)).toEqual([
-      { from: "/package/tests/test-fixtures/consumer-proof/audit", to: PACKAGED_CONSUMER },
+    expect(vi.mocked(scratch.copyTree).mock.calls).toEqual([
+      [expect.objectContaining({ from: "/package/install/package.json", to: "/scratch/core-packages/package.json" })],
+      [expect.objectContaining({ from: "/package/tests/test-fixtures/consumer-proof/audit", to: PACKAGED_CONSUMER })],
     ]);
   });
 
@@ -518,11 +522,9 @@ describe("runInstallProof over the packaged route", () => {
       }),
     );
 
-    expect(reportOf({ process: proofProcess }).writes.at(-1)).toEqual([
-      {
-        text: `FAIL: audit-package disciplines.eslint.mjs holds ./node_modules/, but it reads\n${PACKAGED_FILES[`${PACKAGED_CONSUMER}/disciplines.eslint.mjs`]}\n`,
-      },
-    ]);
+    expect(proofProcess.writeOut).toHaveBeenLastCalledWith({
+      text: `FAIL: audit-package disciplines.eslint.mjs holds ./node_modules/, but it reads\n${PACKAGED_FILES[`${PACKAGED_CONSUMER}/disciplines.eslint.mjs`]}\n`,
+    });
   });
 
   it("exits 1 with the packer's failure after staging core's own packages, running no consumer and removing the temporary root", async () => {
@@ -559,19 +561,29 @@ describe("runInstallProof over the packaged route", () => {
       actions: TWIN.actions,
     };
 
-    const commandsByRoute = (request: { readonly copied: readonly string[]; readonly packaged: readonly string[] }): CommandRunPort => {
-      const outputs = { node: [...request.copied], npm: [...request.packaged] };
-      return {
-        run: vi.fn<CommandRunPort["run"]>((run) => {
-          if (run.command === "node") {
-            return { outcome: "exited", exitCode: 0, output: outputs.node.shift() ?? "" };
-          }
-          return run.arguments[0] === "run"
-            ? { outcome: "exited", exitCode: 0, output: outputs.npm.shift() ?? "" }
-            : EXITED_PASSING;
-        }),
-      };
-    };
+    const reported = (output: string): StepRun => ({ outcome: "exited", exitCode: 0, output });
+
+    const commandsByRoute = (request: {
+      readonly copied: readonly [string, string];
+      readonly packaged: readonly [string, string];
+    }): CommandRunPort => ({
+      run: vi
+        .fn<CommandRunPort["run"]>()
+        .mockReturnValue(EXITED_PASSING)
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(reported(request.copied[0]))
+        .mockReturnValueOnce(reported(request.copied[1]))
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(EXITED_PASSING)
+        .mockReturnValueOnce(reported(request.packaged[0]))
+        .mockReturnValueOnce(reported(request.packaged[1])),
+    });
 
     const mirroredRequest = (commands: CommandRunPort, proofProcess: ProcessPort): InstallProofRequest =>
       packagedRequest({
@@ -588,11 +600,15 @@ describe("runInstallProof over the packaged route", () => {
 
     it("passes noting each packaged report that equals the copy-route consumer's report at the same step", async () => {
       const proofProcess = processPort();
-      const reports = ["findings (1)\nverdict: pass", "verdict: pass"];
+      const reports: readonly [string, string] = ["findings (1)\nverdict: pass", "verdict: pass"];
 
       await runInstallProof(mirroredRequest(commandsByRoute({ copied: reports, packaged: reports }), proofProcess));
 
-      expect(reportOf({ process: proofProcess }).writes.slice(-3)).toEqual([
+      expect(reportOf({ process: proofProcess }).writes).toEqual([
+        [{ text: "ok: audit install leaves out *.test.ts, tests/\n" }],
+        [{ text: 'ok: audit check -> exit 0, "verdict: pass"\n' }],
+        [{ text: 'ok: audit check -> exit 0, "verdict: pass"\n' }],
+        [{ text: "ok: audit-package installed package holds no TypeScript source to strip\n" }],
         [{ text: 'ok: audit-package check -> exit 0, "verdict: pass", and the same report as audit\n' }],
         [{ text: 'ok: audit-package check -> exit 0, "verdict: pass", and the same report as audit\n' }],
         [{ text: "install proof: pass\n" }],
@@ -626,9 +642,9 @@ describe("runInstallProof over the packaged route", () => {
 
       await runInstallProof(packagedRequest({ process: proofProcess, proofCases: [MIRROR] }));
 
-      expect(reportOf({ process: proofProcess }).writes.at(-1)).toEqual([
-        { text: "FAIL: audit-package: no report of audit was recorded to compare with; prove audit first\n" },
-      ]);
+      expect(proofProcess.writeOut).toHaveBeenLastCalledWith({
+        text: "FAIL: audit-package: no report of audit was recorded to compare with; prove audit first\n",
+      });
     });
   });
 });

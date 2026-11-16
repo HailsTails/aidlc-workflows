@@ -119,23 +119,26 @@ const pieceModuleEntries = (request: ParsedPiece): readonly string[] =>
     modulesNamedIn({ settings: clause.settings }).map((module) => `${pieceFolderOf({ path: request.piece.path })}/${module}`),
   );
 
-const importedByPackageName = (request: ParsedPiece): boolean =>
-  PACKAGE_IMPORTED_MECHANISMS.has(PIECE_FILE.exec(request.piece.path)?.[1] ?? "");
+type MechanismImport = "by-package-name" | "by-path";
+
+const mechanismImportOf = (request: ParsedPiece): MechanismImport =>
+  PACKAGE_IMPORTED_MECHANISMS.has(PIECE_FILE.exec(request.piece.path)?.[1] ?? "") ? "by-package-name" : "by-path";
 
 const exportedModulesOf = (request: { readonly pieces: readonly ParsedPiece[] }): readonly string[] => [
-  ...new Set(request.pieces.filter(importedByPackageName).flatMap(pieceModuleEntries).map((path) => builtModulePath({ path }))),
+  ...new Set(request.pieces.filter((piece) => mechanismImportOf(piece) === "by-package-name").flatMap(pieceModuleEntries).map((path) => builtModulePath({ path }))),
 ];
 
 type JsonRecord = Readonly<Record<string, unknown>>;
 
-const isRecord = (value: unknown): value is JsonRecord => typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord = (candidate: unknown): candidate is JsonRecord =>
+  typeof candidate === "object" && candidate !== null && !Array.isArray(candidate);
 
 const builtSettingsOf = (request: { readonly settings: unknown }): unknown =>
   isRecord(request.settings)
     ? Object.fromEntries(
-        Object.entries(request.settings).map(([key, value]) => [
+        Object.entries(request.settings).map(([key, setting]) => [
           key,
-          PIECE_MODULE_KEYS.has(key) && typeof value === "string" ? builtModulePath({ path: value }) : value,
+          PIECE_MODULE_KEYS.has(key) && typeof setting === "string" ? builtModulePath({ path: setting }) : setting,
         ]),
       )
     : request.settings;
@@ -143,16 +146,16 @@ const builtSettingsOf = (request: { readonly settings: unknown }): unknown =>
 const builtClauseOf = (request: { readonly clause: unknown }): unknown =>
   isRecord(request.clause)
     ? Object.fromEntries(
-        Object.entries(request.clause).map(([key, value]) => [key, key === "settings" ? builtSettingsOf({ settings: value }) : value]),
+        Object.entries(request.clause).map(([key, field]) => [key, key === "settings" ? builtSettingsOf({ settings: field }) : field]),
       )
     : request.clause;
 
 const builtPieceOf = (request: { readonly document: unknown }): unknown =>
   isRecord(request.document)
     ? Object.fromEntries(
-        Object.entries(request.document).map(([key, value]) => [
+        Object.entries(request.document).map(([key, field]) => [
           key,
-          key === "clauses" && Array.isArray(value) ? value.map((clause: unknown) => builtClauseOf({ clause })) : value,
+          key === "clauses" && Array.isArray(field) ? field.map((clause: unknown) => builtClauseOf({ clause })) : field,
         ]),
       )
     : request.document;
