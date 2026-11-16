@@ -1,0 +1,27 @@
+diff --git a/tests/unit/t303-packager-orchestrator-skill-path.test.ts b/tests/unit/t303-packager-orchestrator-skill-path.test.ts
+index f42dd9aa0..3d8edf8c2 100644
+--- a/tests/unit/t303-packager-orchestrator-skill-path.test.ts
++++ b/tests/unit/t303-packager-orchestrator-skill-path.test.ts
+@@ -39,4 +39,22 @@ describe("t303 manifest-owned orchestrator skill path", () => {
+       expect(named, name).toBeGreaterThan(0);
+     }
+   });
++
++  test("each host's skill renderer places the orchestrator skill in-tree at its declared path", () => {
++    const orchestratorSource = "skills/aidlc/SKILL.md";
++    const projectRootJoins = [
++      'join(projectRoot, ".agents", "skills", "aidlc"',
++      'join(projectRoot, ".github", "skills", "aidlc"',
++    ];
++    for (const { name, manifest } of HARNESS_MATRIX) {
++      expect(manifest.orchestratorSkillPath.endsWith(orchestratorSource), name).toBe(true);
++      const prefix = manifest.orchestratorSkillPath.slice(0, -orchestratorSource.length);
++      const renderer = readFileSync(join(REPO_ROOT, "src", "hosts", name, "projection", "skill-renderer.ts"), "utf-8");
++      expect(renderer, name).toContain(`\`${prefix}\${source}\``);
++      expect(renderer, name).toContain("projectPath(");
++      for (const projectRootJoin of projectRootJoins) expect(renderer, name).not.toContain(projectRootJoin);
++    }
++    const packager = readFileSync(join(REPO_ROOT, "scripts", "package.ts"), "utf-8");
++    for (const projectRootJoin of projectRootJoins) expect(packager).not.toContain(projectRootJoin);
++  });
+ });

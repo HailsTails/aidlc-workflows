@@ -1,0 +1,28 @@
+diff --git a/tests/unit/t285-knowledge-skill.test.ts b/tests/unit/t285-knowledge-skill.test.ts
+index 39e7b375a..8120cd175 100644
+--- a/tests/unit/t285-knowledge-skill.test.ts
++++ b/tests/unit/t285-knowledge-skill.test.ts
+@@ -56,6 +56,7 @@ import {
+   resolveIntentFlag,
+ } from "../../dist/claude/.claude/tools/aidlc-knowledge.ts";
+ import { intentsRegistryPath } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
++import { SESSION_SKILL_NAMES } from "../../src/projection/domain/neutral-surface.ts";
+ 
+ setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+ 
+@@ -192,6 +193,15 @@ describe("t285 - the knowledge skill ships everywhere, and its prose matches the
+       });
+     }
+ 
++    for (const h of HARNESSES) {
++      test(`the ${h.name} session-skill list names the skill (the N-of-N trap)`, () => {
++        const renderer = readFileSync(join(REPO, "src", "hosts", h.name, "projection", "skill-renderer.ts"), "utf-8");
++        expect(renderer, `src/hosts/${h.name}/projection/skill-renderer.ts no longer renders session skills`)
++          .toContain("renderSessionSkill");
++        expect(SESSION_SKILL_NAMES, "the session-skill list omits aidlc-knowledge").toContain("aidlc-knowledge");
++      });
++    }
++
+     test("the skill is standalone: it declares no stage/graph membership", () => {
+       const text = readFileSync(CLAUDE_SKILL, "utf-8");
+       // A `stage:` or `phase:` key in the front matter would pull it into the

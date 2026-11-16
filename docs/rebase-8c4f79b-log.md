@@ -11,8 +11,8 @@ This is the record of how the 126 upstream commits from `caea995ae` to `8c4f79b4
 | Foundation before | `rebuild/foundation` | `965cbec73` (613 commits over `caea995ae`) |
 | Rebased foundation | `study/foundation-8c4f79b` | `eb126c7be534890d88778388a442f8a76be708ab` |
 | Tooling | `study/upstream-shape-tooling-8c4f79b` | this branch |
-| Candidate on foundation | `study/upstream-shape-8c4f79b` | `9efb4b826d6336353b1cfb476c6b449afd8f08a0` |
-| Candidate on the pin | `ci-proof/upstream-shape-8c4f79b` | `b085d715a666313399d0eaf4951b5d6da1348cd0` (same tree `19e5a4542`) |
+| Candidate on foundation | `study/upstream-shape-8c4f79b` | `6761b5dce692435a8aae33475539ba179d6b0a50` |
+| Candidate on the pin | `ci-proof/upstream-shape-8c4f79b` | `541aca15081af28dc9a1f0e07b68ab81fd0b9437` (same tree `b26df2baa`) |
 | Previous release | `v2.11.3` | `a8721be3631e6a254cf524ea57e5932aa56b4149` |
 
 ## Method
@@ -186,8 +186,9 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
   - It demands a judgement for every replaced or mixed commit.
   - It also demands one for any commit touching a dual-use core module, a legacy script, a build file added in the range, a conflicted path, or a path that differs from upstream at head beyond the change foundation already had.
   - It exits 1 while any of those commits has no judgement.
+- `src/test-case-counts.ts` compares the test cases per test file between two commits and lists every file with fewer, exiting 1 if any. The restored cases are in `overlay/tests/unit/t-package-sources.test.ts` and in `patches/tests~integration~t145-packaging-parity.test.ts.patch`, `patches/tests~unit~t285-knowledge-skill.test.ts.patch` and `patches/tests~unit~t303-packager-orchestrator-skill-path.test.ts.patch`. `templates/PARITY.md` records them case by case.
 - **Patch redone:** in `patches/scripts~parity~install-lifecycle.ts.patch`, the usage line said `v2.11.2` and now says `<previous release tag>`. A hard-coded release would go stale at every pin.
-- All 16 patches and the optional gitleaks patch apply to the rebased foundation unchanged.
+- The 16 patches that were already there, and the optional gitleaks patch, apply to the rebased foundation unchanged. The two `t285` and `t303` patches are new, and the `t145` patch grew by the restored cases, so there are 18 now.
   - The kiro README patch's sentence about the packager at `caea995ae` is kept. It is a historical fact about that packager, not the pin.
 
 ## Re-prove
@@ -203,7 +204,7 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
 - The lint total is 177992 against a recorded 177993, so nothing rose.
 - The candidate's local runs below used `bun --cwd <candidate>` (never a shell `cd`) under the machine lock.
 
-**Candidate.** The candidate is `9efb4b826`, with the same tree as `b085d715a`. All of these checks ran in a clean worktree after `bun scripts/package.ts`:
+**Candidate.** The candidate is `6761b5dce`, with the same tree as `541aca150`. All of these checks ran in a clean worktree after `bun scripts/package.ts`:
 
 | Check | Result |
 | --- | --- |
@@ -212,10 +213,13 @@ Branch `study/upstream-shape-tooling-8c4f79b`:
 | `bun run check` | exit 0 |
 | `bun test ./src` | 1581 pass, 0 fail |
 | `bun test ./scripts/parity` | 13 pass, 0 fail |
+| `bun test` on `t-package-sources`, `t285` and `t303` | 95 pass, 0 fail |
+| `bun test tests/integration/t145-packaging-parity.test.ts` | 13 pass, 0 fail |
+| `bun src/test-case-counts.ts` against `8c4f79b4b` (tooling) | 1297 shared test files, 0 with fewer cases |
 | Goldens re-recorded on an unmodified `8c4f79b4b` checkout with the candidate's `scripts/parity/` (`--record` for both) | byte-identical to the candidate's `tests/golden/` (recorded against `c6b67ac64`; no later regeneration changed `scripts/parity/` or `tests/golden/`) |
-| `git diff --name-status 8c4f79b4b b085d715a -- core plugins` | empty |
+| `git diff --name-status 8c4f79b4b 541aca150 -- core plugins` | empty |
 
-`git diff --name-status 8c4f79b4b b085d715a -- harness` lists 18 deletions and nothing else:
+`git diff --name-status 8c4f79b4b 541aca150 -- harness` lists 18 deletions and nothing else:
 
 - `harness/<host>/manifest.ts` for all 7 hosts
 - `harness/<host>/onboarding.fills.ts` for all 7 hosts
@@ -241,9 +245,43 @@ The candidate's per-file results are compared with that reference's parsed resul
 | `23886338e` | 43812083339, cancelled | | | Replaced: it carried the personal identity. |
 | `2d9a859e1` | 43817932139, red | 43817936577, green | 43817940761, green | 1266 files and 41 skip on both. The one difference: unit-9 t294 failed 1 of 199. ad4a0ad02 #3906's case listed the retired manifests, fixed in `7aac16444`. |
 | `1fcb108a9` | 43827242879, 26 of 26 green | 43827247248, green | 43827251965, green | 1266 files, 41 skip, 0 fail on both; no file differs. |
-| `b085d715a` | {{ci-final}} | 43835317308, green | 43835323478, green | {{ci-final-compare}} |
+| `b085d715a` | 43835310216, 26 of 26 green | 43835317308, green | 43835323478, green | 1266 files, 41 skip, 0 fail on both; no file differs. |
+| `541aca150` | {{ci-final}} | {{md-final}} | {{sec-final}} | {{ci-final-compare}} |
 
-`1fcb108a9` and `b085d715a` differ only by S7, the P1 fix.
+- `1fcb108a9` and `b085d715a` differ only by S7, the P1 fix.
+- `b085d715a` and `541aca150` differ only by the restored test cases (see [Test cases](#test-cases)).
+- The comparison is per test file, so it cannot see a case missing inside a file that still passes. The case counts are checked separately.
+
+## Test cases
+
+The candidate ran fewer test cases than the pin in four files. The v3 full suite showed it first, by top-level test counts and full-suite assertion counts against `caea995ae`. `src/test-case-counts.ts` then found the same four files on `9efb4b826` against `8c4f79b4b`:
+
+| File | Cases at `8c4f79b4b` | Cases at `9efb4b826` |
+| --- | --- | --- |
+| `tests/unit/t-package-sources.test.ts` | 9 | 2 |
+| `tests/integration/t145-packaging-parity.test.ts` | 13 | 10 |
+| `tests/unit/t285-knowledge-skill.test.ts` | 46 | 45 |
+| `tests/unit/t303-packager-orchestrator-skill-path.test.ts` | 3 | 2 |
+
+These are textual `test(` and `it(` calls, so a `test.each` table counts once.
+
+Every drop predates this rebase: `rebuild/foundation` at `965cbec73` already had the same counts. Each dropped case tested a file foundation retired: `scripts/package-sources.ts`, a `harness/<name>/manifest.ts` or `emit.ts`, or `scripts/package.ts`'s manifest resolution. The behaviour of `scripts/package-sources.ts` had moved to `src/` unit tests, which upstream's runner does not run.
+
+The restored cases now run in upstream's runner against the new owners, with upstream's assertions:
+
+- **`t-package-sources`**: the tooling overlay, which also keeps the two copied-coverage cases. 14 tests pass.
+- **`t145`, `t285` and `t303`**: tooling patches (`patches/tests~…`).
+- **The parts that cannot apply.** `t145`'s synthetic harness name and the optional orchestrator-skill default are recorded case by case in `PARITY.md`, with the reasons.
+- **The `t145` fixture.** It renames a host's directory throughout `src/hosts/<name>/`. A scratch build first confirmed that the generic outputs follow the rename:
+  - `harness.json`;
+  - the stage graph's sensor paths;
+  - the runner commands;
+  - Codex's hooks, rules and trust seed.
+  
+  Renaming only the host identity is refused (`path-undeclared`).
+- **A synthetic host named `foo`.** It is refused by the frozen model policy ("The frozen model policy has no host foo"), because that policy is keyed by host name.
+
+After regenerating, `bun src/test-case-counts.ts --repository aidlc-workflows --base 8c4f79b4b --candidate study/upstream-shape-8c4f79b` reports 1297 shared test files and 0 with fewer cases. No test file at the pin is missing from the candidate.
 
 ## Every upstream commit
 
