@@ -1,20 +1,6 @@
 [
   {
     "files": [
-      "plugins/rin/hooks/block-inline-exec.test.ts"
-    ],
-    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
-    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
-  },
-  {
-    "files": [
-      "plugins/rin/hooks/block-inline-exec.ts"
-    ],
-    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
-    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
-  },
-  {
-    "files": [
       "plugins/rin/hooks/guard-manifest.ts"
     ],
     "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
@@ -29,13 +15,6 @@
   },
   {
     "files": [
-      "plugins/rin/hooks/guard-trial-relaxation.test.ts"
-    ],
-    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
-    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
-  },
-  {
-    "files": [
       "plugins/rin/hooks/guard-trial-scope.test.ts"
     ],
     "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
@@ -46,13 +25,6 @@
       "plugins/rin/hooks/guard-trial.test.ts"
     ],
     "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
-    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
-  },
-  {
-    "files": [
-      "plugins/rin/hooks/guard-trial.ts"
-    ],
-    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
     "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
   },
   {

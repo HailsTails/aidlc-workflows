@@ -7,22 +7,18 @@
 // identical to a quiet trial in the log, which is exactly the inert-switch
 // hazard the whole-chain probe exists to catch.
 
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
 import {
   LOG_PATH_VARIABLE,
   RELAX_TOKEN_VARIABLE,
   SHADOW_LOG_RUNTIME_FILE,
 } from "./guard-trial.ts";
 import { invokeBashHook } from "./run-hook-process.ts";
+
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
 
 const NAVIGATION_HOOK = "guard-navigation.mjs";
 const INLINE_EXEC_HOOK = "block-inline-exec.ts";
@@ -45,7 +41,7 @@ const trialEnvironment = ({
   readonly token: string;
 }): Readonly<Record<string, string>> => ({
   [RELAX_TOKEN_VARIABLE]: token,
-  [LOG_PATH_VARIABLE]: join(logDirectory, "shadow.jsonl"),
+  [LOG_PATH_VARIABLE]: paths.join({ segments: [logDirectory, "shadow.jsonl"] }),
   ["CLAUDE_PROJECT_DIR"]: "/repo/root",
   ["CLAUDE_SESSION_ID"]: "session-under-test",
 });
@@ -53,18 +49,18 @@ const trialEnvironment = ({
 // An absent log file IS the zero-lines case: nothing was shadowed, so nothing
 // created it. Treating that as an error would fail every enforcing-path test.
 const shadowLines = (): readonly string[] => {
-  const path = join(logDirectory, "shadow.jsonl");
-  if (!existsSync(path)) return [];
-  const raw = readFileSync(path, "utf8").trimEnd();
+  const path = paths.join({ segments: [logDirectory, "shadow.jsonl"] });
+  if (!files.exists(path)) return [];
+  const raw = files.read(path).trimEnd();
   return raw === "" ? [] : raw.split("\n");
 };
 
 beforeEach(() => {
-  logDirectory = mkdtempSync(join(tmpdir(), "guard-trial-live-"));
+  logDirectory = files.makeTemporaryDirectory(paths.join({ segments: [files.temporaryRoot(), "guard-trial-live-"] }));
 });
 
 afterEach(() => {
-  rmSync(logDirectory, { recursive: true, force: true });
+  files.remove(logDirectory, { recursive: true, force: true });
 });
 
 describe("guard-navigation under the trial token", () => {
@@ -226,9 +222,9 @@ describe("guard-navigation under the trial token", () => {
 // hook takes the git-dir walk against the constructed checkout.
 describe("the live hooks resolve the log outside the composed tree", () => {
   const gitCheckout = (): string => {
-    const root = join(logDirectory, "checkout");
-    mkdirSync(join(root, ".git"), { recursive: true });
-    mkdirSync(join(root, ".claude", "hooks"), { recursive: true });
+    const root = paths.join({ segments: [logDirectory, "checkout"] });
+    files.mkdir(paths.join({ segments: [root, ".git"] }), { recursive: true });
+    files.mkdir(paths.join({ segments: [root, ".claude", "hooks"] }), { recursive: true });
     return root;
   };
 
@@ -244,8 +240,8 @@ describe("the live hooks resolve the log outside the composed tree", () => {
         [LOG_PATH_VARIABLE]: "",
       },
     });
-    expect(existsSync(join(root, ".git", SHADOW_LOG_RUNTIME_FILE))).toBe(true);
-    expect(existsSync(join(root, ".claude", "hooks", ".claude"))).toBe(false);
+    expect(files.exists(paths.join({ segments: [root, ".git", SHADOW_LOG_RUNTIME_FILE] }))).toBe(true);
+    expect(files.exists(paths.join({ segments: [root, ".claude", "hooks", ".claude"] }))).toBe(false);
   });
 
   test("block-inline-exec logs into the git directory, never the composed tree", async () => {
@@ -260,8 +256,8 @@ describe("the live hooks resolve the log outside the composed tree", () => {
         [LOG_PATH_VARIABLE]: "",
       },
     });
-    expect(existsSync(join(root, ".git", SHADOW_LOG_RUNTIME_FILE))).toBe(true);
-    expect(existsSync(join(root, ".claude", "hooks", ".claude"))).toBe(false);
+    expect(files.exists(paths.join({ segments: [root, ".git", SHADOW_LOG_RUNTIME_FILE] }))).toBe(true);
+    expect(files.exists(paths.join({ segments: [root, ".claude", "hooks", ".claude"] }))).toBe(false);
   });
 });
 
@@ -336,6 +332,20 @@ describe("block-inline-exec under the trial token", () => {
     });
     expect(outcome.stdout).toContain("deny");
   });
+
+  test.each(["npx pkg", "bun x tsx x.ts", "pnpm dlx pkg"])(
+    "relaxed: the fetch-and-run launcher %s is still denied and logs nothing",
+    async (command) => {
+      const outcome = await invokeBashHook({
+        hookFileName: INLINE_EXEC_HOOK,
+        command,
+        runtime: "bun",
+        environmentAdditions: trialEnvironment({ token: "relax-inline-exec" }),
+      });
+      expect(outcome.stdout).toContain("fetch-and-run package launchers");
+      expect(shadowLines()).toHaveLength(0);
+    },
+  );
 
   test("relaxed: a clean command is untouched and logs nothing", async () => {
     const outcome = await invokeBashHook({

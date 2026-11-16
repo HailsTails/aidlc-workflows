@@ -1,12 +1,13 @@
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
 import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-} from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+  defaultFileKindPort,
+  defaultFileTextPort,
+} from "../tools/rin-harness-sidecar-file-reader.ts";
+import { simpleCommandsOf } from "../tools/rin-shell-simple-commands.ts";
+
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const fileKinds = defaultFileKindPort();
 
 // The wire field names (tool_name / tool_input) are the harness's, and they stop
 // at the parse seam below: this internal shape is our own vocabulary, so the
@@ -72,7 +73,7 @@ const leadingEnvAssignments = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*/;
 const anyHarnessProjectDirectoryPrefix = /^\$(?:CLAUDE|AIDLC)_PROJECT_DIR\//;
 
 const allowlistedRunnerPattern = new RegExp(
-  `${leadingEnvAssignments.source}(uv\\s+run|pnpm\\b|npm\\b|pnpm\\s+exec|npx\\b|python\\s+-m\\s+json\\.tool|bun\\s+(?:run\\s+|test\\b|install\\b|x\\s+)?(?:\\$(?:CLAUDE|AIDLC)_PROJECT_DIR/)?\\.(?:claude|aidlc)/(?:tools|hooks|rin-gates)/)`,
+  `${leadingEnvAssignments.source}(uv\\s+run|pnpm\\b|npm\\b|pnpm\\s+exec|python\\s+-m\\s+json\\.tool|bun\\s+(?:run\\s+|test\\b|install\\b)?(?:\\$(?:CLAUDE|AIDLC)_PROJECT_DIR/)?\\.(?:claude|aidlc)/(?:tools|hooks|rin-gates)/)`,
   "i",
 );
 
@@ -88,6 +89,262 @@ const arbitraryExecutionRules = [
 
 const pipeIntoInterpreterRule =
   /\|\s*(python3?|node|ruby|perl|php|bash|sh)\b(?!\s+-m\b)/i;
+
+const fetchAndRunDenyReason = [
+  "BLOCKED: fetch-and-run package launchers are not runnable here.",
+  "",
+  "This was stopped at the PreToolUse gate on purpose. npx, pnpx, bunx, `bun x`, `pnpm dlx`,",
+  "`yarn dlx`, the `create` initialisers, uvx, `uv tool run`, `pipx run`, and `npm exec` / `npm x`",
+  "without `--no` all download a package from a registry and run it unreviewed. The operator's",
+  "rule for agents in their repositories is: never use these launchers; in-repo tooling only.",
+  "",
+  "The next action is: run the tool through the repository's own package scripts",
+  "(`bun run <script>`, `npm run <script>`, `pnpm <script>`, `yarn <script>`) or an installed",
+  "dependency's bin (`pnpm exec <bin>`, `npm exec --no -- <bin>`).",
+  "",
+  "If the tool is not already a dependency, do not fetch it. STOP and surface the need to the",
+  "operator — say which package you need and why — so it can be added and reviewed. There is",
+  "NO self-granted bypass: no settings.json entry, authorised location or trial token lifts this.",
+].join("\n");
+
+type WrapperSyntax = {
+  readonly optionsTakingAValue: ReadonlySet<string>;
+  readonly leadingOperands: number;
+};
+
+const wrapperSyntax = ({
+  optionsTakingAValue = [],
+  leadingOperands = 0,
+}: {
+  readonly optionsTakingAValue?: readonly string[];
+  readonly leadingOperands?: number;
+}): WrapperSyntax => ({
+  optionsTakingAValue: new Set(optionsTakingAValue),
+  leadingOperands,
+});
+
+const COMMAND_WRAPPERS: ReadonlyMap<string, WrapperSyntax> = new Map([
+  ["call", wrapperSyntax({})],
+  ["cmd", wrapperSyntax({})],
+  ["command", wrapperSyntax({})],
+  ["corepack", wrapperSyntax({})],
+  ["env", wrapperSyntax({ optionsTakingAValue: ["-u", "--unset", "-C", "--chdir"] })],
+  ["exec", wrapperSyntax({ optionsTakingAValue: ["-a"] })],
+  ["nice", wrapperSyntax({ optionsTakingAValue: ["-n", "--adjustment"] })],
+  ["nohup", wrapperSyntax({})],
+  ["start", wrapperSyntax({})],
+  [
+    "sudo",
+    wrapperSyntax({
+      optionsTakingAValue: ["-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T", "--user", "--group", "--host", "--prompt", "--chdir", "--role", "--type", "--other-user", "--command-timeout", "--close-from"],
+    }),
+  ],
+  ["time", wrapperSyntax({ optionsTakingAValue: ["-f", "-o", "--format", "--output"] })],
+  [
+    "timeout",
+    wrapperSyntax({ optionsTakingAValue: ["-s", "-k", "--signal", "--kill-after"], leadingOperands: 1 }),
+  ],
+  [
+    "xargs",
+    wrapperSyntax({ optionsTakingAValue: ["-I", "-n", "-P", "-L", "-d", "-s", "-E", "-a"] }),
+  ],
+]);
+
+const COMMAND_LOOKUP_OPTIONS: ReadonlySet<string> = new Set(["-v", "-V"]);
+
+const PACKAGE_MANAGER_OPTIONS_TAKING_A_VALUE: ReadonlySet<string> = new Set([
+  "--filter",
+  "-F",
+  "--dir",
+  "-C",
+  "--prefix",
+  "--cwd",
+  "--workspace",
+  "-w",
+  "--reporter",
+  "--loglevel",
+  "--userconfig",
+]);
+
+const STANDALONE_LAUNCHERS: ReadonlySet<string> = new Set([
+  "bunx",
+  "npx",
+  "pnpx",
+  "uvx",
+]);
+
+const isEnvironmentAssignment = ({ word }: { readonly word: string }): boolean =>
+  /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
+
+const executableNameOf = ({ word }: { readonly word: string }): string =>
+  (word.split(/[\\/]/).pop() ?? "")
+    .toLowerCase()
+    .replace(/\.(?:cmd|exe|ps1|bat|com)$/, "");
+
+const isWrapperOption = ({ word }: { readonly word: string }): boolean =>
+  word.startsWith("-") ||
+  /^\/[a-z]$/i.test(word) ||
+  isEnvironmentAssignment({ word });
+
+const wordsAfterWrapperOptions = ({
+  words,
+  syntax,
+}: {
+  readonly words: readonly string[];
+  readonly syntax: WrapperSyntax;
+}): readonly string[] => {
+  const [first, ...rest] = words;
+  if (first === undefined) return [];
+  if (!isWrapperOption({ word: first })) return words.slice(syntax.leadingOperands);
+  return wordsAfterWrapperOptions({
+    words: syntax.optionsTakingAValue.has(first) ? rest.slice(1) : rest,
+    syntax,
+  });
+};
+
+const LEADING_RESERVED_WORDS: ReadonlySet<string> = new Set([
+  "!",
+  "do",
+  "elif",
+  "else",
+  "if",
+  "then",
+  "until",
+  "while",
+]);
+
+const precedesTheCommand = ({ word }: { readonly word: string }): boolean =>
+  isEnvironmentAssignment({ word }) || LEADING_RESERVED_WORDS.has(word);
+
+const withoutLeadingReservedWordsAndAssignments = ({
+  words,
+}: {
+  readonly words: readonly string[];
+}): readonly string[] => {
+  const command = words.findIndex((word) => !precedesTheCommand({ word }));
+  return command < 0 ? [] : words.slice(command);
+};
+
+const isCommandLookup = ({
+  executable,
+  rest,
+}: {
+  readonly executable: string;
+  readonly rest: readonly string[];
+}): boolean =>
+  executable === "command" &&
+  rest.some((word) => COMMAND_LOOKUP_OPTIONS.has(word));
+
+const subcommandPositionOf = ({
+  words,
+  index = 0,
+}: {
+  readonly words: readonly string[];
+  readonly index?: number;
+}): number => {
+  const word = words[index];
+  if (word === undefined || word === "--") return -1;
+  if (!word.startsWith("-")) return index;
+  return subcommandPositionOf({
+    words,
+    index: PACKAGE_MANAGER_OPTIONS_TAKING_A_VALUE.has(word) ? index + 2 : index + 1,
+  });
+};
+
+const optionsBeforeSeparator = ({
+  words,
+}: {
+  readonly words: readonly string[];
+}): readonly string[] => {
+  const separator = words.indexOf("--");
+  return (separator < 0 ? words : words.slice(0, separator)).filter((word) =>
+    word.startsWith("-"),
+  );
+};
+
+const npmExecForbidsInstalling = ({
+  options,
+}: {
+  readonly options: readonly string[];
+}): boolean =>
+  options.some((option) => option === "--no" || option === "--yes=false") &&
+  !options.some(
+    (option) => option === "-y" || option === "--yes" || option === "--yes=true",
+  );
+
+const npmFetchesAndRuns = ({
+  subcommand,
+  afterSubcommand,
+}: {
+  readonly subcommand: string | undefined;
+  readonly afterSubcommand: readonly string[];
+}): boolean => {
+  if (subcommand === "exec" || subcommand === "x")
+    return !npmExecForbidsInstalling({
+      options: optionsBeforeSeparator({ words: afterSubcommand }),
+    });
+  if (subcommand === "create") return true;
+  if (subcommand === "init")
+    return afterSubcommand.some((word) => !word.startsWith("-"));
+  return false;
+};
+
+const packageManagerFetchesAndRuns = ({
+  executable,
+  rest,
+}: {
+  readonly executable: string;
+  readonly rest: readonly string[];
+}): boolean => {
+  const lowered = rest.map((word) => word.toLowerCase());
+  const position = subcommandPositionOf({ words: lowered });
+  const subcommand = position < 0 ? undefined : lowered[position];
+  const afterSubcommand = position < 0 ? [] : lowered.slice(position + 1);
+  switch (executable) {
+    case "bun":
+      return subcommand === "x" || subcommand === "create";
+    case "pnpm":
+    case "yarn":
+      return subcommand === "dlx" || subcommand === "create";
+    case "npm":
+      return npmFetchesAndRuns({ subcommand, afterSubcommand });
+    case "uv":
+      return subcommand === "tool" && afterSubcommand[0] === "run";
+    case "pipx":
+      return subcommand === "run";
+    default:
+      return false;
+  }
+};
+
+const wordsRunAFetchAndRunLauncher = ({
+  words,
+}: {
+  readonly words: readonly string[];
+}): boolean => {
+  const [head, ...rest] = withoutLeadingReservedWordsAndAssignments({ words });
+  if (head === undefined) return false;
+  const executable = executableNameOf({ word: head });
+  if (STANDALONE_LAUNCHERS.has(executable)) return true;
+  if (executable === "eval")
+    return commandRunsAFetchAndRunLauncher({ command: rest.join(" ") });
+  if (isCommandLookup({ executable, rest })) return false;
+  const wrapper = COMMAND_WRAPPERS.get(executable);
+  if (wrapper !== undefined)
+    return wordsRunAFetchAndRunLauncher({
+      words: wordsAfterWrapperOptions({ words: rest, syntax: wrapper }),
+    });
+  return packageManagerFetchesAndRuns({ executable, rest });
+};
+
+const commandRunsAFetchAndRunLauncher = ({
+  command,
+}: {
+  readonly command: string;
+}): boolean =>
+  simpleCommandsOf({ source: command }).some((words) =>
+    wordsRunAFetchAndRunLauncher({ words }),
+  );
 
 const splitTopLevelSegments = ({
   command,
@@ -108,12 +365,13 @@ const denyCall = ({ reason }: { readonly reason: string }): never => {
   process.exit(0);
 };
 
-const hooksDirectory = dirname(fileURLToPath(import.meta.url));
+const hooksDirectory = paths.dirname({
+  path: paths.fromFileUrl({ url: import.meta.url }),
+});
 
-const manifestRelativePath = join(
-  ".constitution-authorised-locations",
-  "inline-exec.json",
-);
+const manifestRelativePath = paths.join({
+  segments: [".constitution-authorised-locations", "inline-exec.json"],
+});
 
 const MAX_MANIFEST_SEARCH_DEPTH = 8;
 
@@ -129,9 +387,11 @@ const readManifestWalkingUp = ({
 }): string | null => {
   if (remainingDepth === 0) return null;
   try {
-    return readFileSync(join(directory, manifestRelativePath), "utf8");
+    return files.read(
+      paths.join({ segments: [directory, manifestRelativePath] }),
+    );
   } catch {
-    const parent = dirname(directory);
+    const parent = paths.dirname({ path: directory });
     if (parent === directory) return null;
     return readManifestWalkingUp({
       directory: parent,
@@ -254,11 +514,17 @@ const segmentTargetsAuthorisedLocation = ({
 const installedHarnessToolPrefix = (): string | null => {
   try {
     const metadata: unknown = JSON.parse(
-      readFileSync(join(hooksDirectory, "..", "tools", "data", "harness.json"), "utf8"),
+      files.read(
+        paths.join({
+          segments: [hooksDirectory, "..", "tools", "data", "harness.json"],
+        }),
+      ),
     );
     if (typeof metadata !== "object" || metadata === null) return null;
     if (!("harnessDir" in metadata)) return null;
-    const harnessDir = basename(dirname(hooksDirectory));
+    const harnessDir = paths.basename({
+      path: paths.dirname({ path: hooksDirectory }),
+    });
     if (metadata.harnessDir !== harnessDir) return null;
     return `${harnessDir}/tools/`;
   } catch {
@@ -279,9 +545,9 @@ const segmentRunsInstalledHarnessTool = ({
   readonly command: string;
 }): boolean => {
   if (/[\r\n`()]/.test(segment)) return false;
-  if (/\b(?:AIDLC|CLAUDE)_PROJECT_DIR\s*=/i.test(command)) return false;
   const match = installedBunScriptPathRule.exec(segment);
   if (match === null) return false;
+  if (/\b(?:AIDLC|CLAUDE)_PROJECT_DIR\s*=/i.test(command)) return false;
   const captured = match[1];
   if (captured === undefined) return false;
   const prefix = installedHarnessToolPrefix();
@@ -307,11 +573,10 @@ const segmentIsArbitraryExecution = ({
   );
 };
 
-// Guard-relaxation trial (record 260904-guard-relaxation-trial-2). Deliberately
-// INLINED rather than imported from guard-trial.ts: this hook must run when
-// spawned as a standalone copy at an arbitrary path (mutant-detection.test.ts
-// asserts exactly that), and a relative import cannot resolve from a temp dir.
-// guard-navigation.mjs carries the same logic for the same reason. The shared
+// Guard-relaxation trial (record 260904-guard-relaxation-trial-2). INLINED
+// rather than imported from guard-trial.ts because this copy is narrower: it
+// reads only the environment token, never guard-trial.ts's common-dir token, so
+// importing that module would widen what can relax this guard. The shared
 // module remains the tested specification of these semantics, and
 // guard-trial-scope.test.ts holds every copy to the same safety property.
 //
@@ -337,25 +602,29 @@ const thisGuardIsRelaxed = (): boolean =>
 const primaryGitDirectoryFrom = (
   startDirectory: string,
 ): string | undefined => {
-  const gitPath = join(startDirectory, ".git");
-  if (!existsSync(gitPath)) {
-    const parent = dirname(startDirectory);
+  const gitPath = paths.join({ segments: [startDirectory, ".git"] });
+  if (!files.exists(gitPath)) {
+    const parent = paths.dirname({ path: startDirectory });
     return parent === startDirectory
       ? undefined
       : primaryGitDirectoryFrom(parent);
   }
-  if (statSync(gitPath).isDirectory()) return gitPath;
-  const pointer = readFileSync(gitPath, "utf8").match(/^gitdir:\s*(.+?)\s*$/m);
+  if (fileKinds.isDirectory(gitPath)) return gitPath;
+  const pointer = files.read(gitPath).match(/^gitdir:\s*(.+?)\s*$/m);
   const pointerTarget = pointer?.[1];
   if (pointerTarget === undefined) return undefined;
-  const worktreeGitDir = isAbsolute(pointerTarget)
+  const worktreeGitDir = paths.isAbsolute({ path: pointerTarget })
     ? pointerTarget
-    : resolve(startDirectory, pointerTarget);
-  const commonDirPointer = join(worktreeGitDir, "commondir");
-  if (!existsSync(commonDirPointer)) return worktreeGitDir;
-  const commonDir = readFileSync(commonDirPointer, "utf8").trim();
+    : paths.resolve({ segments: [startDirectory, pointerTarget] });
+  const commonDirPointer = paths.join({
+    segments: [worktreeGitDir, "commondir"],
+  });
+  if (!files.exists(commonDirPointer)) return worktreeGitDir;
+  const commonDir = files.read(commonDirPointer).trim();
   if (commonDir === "") return worktreeGitDir;
-  return isAbsolute(commonDir) ? commonDir : resolve(worktreeGitDir, commonDir);
+  return paths.isAbsolute({ path: commonDir })
+    ? commonDir
+    : paths.resolve({ segments: [worktreeGitDir, commonDir] });
 };
 
 const shadowLogPath = (): string => {
@@ -364,8 +633,12 @@ const shadowLogPath = (): string => {
   const startDirectory = process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
   const gitDirectory = primaryGitDirectoryFrom(startDirectory);
   if (gitDirectory !== undefined)
-    return join(gitDirectory, "rin-guard-trial-shadow.jsonl");
-  return join(startDirectory, ".claude", "guard-trial-shadow.jsonl");
+    return paths.join({
+      segments: [gitDirectory, "rin-guard-trial-shadow.jsonl"],
+    });
+  return paths.join({
+    segments: [startDirectory, ".claude", "guard-trial-shadow.jsonl"],
+  });
 };
 
 // Written on the SAME branch the deny would have taken, so the shadow set is
@@ -387,8 +660,8 @@ const recordDenyShadow = ({
   };
   const path = shadowLogPath();
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+    files.mkdir(paths.dirname({ path }), { recursive: true });
+    files.append(path, `${JSON.stringify(entry)}\n`);
   } catch {
     // An unwritable log must not turn an allowed command into a failure.
   }
@@ -453,6 +726,8 @@ const main = async (): Promise<void> => {
 
   if (invocation.toolName !== "Bash") process.exit(0);
   const { command } = invocation;
+  if (commandRunsAFetchAndRunLauncher({ command }))
+    denyCall({ reason: fetchAndRunDenyReason });
   const breachRule = breachedRuleOf({ command });
   if (breachRule === null) process.exit(0);
   // The relax branch IS the deny branch: a line is written exactly where the

@@ -1,8 +1,7 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
+import { installInlineExecHook } from "./inline-exec-hook-layout.ts";
 import {
   commandInvocationPayload,
   invokeBashHook,
@@ -12,6 +11,12 @@ import {
 
 const HOOK = "block-inline-exec.ts";
 const RUNTIME = "bun";
+
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+
+const scratchProjectDirectory = ({ prefix }: { readonly prefix: string }): string =>
+  files.makeTemporaryDirectory(paths.join({ segments: [files.temporaryRoot(), prefix] }));
 
 const denialFor = async ({ command }: { readonly command: string }) => {
   const outcome = await invokeBashHook({
@@ -83,15 +88,14 @@ describe("block-inline-exec per-segment evaluation", () => {
 
 describe("block-inline-exec authorised locations", () => {
   const passesFor = async ({ command }: { readonly command: string }) => {
-    const projectDir = mkdtempSync(join(tmpdir(), "rin-inline-exec-"));
-    const hooksDir = join(projectDir, ".claude", "hooks");
-    const manifestDir = join(projectDir, ".constitution-authorised-locations");
-    mkdirSync(hooksDir, { recursive: true });
-    mkdirSync(manifestDir, { recursive: true });
-    const hookPath = join(hooksDir, HOOK);
-    copyFileSync(join(dirname(fileURLToPath(import.meta.url)), HOOK), hookPath);
-    writeFileSync(
-      join(manifestDir, "inline-exec.json"),
+    const projectDir = scratchProjectDirectory({ prefix: "rin-inline-exec-" });
+    const manifestDir = paths.join({ segments: [projectDir, ".constitution-authorised-locations"] });
+    files.mkdir(manifestDir, { recursive: true });
+    const hookPath = installInlineExecHook({
+      harnessDirectory: paths.join({ segments: [projectDir, ".claude"] }),
+    });
+    files.write(
+      paths.join({ segments: [manifestDir, "inline-exec.json"] }),
       JSON.stringify([{ pathPrefixes: ["scripts/", ".aidlc/tools/", ".aidlc/rin-gates/"] }]),
     );
     try {
@@ -103,7 +107,7 @@ describe("block-inline-exec authorised locations", () => {
       });
       return permissionDecisionFrom({ stdout: outcome.stdout });
     } finally {
-      rmSync(projectDir, { recursive: true, force: true });
+      files.remove(projectDir, { recursive: true, force: true });
     }
   };
 
@@ -437,16 +441,14 @@ describe("block-inline-exec installed harness tools", () => {
     readonly command: string;
     readonly metadata?: string | null;
   }) => {
-    const projectDir = mkdtempSync(join(tmpdir(), "rin-installed-tools-"));
-    const hooksDir = join(projectDir, harnessDir, "hooks");
-    const dataDir = join(projectDir, harnessDir, "tools", "data");
-    mkdirSync(hooksDir, { recursive: true });
-    mkdirSync(dataDir, { recursive: true });
-    const hookPath = join(hooksDir, HOOK);
-    copyFileSync(join(dirname(fileURLToPath(import.meta.url)), HOOK), hookPath);
+    const projectDir = scratchProjectDirectory({ prefix: "rin-installed-tools-" });
+    const harnessDirectory = paths.join({ segments: [projectDir, harnessDir] });
+    const dataDir = paths.join({ segments: [harnessDirectory, "tools", "data"] });
+    const hookPath = installInlineExecHook({ harnessDirectory });
+    files.mkdir(dataDir, { recursive: true });
     if (metadata !== null) {
-      writeFileSync(
-        join(dataDir, "harness.json"),
+      files.write(
+        paths.join({ segments: [dataDir, "harness.json"] }),
         metadata ?? JSON.stringify({ harnessDir }),
       );
     }
@@ -459,7 +461,7 @@ describe("block-inline-exec installed harness tools", () => {
       });
       return permissionDecisionFrom({ stdout: outcome.stdout });
     } finally {
-      rmSync(projectDir, { recursive: true, force: true });
+      files.remove(projectDir, { recursive: true, force: true });
     }
   };
 
