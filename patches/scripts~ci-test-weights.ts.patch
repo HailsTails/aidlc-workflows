@@ -1,15 +1,25 @@
 diff --git a/scripts/ci-test-weights.ts b/scripts/ci-test-weights.ts
-index 9b05df229..2ffbcd673 100644
+index 9b05df229..97eecb16b 100644
 --- a/scripts/ci-test-weights.ts
 +++ b/scripts/ci-test-weights.ts
-@@ -110,6 +110,11 @@ export function integrationNames(repoRoot: string): string[] {
+@@ -15,6 +15,7 @@ import {
+ 
+ const REPO_ROOT = join(import.meta.dir, "..");
+ export const UNIT_WEIGHTS = "tests/unit-shard-weights.json";
++const PATH_NAMED_TEST_ROOTS = ["src", "scripts/parity"];
+ export const INTEGRATION_WEIGHTS = "tests/integration-weights.json";
+ /** A file over its weight by both margins is worth a refresh; single runs vary up to 2x. */
+ export const DRIFT_SECONDS = 60;
+@@ -110,6 +111,13 @@ export function integrationNames(repoRoot: string): string[] {
        names.push(`plugin-${plugin}-${file.replace(/\.test\.ts$/, "")}`);
      }
    }
-+  const source = join(repoRoot, "src");
-+  for (const file of existsSync(source) ? readdirSync(source, { recursive: true, encoding: "utf8" }) : []) {
-+    const path = file.replaceAll("\\", "/");
-+    if (path.endsWith(".test.ts")) names.push(`src-${path.replace(/\.test\.ts$/, "").replaceAll("/", "-")}`);
++  for (const root of PATH_NAMED_TEST_ROOTS) {
++    const rootDir = join(repoRoot, root);
++    for (const file of existsSync(rootDir) ? readdirSync(rootDir, { recursive: true, encoding: "utf8" }) : []) {
++      const path = `${root}/${file.replaceAll("\\", "/")}`;
++      if (path.endsWith(".test.ts")) names.push(path.replace(/\.test\.ts$/, "").replaceAll("/", "-"));
++    }
 +  }
    return names.sort();
  }

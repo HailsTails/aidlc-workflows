@@ -1,0 +1,36 @@
+diff --git a/tests/unit/t345-full-suite-workflow.test.ts b/tests/unit/t345-full-suite-workflow.test.ts
+index b01c53fae..34b94427b 100644
+--- a/tests/unit/t345-full-suite-workflow.test.ts
++++ b/tests/unit/t345-full-suite-workflow.test.ts
+@@ -553,6 +553,31 @@ describe("t345 complete nightly coverage", () => {
+     expect(steps(ci.jobs.test_native_terminal).some((step) => step.name === "Run platform regressions on manual dispatch")).toBe(false);
+   });
+ 
++  test("every test file under src/ and scripts/parity/ runs in the integration job, named by its path", () => {
++    const plannedFiles = (selection: string[]): string[] => {
++      const result = spawnSync(process.execPath, ["tests/run-tests.ts", "--integration", "--isolated-files", "--e2e-plan", ...selection], {
++        cwd: REPO_ROOT, env: { ...process.env, BUN_OPTIONS: "" }, encoding: "utf8", timeout: NATIVE_STARTUP_TIMEOUT_MS,
++      });
++      expect(result.status, result.stderr).toBe(0);
++      return (JSON.parse(result.stdout) as { files: Array<{ file: string }> }).files.map(({ file }) => file);
++    };
++    const pathName = (file: string): string => file.replace(/\.test\.ts$/, "").replaceAll("/", "-");
++    const onDisk = ["src", "scripts/parity"].flatMap((root) =>
++      readdirSync(join(REPO_ROOT, root), { recursive: true, encoding: "utf8" })
++        .map((file) => `${root}/${file.replaceAll("\\", "/")}`)
++        .filter((file) => file.endsWith(".test.ts")));
++    const integrationJob = new Set(plannedFiles(["--exclude", "^t-(scope-run|scope-host|guard-matrix)-"]));
++    expect(onDisk.some((file) => file.startsWith("src/"))).toBe(true);
++    expect(onDisk.some((file) => file.startsWith("scripts/parity/"))).toBe(true);
++    expect(onDisk.filter((file) => !integrationJob.has(file))).toEqual([]);
++    const sharedBasename = onDisk.find((file) => onDisk.filter((other) => basename(other) === basename(file)).length > 1);
++    const named = [onDisk.find((file) => file.startsWith("src/")), onDisk.find((file) => file.startsWith("scripts/parity/")), sharedBasename];
++    for (const file of named) {
++      expect(file).toBeDefined();
++      expect(plannedFiles(["--filter", `^${pathName(file!)}$`])).toEqual([file!]);
++    }
++  });
++
+   // macOS runners set the merge queue's pace, so a queued merge commit runs on
+   // macOS only the unit files that name macOS and the ones the change touches.
+   test("only the merge queue's macOS unit shards narrow their files; every other leg and the nightly run in full", () => {
