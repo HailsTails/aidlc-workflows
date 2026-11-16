@@ -1,5 +1,7 @@
 name: "Full Suite"
 on:
+  push:
+    branches: [ci-proof/register-full-suite]
   workflow_call:
     inputs:
       ref:
