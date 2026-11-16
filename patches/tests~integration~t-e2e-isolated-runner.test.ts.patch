@@ -1,13 +1,15 @@
 diff --git a/tests/integration/t-e2e-isolated-runner.test.ts b/tests/integration/t-e2e-isolated-runner.test.ts
-index 363aabd01..a125209f7 100644
+index a231290b7..5433c9e39 100644
 --- a/tests/integration/t-e2e-isolated-runner.test.ts
 +++ b/tests/integration/t-e2e-isolated-runner.test.ts
-@@ -113,8 +113,6 @@ function fixture(files: Record<string, string>): string {
+@@ -46,7 +46,9 @@ function git(root: string, args: string[]): string {
+ function fixture(files: Record<string, string>): string {
    const root = scratch();
    for (const path of [
-     "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts",
--    "lint/gate/adapters/runner-progress.ts",
--    "lint/gate/adapters/package-lock.ts",
-     "tests/lib/test-matrix.ts", "tests/lib/test-source.ts",
-     "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
-     "tests/harness/tui-process-identity.ts",
+-    "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts", "scripts/package-sources.ts",
++    "tests/run-tests.ts", "tests/run-tests.sh", "tests/gen-coverage-registry.ts",
++    "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts", "src/kernel/file-system-port.ts",
++    "src/kernel/content-digester.ts", "src/kernel/values.ts", "src/kernel/brand.ts", "src/kernel/result.ts",
+     "tests/harness/claude-gate.ts", "tests/harness/tui-runtime.ts", "tests/harness/tui-record-file.ts",
+     "tests/harness/tui-windows-private-file.ts",
+     "tests/harness/runner-profile.ts",

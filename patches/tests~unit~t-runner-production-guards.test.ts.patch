@@ -1,13 +1,14 @@
 diff --git a/tests/unit/t-runner-production-guards.test.ts b/tests/unit/t-runner-production-guards.test.ts
-index 56d566122..70146d5cf 100644
+index 48403a7ba..78164c9b7 100644
 --- a/tests/unit/t-runner-production-guards.test.ts
 +++ b/tests/unit/t-runner-production-guards.test.ts
-@@ -249,8 +249,6 @@ function runnerFixture(files: Record<string, string>) {
-   for (const file of [
-     "tests/run-tests.sh",
-     "tests/run-tests.ts",
--    "lint/gate/adapters/runner-progress.ts",
--    "lint/gate/adapters/package-lock.ts",
-     "tests/lib/test-matrix.ts", "tests/lib/test-source.ts",
-     "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
-     "tests/harness/tui-process-identity.ts",
+@@ -250,7 +250,8 @@ function runnerFixture(files: Record<string, string>) {
+     "tests/harness/runner-profile.ts",
+     "tests/harness/test-budget.ts",
+     "tests/gen-coverage-registry.ts",
+-    "scripts/package-sources.ts",
++    "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts", "src/kernel/file-system-port.ts",
++    "src/kernel/content-digester.ts", "src/kernel/values.ts", "src/kernel/brand.ts", "src/kernel/result.ts",
+     "tests/harness/tui-runtime.ts",
+     "tests/harness/tui-record-file.ts",
+     "tests/harness/tui-windows-private-file.ts",

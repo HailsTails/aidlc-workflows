@@ -71,6 +71,11 @@ export const SHAPE_PLAN: ShapePlan = {
     "tests/lib/e2e-workers.ts",
     "tests/unit/t-aidlc-lib-only-shrinks.test.ts",
     "tests/fixtures/aidlc-lib-declarations.txt",
+    "tests/integration/t-e2e-isolated-runner.test.ts",
+    "tests/integration/t-e2e-native-cancellation.test.ts",
+    "tests/integration/t-runner-process-lifecycle.test.ts",
+    "tests/unit/t-runner-production-guards.test.ts",
+    "tests/unit/t-e2e-temporary-root.test.ts",
   ],
   patchFolder: "patches",
   addedFiles: [

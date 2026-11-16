@@ -43,6 +43,7 @@ Each check prints a one-line summary and exits non-zero, naming every file that 
 
 ## Open items
 
+- Pending decision: `.gitleaks.toml` allowlists `tests/golden/*.json` and `tests/golden/install/*.json` by path. The sha256 values in them sit under keys whose paths contain `api`, and gitleaks' `generic-api-key` rule reports them (21 findings). The alternative is a golden file format that rule does not match.
 - Nothing in CI builds the previous-release dist yet, so the install check runs by hand.
 - The coverage check `bun tests/gen-coverage-registry.ts --check --base <commit>` builds the base commit from `git archive` in a temporary folder with no `node_modules`. With `caea995ae` as the base it passes: `coverage registry: OK (guards green, no unit lost coverage against caea995ae)`. With a base that already contains `src/` (this tree as one commit on `caea995ae`) it exits 1: `COVERAGE BASE FAILED: building the base … stopped at bun scripts/package.ts claude`, followed by 45 identical `command-source-failed` refusals reading `Cannot find package 'zod' from '…/tree/src/cli/adapters/routes/projection/legacy-runner-child.ts'`. A change made on top of this one would meet the same failure.
 - The upstream test runner's tiers and the CI workflows do not run `bun test ./src` yet.
