@@ -1,7 +1,7 @@
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { claudeDistribution } from "./distribution.ts";
-import { CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_BINDING_HEADING, CLAUDE_HOST_DATA, CLAUDE_TOKENS, claudeHostIdentity } from "./host-data.ts";
+import { CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_BINDING_HEADING, CLAUDE_TIER_FLAVOR, CLAUDE_HOST_DATA, CLAUDE_TOKENS, claudeHostIdentity } from "./host-data.ts";
 import { CLAUDE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { claudeAgents } from "./projection/agent-renderer.ts";
 import { claudeCommandPath } from "./projection/command-renderer.ts";
@@ -22,6 +22,7 @@ export const claudeHost = () => {
       tokens: CLAUDE_TOKENS,
       renderData: () => CLAUDE_HOST_DATA,
       placements: CLAUDE_AUTHORED_PLACEMENTS,
+      tierFlavor: CLAUDE_TIER_FLAVOR,
       agents: { inputs: [], render: claudeAgents },
       commands: claudeCommandPath,
       skills: { inputs: skillInputs.value, render: createClaudeSkillRenderer },

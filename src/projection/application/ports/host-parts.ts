@@ -2,6 +2,7 @@ import type { SourcePath } from "../../../kernel/values.ts";
 import type { AuthoredPlacement } from "../../domain/host-surface.ts";
 import type { OnboardingFills } from "../../domain/neutral-surface.ts";
 import type { HostTokenChoices } from "../../domain/template-token.ts";
+import type { TierFlavor } from "../../domain/tier-flavor.ts";
 import type { HostAgentRenderer } from "./agents.ts";
 import type { CommandPlacement } from "./commands.ts";
 import type { HostDocumentRenderer } from "./documents.ts";
@@ -19,6 +20,7 @@ export type HostProjectionParts = {
   readonly tokens: HostTokenChoices;
   readonly renderData: HostDataRenderer;
   readonly placements: readonly AuthoredPlacement[];
+  readonly tierFlavor: TierFlavor;
   readonly agents: ConceptMembers<HostAgentRenderer>;
   readonly commands: CommandPlacement;
   readonly skills: ConceptMembers<HostSkillRenderer>;

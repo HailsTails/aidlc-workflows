@@ -3,8 +3,11 @@ import { accepted, type Result } from "../../kernel/result.ts";
 import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
+import type { TierFlavor } from "../../projection/domain/tier-flavor.ts";
 
 export const CURSOR_BINDING_HEADING = "Cursor";
+
+export const CURSOR_TIER_FLAVOR: TierFlavor = "cursor";
 
 export const CURSOR_HOST_DATA = {
   productName: "Cursor",

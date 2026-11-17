@@ -4,6 +4,7 @@ import type { Agent, TieredModel } from "../../../workflow-definition/domain/age
 import type { AgentSlug } from "../../../workflow-definition/domain/identities.ts";
 import type { MethodSource } from "../../../workflow-definition/domain/method-source.ts";
 import type { TokenBindings } from "../../domain/template-token.ts";
+import type { TierFlavor } from "../../domain/tier-flavor.ts";
 import type { Method } from "../../../workflow-definition/domain/method.ts";
 import type { Tier } from "../../../workflow-definition/domain/vocabulary.ts";
 import type { AuthoredHostFile } from "../../domain/host-surface.ts";
@@ -15,7 +16,6 @@ import type { Harness, Rendering } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
 
 export type AgentModelPolicy = (request: {
-  readonly host: HostIdentity;
   readonly agent: AgentSlug;
   readonly model: TieredModel;
 }) => Result<string | undefined, ProjectionRefusal>;
@@ -55,6 +55,7 @@ export type AgentRenderingInputs = {
   readonly persona: AgentPersonaPreparer;
   readonly documents: AgentDocumentSurface;
   readonly modelCap: Tier | null;
+  readonly tierFlavor: TierFlavor;
   readonly method: Method;
   readonly host: HostIdentity;
   readonly channel: DistributionChannel;
@@ -82,6 +83,7 @@ export type AgentProjectionRequest = {
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
   readonly modelCap: Tier | null;
+  readonly tierFlavor: TierFlavor;
 };
 
 export type AgentProjection = (request: AgentProjectionRequest) => Rendering;

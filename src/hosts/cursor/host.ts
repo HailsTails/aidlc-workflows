@@ -1,7 +1,7 @@
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { cursorDistribution } from "./distribution.ts";
-import { CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_HOST_DATA, CURSOR_TOKENS, cursorHostIdentity } from "./host-data.ts";
+import { CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_TIER_FLAVOR, CURSOR_HOST_DATA, CURSOR_TOKENS, cursorHostIdentity } from "./host-data.ts";
 import { CURSOR_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { cursorAgents } from "./projection/agent-renderer.ts";
 import { cursorCommandPath } from "./projection/command-renderer.ts";
@@ -24,6 +24,7 @@ export const cursorHost = () => {
       tokens: CURSOR_TOKENS,
       renderData: () => CURSOR_HOST_DATA,
       placements: CURSOR_AUTHORED_PLACEMENTS,
+      tierFlavor: CURSOR_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: cursorAgents },
       commands: cursorCommandPath,
       skills: { inputs: skillInputs.value, render: createCursorSkillRenderer },

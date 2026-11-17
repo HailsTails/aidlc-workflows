@@ -1,7 +1,7 @@
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { codexDistribution } from "./distribution.ts";
-import { CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_HOST_DATA, CODEX_TOKENS, codexHostIdentity } from "./host-data.ts";
+import { CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TIER_FLAVOR, CODEX_HOST_DATA, CODEX_TOKENS, codexHostIdentity } from "./host-data.ts";
 import { CODEX_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { codexAgents } from "./projection/agent-renderer.ts";
 import { codexCommandPath } from "./projection/command-renderer.ts";
@@ -25,6 +25,7 @@ export const codexHost = () => {
       tokens: CODEX_TOKENS,
       renderData: () => CODEX_HOST_DATA,
       placements: CODEX_AUTHORED_PLACEMENTS,
+      tierFlavor: CODEX_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: codexAgents },
       commands: codexCommandPath,
       skills: { inputs: skillInputs.value, render: createCodexSkillRenderer },

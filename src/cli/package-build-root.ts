@@ -87,7 +87,8 @@ const hostProjector = (ports: {
       sources: request.core.sources, host: request.host,
       renderers: renderersOf(members),
       files: request.files, prepare: request.prepare, tokens: request.tokens, channel: request.channel,
-      modelCap: request.modelCap, entrypoints: request.entrypoints, fills: members.projection.fills,
+      modelCap: request.modelCap, tierFlavor: members.projection.tierFlavor, entrypoints: request.entrypoints,
+      fills: members.projection.fills,
       bindingHeadings: bindingHeadingsOf(ports.hosts), projectRoot: request.projectRoot,
       reviewerAgents: request.reviewerAgents, runtime: captured.value.runtime, compiled: compiled.value });
     if (!assembled.ok) return assembled;

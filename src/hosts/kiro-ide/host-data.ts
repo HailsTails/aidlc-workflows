@@ -3,8 +3,11 @@ import { accepted, type Result } from "../../kernel/result.ts";
 import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
+import type { TierFlavor } from "../../projection/domain/tier-flavor.ts";
 
 export const KIRO_IDE_BINDING_HEADING = "Kiro IDE";
+
+export const KIRO_IDE_TIER_FLAVOR: TierFlavor = "kiro";
 
 const KIRO_IDE_TRUST_STEP =
   "In Kiro IDE, trust this folder: choose Trust Folder & Continue when Kiro asks whether you " +

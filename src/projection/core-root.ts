@@ -48,13 +48,13 @@ const agentInputs = ({ agents, allows, facts }: {
   const persona = createAgentPersonaPreparer({ sources: agents.sources, tokens: agents.tokens,
     directory: agents.host.directory, rulesFolder: agents.rulesFolder, reviewerAgents: agents.reviewerAgents,
     sharedKnowledge: delegatedSharedKnowledge(agents.host.directory) });
-  const markdown = legacyMarkdownAgentSurface({ host: agents.host, cap: agents.modelCap });
+  const markdown = legacyMarkdownAgentSurface({ flavor: agents.tierFlavor, cap: agents.modelCap });
   return { host: agents.host, files: agents.files, prepare: agents.prepare, tokens: agents.tokens, persona,
     documents: (request) => {
       const prepared = persona(request);
       return prepared.ok ? markdown({ ...request, content: prepared.value }) : prepared;
-    }, modelCap: agents.modelCap, method: agents.method, channel: agents.channel,
-    models: legacyAgentModelPolicy(agents.modelCap), formatDocuments: shippedFormatDocuments(), allows, delegateShellFacts: facts };
+    }, modelCap: agents.modelCap, tierFlavor: agents.tierFlavor, method: agents.method, channel: agents.channel,
+    models: legacyAgentModelPolicy({ flavor: agents.tierFlavor, cap: agents.modelCap }), formatDocuments: shippedFormatDocuments(), allows, delegateShellFacts: facts };
 };
 
 const settingsInputs = ({ settings, allows, capabilities }: {

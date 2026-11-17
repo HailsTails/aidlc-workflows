@@ -2,7 +2,7 @@ import { accepted } from "../../kernel/result.ts";
 import type { HostFileDeriver } from "../../projection/application/ports/harness.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { kiroIdeDistribution } from "./distribution.ts";
-import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TOKENS, kiroIdeHostIdentity } from "./host-data.ts";
+import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TIER_FLAVOR, KIRO_IDE_TOKENS, kiroIdeHostIdentity } from "./host-data.ts";
 import { KIRO_IDE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { createKiroIdeAgents, type KiroIdePersonaRendering } from "./projection/agent-renderer.ts";
 import { kiroIdeHostData } from "./projection/host-data-renderer.ts";
@@ -36,6 +36,7 @@ export const kiroIdeHost = (personas: KiroIdePersonaRendering) => {
       tokens: KIRO_IDE_TOKENS,
       renderData: kiroIdeHostData,
       placements: KIRO_IDE_AUTHORED_PLACEMENTS,
+      tierFlavor: KIRO_IDE_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: createKiroIdeAgents({ personas }) },
       commands: kiroIdeCommandPath,
       skills: { inputs: skillInputs.value, render: createKiroIdeSkillRenderer },

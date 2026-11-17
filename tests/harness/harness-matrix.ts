@@ -11,6 +11,7 @@ import {
   hostModule, HOSTS,
 } from "../../src/cli/host-table.ts";
 import type { OnboardingFills } from "../../src/projection/domain/neutral-surface.ts";
+import type { TierFlavor } from "../../src/projection/domain/tier-flavor.ts";
 import { validateProjectionDescriptor, type ProjectionDescriptor, type ProjectionStamp }
   from "../../core/tools/aidlc-distribution.ts";
 import type { PluginTargetTable } from "../../core/tools/aidlc-plugin-emit.ts";
@@ -46,8 +47,6 @@ type ReviewerScopeRegistration =
   | "opencode-plugin"
   | "unsupported";
 
-type TierFlavor = "claude" | "codex" | "copilot" | "cursor" | "kiro" | "opencode";
-
 type HarnessCapabilities = {
   harnessDir: string;
   onboarding: {
@@ -73,7 +72,6 @@ type HarnessCapabilities = {
   kiroAgentJson: boolean;
   ideAgentTools: boolean;
   reviewerScopeRegistration: ReviewerScopeRegistration;
-  tierFlavor: TierFlavor;
 };
 
 // These are test capabilities, not packager instructions. Keeping every field
@@ -99,7 +97,6 @@ const HARNESS_CAPABILITIES = {
     kiroAgentJson: false,
     ideAgentTools: false,
     reviewerScopeRegistration: "claude-settings",
-    tierFlavor: "claude",
   },
   codex: {
     harnessDir: ".codex",
@@ -120,7 +117,6 @@ const HARNESS_CAPABILITIES = {
     kiroAgentJson: false,
     ideAgentTools: false,
     reviewerScopeRegistration: "codex-hooks",
-    tierFlavor: "codex",
   },
   copilot: {
     harnessDir: ".aidlc",
@@ -141,7 +137,6 @@ const HARNESS_CAPABILITIES = {
     kiroAgentJson: false,
     ideAgentTools: false,
     reviewerScopeRegistration: "copilot-hooks",
-    tierFlavor: "copilot",
   },
   cursor: {
     harnessDir: ".cursor",
@@ -162,7 +157,6 @@ const HARNESS_CAPABILITIES = {
     kiroAgentJson: false,
     ideAgentTools: false,
     reviewerScopeRegistration: "cursor-hooks",
-    tierFlavor: "cursor",
   },
   "kiro-ide": {
     harnessDir: ".kiro",
@@ -183,7 +177,6 @@ const HARNESS_CAPABILITIES = {
     kiroAgentJson: false,
     ideAgentTools: true,
     reviewerScopeRegistration: "unsupported",
-    tierFlavor: "kiro",
   },
   kiro: {
     harnessDir: ".kiro",
@@ -204,7 +197,6 @@ const HARNESS_CAPABILITIES = {
     kiroAgentJson: true,
     ideAgentTools: true,
     reviewerScopeRegistration: "kiro-agent-json",
-    tierFlavor: "kiro",
   },
   opencode: {
     harnessDir: ".aidlc",
@@ -225,7 +217,6 @@ const HARNESS_CAPABILITIES = {
     kiroAgentJson: false,
     ideAgentTools: false,
     reviewerScopeRegistration: "opencode-plugin",
-    tierFlavor: "opencode",
   },
 } as const satisfies Record<string, HarnessCapabilities>;
 
@@ -289,8 +280,9 @@ function producesConductorAgent(name: ShippedHarnessName,
   const directory = projectPath(manifest.harnessDir);
   if (!distribution.ok || !directory.ok) fail(name, "agent producer needs a valid host identity");
   const host = { distribution: distribution.value, directory: directory.value };
-  const agents = hostModule(host)?.projection.agents;
-  if (agents === undefined) return false;
+  const projection = hostModule(host)?.projection;
+  if (projection === undefined) return false;
+  const agents = projection.agents;
   const conductor = agents.inputs.find((source) => source === "agents/aidlc.json");
   if (conductor === undefined) return false;
   const authored = join(HARNESS_ROOT, name, conductor);
@@ -299,7 +291,7 @@ function producesConductorAgent(name: ShippedHarnessName,
     delegateShellFacts: DELEGATE_SHELL_FACTS,
     tokens: tokenBindingsFixture({ harnessDir: manifest.harnessDir }),
     persona: () => accepted(""), documents: () => accepted(""),
-    modelCap: null, method: methodSliceFixture,
+    modelCap: null, tierFlavor: projection.tierFlavor, method: methodSliceFixture,
     files: [{ source: conductor,
       content: { kind: "text", text: readFileSync(authored, "utf8") } }],
     prepare: accepted, formatDocuments: new Set(),
@@ -408,7 +400,7 @@ export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapa
   validateFullHostAgentsAndPlugin(name, capabilities);
   validateConductorSkillFiles(name, member.projection.skills.inputs);
   return { fills: member.projection.fills, manifest: { name, harnessDir: descriptor.harnessDir,
-    tierFlavor: capabilities.tierFlavor,
+    tierFlavor: member.projection.tierFlavor,
     rootIntegrations: descriptor.rootIntegrations,
     orchestratorSkillPath: `${capabilities.skillsRoot}/aidlc/SKILL.md`,
     onboarding: onboardingSpec({ directory: descriptor.harnessDir,

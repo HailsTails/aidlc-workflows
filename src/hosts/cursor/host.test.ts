@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
 import { cursorDistribution } from "./distribution.ts";
-import { CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_TOKENS } from "./host-data.ts";
+import { CURSOR_AUTHORED_PLACEMENTS, CURSOR_BINDING_HEADING, CURSOR_TIER_FLAVOR, CURSOR_TOKENS } from "./host-data.ts";
 import { cursorHost } from "./host.ts";
 import { CURSOR_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { cursorAgents } from "./projection/agent-renderer.ts";
@@ -18,6 +18,7 @@ test("cursor module gathers the identity, distribution and every projection part
       tokens: CURSOR_TOKENS,
       renderData: expect.any(Function),
       placements: CURSOR_AUTHORED_PLACEMENTS,
+      tierFlavor: CURSOR_TIER_FLAVOR,
       agents: { inputs: [], render: cursorAgents },
       commands: cursorCommandPath,
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md"), source("skills/aidlc-status/SKILL.md"), source("skills/aidlc-jump/SKILL.md"), source("skills/aidlc-scope/SKILL.md")], render: createCursorSkillRenderer },

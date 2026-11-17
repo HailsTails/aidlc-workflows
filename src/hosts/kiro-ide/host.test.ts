@@ -4,7 +4,7 @@ import { accept } from "../../kernel/fixtures/accept.ts";
 import { accepted } from "../../kernel/result.ts";
 import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
 import { kiroIdeDistribution } from "./distribution.ts";
-import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TOKENS } from "./host-data.ts";
+import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TIER_FLAVOR, KIRO_IDE_TOKENS } from "./host-data.ts";
 import { kiroIdeHost } from "./host.ts";
 import { KIRO_IDE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import type { KiroIdePersonaRendering } from "./projection/agent-renderer.ts";
@@ -23,6 +23,7 @@ test("kiroIde module gathers the identity, distribution and every projection par
       tokens: KIRO_IDE_TOKENS,
       renderData: kiroIdeHostData,
       placements: KIRO_IDE_AUTHORED_PLACEMENTS,
+      tierFlavor: KIRO_IDE_TIER_FLAVOR,
       agents: { inputs: [source("agents/aidlc-aidlc.md")], render: expect.any(Function) },
       commands: kiroIdeCommandPath,
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/workflow.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createKiroIdeSkillRenderer },

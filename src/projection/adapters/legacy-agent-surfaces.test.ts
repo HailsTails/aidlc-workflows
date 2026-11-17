@@ -1,19 +1,18 @@
 import { expect, test } from "bun:test";
-import { host, source } from "../../kernel/fixtures/values.fixture.ts";
+import { source } from "../../kernel/fixtures/values.fixture.ts";
 import { agent } from "../../workflow-definition/fixtures/identities.fixture.ts";
 import { legacyAgentModelPolicy, legacyAgentTiersData, legacyCliModelPolicy, legacyMarkdownAgentSurface } from "./legacy-agent-surfaces.ts";
 
-test("Kiro inherits its session model under the frozen policy", () => {
-  expect(legacyAgentModelPolicy(null)({ host: host({ name: "kiro", directory: ".kiro" }),
+test("the Kiro flavor inherits its session model under the frozen policy", () => {
+  expect(legacyAgentModelPolicy({ flavor: "kiro", cap: null })({
     agent: agent("aidlc-architect-agent"), model: { kind: "tier", tier: "judgment" } }))
     .toEqual({ ok: true, value: undefined });
 });
 
-test("an unsupported model host refuses the actual agent before policy lookup", () => {
-  expect(legacyAgentModelPolicy(null)({ host: host({ name: "unknown", directory: ".unknown" }),
-    agent: agent("aidlc-architect-agent"), model: { kind: "tier", tier: "judgment" } }))
-    .toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-architect-agent",
-      reason: "The frozen model policy has no host unknown." } });
+test("the Claude flavor projects the balanced tier's frozen model", () => {
+  expect(legacyAgentModelPolicy({ flavor: "claude", cap: null })({
+    agent: agent("aidlc-architect-agent"), model: { kind: "tier", tier: "balanced" } }))
+    .toEqual({ ok: true, value: "sonnet" });
 });
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 
@@ -75,7 +74,7 @@ const surfaceAgent = (): CoreAgent => ({ slug: agent("aidlc-example-agent"),
   persona: { text: "Persona", headings: [] }, additions: { afterPreflight: [], endOfBody: [] } });
 
 test("omitted Markdown models preserve removal and appended lines without consulting host model policy", () => {
-  expect(legacyMarkdownAgentSurface({ host: host({ name: "unknown", directory: ".unknown" }), cap: null })({
+  expect(legacyMarkdownAgentSurface({ flavor: "claude", cap: null })({
     agent: surfaceAgent(), content: "---\nname: Example\ntier: balanced\nmodel: old\ndisallowedTools: Task\n---\nPersona\n",
     frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
       removeKeys: ["disallowedTools"], afterProjectionLines: ["tools: Read"] },
@@ -83,7 +82,7 @@ test("omitted Markdown models preserve removal and appended lines without consul
 });
 
 test("a frozen Markdown formatting failure remains a refusal naming the actual agent", () => {
-  expect(legacyMarkdownAgentSurface({ host: host({ name: "claude", directory: ".claude" }), cap: null })({
+  expect(legacyMarkdownAgentSurface({ flavor: "claude", cap: null })({
     agent: surfaceAgent(), content: "No frontmatter",
     frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
       removeKeys: [], afterProjectionLines: [] },

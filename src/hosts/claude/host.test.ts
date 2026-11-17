@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
 import { claudeDistribution } from "./distribution.ts";
-import { CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_BINDING_HEADING, CLAUDE_TOKENS } from "./host-data.ts";
+import { CLAUDE_AUTHORED_PLACEMENTS, CLAUDE_BINDING_HEADING, CLAUDE_TIER_FLAVOR, CLAUDE_TOKENS } from "./host-data.ts";
 import { claudeHost } from "./host.ts";
 import { CLAUDE_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { claudeAgents } from "./projection/agent-renderer.ts";
@@ -19,6 +19,7 @@ test("Claude's module gathers the identity, distribution and every projection pa
       tokens: CLAUDE_TOKENS,
       renderData: expect.any(Function),
       placements: CLAUDE_AUTHORED_PLACEMENTS,
+      tierFlavor: CLAUDE_TIER_FLAVOR,
       agents: { inputs: [], render: claudeAgents },
       commands: claudeCommandPath,
       skills: {

@@ -3,8 +3,11 @@ import { accepted, type Result } from "../../kernel/result.ts";
 import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
+import type { TierFlavor } from "../../projection/domain/tier-flavor.ts";
 
 export const OPENCODE_BINDING_HEADING = "opencode";
+
+export const OPENCODE_TIER_FLAVOR: TierFlavor = "opencode";
 
 export const OPENCODE_HOST_DATA = {
   productName: "opencode",

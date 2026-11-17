@@ -35,6 +35,7 @@ export const SCRATCH_AGENT_INPUTS: AgentRenderingInputs = {
   persona: () => accepted(""),
   documents: () => accepted(""),
   modelCap: null,
+  tierFlavor: "claude",
   method: methodSliceFixture,
   host: SCRATCH_HOST,
   channel: "copy",

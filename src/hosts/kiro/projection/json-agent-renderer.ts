@@ -96,7 +96,7 @@ export const createKiroJsonAgentRenderer = (profile: {
       modelDecision: ({ agent, file }) => {
         if (agent.model.kind !== "tier") return refused({ kind: "host-source-unreadable",
           host: profile.host, source: file.source, reason: "the accepted core Method supplies no model tier" });
-        const model = inputs.models({ host: profile.host, agent: agent.slug, model: agent.model });
+        const model = inputs.models({ agent: agent.slug, model: agent.model });
         return model.ok ? accepted({ kind: "project", model: model.value }) : model;
       },
     }),

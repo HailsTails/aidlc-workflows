@@ -1,25 +1,23 @@
 import { z } from "zod";
-import { isModelHarness, modelAgentName, resolveModelPolicy, serializeAgentTiers, writeKiroCliSurface, writeMarkdownAgentSurface, type EffectiveModelPolicy } from "../../../core/tools/aidlc-model-policy.ts";
+import { modelAgentName, resolveModelPolicy, serializeAgentTiers, writeKiroCliSurface, writeMarkdownAgentSurface, type EffectiveModelPolicy } from "../../../core/tools/aidlc-model-policy.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { Tier } from "../../workflow-definition/domain/vocabulary.ts";
 import type { Agent } from "../../workflow-definition/domain/agent.ts";
-import type { HostIdentity } from "../../kernel/host.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
+import type { TierFlavor } from "../domain/tier-flavor.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { AgentDocumentRequest } from "../application/ports/agents.ts";
 import type { AgentModelPolicy } from "../application/ports/agents.ts";
 import type { CliModelPolicy } from "../application/ports/settings.ts";
 
-export const legacyAgentModelPolicy = (cap: Tier | null): AgentModelPolicy => (request) => {
-  if (!isModelHarness(request.host.distribution)) return refused({
-    kind: "render-failed", concept: "agent", name: request.agent,
-    reason: `The frozen model policy has no host ${request.host.distribution}.`,
-  });
+type FlavoredPolicy = { readonly flavor: TierFlavor; readonly cap: Tier | null };
+
+export const legacyAgentModelPolicy = ({ flavor, cap }: FlavoredPolicy): AgentModelPolicy => (request) => {
   try {
     return accepted(resolveModelPolicy(null, modelAgentName(request.agent), request.model.tier,
-      request.host.distribution, cap).model);
+      flavor, cap).model);
   } catch (error) {
     return refused({ kind: "render-failed", concept: "agent", name: request.agent,
       reason: error instanceof Error ? error.message : String(error) });
@@ -48,27 +46,23 @@ export const legacyCliModelPolicy = (cap: Tier | null): CliModelPolicy => (file)
   }
 };
 
-const agentSurfacePolicy = (request: {
-  readonly host: HostIdentity; readonly agent: Agent; readonly cap: Tier | null;
+const agentSurfacePolicy = (request: FlavoredPolicy & {
+  readonly agent: Agent;
 }): Result<EffectiveModelPolicy, ProjectionRefusal> => {
-  if (!isModelHarness(request.host.distribution)) return refused({
-    kind: "render-failed", concept: "agent", name: request.agent.slug,
-    reason: `The frozen model policy has no host ${request.host.distribution}.`,
-  });
   if (request.agent.model.kind !== "tier") return refused({
     kind: "render-failed", concept: "agent", name: request.agent.slug,
     reason: "This core-agent bridge requires an authored model tier.",
   });
   try {
     return accepted(resolveModelPolicy(null, modelAgentName(request.agent.slug), request.agent.model.tier,
-      request.host.distribution, request.cap));
+      request.flavor, request.cap));
   } catch (error) {
     return refused({ kind: "render-failed", concept: "agent", name: request.agent.slug,
       reason: error instanceof Error ? error.message : String(error) });
   }
 };
 
-export const legacyMarkdownAgentSurface = (binding: { readonly host: HostIdentity; readonly cap: Tier | null }) =>
+export const legacyMarkdownAgentSurface = (binding: FlavoredPolicy) =>
   (request: Pick<AgentDocumentRequest, "agent" | "frontmatter"> & { readonly content: string }): Result<string, ProjectionRefusal> => {
     const policy = request.frontmatter.model === "omitted" ? accepted({}) : agentSurfacePolicy({ ...binding, agent: request.agent });
     if (!policy.ok) return policy;

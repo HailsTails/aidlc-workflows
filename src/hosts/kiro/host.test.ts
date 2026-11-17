@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
 import { kiroDistribution } from "./distribution.ts";
-import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TOKENS } from "./host-data.ts";
+import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TIER_FLAVOR, KIRO_TOKENS } from "./host-data.ts";
 import { kiroHost, kiroPersonas } from "./host.ts";
 import { KIRO_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { kiroAgentRenderer } from "./projection/agent-renderer.ts";
@@ -20,6 +20,7 @@ test("kiro module gathers the identity, distribution and every projection part t
       tokens: KIRO_TOKENS,
       renderData: expect.any(Function),
       placements: KIRO_AUTHORED_PLACEMENTS,
+      tierFlavor: KIRO_TIER_FLAVOR,
       agents: { inputs: [source("agents/aidlc.json"), source("agents/aidlc-architect-agent.json"), source("agents/aidlc-developer-agent.json"), source("agents/aidlc-product-lead-agent.json"), source("agents/aidlc-architecture-reviewer-agent.json"), source("agents/aidlc-composer-agent.json"), source("agents/aidlc-product-agent.json"), source("agents/aidlc-design-agent.json"), source("agents/aidlc-delivery-agent.json"), source("agents/aidlc-aws-platform-agent.json"), source("agents/aidlc-compliance-agent.json"), source("agents/aidlc-devsecops-agent.json"), source("agents/aidlc-quality-agent.json"), source("agents/aidlc-pipeline-deploy-agent.json"), source("agents/aidlc-operations-agent.json")], render: kiroAgents },
       commands: kiroCommandPath,
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createKiroSkillRenderer },

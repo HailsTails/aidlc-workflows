@@ -93,7 +93,7 @@ test("the published agent member prepares a persona once and delegates its model
     origin: { kind: "harness-authored", source: file.source },
   }]));
   expect(prepare).toHaveBeenCalledTimes(2);
-  expect(models).toHaveBeenCalledWith({ host, agent: agent.slug, model: agent.model });
+  expect(models).toHaveBeenCalledWith({ agent: agent.slug, model: agent.model });
 });
 
 test("the conductor preserves its model and appends the native hook suffix once", () => {

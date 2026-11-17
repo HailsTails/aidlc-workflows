@@ -10,6 +10,7 @@ import type { OnboardingFills, SharedRuntime } from "../../domain/neutral-surfac
 import type { DistributionChannel } from "../../domain/projected-file.ts";
 import type { CompiledMethodFiles, ProjectionRefusal } from "../../domain/projection.ts";
 import type { TokenBindings } from "../../domain/template-token.ts";
+import type { TierFlavor } from "../../domain/tier-flavor.ts";
 import type { HostAgentRenderer } from "./agents.ts";
 import type { CommandPlacement } from "./commands.ts";
 import type { HostDocumentRenderer } from "./documents.ts";
@@ -40,6 +41,7 @@ export type HarnessAssemblyRequest = {
   readonly tokens: TokenBindings;
   readonly channel: DistributionChannel;
   readonly modelCap: Tier | null;
+  readonly tierFlavor: TierFlavor;
   readonly entrypoints: readonly SourcePath[];
   readonly fills: OnboardingFills;
   readonly bindingHeadings: readonly string[];

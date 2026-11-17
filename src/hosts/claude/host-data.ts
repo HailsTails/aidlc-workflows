@@ -3,8 +3,11 @@ import { accepted, type Result } from "../../kernel/result.ts";
 import { distributionId, projectPath, type KernelRefusal } from "../../kernel/values.ts";
 import type { HostData, AuthoredPlacement } from "../../projection/domain/host-surface.ts";
 import type { HostTokenChoices } from "../../projection/domain/template-token.ts";
+import type { TierFlavor } from "../../projection/domain/tier-flavor.ts";
 
 export const CLAUDE_BINDING_HEADING = "Claude Code";
+
+export const CLAUDE_TIER_FLAVOR: TierFlavor = "claude";
 
 export const CLAUDE_HOST_DATA = {
   "productName": "Claude Code",

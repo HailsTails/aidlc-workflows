@@ -1,7 +1,7 @@
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { copilotDistribution } from "./distribution.ts";
-import { COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING, COPILOT_HOST_DATA, COPILOT_TOKENS, copilotHostIdentity } from "./host-data.ts";
+import { COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING, COPILOT_TIER_FLAVOR, COPILOT_HOST_DATA, COPILOT_TOKENS, copilotHostIdentity } from "./host-data.ts";
 import { COPILOT_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { copilotAgents } from "./projection/agent-renderer.ts";
 import { copilotCommandPath } from "./projection/command-renderer.ts";
@@ -24,6 +24,7 @@ export const copilotHost = () => {
       tokens: COPILOT_TOKENS,
       renderData: () => COPILOT_HOST_DATA,
       placements: COPILOT_AUTHORED_PLACEMENTS,
+      tierFlavor: COPILOT_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: copilotAgents },
       commands: copilotCommandPath,
       skills: { inputs: skillInputs.value, render: createCopilotSkillRenderer },

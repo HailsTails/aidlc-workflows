@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
 import { copilotDistribution } from "./distribution.ts";
-import { COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING, COPILOT_TOKENS } from "./host-data.ts";
+import { COPILOT_AUTHORED_PLACEMENTS, COPILOT_BINDING_HEADING, COPILOT_TIER_FLAVOR, COPILOT_TOKENS } from "./host-data.ts";
 import { copilotHost } from "./host.ts";
 import { COPILOT_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { copilotAgents } from "./projection/agent-renderer.ts";
@@ -18,6 +18,7 @@ test("copilot module gathers the identity, distribution and every projection par
       tokens: COPILOT_TOKENS,
       renderData: expect.any(Function),
       placements: COPILOT_AUTHORED_PLACEMENTS,
+      tierFlavor: COPILOT_TIER_FLAVOR,
       agents: { inputs: [], render: copilotAgents },
       commands: copilotCommandPath,
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createCopilotSkillRenderer },

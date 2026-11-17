@@ -25,7 +25,7 @@ const refusal: ProjectionRefusal = { kind: "render-failed", concept: "agent",
   name: agent.slug, reason: "Frozen writer refused" };
 
 test("the registered Codex factory supplies exact Markdown and persona requests and writes native TOML", () => {
-  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex,
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, tierFlavor: "codex",
     documents: (request) => {
       expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
         frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
@@ -49,7 +49,7 @@ test("the registered Codex factory supplies exact Markdown and persona requests 
 });
 
 test("the registered factory keeps native escaping and the prose-only cap", () => {
-  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex,
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, tierFlavor: "codex",
     documents: () => accepted("Markdown"),
     persona: () => accepted('Path \\| and """; the `maxTurns: 12` frontmatter above - keep the two numbers in sync'),
   });
@@ -63,7 +63,7 @@ test("the registered factory keeps native escaping and the prose-only cap", () =
 });
 
 test("the real factory applies its captured cap through the host TOML owner", () => {
-  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, modelCap: "templated",
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, tierFlavor: "codex", modelCap: "templated",
     documents: () => accepted("Markdown"), persona: () => accepted("Persona") });
   expect(accept(renderer.renderAgent({ agent, knowledge: [] }))[1]?.content).toEqual({ kind: "text",
     text: 'name = "aidlc-example-agent"\ndescription = "An \\"example\\" role"\n' +
@@ -72,23 +72,24 @@ test("the real factory applies its captured cap through the host TOML owner", ()
 
 test("a document refusal prevents persona work without partial files", () => {
   const persona = mock(() => accepted("Unused"));
-  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex,
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, tierFlavor: "codex",
     documents: () => refused(refusal), persona });
   expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(refused(refusal));
   expect(persona).not.toHaveBeenCalled();
 });
 
 test("a persona refusal is returned before the TOML model writer", () => {
-  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex,
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, tierFlavor: "codex",
     documents: () => accepted("Markdown"), persona: () => refused(refusal) });
   expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(refused(refusal));
 });
 
-test("a host model refusal returns no partial Markdown file", () => {
-  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: host({ name: "unknown", directory: ".unknown" }),
+test("a model refusal returns no partial Markdown file", () => {
+  const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, tierFlavor: "codex",
     documents: () => accepted("Markdown"), persona: () => accepted("Persona") });
-  expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(refused({ kind: "render-failed", concept: "agent",
-    name: agent.slug, reason: "The frozen model policy has no host unknown." }));
+  expect(renderer.renderAgent({ agent: { ...agent, model: { kind: "host-default" } }, knowledge: [] }))
+    .toEqual(refused({ kind: "render-failed", concept: "agent",
+      name: agent.slug, reason: "This core-agent bridge requires an authored model tier." }));
 });
 
 test("Codex has no separate conductor agent file", () => {

@@ -6,6 +6,8 @@ import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.f
 import { createRecordingTerminal } from "../kernel/fixtures/terminal.fake.ts";
 import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
 import { accepted } from "../kernel/result.ts";
+import { projectPath } from "../kernel/values.ts";
+import type { HostAgentRenderer } from "../projection/application/ports/agents.ts";
 import { hash } from "../kernel/fixtures/values.fixture.ts";
 import { ONBOARDING_FILLS_FIXTURE } from "../projection/fixtures/document-rendering.fixture.ts";
 import {
@@ -24,12 +26,28 @@ const SCRATCH_MODULE: HostModule = {
   projection: {
     tokens: SCRATCH_TOKENS, commands: scratchCommandPlacement, fills: ONBOARDING_FILLS_FIXTURE,
     bindingHeading: "Scratch", renderData: () => SCRATCH_HOST_DATA, placements: [],
+    tierFlavor: "claude",
     agents: { inputs: [], render: scratchAgentRenderer },
     skills: { inputs: [], render: scratchSkillRenderer },
     settings: { inputs: [], render: scratchSettingsRenderer },
     documents: { inputs: [], render: scratchDocumentRenderer },
   },
 };
+
+const scratchModelledAgentRenderer: HostAgentRenderer = (inputs) => ({
+  ...scratchAgentRenderer(inputs),
+  renderAgent: ({ agent }) => {
+    const destination = projectPath(`.scratch/agents/${agent.slug}.md`);
+    if (!destination.ok) return accepted([]);
+    if (agent.model.kind !== "tier") return accepted([]);
+    const model = inputs.models({ agent: agent.slug, model: agent.model });
+    return model.ok
+      ? accepted([{ path: destination.value, mode: "regular" as const,
+        content: { kind: "text" as const, text: `model: ${model.value ?? "session"}\n` },
+        origin: { kind: "method-source" as const, path: agent.source } }])
+      : model;
+  },
+});
 
 const CORE_FILES = {
   "file:///core/aidlc-common/stages/.keep": "", "file:///core/agents/.keep": "",
@@ -56,8 +74,8 @@ const RUNNER_OUTCOME = accepted({
   ] }),
 });
 
-const projectEighthHost = async () => {
-  const root = createPackageBuildRoot({ hosts: [SCRATCH_MODULE],
+const projectEighthHost = async (module: HostModule = SCRATCH_MODULE) => {
+  const root = createPackageBuildRoot({ hosts: [module],
     platform: { fileSystem: createInMemoryFileSystem({ files: CORE_FILES }),
       processRunner: createScriptedProcessRunner({ outcome: RUNNER_OUTCOME }),
       yaml: createInMemoryYamlParser({ documents: {} }),
@@ -96,4 +114,13 @@ test("every file of an eighth host sits under its own folder or a host-neutral p
   const projected = await projectEighthHost();
   expect(projected.projection.files).not.toContainEqual(
     expect.objectContaining({ path: expect.not.stringMatching(OWN_OR_HOST_NEUTRAL) }));
+});
+
+test("an eighth host takes its agents' shipped models from the tier flavor it declares, not its name", async () => {
+  const projected = await projectEighthHost({ ...SCRATCH_MODULE,
+    projection: { ...SCRATCH_MODULE.projection, agents: { inputs: [], render: scratchModelledAgentRenderer } } });
+  expect(projected.projection.files).toContainEqual(expect.objectContaining({
+    path: ".scratch/agents/aidlc-product-agent.md", content: { kind: "text", text: "model: inherit\n" } }));
+  expect(projected.projection.files).toContainEqual(expect.objectContaining({
+    path: ".scratch/agents/aidlc-product-lead-agent.md", content: { kind: "text", text: "model: sonnet\n" } }));
 });

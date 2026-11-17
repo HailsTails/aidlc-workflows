@@ -1,7 +1,7 @@
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { kiroDistribution } from "./distribution.ts";
-import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_HOST_DATA, KIRO_TOKENS, kiroHostIdentity } from "./host-data.ts";
+import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TIER_FLAVOR, KIRO_HOST_DATA, KIRO_TOKENS, kiroHostIdentity } from "./host-data.ts";
 import { KIRO_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { deriveKiroHarnessRecord } from "./projection/harness-record.ts";
 import { KIRO_AGENT_JSON, kiroAgents } from "./projection/json-agent-renderer.ts";
@@ -25,6 +25,7 @@ export const kiroHost = () => {
       tokens: KIRO_TOKENS,
       renderData: () => KIRO_HOST_DATA,
       placements: KIRO_AUTHORED_PLACEMENTS,
+      tierFlavor: KIRO_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: kiroAgents },
       commands: kiroCommandPath,
       skills: { inputs: skillInputs.value, render: createKiroSkillRenderer },

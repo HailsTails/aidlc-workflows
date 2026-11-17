@@ -31,7 +31,7 @@ export const codexAgents: HostAgentRenderer = (inputs) => ({
     const persona = inputs.persona({ agent, text: "persona-body", knowledge: "absorbed", reading: { kind: "whole-files" } });
     if (!persona.ok) return persona;
     const codex = renderCodexToml({ agent, content: nativeRole(agent, persona.value),
-      host: inputs.host, modelCap: inputs.modelCap });
+      tierFlavor: inputs.tierFlavor, modelCap: inputs.modelCap });
     if (!codex.ok) return codex;
     return accepted([
       { path: markdownPath.value, content: { kind: "text", text: markdown.value }, mode: "regular",

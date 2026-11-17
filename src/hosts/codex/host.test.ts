@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
 import { codexDistribution } from "./distribution.ts";
-import { CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TOKENS } from "./host-data.ts";
+import { CODEX_AUTHORED_PLACEMENTS, CODEX_BINDING_HEADING, CODEX_TIER_FLAVOR, CODEX_TOKENS } from "./host-data.ts";
 import { codexHost } from "./host.ts";
 import { CODEX_ONBOARDING_FILLS } from "./onboarding-fills.ts";
 import { codexAgents } from "./projection/agent-renderer.ts";
@@ -19,6 +19,7 @@ test("codex module gathers the identity, distribution and every projection part 
       tokens: CODEX_TOKENS,
       renderData: expect.any(Function),
       placements: CODEX_AUTHORED_PLACEMENTS,
+      tierFlavor: CODEX_TIER_FLAVOR,
       agents: { inputs: [], render: codexAgents },
       commands: codexCommandPath,
       skills: { inputs: [source("skills/aidlc/SKILL.md"), source("skills/aidlc/question-rendering.md"), source("skills/aidlc/composer.md"), source("skills/aidlc/tables.md")], render: createCodexSkillRenderer },
