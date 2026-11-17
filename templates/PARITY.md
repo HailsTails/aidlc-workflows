@@ -9,6 +9,7 @@ This branch rebuilds the build side of AI-DLC by bounded context and proves that
 - `scripts/package-sources.ts`, `scripts/manifest-types.ts`, `scripts/harness-bindings.ts`, `scripts/onboarding.ts` and `scripts/earlier-release-regions.ts` moved into `src/` with their owners.
 - Tests that imported the moved modules import them from `src/`. `src/` has its own unit tests, which touch no real files or processes.
 - `zod` is a direct dev dependency, used at the file and JSON edges in `src/`. `bun run typecheck` also checks `src/tsconfig.json`.
+- The coverage check `bun tests/gen-coverage-registry.ts --check --base <commit>` runs `bun install --frozen-lockfile` in the base commit's `git archive` tree before building it, as CI does in the checkout and `scripts/copy-era-files.ts` does in its archived release. A base that already contains `src/` needs `zod` to build, so without it a change made on top of this one fails the check with 45 `Cannot find package 'zod'` refusals.
 - Nothing under `core/` or `plugins/` changes, and no shipped harness file changes: `hooks/`, `skills/`, `agents/`, `settings/`, `steering/`, `command/` and `plugin/` under `harness/<harness>/` are as they are on `{{pin}}`.
 
 ## How parity is proved
@@ -46,7 +47,6 @@ Each check prints a one-line summary and exits non-zero, naming every file that 
 ## Open items
 
 - Nothing in CI builds the previous-release dist yet, so the install check runs by hand.
-- The coverage check `bun tests/gen-coverage-registry.ts --check --base <commit>` builds the base commit from `git archive` in a temporary folder with no `node_modules`. Observed when this branch was measured against `caea995ae`: with that commit as the base it passes: `coverage registry: OK (guards green, no unit lost coverage against caea995ae)`. With a base that already contains `src/` (that tree as one commit on `caea995ae`) it exits 1: `COVERAGE BASE FAILED: building the base … stopped at bun scripts/package.ts claude`, followed by 45 identical `command-source-failed` refusals reading `Cannot find package 'zod' from '…/tree/src/cli/adapters/routes/projection/legacy-runner-child.ts'`. A change made on top of this one would meet the same failure.
 - The upstream test runner's tiers and the CI workflows do not run `bun test ./src` yet.
 - The install goldens record {{release}} over {{previous-release}}. The next upstream release needs them re-recorded from that release's commit.
 - The rebuild has two phases. Phase 1 is this branch: the build side runs through `src/`, and every shipped byte stays as it is. Phase 2 moves the runtime owners out of `core/tools/` into `src/`, so they ship in the runtime bundle. That is runtime code, so it is a separate change, and it is what retires every bridge below.
