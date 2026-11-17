@@ -4,9 +4,9 @@ import type { FileKindPort } from "./rin-harness-sidecar-file-reader.ts";
 import {
   HONE_MIGRATING_URL,
   HONE_PACKAGE,
-  LEGACY_PACKAGE,
-  LEGACY_PACKAGED_INSTALL,
   PACKAGED_HONE_INSTALL,
+  REPLACED_PACKAGES,
+  type ReplacedPackage,
   VENDORED_CORE_INSTALL,
 } from "./rin-disciplines-report.ts";
 
@@ -37,26 +37,33 @@ const FAILING_VERDICT = /verdict: fail\s*$/;
 
 const OUTPUT_SHOWN_LENGTH = 2000;
 
-type CoreInstallForm = "packaged" | "legacy-package" | "vendored";
+type CoreInstallKind =
+  | { readonly kind: "current" }
+  | { readonly kind: "replaced"; readonly replacedPackage: ReplacedPackage }
+  | { readonly kind: "vendored" };
 
-type CoreInstall = {
-  readonly form: CoreInstallForm;
+type CoreInstall = CoreInstallKind & {
   readonly root: string;
   readonly checkCommandPath: string;
   readonly subcommand: readonly string[];
 };
 
 type CoreInstallPlace = {
-  readonly form: CoreInstallForm;
+  readonly installKind: CoreInstallKind;
   readonly location: string;
   readonly checkCommand: string;
   readonly subcommand: readonly string[];
 };
 
 const CORE_INSTALL_PLACES: readonly CoreInstallPlace[] = [
-  { form: "packaged", location: PACKAGED_HONE_INSTALL, checkCommand: "tool-command.js", subcommand: ["check"] },
-  { form: "legacy-package", location: LEGACY_PACKAGED_INSTALL, checkCommand: "check-command.js", subcommand: [] },
-  { form: "vendored", location: VENDORED_CORE_INSTALL, checkCommand: "check-command.ts", subcommand: [] },
+  { installKind: { kind: "current" }, location: PACKAGED_HONE_INSTALL, checkCommand: "tool-command.js", subcommand: ["check"] },
+  ...REPLACED_PACKAGES.map((replacedPackage): CoreInstallPlace => ({
+    installKind: { kind: "replaced", replacedPackage },
+    location: `node_modules/${replacedPackage.name}`,
+    checkCommand: replacedPackage.checkCommand,
+    subcommand: [],
+  })),
+  { installKind: { kind: "vendored" }, location: VENDORED_CORE_INSTALL, checkCommand: "check-command.ts", subcommand: [] },
 ];
 
 const coreInstallsOf = ({
@@ -69,7 +76,7 @@ const coreInstallsOf = ({
   CORE_INSTALL_PLACES.map((place) => {
     const root = pathOperations.join({ segments: [checkoutRoot, ...place.location.split("/")] });
     return {
-      form: place.form,
+      ...place.installKind,
       root,
       checkCommandPath: pathOperations.join({ segments: [root, "core", "check", place.checkCommand] }),
       subcommand: place.subcommand,
@@ -126,9 +133,15 @@ const unverifiedVendoredPassOf = ({ install }: { readonly install: CoreInstall }
   reason: `the vendored copy at ${install.root} passed, but a vendored copy is not a verified install: install the ${HONE_PACKAGE} package in its place as Hone's MIGRATING.md sections 9 and 10 say (${HONE_MIGRATING_URL})`,
 });
 
-const legacyPackageOf = ({ install }: { readonly install: CoreInstall }): DisciplinesCheckOutcome => ({
+const replacedPackageOf = ({
+  install,
+  replacedPackage,
+}: {
+  readonly install: CoreInstall;
+  readonly replacedPackage: ReplacedPackage;
+}): DisciplinesCheckOutcome => ({
   kind: "unverified",
-  reason: `the package at ${install.root} is ${LEGACY_PACKAGE}, Hone's old name, which rin no longer runs: install the ${HONE_PACKAGE} package in its place and rename its scripts and rule ids as Hone's MIGRATING.md section 10 says (${HONE_MIGRATING_URL})`,
+  reason: `the package at ${install.root} is ${replacedPackage.name}, an old name of Hone, which rin no longer runs: install the ${HONE_PACKAGE} package in its place as Hone's MIGRATING.md section ${String(replacedPackage.migratingSection)} says (${HONE_MIGRATING_URL})`,
 });
 
 const notInstalledOf = ({ installs }: { readonly installs: readonly CoreInstall[] }): DisciplinesCheckOutcome => {
@@ -151,8 +164,8 @@ const runDisciplinesCheck = ({
   if (install === undefined) {
     return notInstalledOf({ installs });
   }
-  if (install.form === "legacy-package") {
-    return legacyPackageOf({ install });
+  if (install.kind === "replaced") {
+    return replacedPackageOf({ install, replacedPackage: install.replacedPackage });
   }
   const outcome = disciplinesCheckOutcomeOf({
     output: ports.runSync({
@@ -163,7 +176,7 @@ const runDisciplinesCheck = ({
     }),
     timeoutMilliseconds: ports.timeoutMilliseconds,
   });
-  return install.form === "vendored" && outcome.kind === "passed" ? unverifiedVendoredPassOf({ install }) : outcome;
+  return install.kind === "vendored" && outcome.kind === "passed" ? unverifiedVendoredPassOf({ install }) : outcome;
 };
 
 export type { DisciplinesCheckOutcome, DisciplinesCheckPorts, DisciplinesCheckRequest };

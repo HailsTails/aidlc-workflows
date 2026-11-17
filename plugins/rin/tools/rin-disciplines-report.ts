@@ -28,17 +28,24 @@ type DisciplinesFinding = {
   readonly snippet: string;
 };
 
-const HONE_PACKAGE = "honed";
+type ReplacedPackage = {
+  readonly name: string;
+  readonly migratingSection: number;
+  readonly checkCommand: string;
+};
+
+const HONE_PACKAGE = "@hailstails/hone";
 
 const PACKAGED_HONE_INSTALL = `node_modules/${HONE_PACKAGE}`;
 
-const LEGACY_PACKAGE = "discipline-core";
-
-const LEGACY_PACKAGED_INSTALL = `node_modules/${LEGACY_PACKAGE}`;
+const REPLACED_PACKAGES: readonly ReplacedPackage[] = [
+  { name: "discipline-core", migratingSection: 10, checkCommand: "check-command.js" },
+  { name: "honed", migratingSection: 11, checkCommand: "tool-command.js" },
+];
 
 const VENDORED_CORE_INSTALL = "tools/discipline-core";
 
-const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/v0.1.0-pre.1/MIGRATING.md";
+const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/v0.1.0-pre.2/MIGRATING.md";
 
 const CHECK_COMMAND_TEXT = "npm run --silent hone:check";
 
@@ -155,6 +162,7 @@ export type {
   DisciplinesReportSection,
   FailingSection,
   FailingSectionName,
+  ReplacedPackage,
 };
 export {
   CHECK_COMMAND_TEXT,
@@ -163,9 +171,8 @@ export {
   findingsOf,
   HONE_MIGRATING_URL,
   HONE_PACKAGE,
-  LEGACY_PACKAGE,
-  LEGACY_PACKAGED_INSTALL,
   PACKAGED_HONE_INSTALL,
   remedyOf,
+  REPLACED_PACKAGES,
   VENDORED_CORE_INSTALL,
 };
