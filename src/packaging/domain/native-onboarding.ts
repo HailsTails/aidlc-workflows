@@ -6,13 +6,9 @@ type NativeOnboardingRequest = {
   readonly prefix: string;
 };
 
-const exactReadsLine = (prefix: string): string =>
-  `- **Permissions**: the \`aidlc\` agent pre-approves only the native \`${prefix}\` command prefix, the read-only \`aidlc doctor\`, \`status\`, \`version\` and \`config <section> --show\` (with or without \`--json\`) and \`--help\` forms, turning a check back on (\`aidlc config flags --clear-bypass <switch> --yes\`), and its listed read-only tools; everything else prompts, including any other \`config\` change.`;
-
 const nativePermissionsLine = ({ permissions, prefix }: NativeOnboardingRequest) => (authored: string): string => {
   switch (permissions.kind) {
     case "authored": return authored;
-    case "exact-reads": return exactReadsLine(prefix);
     case "host-line": return permissions.line(prefix);
   }
 };

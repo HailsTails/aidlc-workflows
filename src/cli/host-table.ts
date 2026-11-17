@@ -3,14 +3,14 @@ import { codexHost } from "../hosts/codex/host.ts";
 import { copilotHost } from "../hosts/copilot/host.ts";
 import { cursorHost } from "../hosts/cursor/host.ts";
 import { kiroIdeHost } from "../hosts/kiro-ide/host.ts";
-import { kiroHost, kiroPersonas } from "../hosts/kiro/host.ts";
+import { kiroHost, kiroNativePermissionsLine, kiroPersonas } from "../hosts/kiro/host.ts";
 import { openCodeHost } from "../hosts/opencode/host.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { PackagingRefusal } from "../packaging/domain/artifact.ts";
 import type { HostBuildTable, HostModule } from "./roots.ts";
 
 const BUILT = [
-  claudeHost(), kiroHost(), kiroIdeHost(kiroPersonas), codexHost(), cursorHost(), openCodeHost(),
+  claudeHost(), kiroHost(), kiroIdeHost({ personas: kiroPersonas, permissionsLine: kiroNativePermissionsLine }), codexHost(), cursorHost(), openCodeHost(),
   copilotHost(),
 ];
 

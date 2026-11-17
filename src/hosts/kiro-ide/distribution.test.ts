@@ -12,6 +12,7 @@ const facts: DelegateShellFacts = {
   workspaceRead: () => "other", admittedVerbs: () => ({}), engineRouteAdmission: () => "refused",
   lifecycleAdmission: () => "admitted", trustedCommand: () => "aidlc engine *",
 };
+const permissionsLine = (prefix: string): string => `- **Permissions**: Kiro CLI's line for ${prefix}.`;
 const EXPECTED_DISTRIBUTION: HostDistribution = {
     layout: {
       rootIntegrations: [
@@ -98,7 +99,7 @@ const EXPECTED_DISTRIBUTION: HostDistribution = {
     "from": "    - capability: shell\n      effect: deny\n      match:\n        - \"bun .kiro/tools/aidlc-*\"\n        - \"bun .kiro/tools/aidlc.ts engine *\"\n      exclude:\n    - capability: shell\n      effect: deny\n      match:\n        - \"bun .kiro/tools/aidlc*$*\"\n        - \"bun .kiro/tools/aidlc*`*\"\n        - \"bun .kiro/tools/aidlc*>*\"\n        - \"bun .kiro/tools/aidlc*<*\"\n        - \"bun .kiro/tools/aidlc*&*\"\n        - \"bun .kiro/tools/aidlc*@(*\"\n        - \"bun .kiro/tools/aidlc*@{*\"\n        - \"bun .kiro/tools/aidlc*\\n*\"",
     "to": "    - capability: shell\n      effect: deny\n      match:\n        - \"aidlc engine *\"\n      exclude:\n    - capability: shell\n      effect: deny\n      match:\n        - \"aidlc*$*\"\n        - \"aidlc*`*\"\n        - \"aidlc*>*\"\n        - \"aidlc*<*\"\n        - \"aidlc*&*\"\n        - \"aidlc*@(*\"\n        - \"aidlc*@{*\"\n        - \"aidlc*\\n*\""
   }
-], copyOnly: [], permissions: { kind: "exact-reads" } },
+], copyOnly: [], permissions: { kind: "host-line", line: permissionsLine } },
     plugin: {
       format: "kiro-ide", manifestDir: ".kiro-plugin", marketplaceDir: ".kiro-plugin", catalogue: "none",
       installRoots: [".gitignore", ".kiro", "AGENTS.md", "aidlc"],
@@ -106,11 +107,11 @@ const EXPECTED_DISTRIBUTION: HostDistribution = {
   };
 
 test("Kiro IDE declares the exact roots, prior shapes, listing and plugin distribution", () => {
-  expect(kiroIdeDistribution({ delegateShellFacts: facts })).toEqual(accepted(EXPECTED_DISTRIBUTION));
+  expect(kiroIdeDistribution({ delegateShellFacts: facts, permissionsLine })).toEqual(accepted(EXPECTED_DISTRIBUTION));
 });
 
 test("Kiro IDE's declared top-level directories match the verified legacy descriptor", () => {
-  const distribution = accept(kiroIdeDistribution({ delegateShellFacts: facts }));
+  const distribution = accept(kiroIdeDistribution({ delegateShellFacts: facts, permissionsLine }));
   expect(distribution.layout.managedDirectories).toHaveLength(2);
   expect([
     distribution.layout.managedDirectories[0]?.path,
@@ -120,7 +121,7 @@ test("Kiro IDE's declared top-level directories match the verified legacy descri
 
 test("identical persona denials collapse once, using the supplied facts for the last matching agent", () => {
   const admittedVerbs = mock(facts.admittedVerbs);
-  const distribution = accept(kiroIdeDistribution({ delegateShellFacts: { ...facts, admittedVerbs } }));
+  const distribution = accept(kiroIdeDistribution({ delegateShellFacts: { ...facts, admittedVerbs }, permissionsLine }));
   expect(distribution.native.replacements).toHaveLength(1);
   expect(admittedVerbs).toHaveBeenCalledTimes(31);
   expect(admittedVerbs).toHaveBeenNthCalledWith(1, "aidlc-composer-agent");

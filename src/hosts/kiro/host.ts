@@ -41,3 +41,4 @@ export const kiroHost = () => {
 };
 
 export { kiroAgentRenderer as kiroPersonas } from "./projection/agent-renderer.ts";
+export { kiroNativePermissionsLine } from "./distribution.ts";

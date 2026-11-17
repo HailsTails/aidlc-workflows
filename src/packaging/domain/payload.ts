@@ -63,7 +63,6 @@ export type NativePermissionsLine = (nativePrefix: string) => string;
 
 export type NativePermissions =
   | { readonly kind: "authored" }
-  | { readonly kind: "exact-reads" }
   | { readonly kind: "host-line"; readonly line: NativePermissionsLine };
 
 export type NativeRelease = {

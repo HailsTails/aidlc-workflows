@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { hash, path } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
-import { kiroDistribution } from "./distribution.ts";
+import { kiroDistribution, kiroNativePermissionsLine } from "./distribution.ts";
 
 test("Kiro declares the exact roots, prior shapes, listing and plugin distribution", () => {
   expect(kiroDistribution()).toEqual(accepted({
@@ -48,7 +48,7 @@ test("Kiro declares the exact roots, prior shapes, listing and plugin distributi
       ], entryHashes: {} },
     ],
     listing: { choiceName: "Kiro CLI (V2)" },
-    native: { replacements: [], copyOnly: [], permissions: { kind: "exact-reads" } },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "host-line", line: kiroNativePermissionsLine } },
     plugin: {
       format: "kiro", manifestDir: ".kiro-plugin", marketplaceDir: ".kiro-plugin", catalogue: "none",
       installRoots: [".gitignore", ".kiro", "AGENTS.md", "aidlc"],
@@ -63,4 +63,9 @@ test("Kiro's declared top-level directories match the verified legacy descriptor
     distribution.layout.managedDirectories[0]?.path,
     distribution.layout.managedDirectories[1]?.path,
   ]).toEqual([path(".kiro"), path("aidlc")]);
+});
+
+test("Kiro's native onboarding names the aidlc agent's exact read-only pre-approvals", () => {
+  expect(kiroNativePermissionsLine("aidlc engine")).toBe(
+    "- **Permissions**: the `aidlc` agent pre-approves only the native `aidlc engine` command prefix, the read-only `aidlc doctor`, `status`, `version` and `config <section> --show` (with or without `--json`) and `--help` forms, turning a check back on (`aidlc config flags --clear-bypass <switch> --yes`), and its listed read-only tools; everything else prompts, including any other `config` change.");
 });

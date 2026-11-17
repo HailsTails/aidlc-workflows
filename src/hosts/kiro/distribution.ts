@@ -39,6 +39,9 @@ const priorHashes = (values: readonly string[]): Result<readonly ContentHash[], 
     return hash.ok ? accepted([...hashes.value, hash.value]) : hash;
   }, accepted([]));
 
+export const kiroNativePermissionsLine = (prefix: string): string =>
+  `- **Permissions**: the \`aidlc\` agent pre-approves only the native \`${prefix}\` command prefix, the read-only \`aidlc doctor\`, \`status\`, \`version\` and \`config <section> --show\` (with or without \`--json\`) and \`--help\` forms, turning a check back on (\`aidlc config flags --clear-bypass <switch> --yes\`), and its listed read-only tools; everything else prompts, including any other \`config\` change.`;
+
 export const kiroDistribution = (): Result<HostDistribution, KernelRefusal> => {
   const gitignore = projectPath(".gitignore");
   if (!gitignore.ok) return gitignore;
@@ -68,7 +71,7 @@ export const kiroDistribution = (): Result<HostDistribution, KernelRefusal> => {
       { integration: agents.value, wholeFileHashes: agentsHashes.value, entryHashes: {} },
     ],
     listing: { choiceName: "Kiro CLI (V2)" },
-    native: { replacements: [], copyOnly: [], permissions: { kind: "exact-reads" } },
+    native: { replacements: [], copyOnly: [], permissions: { kind: "host-line", line: kiroNativePermissionsLine } },
     plugin: {
       format: "kiro", manifestDir: ".kiro-plugin", marketplaceDir: ".kiro-plugin", catalogue: "none",
       installRoots: [".gitignore", ".kiro", "AGENTS.md", "aidlc"],

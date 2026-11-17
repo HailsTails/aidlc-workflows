@@ -29,7 +29,7 @@ const nativeReplacements = (facts: DelegateShellFacts) => {
     ...riskyFormDenyLines(["aidlc"]),
   ].join("\n") }));
 };
-import type { HostDistribution } from "../../packaging/domain/payload.ts";
+import type { HostDistribution, NativePermissionsLine } from "../../packaging/domain/payload.ts";
 import { accepted, type Result } from "../../kernel/result.ts";
 import { contentHash, projectPath, type ContentHash, type KernelRefusal } from "../../kernel/values.ts";
 
@@ -110,8 +110,9 @@ const priorHashes = (values: readonly string[]): Result<readonly ContentHash[], 
     return hash.ok ? accepted([...hashes.value, hash.value]) : hash;
   }, accepted([]));
 
-export const kiroIdeDistribution = ({ delegateShellFacts }: {
+export const kiroIdeDistribution = ({ delegateShellFacts, permissionsLine }: {
   readonly delegateShellFacts: DelegateShellFacts;
+  readonly permissionsLine: NativePermissionsLine;
 }): Result<HostDistribution, KernelRefusal> => {
   const gitignore = projectPath(".gitignore");
   if (!gitignore.ok) return gitignore;
@@ -141,7 +142,7 @@ export const kiroIdeDistribution = ({ delegateShellFacts }: {
       { integration: agents.value, wholeFileHashes: agentsHashes.value, entryHashes: {} },
     ],
     listing: LISTING,
-    native: { replacements: nativeReplacements(delegateShellFacts), copyOnly: [], permissions: { kind: "exact-reads" } },
+    native: { replacements: nativeReplacements(delegateShellFacts), copyOnly: [], permissions: { kind: "host-line", line: permissionsLine } },
     plugin: {
       format: "kiro-ide", manifestDir: ".kiro-plugin", marketplaceDir: ".kiro-plugin", catalogue: "none",
       installRoots: [".gitignore", ".kiro", "AGENTS.md", "aidlc"],

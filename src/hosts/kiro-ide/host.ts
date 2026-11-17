@@ -1,4 +1,6 @@
 import { accepted } from "../../kernel/result.ts";
+import type { NativePermissionsLine } from "../../packaging/domain/payload.ts";
+import type { DelegateShellFacts } from "../../projection/application/ports/delegate-shell.ts";
 import type { HostFileDeriver } from "../../projection/application/ports/harness.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { kiroIdeDistribution } from "./distribution.ts";
@@ -21,7 +23,12 @@ const deriveKiroIdeFiles: HostFileDeriver = (request) => {
   return failed ?? accepted(derived.flatMap((rendering) => (rendering.ok ? rendering.value : [])));
 };
 
-export const kiroIdeHost = (personas: KiroIdePersonaRendering) => {
+export type KiroCliShare = {
+  readonly personas: KiroIdePersonaRendering;
+  readonly permissionsLine: NativePermissionsLine;
+};
+
+export const kiroIdeHost = ({ personas, permissionsLine }: KiroCliShare) => {
   const identity = kiroIdeHostIdentity();
   if (!identity.ok) return identity;
   const agentInputs = authoredSourcePaths(["agents/aidlc-aidlc.md"]);
@@ -46,7 +53,8 @@ export const kiroIdeHost = (personas: KiroIdePersonaRendering) => {
       bindingHeading: KIRO_IDE_BINDING_HEADING,
       derive: deriveKiroIdeFiles,
     },
-    distribution: kiroIdeDistribution,
+    distribution: ({ delegateShellFacts }: { readonly delegateShellFacts: DelegateShellFacts }) =>
+      kiroIdeDistribution({ delegateShellFacts, permissionsLine }),
     routes: () => [],
   });
 };

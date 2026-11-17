@@ -2,11 +2,14 @@ import { path } from "../../kernel/fixtures/values.fixture.ts";
 import type { HostDistribution } from "../domain/payload.ts";
 import { claudeLayoutFixture, claudePriorIntegrationsFixture } from "./claude-layout.fixture.ts";
 
+export const fixtureNativePermissionsLine = (prefix: string): string =>
+  `- **Permissions**: the fixture host pre-approves ${prefix}.`;
+
 export const claudeHostDistributionFixture: HostDistribution = {
   layout: claudeLayoutFixture,
   priorIntegrations: claudePriorIntegrationsFixture,
   listing: {},
-  native: { replacements: [], copyOnly: [], permissions: { kind: "exact-reads" } },
+  native: { replacements: [], copyOnly: [], permissions: { kind: "authored" } },
   plugin: {
     format: "store",
     manifestDir: ".claude-plugin",
@@ -35,7 +38,7 @@ export const kiroIdeHostDistributionFixture: HostDistribution = {
   native: {
     replacements: [{ from: "bun .kiro/tools/aidlc.ts", to: "aidlc" }],
     copyOnly: [],
-    permissions: { kind: "exact-reads" },
+    permissions: { kind: "host-line", line: fixtureNativePermissionsLine },
   },
   plugin: {
     format: "kiro-ide",
@@ -49,7 +52,7 @@ export const kiroIdeHostDistributionFixture: HostDistribution = {
 export const cursorNativeReleaseFixture: HostDistribution["native"] = {
   replacements: [],
   copyOnly: [path("install.ts")],
-  permissions: { kind: "exact-reads" },
+  permissions: { kind: "authored" },
 };
 
 export const scratchHostDistributionFixture: HostDistribution = {
