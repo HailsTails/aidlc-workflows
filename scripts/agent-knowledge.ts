@@ -1,10 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
-import { kiroKnowledgePreflightClause } from "../core/tools/aidlc-inline-context.ts";
-import { delegatedSharedKnowledge } from "../src/projection/adapters/legacy-format-docs.ts";
-import { absorbReviewerKnowledge as absorbCapturedKnowledge,
-  injectDelegatedKnowledgePreflight as injectPreflight,
-} from "../src/projection/domain/agent-knowledge.ts";
+import { absorbReviewerKnowledge as absorbCapturedKnowledge } from "../src/projection/domain/agent-knowledge.ts";
 
 export function absorbReviewerKnowledge(request: {
   content: string; agentName: string; sourceRoot: string; reviewerAgents: ReadonlySet<string>;
@@ -18,14 +14,6 @@ export function absorbReviewerKnowledge(request: {
       content: { kind: "text" as const,
         text: readFileSync(join(knowledgeDir, file), "utf-8") } })) : [];
   return absorbCapturedKnowledge({ content, agentName, reviewerAgents, sources });
-}
-
-export function injectDelegatedKnowledgePreflight(
-  content: string, agentName: string, harnessDir: string,
-): string {
-  return injectPreflight({ content, agentName, directory: harnessDir,
-    readingGuide: kiroKnowledgePreflightClause(harnessDir),
-    sharedKnowledge: delegatedSharedKnowledge(harnessDir) });
 }
 
 export function agentNameFromPath(srcPath: string): string | null {
