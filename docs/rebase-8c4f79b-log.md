@@ -283,6 +283,19 @@ The restored cases now run in upstream's runner against the new owners, with ups
 
 After regenerating, `bun src/test-case-counts.ts --repository aidlc-workflows --base 8c4f79b4b --candidate study/upstream-shape-8c4f79b` reports 1297 shared test files and 0 with fewer cases. No test file at the pin is missing from the candidate.
 
+## Onto the one-owner foundation
+
+Branch `study/upstream-shape-tooling-8c4f79b-final` regenerates from `study/foundation-8c4f79b-oneowner` at `1d9961980`, six commits on `eb126c7be`. Each host declares a `TierFlavor`, the frozen model policy is looked up by that flavor, and Kiro's permissions line and the gate's git reader each have one owner.
+
+- Every patch, the overlay and the optional gitleaks patch apply to `1d9961980` unchanged. None of them touches a file the six commits change.
+- **Patch added:** `patches/tests~gen-coverage-registry.ts.patch`. The coverage ratchet builds `HEAD^1` from a bare `git archive`, and a base that holds `src/` needs `zod` to build, so a commit stacked on the candidate failed with 45 `Cannot find package 'zod'` refusals. The base tree now runs `bun install --frozen-lockfile` first, the install CI runs in the checkout and `scripts/copy-era-files.ts` runs in its archived release. `PARITY.md` moves the item from open to changed.
+- **Patch added:** `patches/tests~unit~gen-coverage-registry.test.ts.patch`. The `--base` case commits a base holding only its packager and generator, so the base install refused with "Bun could not find a package.json file to install from" (CI run 44174566495, unit shard 5). A real base always has one, so the fixture commits a dependency-free `package.json` beside its scripts.
+- **Patch redone:** `patches/tests~integration~t145-packaging-parity.test.ts.patch`. The model-policy refusal recorded above is gone, so the first case builds the Claude host as `foo` in `.foo` and asserts `harness.json` names `foo`, as upstream's case does. The fixture renames the host's distribution in `host-data.ts` and moves `harness/claude/` to `harness/foo/`, where the host's authored sources are read. On the `eb126c7be` candidate the same case fails with "The frozen model policy has no host foo".
+  - The Codex case keeps the name `codex`. Built as `foo`, its hook commands still name the adapter `codex`, because the Codex settings renderer names its own adapter. That is not the model policy, so `PARITY.md` now gives that reason.
+  - The optional orchestrator-skill default still cannot apply, and `PARITY.md` keeps that caveat.
+- `bun src/test-case-counts.ts --base 8c4f79b4b --candidate study/upstream-shape-8c4f79b-final` reports 1297 shared test files and 0 with fewer cases. `src/hosts/codex/projection/toml-models.test.ts` has one case fewer than on `eb126c7be` by design: two unknown-host refusal cases became flavor cases. It is a `src/` file, not one of the pin's.
+- On the twin `ci-proof/upstream-shape-8c4f79b-final`, the dist goldens and the install lifecycle over 2.11.3 each report 0 findings, and `t145` passes 13 of 13.
+
 ## Every upstream commit
 
 `git log --reverse caea995ae..8c4f79b4b`, 126 commits. "Landed as upstream bytes" means every path the commit touches is byte-equal to `8c4f79b4b` on the rebased foundation.
