@@ -2,10 +2,10 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { FreeMemory, MachineLock } from "../application/ports.ts";
 import { ticketName } from "../domain/machine-lock.ts";
-import { directoryLock } from "./directory-lock.ts";
+import { besideCheckoutOf, directoryLock } from "./directory-lock.ts";
 
 const SANDBOX = join(import.meta.dir, "../../../.cache/gate-tests", randomUUID());
 const MEGABYTE = 1024 * 1024;
@@ -173,5 +173,20 @@ describe("directoryLock weight", () => {
     expect(readdirSync(directory).filter((name) => name.endsWith(".lock"))).toEqual([
       "heavy-1.lock",
     ]);
+  });
+});
+
+describe("besideCheckoutOf", () => {
+  const main = join(SANDBOX, "repos", "main");
+
+  test("places a folder beside the main checkout the runtime's git owner names", () => {
+    const linked = join(SANDBOX, "repos", "lane");
+    expect(besideCheckoutOf({ ok: true, common: join(main, ".git"), own: join(main, ".git", "worktrees", "lane") },
+      { root: linked, folder: ".aidlc-gate" })).toBe(join(SANDBOX, "repos", ".aidlc-gate"));
+  });
+
+  test("falls back to beside the root when git cannot say", () => {
+    expect(besideCheckoutOf({ ok: false, stderr: "not a git repository" }, { root: main, folder: ".aidlc-gate" }))
+      .toBe(join(dirname(main), ".aidlc-gate"));
   });
 });

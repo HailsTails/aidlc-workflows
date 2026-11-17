@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
+import { gitCommonDirOf, type GitDirs } from "../../../core/tools/aidlc-git.ts";
 import {
   describeOwner,
   isStale,
@@ -42,15 +43,16 @@ const QUEUE_FOLDER = "queue";
 
 const SHARED_LOCK_FOLDER = ".aidlc-gate";
 
-export const besideMainCheckout = (root: string, folder: string): string => {
-  const commonDir = Bun.spawnSync(
-    ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-    { cwd: root, stdout: "pipe", stderr: "pipe" },
-  );
-  const gitDir = commonDir.exitCode === 0 ? commonDir.stdout.toString().trim() : "";
-  const mainCheckout = gitDir === "" ? root : dirname(gitDir);
-  return join(dirname(mainCheckout), folder);
+export const besideCheckoutOf = (
+  dirs: GitDirs,
+  placement: { readonly root: string; readonly folder: string },
+): string => {
+  const mainCheckout = dirs.ok ? dirname(dirs.common) : placement.root;
+  return join(dirname(mainCheckout), placement.folder);
 };
+
+export const besideMainCheckout = (root: string, folder: string): string =>
+  besideCheckoutOf(gitCommonDirOf(root), { root, folder });
 
 export const lockDirectoryBesideMainCheckout = (root: string): string =>
   besideMainCheckout(root, SHARED_LOCK_FOLDER);
