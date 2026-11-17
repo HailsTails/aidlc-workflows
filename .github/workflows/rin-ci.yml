@@ -53,9 +53,9 @@ jobs:
         run: bun run typecheck
       - name: Lint authored source
         run: bun run lint
-      - name: Check the fork against its selected disciplines with the pinned @hailstails/hone release
-        run: bun run --silent hone:check --base-revision "${{ github.event.pull_request.base.sha || 'origin/main' }}"
       - name: Audit reusable Rin plugin
         run: bun run audit:rin
       - name: Verify inherited Rin debt decays on touch
         run: bun plugins/rin/tools/rin-harness-carve-out-decay.ts --project-dir . --base-ref "${{ github.event.pull_request.base.sha || 'origin/main' }}"
+      - name: Check the fork against its selected disciplines with the pinned @hailstails/hone release
+        run: bun run --silent hone:check --base-revision "${{ github.event.pull_request.base.sha || 'origin/main' }}"
