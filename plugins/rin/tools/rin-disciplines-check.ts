@@ -37,38 +37,33 @@ const FAILING_VERDICT = /verdict: fail\s*$/;
 
 const OUTPUT_SHOWN_LENGTH = 2000;
 
-type CoreInstall = {
-  readonly replacedPackage: ReplacedPackage | undefined;
-  readonly vendored: boolean;
+type CoreInstallKind =
+  | { readonly kind: "current" }
+  | { readonly kind: "replaced"; readonly replacedPackage: ReplacedPackage }
+  | { readonly kind: "vendored" };
+
+type CoreInstall = CoreInstallKind & {
   readonly root: string;
   readonly checkCommandPath: string;
   readonly subcommand: readonly string[];
 };
 
 type CoreInstallPlace = {
-  readonly replacedPackage: ReplacedPackage | undefined;
-  readonly vendored: boolean;
+  readonly installKind: CoreInstallKind;
   readonly location: string;
   readonly checkCommand: string;
   readonly subcommand: readonly string[];
 };
 
 const CORE_INSTALL_PLACES: readonly CoreInstallPlace[] = [
-  {
-    replacedPackage: undefined,
-    vendored: false,
-    location: PACKAGED_HONE_INSTALL,
-    checkCommand: "tool-command.js",
-    subcommand: ["check"],
-  },
-  ...REPLACED_PACKAGES.map((replacedPackage) => ({
-    replacedPackage,
-    vendored: false,
+  { installKind: { kind: "current" }, location: PACKAGED_HONE_INSTALL, checkCommand: "tool-command.js", subcommand: ["check"] },
+  ...REPLACED_PACKAGES.map((replacedPackage): CoreInstallPlace => ({
+    installKind: { kind: "replaced", replacedPackage },
     location: `node_modules/${replacedPackage.name}`,
     checkCommand: replacedPackage.checkCommand,
-    subcommand: replacedPackage.subcommand,
+    subcommand: [],
   })),
-  { replacedPackage: undefined, vendored: true, location: VENDORED_CORE_INSTALL, checkCommand: "check-command.ts", subcommand: [] },
+  { installKind: { kind: "vendored" }, location: VENDORED_CORE_INSTALL, checkCommand: "check-command.ts", subcommand: [] },
 ];
 
 const coreInstallsOf = ({
@@ -81,8 +76,7 @@ const coreInstallsOf = ({
   CORE_INSTALL_PLACES.map((place) => {
     const root = pathOperations.join({ segments: [checkoutRoot, ...place.location.split("/")] });
     return {
-      replacedPackage: place.replacedPackage,
-      vendored: place.vendored,
+      ...place.installKind,
       root,
       checkCommandPath: pathOperations.join({ segments: [root, "core", "check", place.checkCommand] }),
       subcommand: place.subcommand,
@@ -170,7 +164,7 @@ const runDisciplinesCheck = ({
   if (install === undefined) {
     return notInstalledOf({ installs });
   }
-  if (install.replacedPackage !== undefined) {
+  if (install.kind === "replaced") {
     return replacedPackageOf({ install, replacedPackage: install.replacedPackage });
   }
   const outcome = disciplinesCheckOutcomeOf({
@@ -182,7 +176,7 @@ const runDisciplinesCheck = ({
     }),
     timeoutMilliseconds: ports.timeoutMilliseconds,
   });
-  return install.vendored && outcome.kind === "passed" ? unverifiedVendoredPassOf({ install }) : outcome;
+  return install.kind === "vendored" && outcome.kind === "passed" ? unverifiedVendoredPassOf({ install }) : outcome;
 };
 
 export type { DisciplinesCheckOutcome, DisciplinesCheckPorts, DisciplinesCheckRequest };

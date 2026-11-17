@@ -32,7 +32,6 @@ type ReplacedPackage = {
   readonly name: string;
   readonly migratingSection: number;
   readonly checkCommand: string;
-  readonly subcommand: readonly string[];
 };
 
 const HONE_PACKAGE = "@hailstails/hone";
@@ -40,8 +39,8 @@ const HONE_PACKAGE = "@hailstails/hone";
 const PACKAGED_HONE_INSTALL = `node_modules/${HONE_PACKAGE}`;
 
 const REPLACED_PACKAGES: readonly ReplacedPackage[] = [
-  { name: "discipline-core", migratingSection: 10, checkCommand: "check-command.js", subcommand: [] },
-  { name: "honed", migratingSection: 11, checkCommand: "tool-command.js", subcommand: ["check"] },
+  { name: "discipline-core", migratingSection: 10, checkCommand: "check-command.js" },
+  { name: "honed", migratingSection: 11, checkCommand: "tool-command.js" },
 ];
 
 const VENDORED_CORE_INSTALL = "tools/discipline-core";

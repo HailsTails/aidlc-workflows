@@ -47,8 +47,8 @@ per TypeScript write on a mid-sized repository.
 Emits `SENSOR_FAILED` with the edited file's findings. When Hone reaches no
 verdict (not installed, exit 2, timed out), it fails and names the reason. A
 vendored `tools/discipline-core/` copy still runs, but its pass is reported
-unverified, and a package still installed under the old name `discipline-core`
-is not run: the reason names the move to `@hailstails/hone`.
+unverified, and a package still installed under an old name (`discipline-core`, or `honed` per
+MIGRATING section 11) is not run: the reason names the move to `@hailstails/hone`.
 **Advisory**: the blocking half is the `rin-constitution-engine-gate.ts` hook,
 which runs the same check before a stage `report --result approved|completed`
 and exits 2 on a failing or unverified run.
