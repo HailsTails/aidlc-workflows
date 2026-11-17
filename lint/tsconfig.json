@@ -1,4 +1,0 @@
-{
-  "extends": "../src/tsconfig.json",
-  "include": ["./**/*.ts", "../eslint.config.ts", "../eslint.config.test.ts", "../scripts/gate.ts"]
-}

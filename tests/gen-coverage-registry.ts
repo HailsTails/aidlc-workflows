@@ -1355,6 +1355,7 @@ export function baseRegistryRows(ref: string): { rows: RegistryRow[] } | { error
     // The archive goes in on stdin, so no tar reads a drive-letter path.
     const steps: Array<{ cmd: string; args: string[]; input?: Buffer }> = [
       { cmd: "tar", args: ["-xf", "-"], input: archive.stdout },
+      { cmd: process.execPath, args: ["install", "--frozen-lockfile"] },
       { cmd: process.execPath, args: ["scripts/package.ts", "claude"] },
       { cmd: process.execPath, args: ["tests/gen-coverage-registry.ts", "--print"] },
     ];
