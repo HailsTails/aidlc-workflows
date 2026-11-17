@@ -11,7 +11,7 @@ const DISCIPLINE_CORE_CHECK = "/repo/node_modules/discipline-core/core/check/che
 
 const HONED_CHECK = "/repo/node_modules/honed/core/check/tool-command.js";
 
-const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/v0.1.0-pre.2/MIGRATING.md";
+const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/v1.0.0/MIGRATING.md";
 
 const VENDORED_CHECK = "/repo/tools/discipline-core/core/check/check-command.ts";
 
@@ -35,6 +35,20 @@ describe("disciplinesCheckOutcomeOf", () => {
     expect(
       disciplinesCheckOutcomeOf({ output: { status: 0, stdout: "verdict: pass\n", stderr: "" }, timeoutMilliseconds: TIMEOUT_MILLISECONDS }),
     ).toEqual({ kind: "passed" });
+  });
+
+  test("exit 0 ending in a partial-assessment pass is a pass", () => {
+    const report = "assessment (1)\nforfeiture elsewhere: 3 file carve-outs not checked for decay in this run\nverdict: pass (partial assessment)\n";
+    expect(
+      disciplinesCheckOutcomeOf({ output: { status: 0, stdout: report, stderr: "" }, timeoutMilliseconds: TIMEOUT_MILLISECONDS }),
+    ).toEqual({ kind: "passed" });
+  });
+
+  test("exit 1 ending in a partial-assessment fail is a failure carrying the report", () => {
+    const report = "findings (1)\nCD-15#loops audit a.ts:1:0 for\nassessment (1)\nforfeiture elsewhere: 1 file carve-out not checked for decay in this run\nverdict: fail (partial assessment)\n";
+    expect(
+      disciplinesCheckOutcomeOf({ output: { status: 1, stdout: report, stderr: "" }, timeoutMilliseconds: TIMEOUT_MILLISECONDS }),
+    ).toEqual({ kind: "failed", report });
   });
 
   test("exit 0 without a passing verdict reached no verdict", () => {
