@@ -26,16 +26,27 @@ const insideRepository = ({
 }): string => pathOperations.join({ segments: [repository.path, ...segments] });
 
 const installedPackage = ({ name }: { readonly name: string }): string =>
-  pathOperations.resolve({ segments: [import.meta.dirname, "..", "..", "..", "node_modules", name] });
+  pathOperations.resolve({ segments: [import.meta.dirname, "..", "..", "..", "node_modules", ...name.split("/")] });
 
 const CLOCK_SELECTED = `${JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-17#clock-sources": "audit" } }, null, 2)}\n`;
 
 const VENDORED_PASSING_CHECK = 'process.stdout.write("verdict: pass\\n");\n';
 
+type ReplacedPackageFixture = {
+  readonly name: string;
+  readonly checkCommand: string;
+  readonly migratingSection: number;
+};
+
+const REPLACED_PACKAGE_FIXTURES: readonly ReplacedPackageFixture[] = [
+  { name: "discipline-core", checkCommand: "check-command.js", migratingSection: 10 },
+  { name: "honed", checkCommand: "tool-command.js", migratingSection: 11 },
+];
+
 const created: HermeticGitRepository[] = [];
 
 const consumerWith = ({ clockSource }: { readonly clockSource: string }): HermeticGitRepository => {
-  const repository = createHermeticGitRepository({ namePrefix: "rin-honed-consumer-" });
+  const repository = createHermeticGitRepository({ namePrefix: "rin-hone-consumer-" });
   created.push(repository);
   repository.writeFile({ relativePath: ".gitignore", body: "node_modules/\ntools/\n" });
   repository.writeFile({ relativePath: "disciplines.json", body: CLOCK_SELECTED });
@@ -59,11 +70,11 @@ const copyTree = ({ from, to }: { readonly from: string; readonly to: string }):
 };
 
 const installPackage = ({ repository, name }: { readonly repository: HermeticGitRepository; readonly name: string }): void => {
-  copyTree({ from: installedPackage({ name }), to: insideRepository({ repository, segments: ["node_modules", name] }) });
+  copyTree({ from: installedPackage({ name }), to: insideRepository({ repository, segments: ["node_modules", ...name.split("/")] }) });
 };
 
-const installHoned = ({ repository }: { readonly repository: HermeticGitRepository }): void => {
-  installPackage({ repository, name: "honed" });
+const installHone = ({ repository }: { readonly repository: HermeticGitRepository }): void => {
+  installPackage({ repository, name: "@hailstails/hone" });
   installPackage({ repository, name: "typescript" });
 };
 
@@ -72,9 +83,18 @@ const writeVendoredCopy = ({ repository }: { readonly repository: HermeticGitRep
   repository.writeFile({ relativePath: "tools/discipline-core/core/check/check-command.ts", body: VENDORED_PASSING_CHECK });
 };
 
-const writeLegacyPackage = ({ repository }: { readonly repository: HermeticGitRepository }): void => {
-  files.mkdir(insideRepository({ repository, segments: ["node_modules", "discipline-core", "core", "check"] }), { recursive: true });
-  repository.writeFile({ relativePath: "node_modules/discipline-core/core/check/check-command.js", body: VENDORED_PASSING_CHECK });
+const writeReplacedPackage = ({
+  repository,
+  replaced,
+}: {
+  readonly repository: HermeticGitRepository;
+  readonly replaced: ReplacedPackageFixture;
+}): void => {
+  files.mkdir(insideRepository({ repository, segments: ["node_modules", replaced.name, "core", "check"] }), { recursive: true });
+  repository.writeFile({
+    relativePath: `node_modules/${replaced.name}/core/check/${replaced.checkCommand}`,
+    body: VENDORED_PASSING_CHECK,
+  });
 };
 
 const checkedOutcome = ({ repository }: { readonly repository: HermeticGitRepository }): DisciplinesCheckOutcome =>
@@ -94,12 +114,12 @@ afterEach(() => {
   });
 });
 
-describe("rin's disciplines check against the installed honed release package (CD-47: the pinned package's real verdict is the assertion's subject, so the check runs it with node over a hermetic temporary git repository and removes it afterwards)", () => {
+describe("rin's disciplines check against the installed @hailstails/hone release package (CD-47: the pinned package's real verdict is the assertion's subject, so the check runs it with node over a hermetic temporary git repository and removes it afterwards)", () => {
   test(
-    "runs hone check from node_modules/honed and carries its failing report",
+    "runs hone check from node_modules/@hailstails/hone and carries its failing report",
     () => {
       const repository = consumerWith({ clockSource: "export const startedAt = Date.now();\n" });
-      installHoned({ repository });
+      installHone({ repository });
 
       expect(checkedOutcome({ repository })).toEqual({
         kind: "failed",
@@ -113,7 +133,7 @@ describe("rin's disciplines check against the installed honed release package (C
     "passes once the code complies",
     () => {
       const repository = consumerWith({ clockSource: "export const startedAt = 0;\n" });
-      installHoned({ repository });
+      installHone({ repository });
 
       expect(checkedOutcome({ repository })).toEqual({ kind: "passed" });
     },
@@ -121,10 +141,10 @@ describe("rin's disciplines check against the installed honed release package (C
   );
 
   test(
-    "prefers the honed package to a vendored copy beside it",
+    "prefers the @hailstails/hone package to a vendored copy beside it",
     () => {
       const repository = consumerWith({ clockSource: "export const startedAt = Date.now();\n" });
-      installHoned({ repository });
+      installHone({ repository });
       writeVendoredCopy({ repository });
 
       expect(checkedOutcome({ repository })).toMatchObject({ kind: "failed" });
@@ -140,21 +160,23 @@ describe("rin's disciplines check against the installed honed release package (C
 
       expect(checkedOutcome({ repository })).toMatchObject({
         kind: "unverified",
-        reason: expect.stringContaining("passed, but a vendored copy is not a verified install: install the honed package"),
+        reason: expect.stringContaining("passed, but a vendored copy is not a verified install: install the @hailstails/hone package"),
       });
     },
     TEST_TIMEOUT_MILLISECONDS,
   );
 
-  test(
-    "names the move to honed when only the old discipline-core package is installed",
-    () => {
+  test.each(REPLACED_PACKAGE_FIXTURES)(
+    "names the move to @hailstails/hone when only the old $name package is installed",
+    (replaced) => {
       const repository = consumerWith({ clockSource: "export const startedAt = 0;\n" });
-      writeLegacyPackage({ repository });
+      writeReplacedPackage({ repository, replaced });
 
       expect(checkedOutcome({ repository })).toMatchObject({
         kind: "unverified",
-        reason: expect.stringContaining("is discipline-core, Hone's old name, which rin no longer runs: install the honed package"),
+        reason: expect.stringContaining(
+          `is ${replaced.name}, an old name of Hone, which rin no longer runs: install the @hailstails/hone package in its place as Hone's MIGRATING.md section ${String(replaced.migratingSection)} says`,
+        ),
       });
     },
     TEST_TIMEOUT_MILLISECONDS,

@@ -129,9 +129,9 @@ and the machine-diffable convergence predicate. Then re-run the decorrelated swe
 dispositions leave the cited violation STANDING — one argues it away, the other
 parks it — so each is an exception judgement and carries its why-chain in the
 row. The chain follows Hone's why-chain contract
-(`node_modules/honed/docs/why-chain-contract.md` where the `honed` package is
+(`node_modules/@hailstails/hone/docs/why-chain-contract.md` where the `@hailstails/hone` package is
 installed, as it is in the fork; the source is
-https://github.com/HailsTails/hone/blob/v0.1.0-pre.1/docs/why-chain-contract.md), which R7
+https://github.com/HailsTails/hone/blob/v0.1.0-pre.2/docs/why-chain-contract.md), which R7
 adopts.
 `fixed@<sha>` and `withdrawn(<reason>)` carry no chain and that asymmetry is
 deliberate: a fix removes the violation and a withdrawal retracts the finding,
