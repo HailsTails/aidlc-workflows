@@ -2,7 +2,7 @@ import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { gitRepository, sweepTree } from "./git-repository.ts";
+import { gitRepository, sharedGitDirectory, sweepTree } from "./git-repository.ts";
 
 setDefaultTimeout(30_000);
 
@@ -133,5 +133,13 @@ describe("sweep tree identity", () => {
     const { root } = mergedProject("sweep-dirty");
     write({ root, path: "new.ts", content: "export const n = 1;" });
     expect(sweepTree(root, "foundation").clean).toBe(false);
+  });
+});
+describe("sharedGitDirectory", () => {
+  test("names the main checkout's git directory from a linked worktree", () => {
+    const { root } = projectBeforeMerge("shared-directory");
+    const linked = join(SANDBOX, "shared-directory-lane");
+    git(root, "worktree", "add", "-q", "--detach", linked);
+    expect(sharedGitDirectory(linked)).toBe(join(root, ".git"));
   });
 });

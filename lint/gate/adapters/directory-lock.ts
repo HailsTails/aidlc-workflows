@@ -3,7 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
-import { gitCommonDirOf, type GitDirs } from "../../../core/tools/aidlc-git.ts";
+import { sharedGitDirectory } from "./git-repository.ts";
 import {
   describeOwner,
   isStale,
@@ -44,15 +44,15 @@ const QUEUE_FOLDER = "queue";
 const SHARED_LOCK_FOLDER = ".aidlc-gate";
 
 export const besideCheckoutOf = (
-  dirs: GitDirs,
+  sharedDirectory: string | undefined,
   placement: { readonly root: string; readonly folder: string },
 ): string => {
-  const mainCheckout = dirs.ok ? dirname(dirs.common) : placement.root;
+  const mainCheckout = sharedDirectory === undefined ? placement.root : dirname(sharedDirectory);
   return join(dirname(mainCheckout), placement.folder);
 };
 
 export const besideMainCheckout = (root: string, folder: string): string =>
-  besideCheckoutOf(gitCommonDirOf(root), { root, folder });
+  besideCheckoutOf(sharedGitDirectory(root), { root, folder });
 
 export const lockDirectoryBesideMainCheckout = (root: string): string =>
   besideMainCheckout(root, SHARED_LOCK_FOLDER);

@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { SweepTree } from "../application/sweep-run.ts";
 import {
   presentPaths,
@@ -46,6 +47,12 @@ const changesSince = (root: string, base: BaseRevision): readonly ChangedFile[] 
   const seen = new Set(tracked.map((change) => change.path));
   const fresh = untracked(root).filter((change) => !seen.has(change.path));
   return [...tracked, ...fresh].sort((left, right) => left.path.localeCompare(right.path));
+};
+
+export const sharedGitDirectory = (root: string): string | undefined => {
+  const shared = git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const directory = shared.text.trim();
+  return shared.ok && directory !== "" ? resolve(directory) : undefined;
 };
 
 export const UPSTREAM_REF = "upstream/main";

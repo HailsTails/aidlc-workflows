@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
-import { absorbReviewerKnowledge as absorbCapturedKnowledge } from "../src/projection/domain/agent-knowledge.ts";
+import { absorbReviewerKnowledge as absorbCapturedKnowledge }
+  from "../src/projection/domain/agent-knowledge.ts";
 
 export function absorbReviewerKnowledge(request: {
   content: string; agentName: string; sourceRoot: string; reviewerAgents: ReadonlySet<string>;
