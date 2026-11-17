@@ -31,6 +31,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -44,6 +45,14 @@ const PACKAGE_TS = join(REPO_ROOT, "scripts", "package.ts");
 const CHECK_TIMEOUT_MS = NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS;
 
 type Run = ReturnType<typeof spawnSync>;
+
+type HookEntry = { readonly command: string };
+
+type HookGroup = { readonly hooks: readonly HookEntry[] };
+
+type HooksConfig = { readonly hooks: Readonly<Record<string, readonly HookGroup[]>> };
+
+type HarnessDescriptor = { readonly name: string; readonly harnessDir: string };
 
 function copyDir(src: string, dst: string): void {
   cpSync(src, dst, { recursive: true });
@@ -102,6 +111,36 @@ function output(run: Run): string {
   return `${run.stdout ?? ""}${run.stderr ?? ""}`;
 }
 
+function renameHostDirectory(root: string, host: string, from: string, to: string): void {
+  const folder = join(root, "src", "hosts", host);
+  const directory = new RegExp(`${from.replace(".", "\\.")}\\b`, "g");
+  const renamed = readdirSync(folder, { recursive: true, encoding: "utf-8" })
+    .filter((path) => path.endsWith(".ts") && !path.endsWith(".test.ts"))
+    .filter((path) => {
+      const file = join(folder, path);
+      const before = readFileSync(file, "utf-8");
+      const after = before.replace(directory, to);
+      if (after === before) return false;
+      writeFileSync(file, after);
+      return true;
+    })
+    .map((path) => path.replaceAll("\\", "/"));
+  expect(renamed).toContain("host-data.ts");
+}
+
+function renameHostDistribution(root: string, host: string, to: string): void {
+  const identity = join(root, "src", "hosts", host, "host-data.ts");
+  const declared = `distributionId("${host}")`;
+  const source = readFileSync(identity, "utf-8");
+  expect(source.split(declared)).toHaveLength(2);
+  writeFileSync(identity, source.replace(declared, `distributionId("${to}")`));
+  renameSync(join(root, "harness", host), join(root, "harness", to));
+}
+
+function stageGraph(generated: string): string {
+  return readFileSync(join(generated, "tools", "data", "stage-graph.json"), "utf-8");
+}
+
 describe("t145 package determinism — two source-only builds match", () => {
   test("scripts/package.ts exists (the build entry)", () => {
     expect(existsSync(PACKAGE_TS)).toBe(true);
@@ -147,6 +186,94 @@ describe("t145 package determinism — two source-only builds match", () => {
 });
 
 describe("t145 packager contract regressions", () => {
+  test("a synthetic harness passes harnessDir to tools", () => {
+    const root = makeFixture();
+    try {
+      renameHostDirectory(root, "claude", ".claude", ".foo");
+      renameHostDistribution(root, "claude", "foo");
+
+      const run = runPackage(root, "foo");
+      expect(output(run)).toContain("[foo] regenerated dist/foo/.foo");
+      expect(run.status).toBe(0);
+
+      const generated = join(root, "dist", "foo", ".foo");
+      const descriptor = JSON.parse(
+        readFileSync(join(generated, "tools", "data", "harness.json"), "utf-8"),
+      ) as HarnessDescriptor;
+      const graph = stageGraph(generated);
+      const runner = readFileSync(join(generated, "skills", "aidlc-init", "SKILL.md"), "utf-8");
+      expect(descriptor.name).toBe("foo");
+      expect(descriptor.harnessDir).toBe(".foo");
+      expect(graph).toContain('"path": ".foo/sensors/');
+      expect(graph).not.toContain('"path": ".claude/sensors/');
+      expect(runner).toContain("bun .foo/tools/aidlc.ts engine intent create");
+      expect(runner).not.toContain("bun .claude/tools/aidlc.ts");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, CHECK_TIMEOUT_MS);
+
+  test("a codex host honors a renamed harnessDir", () => {
+    const root = makeFixture();
+    try {
+      renameHostDirectory(root, "codex", ".codex", ".foo");
+
+      const run = runPackage(root, "codex");
+      expect(output(run)).toContain("[codex] regenerated dist/codex/.foo");
+      expect(run.status).toBe(0);
+
+      const distRoot = join(root, "dist", "codex");
+      const generated = join(distRoot, ".foo");
+      expect(existsSync(generated)).toBe(true);
+      expect(existsSync(join(distRoot, ".codex"))).toBe(false);
+
+      const hooks = JSON.parse(readFileSync(join(generated, "hooks.json"), "utf-8")) as HooksConfig;
+      const commands = Object.values(hooks.hooks)
+        .flat()
+        .flatMap((group) => group.hooks.map((hook) => hook.command));
+      expect(commands.length).toBeGreaterThan(0);
+      expect(
+        commands.every((command) => command.startsWith("bun .foo/tools/aidlc.ts engine adapter codex")),
+      ).toBe(true);
+
+      const rules = readFileSync(join(generated, "rules", "default.rules"), "utf-8");
+      expect(rules).toContain('pattern = ["bun", ".foo/tools/aidlc.ts", "engine"]');
+      expect(rules).toContain('    ".foo/tools/aidlc-orchestrate.ts"');
+      expect(rules).not.toContain('pattern = ["aidlc"]');
+      expect(rules).not.toContain('["bun", ".codex/');
+
+      const trustSeed = readFileSync(join(generated, "trust-seed.toml"), "utf-8");
+      expect(trustSeed).toContain("<PROJECT_DIR>/.foo/hooks.json:");
+      expect(trustSeed).not.toContain("<PROJECT_DIR>/.codex/hooks.json:");
+
+      const runner = readFileSync(join(distRoot, ".agents", "skills", "aidlc-init", "SKILL.md"), "utf-8");
+      expect(runner).toContain("bun .foo/tools/aidlc.ts engine intent create");
+      expect(runner).not.toContain("bun .codex/tools/aidlc.ts");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, CHECK_TIMEOUT_MS);
+
+  test("write mode derives the graph when a harnessDir is renamed", () => {
+    const root = makeFixture();
+    try {
+      renameHostDirectory(root, "claude", ".claude", ".foo");
+
+      const run = runPackage(root, "claude");
+      expect(output(run)).toContain("[claude] regenerated dist/claude/.foo");
+      expect(run.status).toBe(0);
+      expect(existsSync(join(root, "dist", "claude", ".claude"))).toBe(false);
+
+      const generated = join(root, "dist", "claude", ".foo");
+      expect(stageGraph(generated)).toContain('"path": ".foo/sensors/');
+      expect(
+        readFileSync(join(generated, "skills", "aidlc-init", "SKILL.md"), "utf-8"),
+      ).toContain("bun .foo/tools/aidlc.ts engine intent create");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, CHECK_TIMEOUT_MS);
+
   test("an explicitly named harness without a manifest exits nonzero", () => {
     const root = makeFixture();
     try {
@@ -175,9 +302,9 @@ describe("t145 packager contract regressions", () => {
     try {
       const renderer = join(root, "src", "hosts", "claude", "projection", "settings-renderer.ts");
       const source = readFileSync(renderer, "utf-8");
-      const stable = "allow: expanded } }, null, 2)";
+      const stable = "allow: channelAllow } }, null, 2)";
       expect(source.split(stable)).toHaveLength(2);
-      writeFileSync(renderer, source.replace(stable, "allow: expanded }, nonce: Math.random() }, null, 2)"));
+      writeFileSync(renderer, source.replace(stable, "allow: channelAllow }, nonce: Math.random() }, null, 2)"));
       const run = runPackage(root, "claude", "--check");
       expect(run.status).not.toBe(0);
       expect(output(run).replaceAll("\\", "/")).toContain(
