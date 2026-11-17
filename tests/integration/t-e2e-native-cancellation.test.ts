@@ -230,7 +230,9 @@ function git(cwd: string, args: string[]): void {
 function runnerFixture(mode: "success" | "timeout" | "cancel" | "capture", witness: string): string {
   const fixture = join(scratch(), "runner");
   const copied = [
-    "tests/run-tests.ts", "tests/gen-coverage-registry.ts", "scripts/package-sources.ts", "tests/harness/claude-gate.ts",
+    "tests/run-tests.ts", "tests/gen-coverage-registry.ts", "tests/harness/claude-gate.ts",
+    "src/packaging/adapters/packaged-sources-file.ts", "src/kernel/file-system.ts", "src/kernel/file-system-port.ts",
+    "src/kernel/content-digester.ts", "src/kernel/values.ts", "src/kernel/brand.ts", "src/kernel/result.ts",
     "tests/harness/runner-profile.ts",
     "tests/harness/test-budget.ts",
     "tests/lib/bun-junit-to-meta.ts", "tests/lib/file-retry.ts", "tests/lib/test-sharding.ts",

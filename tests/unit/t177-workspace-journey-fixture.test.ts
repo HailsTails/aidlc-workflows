@@ -39,7 +39,10 @@ import {
   cleanupWorkspaceJourney,
   setupWorkspaceJourney,
 } from "../harness/fixtures.ts";
-import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
+import {
+  HARNESS_MATRIX, harnessByName, agentFrontmatterGrantsIdeTools,
+  fullHostView, onboardingSpec,
+} from "../harness/harness-matrix.ts";
 import { discoverSiblingRepos, listIntents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 
 setDefaultTimeout(NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
@@ -88,3 +91,59 @@ describe("t177 workspace-journey fixture (deterministic, no LLM)", () => {
     }, CASE_TIMEOUT_MS);
   }
 });
+
+test("the complete Claude route remains in the matrix after its legacy manifest retires", () => {
+  const harness = harnessByName("claude");
+  expect(existsSync(join(harness.authoredRoot, "manifest.ts"))).toBe(false);
+  expect(harness.manifest.harnessDir).toBe(".claude");
+  expect(harness.manifest.orchestratorSkillPath).toBe(".claude/skills/aidlc/SKILL.md");
+  expect(harness.fills.invoke).toBe("/aidlc");
+  expect(harness.manifest.rootIntegrations).toHaveLength(2);
+});
+
+test("the native matrix keeps split-host and root onboarding paths distinct", () => {
+  const fills = harnessByName("claude").fills;
+  expect(onboardingSpec({ directory: ".kiro", fills,
+    onboarding: { dist: "AGENTS.md", harnessDist: ".kiro/steering/aidlc-onboarding.md" } }))
+    .toEqual({ dst: "AGENTS.md", projectRoot: true,
+      harnessDst: "steering/aidlc-onboarding.md", fills });
+  expect(onboardingSpec({ directory: ".claude", fills,
+    onboarding: { dist: ".claude/CLAUDE.md", harnessDist: ".claude/CLAUDE.md" } }))
+    .toEqual({ dst: "CLAUDE.md", fills });
+  expect(onboardingSpec({ directory: ".aidlc", fills,
+    onboarding: { dist: "AGENTS.md", harnessDist: "AGENTS.md" } }))
+    .toEqual({ dst: "AGENTS.md", projectRoot: true, fills });
+});
+
+test("the native matrix rejects wrong root, onboarding and memory capabilities", () => {
+  const harness = harnessByName("claude");
+  expect(() => fullHostView("claude", { ...harness.capabilities, rootFiles: [] })).toThrow(
+    "harness matrix [claude]: " +
+      "full-host root files do not agree with the generated descriptor",
+  );
+  expect(() => fullHostView("claude", { ...harness.capabilities,
+    onboarding: { ...harness.capabilities.onboarding, harnessDist: ".claude/wrong.md" } })).toThrow(
+    "harness matrix [claude]: " +
+      "full-host onboarding does not agree with the generated descriptor",
+  );
+  expect(() => fullHostView("claude", {
+    ...harness.capabilities, memoryInclude: "cursor-rule",
+  })).toThrow(
+    "harness matrix [claude]: " +
+      "memoryInclude does not agree with the registered include surfaces",
+  );
+});
+test(
+  "the shared tools declaration check admits agent headers and rejects unrelated additions",
+  () => {
+    expect(agentFrontmatterGrantsIdeTools(
+      "agents/aidlc-example-agent.md", ['tools: ["read"]'],
+    )).toBe(true);
+    expect(agentFrontmatterGrantsIdeTools(
+      "agents/aidlc-example-agent.md", ["badge: example"],
+    )).toBe(false);
+    expect(agentFrontmatterGrantsIdeTools(
+      "skills/aidlc/SKILL.md", ['tools: ["read"]'],
+    )).toBe(false);
+  },
+);
