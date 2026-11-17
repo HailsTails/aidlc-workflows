@@ -6,7 +6,7 @@ import { accept } from "../../../kernel/fixtures/accept.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
-import { agentSlug } from "../../../workflow-definition/domain/identities.ts";
+import { agentSlug, pluginId } from "../../../workflow-definition/domain/identities.ts";
 import { methodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
 import { codexAgents } from "./agent-renderer.ts";
 
@@ -87,7 +87,8 @@ test("a persona refusal is returned before the TOML model writer", () => {
 test("a model refusal returns no partial Markdown file", () => {
   const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, tierFlavor: "codex",
     documents: () => accepted("Markdown"), persona: () => accepted("Persona") });
-  expect(renderer.renderAgent({ agent: { ...agent, model: { kind: "host-default" } }, knowledge: [] }))
+  expect(renderer.renderAgent({ agent: { ...agent, owner: { kind: "plugin", plugin: accept(pluginId("metrics")) },
+    model: { kind: "host-default" } }, knowledge: [] }))
     .toEqual(refused({ kind: "render-failed", concept: "agent",
       name: agent.slug, reason: "This core-agent bridge requires an authored model tier." }));
 });

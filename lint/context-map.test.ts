@@ -199,6 +199,7 @@ describe("legacy bridges", () => {
     expect(SHIPPED_TYPE_BRIDGES).toEqual([
       { module: "core/tools/aidlc-lib.ts", readBy: "src/projection/domain/host-surface.ts", retiresWhen: OWNER_MOVES },
       { module: "core/tools/aidlc-runtime-paths.ts", readBy: "src/projection/domain/host-surface.ts", retiresWhen: OWNER_MOVES },
+      { module: "core/tools/aidlc-tiers.ts", readBy: "src/projection/domain/tier-flavor.ts", retiresWhen: OWNER_MOVES },
     ]);
   });
 });

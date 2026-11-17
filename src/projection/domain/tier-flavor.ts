@@ -1,1 +1,3 @@
-export type TierFlavor = "claude" | "codex" | "copilot" | "cursor" | "kiro" | "opencode";
+import type { Harness } from "../../../core/tools/aidlc-tiers.ts";
+
+export type TierFlavor = Harness;

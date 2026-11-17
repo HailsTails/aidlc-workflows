@@ -585,7 +585,7 @@ test("settings remain required by the shared snapshot after the legacy copy row 
 const distributionMembers = (): HostModule => ({
   host: SCRATCH_HOST, distribution: () => accepted(scratchHostDistributionFixture), routes: () => [],
   projection: {
-    tokens: SCRATCH_TOKENS, renderData: () => SCRATCH_HOST_DATA, placements: [],
+    tokens: SCRATCH_TOKENS, renderData: () => SCRATCH_HOST_DATA, placements: [], tierFlavor: "claude",
     agents: { inputs: [], render: scratchAgentRenderer }, commands: scratchCommandPlacement,
     skills: { inputs: [], render: scratchSkillRenderer },
     settings: { inputs: [], render: scratchSettingsRenderer },

@@ -6,12 +6,10 @@ import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.f
 import { createRecordingTerminal } from "../kernel/fixtures/terminal.fake.ts";
 import { createInMemoryYamlParser } from "../kernel/fixtures/yaml-parser.fake.ts";
 import { accepted } from "../kernel/result.ts";
-import { projectPath } from "../kernel/values.ts";
-import type { HostAgentRenderer } from "../projection/application/ports/agents.ts";
 import { hash } from "../kernel/fixtures/values.fixture.ts";
 import { ONBOARDING_FILLS_FIXTURE } from "../projection/fixtures/document-rendering.fixture.ts";
 import {
-  SCRATCH_HOST, SCRATCH_HOST_DATA, SCRATCH_TOKENS, scratchAgentRenderer, scratchCommandPlacement,
+  SCRATCH_HOST, SCRATCH_HOST_DATA, SCRATCH_TOKENS, scratchAgentRenderer, scratchModelledAgentRenderer, scratchCommandPlacement,
   scratchDocumentRenderer, scratchSettingsRenderer, scratchSkillRenderer,
 } from "../projection/fixtures/scratch-host.fixture.ts";
 import { tokenBindingsFixture } from "../projection/fixtures/token-bindings.fixture.ts";
@@ -33,21 +31,6 @@ const SCRATCH_MODULE: HostModule = {
     documents: { inputs: [], render: scratchDocumentRenderer },
   },
 };
-
-const scratchModelledAgentRenderer: HostAgentRenderer = (inputs) => ({
-  ...scratchAgentRenderer(inputs),
-  renderAgent: ({ agent }) => {
-    const destination = projectPath(`.scratch/agents/${agent.slug}.md`);
-    if (!destination.ok) return accepted([]);
-    if (agent.model.kind !== "tier") return accepted([]);
-    const model = inputs.models({ agent: agent.slug, model: agent.model });
-    return model.ok
-      ? accepted([{ path: destination.value, mode: "regular" as const,
-        content: { kind: "text" as const, text: `model: ${model.value ?? "session"}\n` },
-        origin: { kind: "method-source" as const, path: agent.source } }])
-      : model;
-  },
-});
 
 const CORE_FILES = {
   "file:///core/aidlc-common/stages/.keep": "", "file:///core/agents/.keep": "",

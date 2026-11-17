@@ -62,6 +62,22 @@ export const scratchAgentRenderer: HostAgentRenderer = ({ channel }) => ({
   renderConductorAgent: nothing,
 });
 
+const modelLine = (model: string | undefined): string => `model: ${model ?? "session"}
+`;
+
+export const scratchModelledAgentRenderer: HostAgentRenderer = (inputs) => ({
+  ...scratchAgentRenderer(inputs),
+  renderAgent: ({ agent }) => {
+    const destination = projectPath(`.scratch/agents/${agent.slug}.md`);
+    if (!destination.ok || agent.model.kind !== "tier") return accepted([]);
+    const model = inputs.models({ agent: agent.slug, model: agent.model });
+    return model.ok
+      ? accepted([{ path: destination.value, mode: "regular", content: { kind: "text", text: modelLine(model.value) },
+        origin: { kind: "method-source", path: agent.source } }])
+      : model;
+  },
+});
+
 export const scratchCommandPlacement: CommandPlacement = (file) =>
   projectPath(`.scratch/commands/${file.within}`);
 
