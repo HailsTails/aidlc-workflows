@@ -1,11 +1,9 @@
-// covers: file:scripts/package.ts, file:harness/claude/manifest.ts, file:harness/codex/manifest.ts
-//
 // t-question-options-fit-the-box: the questions file gives each question no
 // more lettered options than the harness's question box shows besides its own
 // Other row, so the agent puts every question in the box whole. Claude Code's
 // AskUserQuestion takes four: a file lettered A-E had the person see "Invalid
 // tool parameters" before the box, or a box without one of the file's options.
-// The harness manifest owns the number (`questionOptions`); the packager writes
+// The host owns the number (its OPTION_LETTERS token); the packager writes
 // the letters into the prose the agent reads before it writes the file.
 //
 // Read from the generated dist/ trees: the letters are a projection, so the
@@ -14,18 +12,11 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { HOSTS } from "../../src/cli/host-table.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 
-const HARNESS_NAMES = readdirSync(join(REPO_ROOT, "harness"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && existsSync(join(REPO_ROOT, "harness", entry.name, "manifest.ts")))
-  .map((entry) => entry.name)
-  .sort();
-
-const manifests = new Map<string, HarnessManifest>();
-for (const name of HARNESS_NAMES) {
-  manifests.set(name, (await import(join(REPO_ROOT, "harness", name, "manifest.ts"))).default as HarnessManifest);
-}
+const FULL_HOSTS = HOSTS;
+const HARNESS_NAMES = FULL_HOSTS.map((member) => member.host.distribution).sort();
 
 // Where the agent reads that a question's options are lettered, in each tree.
 const LETTER_SITES: Array<{ file: string; line: RegExp }> = [
@@ -34,8 +25,20 @@ const LETTER_SITES: Array<{ file: string; line: RegExp }> = [
   { file: "aidlc-common/stages/ideation/intent-capture.md", line: /Include (A-[A-Z]) options with X \(Other\) as final option\./ },
 ];
 
+function memberOf(name: string) {
+  const member = FULL_HOSTS.find((candidate) => candidate.host.distribution === name);
+  if (!member) throw new Error(`No registered host ${name}`);
+  return member;
+}
+
 function engineRoot(name: string): string {
-  return join(REPO_ROOT, "dist", name, manifests.get(name)?.harnessDir ?? "");
+  return join(REPO_ROOT, "dist", name, memberOf(name).host.directory);
+}
+
+function questionOptions(name: string): number {
+  const letters = memberOf(name).projection.tokens.OPTION_LETTERS;
+  if (!letters || !/^A-[B-E]$/.test(letters)) throw new Error(`Invalid host option letters: ${letters}`);
+  return letters.charCodeAt(2) - 64;
 }
 
 function lettersIn(name: string): string[] {
@@ -55,7 +58,7 @@ function* markdownFiles(dir: string): Generator<string> {
 
 describe("the questions file fits the harness's question box", () => {
   test("on Claude Code each question's options are lettered A-D, the four AskUserQuestion shows", () => {
-    expect(manifests.get("claude")?.questionOptions).toBe(4);
+    expect(questionOptions("claude")).toBe(4);
     expect(lettersIn("claude")).toEqual(["A-D", "A-D", "A-D"]);
     const protocol = readFileSync(join(engineRoot("claude"), "aidlc-common/protocols/stage-protocol.md"), "utf-8");
     expect(protocol).toContain("If an answer does not match any provided option (A-D, X)");
@@ -63,13 +66,13 @@ describe("the questions file fits the harness's question box", () => {
   });
 
   test("a harness whose box takes five or more keeps A-E", () => {
-    const unlimited = HARNESS_NAMES.filter((name) => manifests.get(name)?.questionOptions === undefined);
+    const unlimited = HARNESS_NAMES.filter((name) => questionOptions(name) >= 5);
     expect(unlimited.length).toBeGreaterThan(0);
     for (const name of unlimited) expect(lettersIn(name), name).toEqual(["A-E", "A-E", "A-E"]);
   });
 
   test("on Codex each question's options are lettered A-C, the three request_user_input takes", () => {
-    expect(manifests.get("codex")?.questionOptions).toBe(3);
+    expect(questionOptions("codex")).toBe(3);
     expect(lettersIn("codex")).toEqual(["A-C", "A-C", "A-C"]);
     const protocol = readFileSync(join(engineRoot("codex"), "aidlc-common/protocols/stage-protocol.md"), "utf-8");
     expect(protocol).toContain("If an answer does not match any provided option (A-C, X)");
@@ -81,23 +84,23 @@ describe("the questions file fits the harness's question box", () => {
       const protocol = readFileSync(join(engineRoot(name), "aidlc-common/protocols/stage-protocol.md"), "utf-8");
       const example = /The user writes multiple letters: `\[Answer\]: ([A-Z](?:, [A-Z])*)`/.exec(protocol)?.[1];
       expect(example, name).toBeDefined();
-      const last = String.fromCharCode(64 + (manifests.get(name)?.questionOptions ?? 5));
-      for (const letter of example!.split(", ")) expect(letter <= last, `${name}: ${letter} past ${last}`).toBe(true);
+      const last = String.fromCharCode(64 + questionOptions(name));
+      for (const letter of (example ?? "").split(", ")) expect(letter <= last, `${name}: ${letter} past ${last}`).toBe(true);
     }
   });
+});
 
-  // The annex is where a harness's box size is written down: a size it names
-  // is the manifest's number, and an annex with no limit leaves it unset.
-  test("each harness's questionOptions is the box size its question-rendering annex names", () => {
+describe("each host's letters are its own question box's", () => {
+  test("each host's question box size is the one its question-rendering annex names", () => {
     for (const name of HARNESS_NAMES) {
       const path = join(REPO_ROOT, "harness", name, "skills", "aidlc", "question-rendering.md");
       if (!existsSync(path)) continue;
       const annex = readFileSync(path, "utf-8");
       const max = /max (\d+)\s+options per question/.exec(annex)?.[1] ?? /\d+-(\d+) options each/.exec(annex)?.[1];
-      if (max !== undefined) expect(manifests.get(name)?.questionOptions, name).toBe(Number(max));
+      if (max !== undefined) expect(questionOptions(name), name).toBe(Number(max));
       else {
         expect(annex, name).toMatch(/no harness limit on options per question/);
-        expect(manifests.get(name)?.questionOptions, name).toBeUndefined();
+        expect(questionOptions(name), name).toBe(5);
       }
     }
   });

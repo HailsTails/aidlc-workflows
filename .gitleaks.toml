@@ -12,4 +12,5 @@ description = "Global allowlist"
 paths = [
     '''\.gitleaks-baseline\.json$''',
     '''uv\.lock$''',
+    '''(^|/)tests/golden/(install/)?[a-z0-9-]+\.json$''',
 ]

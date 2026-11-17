@@ -239,6 +239,7 @@ const args = parseArgs(process.argv.slice(2));
 // --release/--all acceptance; CI runs them as jobs of their own with a filter.
 const SELECTED_ONLY = /^t-(scope-run|scope-host|guard-matrix)-/;
 let selectedOnlyNoted = false;
+const PATH_NAMED_TEST_ROOTS = ["src", "scripts/parity"];
 
 // --exclude drops the files it matches from every tier, as if they were not
 // there: the rest run as an ordinary tier, so their optional skips stay SKIP
@@ -267,12 +268,16 @@ function matchesE2eFilter(file: string, filter: RegExp | null): boolean {
 function legacyResultName(file: string): string {
   const plugin = file.replaceAll("\\", "/").match(/\/plugins\/([^/]+)\/tests\//);
   const name = basename(file, ".test.ts");
+  const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
+  if (PATH_NAMED_TEST_ROOTS.some((root) => path.startsWith(`${root}/`))) {
+    return path.replace(/\.test\.ts$/, "").replaceAll("/", "-");
+  }
   return plugin ? `plugin-${plugin[1]}-${name}` : name;
 }
 
 function qualifiedResultName(file: string): string {
   const tier = relative(SCRIPT_DIR, file).replaceAll("\\", "/").split("/")[0];
-  return `${tier === ".." ? "plugins" : tier}-${legacyResultName(file)}`;
+  return `${tier === ".." ? relative(REPO_ROOT, file).replaceAll("\\", "/").split("/")[0] : tier}-${legacyResultName(file)}`;
 }
 
 function requestedTestFiles(): string[] {
@@ -1268,6 +1273,18 @@ function pluginTestFiles(): string[] {
   return out;
 }
 
+function pathNamedTestFiles(): string[] {
+  return PATH_NAMED_TEST_ROOTS.flatMap((root) => {
+    const rootDir = join(REPO_ROOT, root);
+    if (!existsSync(rootDir)) return [];
+    return readdirSync(rootDir, { recursive: true, encoding: "utf8" })
+      .map((f) => f.replaceAll("\\", "/"))
+      .filter((f) => f.endsWith(".test.ts"))
+      .sort()
+      .map((f) => join(rootDir, f));
+  });
+}
+
 function levelFiles(level: Level, excludes: string[] = []): string[] {
   const dir = join(SCRIPT_DIR, level);
   const excludeSet = new Set(excludes);
@@ -1299,6 +1316,7 @@ function levelFiles(level: Level, excludes: string[] = []): string[] {
       const qualified = m ? `plugin-${m[1]}-${basename(f).replace(/\.test\.ts$/, "")}` : basename(f);
       return args.shard !== null || !excludeSet.has(qualified);
     }));
+    files.push(...pathNamedTestFiles().filter((f) => args.shard !== null || !excludeSet.has(legacyResultName(f))));
   }
   if (level === "unit" && args.shard) {
     const config = unitShardConfig();

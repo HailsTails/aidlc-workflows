@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import kiro from "../../harness/kiro/manifest.ts";
+import { KIRO_HOOK_COMMAND_SUFFIX } from "../../src/hosts/kiro/projection/json-agent-renderer.ts";
 import { NATIVE_FIXTURE_SETUP_TIMEOUT_MS } from "../harness/test-budget.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -56,7 +56,7 @@ function asKiroRuns(line: string, cwd: string, input: string, path: string) {
 
 describe("a Kiro CLI hook's exit code reaches Kiro as the hook set it", () => {
   test("every hook command the Kiro CLI agents ship ends with the manifest's exit shape", () => {
-    const suffix = kiro.hookCommandSuffix;
+    const suffix = KIRO_HOOK_COMMAND_SUFFIX;
     expect(suffix).toBe("; exit $LASTEXITCODE");
     const commands = shippedCommands();
     expect(commands.length).toBeGreaterThan(0);

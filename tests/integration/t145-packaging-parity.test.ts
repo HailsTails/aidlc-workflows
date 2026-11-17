@@ -1,6 +1,6 @@
 // t145-packaging-parity: the package determinism and clean-build guard.
 //
-// covers: file:scripts/package.ts, file:harness/claude/manifest.ts, file:harness/codex/emit.ts
+// covers: file:scripts/package.ts, file:src/hosts/codex/projection/settings-renderer.ts
 //
 // WHAT. The one-core-N-harnesses layout makes dist/ a GENERATED artifact: `bun
 // scripts/package.ts` projects the harness-neutral core/ tree + harness/<name>/
@@ -31,6 +31,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -45,30 +46,26 @@ const CHECK_TIMEOUT_MS = NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS;
 
 type Run = ReturnType<typeof spawnSync>;
 
-interface HookEntry {
-  command: string;
-}
+type HookEntry = { readonly command: string };
 
-interface HookGroup {
-  hooks: HookEntry[];
-}
+type HookGroup = { readonly hooks: readonly HookEntry[] };
 
-interface HooksConfig {
-  hooks: Record<string, HookGroup[]>;
-}
+type HooksConfig = { readonly hooks: Readonly<Record<string, readonly HookGroup[]>> };
+
+type HarnessDescriptor = { readonly name: string; readonly harnessDir: string };
 
 function copyDir(src: string, dst: string): void {
   cpSync(src, dst, { recursive: true });
 }
 
-function makeFixture(harness: string, sourceHarness = harness): string {
+function makeFixture(): string {
   const root = mkdtempSync(join(tmpdir(), "aidlc-package-contract-"));
   copyDir(join(REPO_ROOT, "core"), join(root, "core"));
   copyDir(join(REPO_ROOT, "scripts"), join(root, "scripts"));
+  copyDir(join(REPO_ROOT, "src"), join(root, "src"));
   cpSync(join(REPO_ROOT, "package.json"), join(root, "package.json"));
   cpSync(join(REPO_ROOT, "bun.lock"), join(root, "bun.lock"));
-  mkdirSync(join(root, "harness"), { recursive: true });
-  copyDir(join(REPO_ROOT, "harness", sourceHarness), join(root, "harness", harness));
+  copyDir(join(REPO_ROOT, "harness"), join(root, "harness"));
   // Emitter imports (notably smol-toml) resolve from the checkout, not from
   // Bun's mutable global package cache.
   const nodeModules = join(REPO_ROOT, "node_modules");
@@ -78,7 +75,7 @@ function makeFixture(harness: string, sourceHarness = harness): string {
       join(root, "node_modules"),
       process.platform === "win32" ? "junction" : "dir",
     );
-  } else if (sourceHarness === "codex") {
+  } else {
     const cache = spawnSync(process.execPath, ["pm", "cache"], {
       encoding: "utf-8",
     });
@@ -114,10 +111,34 @@ function output(run: Run): string {
   return `${run.stdout ?? ""}${run.stderr ?? ""}`;
 }
 
-function replaceOnce(file: string, from: string, to: string): void {
-  const before = readFileSync(file, "utf-8");
-  expect(before.split(from)).toHaveLength(2);
-  writeFileSync(file, before.replace(from, to));
+function renameHostDirectory(root: string, host: string, from: string, to: string): void {
+  const folder = join(root, "src", "hosts", host);
+  const directory = new RegExp(`${from.replace(".", "\\.")}\\b`, "g");
+  const renamed = readdirSync(folder, { recursive: true, encoding: "utf-8" })
+    .filter((path) => path.endsWith(".ts") && !path.endsWith(".test.ts"))
+    .filter((path) => {
+      const file = join(folder, path);
+      const before = readFileSync(file, "utf-8");
+      const after = before.replace(directory, to);
+      if (after === before) return false;
+      writeFileSync(file, after);
+      return true;
+    })
+    .map((path) => path.replaceAll("\\", "/"));
+  expect(renamed).toContain("host-data.ts");
+}
+
+function renameHostDistribution(root: string, host: string, to: string): void {
+  const identity = join(root, "src", "hosts", host, "host-data.ts");
+  const declared = `distributionId("${host}")`;
+  const source = readFileSync(identity, "utf-8");
+  expect(source.split(declared)).toHaveLength(2);
+  writeFileSync(identity, source.replace(declared, `distributionId("${to}")`));
+  renameSync(join(root, "harness", host), join(root, "harness", to));
+}
+
+function stageGraph(generated: string): string {
+  return readFileSync(join(generated, "tools", "data", "stage-graph.json"), "utf-8");
 }
 
 describe("t145 package determinism — two source-only builds match", () => {
@@ -165,17 +186,11 @@ describe("t145 package determinism — two source-only builds match", () => {
 });
 
 describe("t145 packager contract regressions", () => {
-  test("a synthetic harness uses the default orchestrator path and passes harnessDir to tools", () => {
-    const root = makeFixture("foo", "claude");
+  test("a synthetic harness passes harnessDir to tools", () => {
+    const root = makeFixture();
     try {
-      const manifest = join(root, "harness", "foo", "manifest.ts");
-      replaceOnce(manifest, 'name: "claude"', 'name: "foo"');
-      replaceOnce(manifest, 'harnessDir: ".claude"', 'harnessDir: ".foo"');
-      replaceOnce(
-        manifest,
-        'orchestratorSkillPath: ".claude/skills/aidlc/SKILL.md",',
-        "",
-      );
+      renameHostDirectory(root, "claude", ".claude", ".foo");
+      renameHostDistribution(root, "claude", "foo");
 
       const run = runPackage(root, "foo");
       expect(output(run)).toContain("[foo] regenerated dist/foo/.foo");
@@ -184,15 +199,9 @@ describe("t145 packager contract regressions", () => {
       const generated = join(root, "dist", "foo", ".foo");
       const descriptor = JSON.parse(
         readFileSync(join(generated, "tools", "data", "harness.json"), "utf-8"),
-      );
-      const graph = readFileSync(
-        join(generated, "tools", "data", "stage-graph.json"),
-        "utf-8",
-      );
-      const runner = readFileSync(
-        join(generated, "skills", "aidlc-init", "SKILL.md"),
-        "utf-8",
-      );
+      ) as HarnessDescriptor;
+      const graph = stageGraph(generated);
+      const runner = readFileSync(join(generated, "skills", "aidlc-init", "SKILL.md"), "utf-8");
       expect(descriptor.name).toBe("foo");
       expect(descriptor.harnessDir).toBe(".foo");
       expect(graph).toContain('"path": ".foo/sensors/');
@@ -204,33 +213,27 @@ describe("t145 packager contract regressions", () => {
     }
   }, CHECK_TIMEOUT_MS);
 
-  test("a codex emitter honors a renamed manifest harnessDir", () => {
-    const root = makeFixture("foo", "codex");
+  test("a codex host honors a renamed harnessDir", () => {
+    const root = makeFixture();
     try {
-      const manifest = join(root, "harness", "foo", "manifest.ts");
-      replaceOnce(manifest, 'name: "codex"', 'name: "foo"');
-      replaceOnce(manifest, 'harnessDir: ".codex"', 'harnessDir: ".foo"');
+      renameHostDirectory(root, "codex", ".codex", ".foo");
 
-      const run = runPackage(root, "foo");
-      expect(output(run)).toContain("[foo] regenerated dist/foo/.foo");
+      const run = runPackage(root, "codex");
+      expect(output(run)).toContain("[codex] regenerated dist/codex/.foo");
       expect(run.status).toBe(0);
 
-      const distRoot = join(root, "dist", "foo");
+      const distRoot = join(root, "dist", "codex");
       const generated = join(distRoot, ".foo");
       expect(existsSync(generated)).toBe(true);
       expect(existsSync(join(distRoot, ".codex"))).toBe(false);
 
-      const hooks = JSON.parse(
-        readFileSync(join(generated, "hooks.json"), "utf-8"),
-      ) as HooksConfig;
+      const hooks = JSON.parse(readFileSync(join(generated, "hooks.json"), "utf-8")) as HooksConfig;
       const commands = Object.values(hooks.hooks)
         .flat()
         .flatMap((group) => group.hooks.map((hook) => hook.command));
       expect(commands.length).toBeGreaterThan(0);
       expect(
-        commands.every((command: string) =>
-          command.startsWith("bun .foo/tools/aidlc.ts engine adapter foo")
-        ),
+        commands.every((command) => command.startsWith("bun .foo/tools/aidlc.ts engine adapter codex")),
       ).toBe(true);
 
       const rules = readFileSync(join(generated, "rules", "default.rules"), "utf-8");
@@ -243,10 +246,7 @@ describe("t145 packager contract regressions", () => {
       expect(trustSeed).toContain("<PROJECT_DIR>/.foo/hooks.json:");
       expect(trustSeed).not.toContain("<PROJECT_DIR>/.codex/hooks.json:");
 
-      const runner = readFileSync(
-        join(distRoot, ".agents", "skills", "aidlc-init", "SKILL.md"),
-        "utf-8",
-      );
+      const runner = readFileSync(join(distRoot, ".agents", "skills", "aidlc-init", "SKILL.md"), "utf-8");
       expect(runner).toContain("bun .foo/tools/aidlc.ts engine intent create");
       expect(runner).not.toContain("bun .codex/tools/aidlc.ts");
     } finally {
@@ -255,15 +255,9 @@ describe("t145 packager contract regressions", () => {
   }, CHECK_TIMEOUT_MS);
 
   test("write mode derives the graph when a harnessDir is renamed", () => {
-    const root = makeFixture("claude");
+    const root = makeFixture();
     try {
-      const manifest = join(root, "harness", "claude", "manifest.ts");
-      replaceOnce(manifest, 'harnessDir: ".claude"', 'harnessDir: ".foo"');
-      replaceOnce(
-        manifest,
-        'orchestratorSkillPath: ".claude/skills/aidlc/SKILL.md"',
-        'orchestratorSkillPath: ".foo/skills/aidlc/SKILL.md"',
-      );
+      renameHostDirectory(root, "claude", ".claude", ".foo");
 
       const run = runPackage(root, "claude");
       expect(output(run)).toContain("[claude] regenerated dist/claude/.foo");
@@ -271,9 +265,7 @@ describe("t145 packager contract regressions", () => {
       expect(existsSync(join(root, "dist", "claude", ".claude"))).toBe(false);
 
       const generated = join(root, "dist", "claude", ".foo");
-      expect(
-        readFileSync(join(generated, "tools", "data", "stage-graph.json"), "utf-8"),
-      ).toContain('"path": ".foo/sensors/');
+      expect(stageGraph(generated)).toContain('"path": ".foo/sensors/');
       expect(
         readFileSync(join(generated, "skills", "aidlc-init", "SKILL.md"), "utf-8"),
       ).toContain("bun .foo/tools/aidlc.ts engine intent create");
@@ -283,7 +275,7 @@ describe("t145 packager contract regressions", () => {
   }, CHECK_TIMEOUT_MS);
 
   test("an explicitly named harness without a manifest exits nonzero", () => {
-    const root = makeFixture("kiro");
+    const root = makeFixture();
     try {
       const run = runPackage(root, "does-not-exist");
       expect(run.status).not.toBe(0);
@@ -294,7 +286,7 @@ describe("t145 packager contract regressions", () => {
   }, CHECK_TIMEOUT_MS);
 
   test("--check works from a fixture with no generated roots and remains temp-only", () => {
-    const root = makeFixture("claude");
+    const root = makeFixture();
     try {
       const run = runPackage(root, "claude", "--check");
       expect(run.status, output(run)).toBe(0);
@@ -305,8 +297,26 @@ describe("t145 packager contract regressions", () => {
     }
   }, CHECK_TIMEOUT_MS);
 
+  test("--check reports the path built nondeterministically", () => {
+    const root = makeFixture();
+    try {
+      const renderer = join(root, "src", "hosts", "claude", "projection", "settings-renderer.ts");
+      const source = readFileSync(renderer, "utf-8");
+      const stable = "allow: channelAllow } }, null, 2)";
+      expect(source.split(stable)).toHaveLength(2);
+      writeFileSync(renderer, source.replace(stable, "allow: channelAllow }, nonce: Math.random() }, null, 2)"));
+      const run = runPackage(root, "claude", "--check");
+      expect(run.status).not.toBe(0);
+      expect(output(run).replaceAll("\\", "/")).toContain(
+        "DIFFERS between builds: dist/claude/.claude/settings.json",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, CHECK_TIMEOUT_MS);
+
   test("--check ignores corrupted local generated bytes", () => {
-    const root = makeFixture("claude");
+    const root = makeFixture();
     try {
       const copyJunk = join(root, "dist", "claude", "local-only.txt");
       const releaseJunk = join(root, "dist-release", "claude", "local-only.txt");
@@ -323,34 +333,8 @@ describe("t145 packager contract regressions", () => {
     }
   }, CHECK_TIMEOUT_MS);
 
-  test("--check reports the path emitted nondeterministically", () => {
-    const root = makeFixture("claude");
-    try {
-      const manifest = join(root, "harness", "claude", "manifest.ts");
-      replaceOnce(
-        manifest,
-        "  emit: null,",
-        `  emit: ({ distRoot }) => {
-    const fs = require("node:fs");
-    const path = require("node:path");
-    fs.writeFileSync(
-      path.join(distRoot, ".claude", "tools", "data", "nondeterministic.txt"),
-      \`\${Math.random()}\\n\`,
-    );
-  },`,
-      );
-      const run = runPackage(root, "claude", "--check");
-      expect(run.status).not.toBe(0);
-      expect(output(run).replaceAll("\\", "/")).toContain(
-        "DIFFERS between builds: dist/claude/.claude/tools/data/nondeterministic.txt",
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  }, CHECK_TIMEOUT_MS);
-
   test("full write removes generated harness and plugin roots absent from source", () => {
-    const root = makeFixture("claude");
+    const root = makeFixture();
     try {
       const staleHarness = join(root, "dist", "removed-harness", "stale.txt");
       const staleReleaseHarness = join(
@@ -383,7 +367,7 @@ describe("t145 packager contract regressions", () => {
   }, CHECK_TIMEOUT_MS);
 
   test("write mode replaces only the named generated root", () => {
-    const root = makeFixture("kiro");
+    const root = makeFixture();
     try {
       const stale = join(root, "dist", "kiro", "removed-root-output.txt");
       const pluginAsset = join(root, "dist", "plugins", "fixture", "keep.txt");

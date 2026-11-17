@@ -22,10 +22,9 @@
 // would only prove this file agrees with itself -- the circularity that hid two
 // real schema bugs behind 48 green tests earlier in this build.
 //
-// The all-harness sweep is the other half. Codex and Copilot do NOT enumerate core/skills/
-// (each carries a hardcoded array in its emit.ts), so a skill can pass
-// every claude-tree assertion while being absent from exactly one harness. The
-// registration seams are asymmetric, so the test walks EVERY root in harness/.
+// The all-harness sweep is the other half. A skill can pass every claude-tree
+// assertion while being absent from exactly one harness, so the test walks EVERY
+// built host tree.
 //
 // Path references are RESOLVED, not string-matched: `{{HARNESS_DIR}}` renders to a
 // different prefix per harness, and a token that substitutes to a path which does
@@ -57,6 +56,7 @@ import {
   resolveIntentFlag,
 } from "../../dist/claude/.claude/tools/aidlc-knowledge.ts";
 import { intentsRegistryPath } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import { SESSION_SKILL_NAMES } from "../../src/projection/domain/neutral-surface.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -101,11 +101,6 @@ const HARNESSES = HARNESS_NAMES.map((name) => {
   }
   return { name, root: join("dist", name), skill: join(rel, "aidlc-knowledge", "SKILL.md") };
 });
-
-// Harnesses that do NOT enumerate core/skills/ and instead carry a hardcoded
-// array in their emit.ts. A skill missing from one of these ships to every OTHER
-// harness and no count-based test notices.
-const HARDCODED_SKILL_ARRAY_HARNESSES = ["codex", "copilot"] as const;
 
 const CLAUDE_SKILL = join(REPO, "dist", "claude", ".claude", "skills", "aidlc-knowledge", "SKILL.md");
 const TOOL_SRC = join(REPO, "core", "tools", "aidlc-knowledge.ts");
@@ -198,19 +193,12 @@ describe("t285 - the knowledge skill ships everywhere, and its prose matches the
       });
     }
 
-    for (const h of HARDCODED_SKILL_ARRAY_HARNESSES) {
-      test(`the ${h} hardcoded skill array names the skill (the N-of-N trap)`, () => {
-        // These harnesses do not enumerate core/skills/. This asserts the ARRAY, not
-        // just the emitted file, so deleting the entry fails here with a clear cause
-        // rather than only as a missing file in one tree.
-        const emit = readFileSync(join(REPO, "harness", h, "emit.ts"), "utf-8");
-        const match = emit.match(/for \(const skill of \[([^\]]+)\]/);
-        expect(
-          match,
-          `harness/${h}/emit.ts no longer matches the hardcoded skill-array extractor`,
-        ).not.toBeNull();
-        const array = match?.[1] ?? "";
-        expect(array, `harness/${h}/emit.ts omits aidlc-knowledge`).toContain("aidlc-knowledge");
+    for (const h of HARNESSES) {
+      test(`the ${h.name} session-skill list names the skill (the N-of-N trap)`, () => {
+        const renderer = readFileSync(join(REPO, "src", "hosts", h.name, "projection", "skill-renderer.ts"), "utf-8");
+        expect(renderer, `src/hosts/${h.name}/projection/skill-renderer.ts no longer renders session skills`)
+          .toContain("renderSessionSkill");
+        expect(SESSION_SKILL_NAMES, "the session-skill list omits aidlc-knowledge").toContain("aidlc-knowledge");
       });
     }
 
