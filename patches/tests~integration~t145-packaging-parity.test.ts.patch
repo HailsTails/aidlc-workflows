@@ -1,8 +1,16 @@
 diff --git a/tests/integration/t145-packaging-parity.test.ts b/tests/integration/t145-packaging-parity.test.ts
-index d7a026fe1..2e53325fc 100644
+index d7a026fe1..03744d5b9 100644
 --- a/tests/integration/t145-packaging-parity.test.ts
 +++ b/tests/integration/t145-packaging-parity.test.ts
-@@ -45,6 +45,14 @@ const CHECK_TIMEOUT_MS = NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS;
+@@ -31,6 +31,7 @@ import {
+   mkdtempSync,
+   readFileSync,
+   readdirSync,
++  renameSync,
+   rmSync,
+   symlinkSync,
+   writeFileSync,
+@@ -45,6 +46,14 @@ const CHECK_TIMEOUT_MS = NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS;
  
  type Run = ReturnType<typeof spawnSync>;
  
@@ -17,7 +25,7 @@ index d7a026fe1..2e53325fc 100644
  function copyDir(src: string, dst: string): void {
    cpSync(src, dst, { recursive: true });
  }
-@@ -102,6 +110,27 @@ function output(run: Run): string {
+@@ -102,6 +111,36 @@ function output(run: Run): string {
    return `${run.stdout ?? ""}${run.stderr ?? ""}`;
  }
  
@@ -38,6 +46,15 @@ index d7a026fe1..2e53325fc 100644
 +  expect(renamed).toContain("host-data.ts");
 +}
 +
++function renameHostDistribution(root: string, host: string, to: string): void {
++  const identity = join(root, "src", "hosts", host, "host-data.ts");
++  const declared = `distributionId("${host}")`;
++  const source = readFileSync(identity, "utf-8");
++  expect(source.split(declared)).toHaveLength(2);
++  writeFileSync(identity, source.replace(declared, `distributionId("${to}")`));
++  renameSync(join(root, "harness", host), join(root, "harness", to));
++}
++
 +function stageGraph(generated: string): string {
 +  return readFileSync(join(generated, "tools", "data", "stage-graph.json"), "utf-8");
 +}
@@ -45,26 +62,27 @@ index d7a026fe1..2e53325fc 100644
  describe("t145 package determinism — two source-only builds match", () => {
    test("scripts/package.ts exists (the build entry)", () => {
      expect(existsSync(PACKAGE_TS)).toBe(true);
-@@ -147,6 +176,93 @@ describe("t145 package determinism — two source-only builds match", () => {
+@@ -147,6 +186,94 @@ describe("t145 package determinism — two source-only builds match", () => {
  });
  
  describe("t145 packager contract regressions", () => {
-+  test("a host whose directory is renamed passes the new harnessDir to its tools", () => {
++  test("a synthetic harness passes harnessDir to tools", () => {
 +    const root = makeFixture();
 +    try {
 +      renameHostDirectory(root, "claude", ".claude", ".foo");
++      renameHostDistribution(root, "claude", "foo");
 +
-+      const run = runPackage(root, "claude");
-+      expect(output(run)).toContain("[claude] regenerated dist/claude/.foo");
++      const run = runPackage(root, "foo");
++      expect(output(run)).toContain("[foo] regenerated dist/foo/.foo");
 +      expect(run.status).toBe(0);
 +
-+      const generated = join(root, "dist", "claude", ".foo");
++      const generated = join(root, "dist", "foo", ".foo");
 +      const descriptor = JSON.parse(
 +        readFileSync(join(generated, "tools", "data", "harness.json"), "utf-8"),
 +      ) as HarnessDescriptor;
 +      const graph = stageGraph(generated);
 +      const runner = readFileSync(join(generated, "skills", "aidlc-init", "SKILL.md"), "utf-8");
-+      expect(descriptor.name).toBe("claude");
++      expect(descriptor.name).toBe("foo");
 +      expect(descriptor.harnessDir).toBe(".foo");
 +      expect(graph).toContain('"path": ".foo/sensors/');
 +      expect(graph).not.toContain('"path": ".claude/sensors/');
@@ -139,7 +157,7 @@ index d7a026fe1..2e53325fc 100644
    test("an explicitly named harness without a manifest exits nonzero", () => {
      const root = makeFixture();
      try {
-@@ -175,9 +291,9 @@ describe("t145 packager contract regressions", () => {
+@@ -175,9 +302,9 @@ describe("t145 packager contract regressions", () => {
      try {
        const renderer = join(root, "src", "hosts", "claude", "projection", "settings-renderer.ts");
        const source = readFileSync(renderer, "utf-8");
