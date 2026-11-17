@@ -17,6 +17,8 @@
     ]
   },
   "constitution": {
+    "engine": "hone",
+    "baseRevision": "origin/main",
     "include": ["plugins/rin/**"],
     "exclude": [
       "**/node_modules/**",

@@ -123,7 +123,8 @@ describe("rin's disciplines check against the installed @hailstails/hone release
 
       expect(checkedOutcome({ repository })).toEqual({
         kind: "failed",
-        report: "findings (1)\nCD-17#clock-sources audit src/clock.ts:1:0 export const startedAt = Date.now();\nverdict: fail\n",
+        report:
+          "findings (1)\nCD-17#clock-sources audit src/clock.ts:1:0 export const startedAt = Date.now();\nreadFirst (2)\nStart from each rule's Spirit below. disciplines.assessment.md, where this repository records its own causes, forward goal and steps for a clause, is not written yet; node_modules/@hailstails/hone/ADOPTING.md#5a-write-the-assessment says how to write it.\nCD-17#clock-sources: read node_modules/@hailstails/hone/rules/CD-17/README.md#spirit\nverdict: fail\n",
       });
     },
     TEST_TIMEOUT_MILLISECONDS,

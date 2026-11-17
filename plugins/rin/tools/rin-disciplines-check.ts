@@ -31,9 +31,9 @@ const PASSING_EXIT_CODE = 0;
 
 const FAILING_EXIT_CODE = 1;
 
-const PASSING_VERDICT = /verdict: pass\s*$/;
+const PASSING_VERDICT = /verdict: pass(?: \(partial assessment\))?\s*$/;
 
-const FAILING_VERDICT = /verdict: fail\s*$/;
+const FAILING_VERDICT = /verdict: fail(?: \(partial assessment\))?\s*$/;
 
 const OUTPUT_SHOWN_LENGTH = 2000;
 

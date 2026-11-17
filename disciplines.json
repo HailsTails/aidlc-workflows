@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "ruleSets": {},
+  "clauses": {
+    "CD-5#comments-directives": "audit",
+    "CD-7#categorical-paths": "audit",
+    "CD-7#filename-case": "not-run",
+    "CD-7a#factory-return-types": "audit",
+    "CD-8#switch-defaults": "audit",
+    "CD-14#class-syntax": "audit",
+    "CD-14#static-only-class": "not-run",
+    "CD-15#loops": "audit",
+    "CD-19#import-boundaries": "audit"
+  },
+  "clauseSettings": {
+    "CD-5#comments-directives": { "trackerPatterns": ["^\\(spec-\\d+\\)$"] },
+    "CD-19#import-boundaries": {
+      "confinedPackages": [
+        "eslint",
+        "winston",
+        "winston-transport",
+        "better-sqlite3",
+        "pino",
+        "hono",
+        "@hono/node-server",
+        "jose",
+        "@modelcontextprotocol/sdk",
+        "zod-to-json-schema",
+        "uuid"
+      ]
+    }
+  },
+  "exclude": [
+    ".github",
+    "assets",
+    "core",
+    "docs",
+    "harness",
+    "plugins/test-pro",
+    "scripts",
+    "tests",
+    "vitest.rin.config.ts",
+    "plugins/rin/tools/test-fixtures"
+  ]
+}
