@@ -167,3 +167,39 @@ test("kiroIde derives only steering after its complete record was already constr
     .toEqual(accepted([steeringFile(REFERENCE_FORM)]));
   expect(record.content).toEqual({ kind: "text", text: '{\n  "newChatStep": 1\n}\n' });
 });
+
+test.each([
+  { org: "a".repeat(65535), team: "b", inline: true },
+  { org: "a".repeat(65536), team: "b", inline: false },
+  { org: "é".repeat(32767), team: "é", inline: true },
+  { org: "é".repeat(32767), team: "éb", inline: false },
+])("aggregate cutoff counts decoded bytes across memory files: %#", async ({ org, team, inline }) => {
+  const expected = inline ? SHORT_INLINE.replace("\na\n</memory-file>\n",
+    `\n${org}\n</memory-file>\n\n<memory-file path="aidlc/spaces/default/memory/team.md">\n${team}\n</memory-file>\n`)
+    : REFERENCE_FORM;
+  expect(new TextEncoder().encode(org).length + new TextEncoder().encode(team).length)
+    .toBe(inline ? 65536 : 65537);
+  expect(await deriveKiroIdeSteering({ files: [memory("team.md", team), memory("org.md", org)], frame }))
+    .toEqual(accepted([steeringFile(expected)]));
+});
+
+test("the actual filesystem capture gives projected memory scalar text even for a lone-surrogate write", async () => {
+  const input = new URL("scalar-text-source.md", frames);
+  try {
+    accept(await scratch.writeFile({ file: input, content: { kind: "text", text: "\uD800" } }));
+    const captured = accept(await scratch.readFile({ file: input }));
+    expect(captured).toEqual({ kind: "bytes", bytes: new Uint8Array([0xef, 0xbf, 0xbd]) });
+    const files = accept(projectWorkspace({ host: accept(kiroIdeHostIdentity()),
+      tokens: tokenBindingsFixture({ harnessDir: ".kiro" }), companions: [], rules: [{ owner: { kind: "core" },
+        path: methodSource({ kind: "rule", within: "org.md" }), content: captured }] }));
+    expect(files[0]?.content).toEqual({ kind: "text", text: "\uFFFD" });
+    const text = files[0]?.content;
+    if (text?.kind !== "text") throw new Error("The captured rule must be decoded before derivation.");
+    expect(text.text.isWellFormed()).toBe(true);
+    expect(await deriveKiroIdeSteering({ files, frame }))
+      .toEqual(accepted([steeringFile(SHORT_INLINE.replace("\na\n", "\n\uFFFD\n"))]));
+    expect(files[0]?.content).toEqual({ kind: "text", text: "\uFFFD" });
+  } finally {
+    expect(await scratch.removeEntry({ entry: input })).toEqual(accepted(input));
+  }
+});
