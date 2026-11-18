@@ -1,3 +1,4 @@
+import { PERMISSION_POLICIES_FIXTURE } from "../../../projection/fixtures/onboarding-permissions.fixture.ts";
 import { expect, test } from "bun:test";
 import { accept } from "../../../kernel/fixtures/accept.ts";
 import { path } from "../../../kernel/fixtures/values.fixture.ts";
@@ -18,7 +19,7 @@ test("the real native owner and serializer retain the complete copy-era upgrade 
  const templates=bindOnboardingSource(accept(admitOnboardingSource({ neutral:"Neutral",
  harnessSkeleton:"{{SLOT:prereq_bullets}}\n{{SLOT:framework_hook_runtime}}\nTools: {{SLOT:framework_tools_runtime}}\nRun {{INVOKE}} doctor\n",
  hookGuidance:"framework-hooks",toolsGuidance:"framework-tools" })),"native");
- const context=prepareOnboardingContext({context:accept(onboardingContext({channel:"native",permissionsLine:"prefix-only",prefix:"aidlc engine"})),skeleton:templates.harnessSkeleton});
+ const context=prepareOnboardingContext({context:accept(onboardingContext({channel:"native",permissions:PERMISSION_POLICIES_FIXTURE["prefix-only"],prefix:"aidlc engine"})),skeleton:templates.harnessSkeleton});
  const inputs=documentRenderingInputsFixture({harnessDir:".aidlc"});
  const renderer=createCopilotDocumentRenderer({...inputs,fills:copilotOnboardingFills(context),tokens:{...inputs.tokens,["INVOKE"]:"aidlc",["TOOL_PREFIX"]:"aidlc engine ",["TRUSTED_NAMESPACE"]:"engine"}});
  expect(renderer.renderOnboarding({templates,method:methodSliceFixture})).toEqual<Result<readonly (Omit<RootSerialization,"origin"> & {readonly origin:{readonly kind:"root-history";readonly source:RootSerialization["origin"];readonly history:RootHistorySnapshot}})[],ProjectionRefusal>>({ok:true,value:[{path:path("AGENTS.md"),mode:"regular",content:{kind:"text",text:CURRENT},origin:{kind:"root-history",source:{kind:"rendered",concept:"onboarding",name:"AGENTS.md"},history:{path:path("AGENTS.md"),mode:"regular",text:CURRENT,copyAuthoring:COPY_AUTHORING}}}]});

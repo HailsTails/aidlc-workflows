@@ -16,6 +16,7 @@ import { kiroAgentRenderer } from "../hosts/kiro/projection/agent-renderer.ts";
 import { kiroIdeHostData } from "../hosts/kiro-ide/projection/host-data-renderer.ts";
 import { createKiroIdeHarnessRecord } from "../hosts/kiro-ide/projection/harness-record.ts";
 import { kiroIdeDistribution } from "../hosts/kiro-ide/distribution.ts";
+import { kiroNativePermissionsLine } from "../hosts/kiro/distribution.ts";
 import { createHostSurfaceMembers } from "../projection/application/host-surface-members.ts";
 import { nativeLayoutFiles } from "../packaging/application/native-layout.ts";
 
@@ -45,7 +46,8 @@ const composed = (surfaced: string) => {
     data: { productName: "Fixture", configNextStep: "Open", rulesFolder: null,
       pluginAgentFrontmatter: ownerData.pluginAgentFrontmatter ?? { copy: [], native: [] } },
   });
-  const release = accept(kiroIdeDistribution({ delegateShellFacts: facts })).native;
+  const release = accept(kiroIdeDistribution({ delegateShellFacts: facts,
+    permissionsLine: kiroNativePermissionsLine })).native;
   return { release, personaFiles: [...developers, ...pipelines],
     pluginFiles: [...accept(surface.renderHostData()), ...pipelines] };
 };

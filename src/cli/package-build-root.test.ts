@@ -1,3 +1,4 @@
+import { PERMISSION_POLICIES_FIXTURE } from "../projection/fixtures/onboarding-permissions.fixture.ts";
 import { brand } from "../kernel/brand.ts";
 import { prepareOnboardingContext, type OnboardingPermissions } from "../projection/domain/onboarding-context.ts";
 import { commonHarnessRecord } from "../projection/domain/harness-record.ts";
@@ -48,7 +49,7 @@ const processRunner = createScriptedProcessRunner({ outcome: refused({
 }) });
 
 const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
-  policy: "exact-reads", prefix: "aidlc engine",
+  policy: PERMISSION_POLICIES_FIXTURE["exact-reads"], prefix: "aidlc engine",
 }) }, skeleton: "" });
 
 test("one admitted core snapshot projects to multiple hosts without another source read", async () => {
@@ -723,7 +724,7 @@ test("the actual root binds the read distribution policy and native route prefix
   const fills = mock<HostModule["projection"]["fills"]>().mockReturnValue({ invoke: "/custom", slots: {} });
   const distribution = mock<HostModule["distribution"]>().mockReturnValue(accepted({
     ...scratchHostDistributionFixture,
-    native: { ...scratchHostDistributionFixture.native, permissionsLine: "exact-reads" },
+    native: { ...scratchHostDistributionFixture.native, permissions: PERMISSION_POLICIES_FIXTURE["exact-reads"] },
   }));
   const root = createPackageBuildRoot({ hosts: [{ ...member, distribution,
     projection: { ...member.projection, fills } }], platform: {

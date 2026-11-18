@@ -27,10 +27,12 @@ import { kiroHost } from "../../hosts/kiro/host.ts";
 import { kiroIdeHost } from "../../hosts/kiro-ide/host.ts";
 import { openCodeHost } from "../../hosts/opencode/host.ts";
 import { kiroAgentRenderer } from "../../hosts/kiro/projection/agent-renderer.ts";
+import { kiroNativePermissionsLine } from "../../hosts/kiro/distribution.ts";
 
 export const PERMISSION_HOSTS = {
   codex: accept(codexHost()), copilot: accept(copilotHost()), cursor: accept(cursorHost()), kiro: accept(kiroHost()),
-  "kiro-ide": accept(kiroIdeHost(kiroAgentRenderer)), opencode: accept(openCodeHost()),
+  "kiro-ide": accept(kiroIdeHost({ personas: kiroAgentRenderer, permissionsLine: kiroNativePermissionsLine })),
+  opencode: accept(openCodeHost()),
 } satisfies Readonly<Record<string, HostModule>>;
 
 const nothing = (): Rendering => accepted([]);
@@ -56,7 +58,7 @@ export const permissionProseFlow = async (input: {
   const commands = input.nativeCommands ?? { prefix: input.prefix, namespace: "engine", delegates: [], adapterHooks: new Set<string>(),
     trusted: DELEGATE_SHELL_FACTS.trustedCommand, unresolvable: () => [] };
   const context = accept(onboardingContext({ channel: input.channel,
-    permissionsLine: distribution.native.permissionsLine, prefix: commands.prefix }));
+    permissions: distribution.native.permissions, prefix: commands.prefix }));
   const tokens = { ...module.projection.tokens, ["HARNESS_DIR"]: module.host.directory,
     ...channelTokens({ channel: input.channel, directory: module.host.directory,
       prefix: commands.prefix, namespace: commands.namespace }) };
@@ -85,13 +87,13 @@ export const permissionProseFlow = async (input: {
   // Isolate the paragraph consumer's policy port. Unrelated mandatory release
   // replacements are qualified separately; this is not a full release fixture.
   const after = before.ok && input.channel === "native" ? nativeLayoutFiles({ files: before.value.files,
-    host: module.host, release: { replacements: [], copyOnly: [], permissionsLine: distribution.native.permissionsLine },
+    host: module.host, release: { replacements: [], copyOnly: [], permissions: distribution.native.permissions },
     routes: commands,
   }) : before.ok ? accepted(before.value.files) : before;
   const onboardingOnly = before.ok && input.channel === "native" ? accepted(before.value.files.map(file => ({ ...file,
     content: { kind: "text" as const, text: nativeOnboardingText({ text: file.content.kind === "text"
       ? file.content.text : new TextDecoder("utf-8", { ignoreBOM: true }).decode(file.content.bytes),
-    permissionsLine: distribution.native.permissionsLine, prefix: commands.prefix }) },
+    permissions: distribution.native.permissions, prefix: commands.prefix }) },
   }))) : before.ok ? accepted(before.value.files) : before;
-  return { context, policy: distribution.native.permissionsLine, fills: observed.fills, before, after, onboardingOnly };
+  return { context, policy: distribution.native.permissions, fills: observed.fills, before, after, onboardingOnly };
 };

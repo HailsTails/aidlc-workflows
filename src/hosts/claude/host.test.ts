@@ -1,3 +1,4 @@
+import { PERMISSION_POLICIES_FIXTURE } from "../../projection/fixtures/onboarding-permissions.fixture.ts";
 import { brand } from "../../kernel/brand.ts";
 import { prepareOnboardingContext, type OnboardingPermissions } from "../../projection/domain/onboarding-context.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
@@ -16,7 +17,7 @@ import { createClaudeSettingsRenderer } from "./projection/settings-renderer.ts"
 import { createClaudeSkillRenderer } from "./projection/skill-renderer.ts";
 
 const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
-  policy: "prefix-only", prefix: "aidlc engine",
+  policy: PERMISSION_POLICIES_FIXTURE["prefix-only"], prefix: "aidlc engine",
 }) }, skeleton: "" });
 
 test("Claude's module gathers the identity, distribution and every projection part the host already has", () => {

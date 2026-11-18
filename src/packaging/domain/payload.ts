@@ -60,11 +60,8 @@ export type NativeReplacement = {
   readonly to: string;
 };
 
-export type NativePermissionsLine = (nativePrefix: string) => string;
-
-export type NativePermissions =
-  | { readonly kind: "authored" }
-  | { readonly kind: "host-line"; readonly line: NativePermissionsLine };
+export type { NativePermissionsLine } from "../../projection/domain/onboarding-context.ts";
+export type NativePermissions = NativePermissionPolicy;
 
 export type NativeRelease = {
   readonly replacements: readonly NativeReplacement[];

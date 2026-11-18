@@ -8,13 +8,14 @@ separate operations; this record does not claim them complete.
 
 The CLI already reads each host's distribution and holds the bound native
 command routes. After a successful distribution read, it constructs one
-`OnboardingContext` from that channel, the distribution's `permissionsLine` and
+`OnboardingContext` from that channel, the distribution's `permissions` and
 the existing `NativeCommandRoutes.prefix`. It does not read the distribution
 again or construct another command authority.
 
 Copy context contains only `channel: copy`. Native context contains the existing
-prefix-only or exact-reads meaning and the route prefix in an immutable,
-validated `OnboardingPermissions` value. This value describes the distribution's
+authored-text or actual host-line callback and the route prefix in a frozen,
+validated `OnboardingPermissions` value. The host's policy object and callback
+are retained by identity; neither is replaced with a shared prose enum. This value describes the distribution's
 permission prose. It is not a permission grant or evidence of installed rules.
 Unknown policies and missing/non-string prefixes are data refusals. The prefix
 is otherwise preserved verbatim, including empty strings: this boundary does
@@ -46,8 +47,10 @@ previously refused custom template into success. Copy context is unchanged.
 Claude and Copilot retain their existing authoring and only receive the coherent
 input. Custom fills may ignore it and retain their exact authored value.
 
-The shared sentence is rendered from existing policy/route facts in Projection's
-domain. Packaging's legacy compatibility reader reuses that meaning; it still
+The sentence remains authored by the actual host callback. Projection passes
+the bound prefix to it, or retains the caller's authored text unchanged.
+The existing Packaging type and distribution field remain compatible aliases.
+Packaging's legacy compatibility reader reuses those same facts; it still
 recognizes unadmitted/custom prose as before. Its global fallback is retained
 while the remaining invocation/custom responsibilities are transferred. This
 contract does not claim that all native final-text rewriting has been retired.

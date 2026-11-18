@@ -1,10 +1,11 @@
+import { PERMISSION_POLICIES_FIXTURE } from "../../projection/fixtures/onboarding-permissions.fixture.ts";
 import { brand } from "../../kernel/brand.ts";
 import { prepareOnboardingContext, type OnboardingPermissions } from "../../projection/domain/onboarding-context.ts";
 import { expect, test } from "bun:test";
 import { CURSOR_ONBOARDING_FILLS, cursorOnboardingFills } from "./onboarding-fills.ts";
 
 const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
-  policy: "exact-reads", prefix: "aidlc engine",
+  policy: PERMISSION_POLICIES_FIXTURE["exact-reads"], prefix: "aidlc engine",
 }) }, skeleton: "" });
 
 test("Cursor keeps its exact invocation, always-on frontmatter and empty optional slots", () => {

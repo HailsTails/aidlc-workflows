@@ -1,3 +1,4 @@
+import { PERMISSION_POLICIES_FIXTURE } from "../fixtures/onboarding-permissions.fixture.ts";
 import { brand } from "../../kernel/brand.ts";
 import { prepareOnboardingContext, type OnboardingPermissions } from "../domain/onboarding-context.ts";
 import { admitCwdDocuments } from "../domain/cwd-guidance.ts";
@@ -62,7 +63,7 @@ const fixture = (members: readonly HostProjectionMember[] = [member, other]) => 
 };
 
 const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
-  policy: "prefix-only", prefix: "aidlc engine",
+  policy: PERMISSION_POLICIES_FIXTURE["prefix-only"], prefix: "aidlc engine",
 }) }, skeleton: "" });
 
 test("the real first caller binds declared native guidance before assembly using the captured declaration", async () => {

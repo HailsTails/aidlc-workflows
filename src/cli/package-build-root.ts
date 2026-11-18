@@ -53,7 +53,7 @@ const hostProjector = (ports: {
     const distribution = ports.readDistribution({ host: request.host });
     if (!distribution.ok) return distribution;
     const onboarding = onboardingContext({ channel: request.channel,
-      permissionsLine: distribution.value.native.permissionsLine, prefix: ports.projection.nativeCommands.prefix });
+      permissions: distribution.value.native.permissions, prefix: ports.projection.nativeCommands.prefix });
     if (!onboarding.ok) return refused([{ kind: "render-failed", concept: "onboarding",
       name: request.host.distribution, reason: onboarding.refusal }]);
     return project({ ...request, core: { method: request.core.method, sources: request.core.sources },

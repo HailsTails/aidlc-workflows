@@ -1,4 +1,5 @@
 import type { NativePermissions } from "./payload.ts";
+import { nativePermissionsLine } from "../../projection/domain/onboarding-context.ts";
 
 type NativeOnboardingRequest = {
   readonly text: string;
@@ -6,12 +7,6 @@ type NativeOnboardingRequest = {
   readonly prefix: string;
 };
 
-const nativePermissionsLine = ({ permissions, prefix }: NativeOnboardingRequest) => (authored: string): string => {
-  switch (permissions.kind) {
-    case "authored": return authored;
-    case "host-line": return permissions.line(prefix);
-  }
-};
 
 export function nativeOnboardingText(request: NativeOnboardingRequest): string {
   return request.text
@@ -23,7 +18,9 @@ export function nativeOnboardingText(request: NativeOnboardingRequest): string {
       /^- \*\*Hook permissions\*\*:.*$/gm,
       "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.",
     )
-    .replace(/^- \*\*Permissions\*\*:.*$/gm, nativePermissionsLine(request))
+    .replace(/^- \*\*Permissions\*\*:.*$/gm, (authored) => nativePermissionsLine({
+      policy: request.permissions, prefix: request.prefix, authored,
+    }))
     .replace(
       /TypeScript, run via bun/g,
       "TypeScript sources invoked through the self-contained `aidlc` runtime",
