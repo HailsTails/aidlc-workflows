@@ -399,12 +399,13 @@ export function fullHostView(name: ShippedHarnessName, capabilities: HarnessCapa
   }
   validateFullHostAgentsAndPlugin(name, capabilities);
   validateConductorSkillFiles(name, member.projection.skills.inputs);
-  return { fills: member.projection.fills, manifest: { name, harnessDir: descriptor.harnessDir,
+  const fills = member.projection.fills({ channel: "copy" });
+  return { fills, manifest: { name, harnessDir: descriptor.harnessDir,
     tierFlavor: member.projection.tierFlavor,
     rootIntegrations: descriptor.rootIntegrations,
     orchestratorSkillPath: `${capabilities.skillsRoot}/aidlc/SKILL.md`,
     onboarding: onboardingSpec({ directory: descriptor.harnessDir,
-      onboarding: capabilities.onboarding, fills: member.projection.fills }),
+      onboarding: capabilities.onboarding, fills }),
   } };
 }
 
