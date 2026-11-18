@@ -14,9 +14,9 @@ const trackedText = (request: { readonly path: string }): string =>
 
 const HONE_PACKAGE_NAME = "@hailstails/hone";
 
-const HONE_PACKAGE_VERSION = "1.1.0";
+const HONE_PACKAGE_VERSION = "1.2.0";
 
-const HONE_PACKAGE_INTEGRITY = "sha512-yk2ZUepa3SjdmEyCHuesCXUv0JQU1oWofY0DhQg7aIe5mTncgHjujFE0wRgac8UJYrFI58VbHejASFqmflVTCQ==";
+const HONE_PACKAGE_INTEGRITY = "sha512-pfVsYHImPDTjRwAJpoCbMSywCZA8Ha8qT1nZsfi870LysWHTO0kP523IHvuSm2HkGOg6VRHfQD6DnFXWtgcnfw==";
 
 const CONDITIONAL_KEY_LINE = /^\s*(?:-\s+)?["']?if["']?\s*:/m;
 
