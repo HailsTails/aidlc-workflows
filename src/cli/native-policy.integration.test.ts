@@ -1,13 +1,17 @@
-// Thin in-memory composition contracts: real owner, serializers and consumer.
+import { createBuildProjection } from "../projection/core-root.ts";
+import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
+import { createScriptedProcessRunner } from "../kernel/fixtures/process-runner.fake.ts";
+import { createRecordingPluginProjector } from "../projection/fixtures/plugin-projector.fake.ts";
+import { refused } from "../kernel/result.ts";
+
 import { expect, test } from "bun:test";
 import { accepted } from "../kernel/result.ts";
 import { accept } from "../kernel/fixtures/accept.ts";
-import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
+import { host, path } from "../kernel/fixtures/values.fixture.ts";
 import { agent } from "../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../workflow-definition/fixtures/method-source.fixture.ts";
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
 import type { Agent } from "../workflow-definition/domain/agent.ts";
-import { admittedVerbs } from "../projection/adapters/legacy-delegate-admission.ts";
 import { DELEGATE_SHELL_FACTS } from "../projection/fixtures/delegate-shell-facts.fixture.ts";
 import { SCRATCH_AGENT_INPUTS } from "../projection/fixtures/scratch-host.fixture.ts";
 import { tokenBindingsFixture } from "../projection/fixtures/token-bindings.fixture.ts";
@@ -21,7 +25,13 @@ import { createHostSurfaceMembers } from "../projection/application/host-surface
 import { nativeLayoutFiles } from "../packaging/application/native-layout.ts";
 
 const identity = host({ name: "kiro-ide", directory: ".kiro" });
-const facts = { ...DELEGATE_SHELL_FACTS, admittedVerbs };
+const files = createInMemoryFileSystem({ files: {} });
+const projection = createBuildProjection({ hostFiles: files, sessionFiles: files, runnerScratch: files,
+  plugins: createRecordingPluginProjector(),
+  runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
+  runnerFrames: new URL("file:///C:/native-policy-frame/"), runnerChild: new URL("file:///C:/native-policy-child.ts"),
+});
+const facts = { ...DELEGATE_SHELL_FACTS, admittedVerbs: projection.delegateShellFacts.admittedVerbs };
 const developer: Agent = {
   slug: agent("aidlc-developer-agent"), source: methodSource({ kind: "agent", within: "aidlc-developer-agent.md" }),
   displayName: "Developer", description: "Fixture", owner: { kind: "core" },

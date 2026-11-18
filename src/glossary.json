@@ -559,5 +559,16 @@
 {"name":"AuthoredOnboardingFills","context":"projection","kind":"concept","definition":"One invocation and slot-value authoring view supplied to an onboarding serializer."},
 {"name":"RootHistorySnapshot","context":"projection","kind":"concept","definition":"A serialized root's path, mode and current text paired with its copy-era authoring serialized using the same channel tokens."},
 {"name":"RootHistory","context":"projection","kind":"concept","definition":"A trusted actual serializer's immutable root-history snapshot. Valid only while the serialized current path, mode and text remain identical; it supplies upgrade signature content, never permission or native replacement admission."},
-{"name":"RootSerialization","context":"projection","kind":"concept","definition":"One successful text root serialization with its ordinary source origin, before a serializer continuity receipt is attached."}
+{"name":"RootSerialization","context":"projection","kind":"concept","definition":"One successful text root serialization with its ordinary source origin, before a serializer continuity receipt is attached."},
+{"name":"CwdGuidanceSource","context":"projection","kind":"concept","definition":"Declared authoring intent: legacy documents or one explicit framework CWD protocol source."},
+{"name":"AdmittedCwdDocuments","context":"projection","kind":"concept","definition":"Immutable captured documents paired with validated CWD authoring intent and source identity."},
+{"name":"NativePolicyPrompt","context":"projection","kind":"concept","definition":"Typed native policy lines with the exact legacy replacement obligation they can discharge."},
+{"name":"PromptLines","context":"projection","kind":"concept","definition":"Plain serialized prompt lines or typed native-policy lines, retaining their admission distinction."},
+{"name":"NativePolicyAdmission","context":"projection","kind":"concept","definition":"A trusted serializer receipt for an unchanged path, mode, text and native policy obligation."},
+{"name":"CapturedNeutralSurface","context":"projection","kind":"concept","definition":"Neutral source capture containing admitted onboarding templates and CWD documents."},
+{"name":"HookGuidanceSource","context":"projection","kind":"concept","definition":"Author intent selecting legacy Hook prose or one explicitly declared framework Hook position."},
+{"name":"ToolsGuidanceSource","context":"projection","kind":"concept","definition":"Author intent selecting legacy Tools prose or one explicitly declared framework Tools position."},
+{"name":"AuthoredOnboardingSource","context":"projection","kind":"concept","definition":"Onboarding template text accompanied by its explicit Hook and Tools authoring intent."},
+{"name":"AdmittedOnboardingTemplates","context":"projection","kind":"concept","definition":"Immutable onboarding text whose declared guidance positions were validated together in refusal order."},
+{"name":"ProjectionSourceOrigin","context":"projection","kind":"concept","definition":"Original projected-file provenance before serializer continuity or native-policy receipts wrap it."}
 ]

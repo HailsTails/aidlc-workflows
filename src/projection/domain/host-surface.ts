@@ -39,7 +39,7 @@ export type HostData = {
 export type AuthoredPlacement = {
   readonly source: string;
   readonly destination: string;
-  // Explicit authored-slot owner; null leaves legacy/custom content untouched.
+
   readonly prompt?: (request: { readonly content: FileContent;
     readonly channel: DistributionChannel }) => PromptLines | null;
 };

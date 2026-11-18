@@ -10,7 +10,7 @@ export type NativePolicyPrompt = Brand<Readonly<{
   readonly obligation: string;
 }>, "NativePolicyPrompt">;
 export type PromptLines = readonly string[] | NativePolicyPrompt;
-// A trusted serializer's assertion, valid only for its unchanged output snapshot.
+
 export type NativePolicyAdmission = Brand<Readonly<{
   readonly path: ProjectPath; readonly mode: FileMode;
   readonly text: string; readonly obligation: string;
@@ -18,8 +18,8 @@ export type NativePolicyAdmission = Brand<Readonly<{
 
 export const promptLines = (prompt: PromptLines): readonly string[] => "kind" in prompt ? prompt.lines : prompt;
 
-// The serializer asserts it used the supplied lines. This receipt records its
-// successful output; it does not independently interpret the serialized policy.
+
+
 export const serializeNativePolicy = <Failure>(request: {
   readonly prompt: PromptLines;
   readonly serialize: (lines: readonly string[]) => Result<

@@ -7,8 +7,8 @@ export const CURSOR_DOCTOR_COPY = "run `bun .cursor/tools/aidlc.ts doctor` (afte
 export const CURSOR_DOCTOR_NATIVE = "run `aidlc doctor`,";
 const SLOT = "{{SLOT:cursor_doctor_guidance}}";
 
-// The authored slot declares purpose. A pathname or native-looking prose alone
-// earns no receipt; invalid/stale declarations retain the legacy fallback.
+
+
 export const cursorDoctorPrompt = (request: {
   readonly content: FileContent; readonly channel: DistributionChannel;
 }): PromptLines | null => {

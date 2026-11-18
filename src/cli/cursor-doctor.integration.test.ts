@@ -1,9 +1,7 @@
-// Thin in-memory composition; one read-only authored asset, no build/process effects.
+import { assertDefined } from "../kernel/fixtures/defined.ts";
+import { createInMemoryFileSystem } from "../kernel/fixtures/file-system.fake.ts";
+
 import { expect, mock, test } from "bun:test";
-import { createNodeFileSystem } from "../kernel/file-system.ts";
-import { createBunContentDigester } from "../kernel/content-digester.ts";
-import type { Result } from "../kernel/result.ts";
-import type { KernelRefusal } from "../kernel/values.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { accept } from "../kernel/fixtures/accept.ts";
 import { path, source } from "../kernel/fixtures/values.fixture.ts";
@@ -23,7 +21,6 @@ const release = accept(module.distribution()).native;
 const origin = { kind: "harness-authored" as const, source: source("rules-aidlc.mdc") };
 const missing = refused([{ kind: "native-text-not-found" as const, distribution: module.host.distribution,
   text: "run `bun .cursor/tools/aidlc.ts doctor` (after installing Bun from https://bun.sh/install if `bun` is not found)," }]);
-const captured = accept(await createNodeFileSystem().readFile({ file: new URL("../../harness/cursor/rules-aidlc.mdc", import.meta.url) }));
 const tokens = tokenBindingsFixture({ harnessDir: ".cursor" });
 const routes = (unresolvable: NativeCommandRoutes["unresolvable"]): NativeCommandRoutes => ({
   prefix: "aidlc engine", namespace: "engine", delegates: [], adapterHooks: new Set(),
@@ -41,7 +38,7 @@ const placeDeclared = ({ content, channel, placements }: { readonly content: Fil
 const place = (content: FileContent, channel: DistributionChannel) => placeDeclared({ content, channel,
   placements: module.projection.placements });
 
-// Literal expected bytes transcribed from immutable parent authoring, never rendered output.
+
 const copyLF = "---\ndescription: AI-DLC standing practices for this workspace\nalwaysApply: true\n---\n\n<!--\n  .cursor/rules/aidlc.mdc: the always-applied AIDLC standing-practice rule (a\n  READ instruction, not a copy). The AI-DLC method is authored ONCE at the\n  workspace root under aidlc/spaces/<space>/memory/, the single hand-editable\n  source of truth, identical on every harness.\n\n  Cursor rules do not expand @-import lines (live-verified), so unlike the\n  Claude harness stub this rule cannot inline the method files by reference.\n  Instead it instructs the agent to read the standing org/team/project layers.\n  The four phase pointers beside this file are agent-decided rules, so phase\n  guidance is loaded when relevant instead of on every Cursor turn. The paths\n  name aidlc/active-memory/, AI-DLC's git-ignored copy of the ACTIVE\n  space's memory files, which the engine writes at session start, on a space\n  switch, and with each step whose rules it sends; so these rule files are the\n  same for every teammate and never change after install.\n\n  Edit the METHOD at aidlc/spaces/<space>/memory/*, never here and never in\n  the copy.\n-->\n\nThis workspace uses the AI-DLC method. Its standing practices are the layered\nfiles listed below (org -> team -> project; strict-additive). Read them before\nacting on AIDLC work, and honour them in casual chat that touches process,\npractices, or workflow questions:\n\n- aidlc/active-memory/org.md\n- aidlc/active-memory/team.md\n- aidlc/active-memory/project.md\n\nIf every tool call here is refused before it runs, AI-DLC cannot start in\nthis Cursor window, and nothing you retry will get through. Stop and tell the\nperson, in one message: open a terminal in this folder and\nrun `bun .cursor/tools/aidlc.ts doctor` (after installing Bun from https://bun.sh/install if `bun` is not found),\nwhose Runtime hook PATH line names what to fix. Then quit Cursor fully and\nopen this folder again.\n";
 const copyCRLF = "---\r\ndescription: AI-DLC standing practices for this workspace\r\nalwaysApply: true\r\n---\r\n\r\n<!--\r\n  .cursor/rules/aidlc.mdc: the always-applied AIDLC standing-practice rule (a\r\n  READ instruction, not a copy). The AI-DLC method is authored ONCE at the\r\n  workspace root under aidlc/spaces/<space>/memory/, the single hand-editable\r\n  source of truth, identical on every harness.\r\n\r\n  Cursor rules do not expand @-import lines (live-verified), so unlike the\r\n  Claude harness stub this rule cannot inline the method files by reference.\r\n  Instead it instructs the agent to read the standing org/team/project layers.\r\n  The four phase pointers beside this file are agent-decided rules, so phase\r\n  guidance is loaded when relevant instead of on every Cursor turn. The paths\r\n  name aidlc/active-memory/, AI-DLC's git-ignored copy of the ACTIVE\r\n  space's memory files, which the engine writes at session start, on a space\r\n  switch, and with each step whose rules it sends; so these rule files are the\r\n  same for every teammate and never change after install.\r\n\r\n  Edit the METHOD at aidlc/spaces/<space>/memory/*, never here and never in\r\n  the copy.\r\n-->\r\n\r\nThis workspace uses the AI-DLC method. Its standing practices are the layered\r\nfiles listed below (org -> team -> project; strict-additive). Read them before\r\nacting on AIDLC work, and honour them in casual chat that touches process,\r\npractices, or workflow questions:\r\n\r\n- aidlc/active-memory/org.md\r\n- aidlc/active-memory/team.md\r\n- aidlc/active-memory/project.md\r\n\r\nIf every tool call here is refused before it runs, AI-DLC cannot start in\r\nthis Cursor window, and nothing you retry will get through. Stop and tell the\r\nperson, in one message: open a terminal in this folder and\r\nrun `bun .cursor/tools/aidlc.ts doctor` (after installing Bun from https://bun.sh/install if `bun` is not found),\r\nwhose Runtime hook PATH line names what to fix. Then quit Cursor fully and\r\nopen this folder again.\r\n";
 const nativeLF = "---\ndescription: AI-DLC standing practices for this workspace\nalwaysApply: true\n---\n\n<!--\n  .cursor/rules/aidlc.mdc: the always-applied AIDLC standing-practice rule (a\n  READ instruction, not a copy). The AI-DLC method is authored ONCE at the\n  workspace root under aidlc/spaces/<space>/memory/, the single hand-editable\n  source of truth, identical on every harness.\n\n  Cursor rules do not expand @-import lines (live-verified), so unlike the\n  Claude harness stub this rule cannot inline the method files by reference.\n  Instead it instructs the agent to read the standing org/team/project layers.\n  The four phase pointers beside this file are agent-decided rules, so phase\n  guidance is loaded when relevant instead of on every Cursor turn. The paths\n  name aidlc/active-memory/, AI-DLC's git-ignored copy of the ACTIVE\n  space's memory files, which the engine writes at session start, on a space\n  switch, and with each step whose rules it sends; so these rule files are the\n  same for every teammate and never change after install.\n\n  Edit the METHOD at aidlc/spaces/<space>/memory/*, never here and never in\n  the copy.\n-->\n\nThis workspace uses the AI-DLC method. Its standing practices are the layered\nfiles listed below (org -> team -> project; strict-additive). Read them before\nacting on AIDLC work, and honour them in casual chat that touches process,\npractices, or workflow questions:\n\n- aidlc/active-memory/org.md\n- aidlc/active-memory/team.md\n- aidlc/active-memory/project.md\n\nIf every tool call here is refused before it runs, AI-DLC cannot start in\nthis Cursor window, and nothing you retry will get through. Stop and tell the\nperson, in one message: open a terminal in this folder and\nrun `aidlc doctor`,\nwhose Runtime hook PATH line names what to fix. Then quit Cursor fully and\nopen this folder again.\n";
@@ -49,8 +46,12 @@ const nativeCRLF = "---\r\ndescription: AI-DLC standing practices for this works
 const authoredLF = "---\ndescription: AI-DLC standing practices for this workspace\nalwaysApply: true\n---\n\n<!--\n  .cursor/rules/aidlc.mdc: the always-applied AIDLC standing-practice rule (a\n  READ instruction, not a copy). The AI-DLC method is authored ONCE at the\n  workspace root under aidlc/spaces/<space>/memory/, the single hand-editable\n  source of truth, identical on every harness.\n\n  Cursor rules do not expand @-import lines (live-verified), so unlike the\n  Claude harness stub this rule cannot inline the method files by reference.\n  Instead it instructs the agent to read the standing org/team/project layers.\n  The four phase pointers beside this file are agent-decided rules, so phase\n  guidance is loaded when relevant instead of on every Cursor turn. The paths\n  name aidlc/active-memory/, AI-DLC's git-ignored copy of the ACTIVE\n  space's memory files, which the engine writes at session start, on a space\n  switch, and with each step whose rules it sends; so these rule files are the\n  same for every teammate and never change after install.\n\n  Edit the METHOD at aidlc/spaces/<space>/memory/*, never here and never in\n  the copy.\n-->\n\nThis workspace uses the AI-DLC method. Its standing practices are the layered\nfiles listed below (org -> team -> project; strict-additive). Read them before\nacting on AIDLC work, and honour them in casual chat that touches process,\npractices, or workflow questions:\n\n- aidlc/active-memory/org.md\n- aidlc/active-memory/team.md\n- aidlc/active-memory/project.md\n\nIf every tool call here is refused before it runs, AI-DLC cannot start in\nthis Cursor window, and nothing you retry will get through. Stop and tell the\nperson, in one message: open a terminal in this folder and\n{{SLOT:cursor_doctor_guidance}}\nwhose Runtime hook PATH line names what to fix. Then quit Cursor fully and\nopen this folder again.\n";
 const authoredCRLF = "---\r\ndescription: AI-DLC standing practices for this workspace\r\nalwaysApply: true\r\n---\r\n\r\n<!--\r\n  .cursor/rules/aidlc.mdc: the always-applied AIDLC standing-practice rule (a\r\n  READ instruction, not a copy). The AI-DLC method is authored ONCE at the\r\n  workspace root under aidlc/spaces/<space>/memory/, the single hand-editable\r\n  source of truth, identical on every harness.\r\n\r\n  Cursor rules do not expand @-import lines (live-verified), so unlike the\r\n  Claude harness stub this rule cannot inline the method files by reference.\r\n  Instead it instructs the agent to read the standing org/team/project layers.\r\n  The four phase pointers beside this file are agent-decided rules, so phase\r\n  guidance is loaded when relevant instead of on every Cursor turn. The paths\r\n  name aidlc/active-memory/, AI-DLC's git-ignored copy of the ACTIVE\r\n  space's memory files, which the engine writes at session start, on a space\r\n  switch, and with each step whose rules it sends; so these rule files are the\r\n  same for every teammate and never change after install.\r\n\r\n  Edit the METHOD at aidlc/spaces/<space>/memory/*, never here and never in\r\n  the copy.\r\n-->\r\n\r\nThis workspace uses the AI-DLC method. Its standing practices are the layered\r\nfiles listed below (org -> team -> project; strict-additive). Read them before\r\nacting on AIDLC work, and honour them in casual chat that touches process,\r\npractices, or workflow questions:\r\n\r\n- aidlc/active-memory/org.md\r\n- aidlc/active-memory/team.md\r\n- aidlc/active-memory/project.md\r\n\r\nIf every tool call here is refused before it runs, AI-DLC cannot start in\r\nthis Cursor window, and nothing you retry will get through. Stop and tell the\r\nperson, in one message: open a terminal in this folder and\r\n{{SLOT:cursor_doctor_guidance}}\r\nwhose Runtime hook PATH line names what to fix. Then quit Cursor fully and\r\nopen this folder again.\r\n";
 
-test("the actual captured source declares exactly the known doctor position", () => {
-  expect(createBunContentDigester().hash(captured)).toEqual<Result<string, KernelRefusal>>(accepted("sha256:5711ec32c44669849d6d08af3a60dcede2b124bc4b218c41ff4e658d6c0aa1d8"));
+const capturedFile = new URL("file:///C:/q199-cursor/rules-aidlc.mdc");
+const capturedFiles = createInMemoryFileSystem({ files: { [capturedFile.href]: authoredLF } });
+const captured = accept(await capturedFiles.readFile({ file: capturedFile }));
+
+test("the captured source fixture declares exactly the known doctor position", () => {
+  expect(captured).toEqual({ kind: "bytes", bytes: new TextEncoder().encode(authoredLF) });
   expect(layout(place(captured, "native"))).toEqual(accepted([{
     path: path(".cursor/rules/aidlc.mdc"), content: { kind: "text", text: nativeLF }, mode: "regular", origin,
   }]));
@@ -113,18 +114,22 @@ test.each([
   { content: { kind: "text" as const, text: "run `aidlc doctor`," } },
 ])("stale serialized metadata cannot discharge presence: %j", (changed) => {
   const [file] = place({ kind: "text", text: authoredLF }, "native");
-  expect(layout([{ ...file!, ...changed }])).toEqual(missing);
+  assertDefined(file);
+  expect(layout([{ ...file, ...changed }])).toEqual(missing);
 });
 
 test("copy-only filtering still precedes admission", () => {
   const [file] = place({ kind: "text", text: authoredLF }, "native");
+  assertDefined(file);
   expect(nativeLayoutFiles({ host: module.host, routes: routes(() => []),
-    release: { ...release, copyOnly: [path(".cursor/rules/aidlc.mdc")] }, files: [file!] })).toEqual(missing);
+    release: { ...release, copyOnly: [path(".cursor/rules/aidlc.mdc")] }, files: [file] })).toEqual(missing);
 });
 
 test("an ineligible output extension cannot carry the obligation", () => {
+  const [placement] = module.projection.placements;
+  assertDefined(placement);
   expect(layout(placeDeclared({ content: { kind: "text", text: authoredLF }, channel: "native", placements: [{
-    ...module.projection.placements[0]!, destination: ".cursor/rules/aidlc.bin",
+    ...placement, destination: ".cursor/rules/aidlc.bin",
   }] }))).toEqual(missing);
 });
 
