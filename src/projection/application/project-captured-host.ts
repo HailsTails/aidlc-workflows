@@ -3,7 +3,7 @@ import { DEFAULT_WORKSPACE } from "../domain/workspace.ts";
 import { bindOnboardingSource } from "../domain/onboarding-source.ts";
 import { bindCwdDocuments } from "../domain/cwd-guidance.ts";
 import { prepareOnboardingContext } from "../domain/onboarding-context.ts";
-import { captureLegacyOnboardingDialect } from "../domain/legacy-native-source.ts";
+import { captureLegacyOnboardingDialect, captureLegacyNeutralDocument } from "../domain/legacy-native-source.ts";
 import type { HarnessRenderers } from "./ports/harness-assembly.ts";
 import type { CapturedHostProjectionPorts, HostProjectionMember, ProjectCapturedHost } from "./ports/captured-host.ts";
 
@@ -30,8 +30,11 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
       host: request.host, commands: ports.nativeCommands, permissions: request.onboarding.permissions.policy,
       replacements: request.nativeReplacements }) };
   const fillsContext = prepareOnboardingContext({ context: request.onboarding, skeleton: onboarding.harnessSkeleton });
+  const documents = bindCwdDocuments({ captured: captured.value.surface.documents, channel });
+  const context = onboarding.nativeDialect;
   const surface = { ...captured.value.surface, onboarding,
-    documents: bindCwdDocuments({ captured: captured.value.surface.documents, channel }) };
+    documents: context === undefined ? documents
+      : documents.map(document => captureLegacyNeutralDocument({ captured: document, context })) };
   const assembled = await ports.assemble({ method: request.core.method,
     sources: request.core.sources, host: request.host, renderers: renderersOf(members),
     files: request.files, prepare: request.prepare, tokens: request.tokens, channel,

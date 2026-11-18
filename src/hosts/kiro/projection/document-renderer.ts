@@ -1,3 +1,4 @@
+import { declareLegacyNeutralFile } from "../../../projection/domain/legacy-native-source.ts";
 import { declareLegacyOnboardingFile, type LegacyOnboardingDialect } from "../../../projection/domain/legacy-native-source.ts";
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
@@ -56,8 +57,10 @@ const placeDocument = (document: NeutralDocument, inputs: {
   const bound = bind(decode(document.content), inputs.tokens);
   const content = document.role === "protocol" ? keepOwnHarnessBindings({ content: bound,
     ownHeading: KIRO_BINDING_HEADING, expectedHeadings: inputs.bindingHeadings, file: document.source }) : accepted(bound);
-  return content.ok ? accepted([{ path: path.value, content: { kind: "text", text: content.value },
-    mode: "regular", origin: { kind: "neutral", source: document.source } }])
+  return content.ok ? accepted([declareLegacyNeutralFile({ dialect: document.nativeDialect,
+    fragments: [{ kind: "neutral-document", text: content.value }], file: { path: path.value,
+      content: { kind: "text", text: content.value }, mode: "regular",
+      origin: { kind: "neutral", source: document.source } } })])
     : refused({ kind: "render-failed", concept: "neutral-document", name: document.source, reason: content.refusal });
 };
 

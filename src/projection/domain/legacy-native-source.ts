@@ -1,6 +1,6 @@
 import { brand, type Brand } from "../../kernel/brand.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
-import type { FileMode } from "../../kernel/file-content.ts";
+import type { FileContent, FileMode } from "../../kernel/file-content.ts";
 import type { ProjectPath } from "../../kernel/values.ts";
 import type { NativeCommandRoutes } from "./native-command.ts";
 import { nativePermissionsLine, type NativePermissionPolicy } from "./onboarding-context.ts";
@@ -8,6 +8,7 @@ import type { AdmittedOnboardingTemplates } from "./onboarding-source.ts";
 import type { ProjectedFile } from "./projected-file.ts";
 import { LEGACY_NATIVE_GUIDANCE } from "./legacy-native-guidance.ts";
 import { channelTokens } from "./channel-tokens.ts";
+import type { NeutralDocument } from "./neutral-surface.ts";
 
 type LegacyMeaning = "escaped-dispatcher" | "escaped-hook" | "workspace" | "configuration"
   | "dispatcher" | "delegate" | "hook" | "allowlist" | "invoke-token" | "tools-token"
@@ -24,21 +25,32 @@ export type LegacyAuthoringOccurrence = Readonly<{
   readonly emitted: string;
 }>;
 
-export type LegacyOnboardingDialect = Brand<Readonly<{
-  readonly captured: AdmittedOnboardingTemplates;
+export type LegacyNativeContext = Readonly<{
   readonly host: HostIdentity;
   readonly commands: NativeCommandRoutes;
   readonly permissions: NativePermissionPolicy;
   readonly replacements: readonly LegacyNativeReplacement[];
+}>;
+
+export type LegacyOnboardingDialect = Brand<Readonly<LegacyNativeContext & {
+  readonly captured: AdmittedOnboardingTemplates;
 }>, "LegacyOnboardingDialect">;
 
+export type LegacyNeutralDocumentDialect = Brand<Readonly<LegacyNativeContext & {
+  readonly captured: NeutralDocument;
+}>, "LegacyNeutralDocumentDialect">;
+
+export type LegacyAuthoringDeclaration =
+  | { readonly kind: "onboarding"; readonly templates: AdmittedOnboardingTemplates }
+  | { readonly kind: "neutral-document"; readonly document: NeutralDocument };
+
 export type LegacyAuthoringFragment = Readonly<{
-  readonly kind: "authored-onboarding" | "host-framing";
+  readonly kind: "authored-onboarding" | "host-framing" | "neutral-document";
   readonly text: string;
 }>;
 
 export type LegacyNativeProgram = Brand<Readonly<{
-  readonly declaredTemplates: AdmittedOnboardingTemplates;
+  readonly declaration: LegacyAuthoringDeclaration;
   readonly path: ProjectPath;
   readonly mode: FileMode;
   readonly fragments: readonly LegacyAuthoringFragment[];
@@ -57,6 +69,21 @@ export const captureLegacyOnboardingDialect = (request: {
 }): LegacyOnboardingDialect => brand<LegacyOnboardingDialect>(Object.freeze({ ...request,
   replacements: Object.freeze(request.replacements.map(replacement => Object.freeze({ ...replacement }))) }));
 
+export const captureLegacyNeutralDocument = (request: {
+  readonly captured: NeutralDocument;
+  readonly context: LegacyNativeContext;
+}): NeutralDocument => {
+  const raw = request.captured.content;
+  const owned: FileContent = raw.kind === "text" ? Object.freeze({ ...raw })
+    : { kind: "bytes", bytes: new Uint8Array(raw.bytes) };
+  const captured: NeutralDocument = Object.freeze({ source: request.captured.source, role: request.captured.role,
+    get content(): FileContent {
+      return owned.kind === "text" ? owned : { kind: "bytes", bytes: new Uint8Array(owned.bytes) };
+    } });
+  const nativeDialect = brand<LegacyNeutralDocumentDialect>(Object.freeze({ ...request.context, captured }));
+  return Object.freeze({ ...captured, get content(): FileContent { return captured.content; }, nativeDialect });
+};
+
 const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // These are the legacy dialect's string-substitution operators, not command trust.
@@ -69,7 +96,7 @@ const substitution = (request: {
     : request.source.slice(request.offset + request.spelling.length);
 });
 
-const compile = (source: string, dialect: LegacyOnboardingDialect) => {
+const compile = (source: string, dialect: LegacyNativeContext) => {
   const occurrences: LegacyAuthoringOccurrence[] = [];
   let text = source;
   let stage = 0;
@@ -141,22 +168,39 @@ const compile = (source: string, dialect: LegacyOnboardingDialect) => {
   return { nativeText: text, occurrences: Object.freeze(occurrences), replacements: Object.freeze(replacements) };
 };
 
-export const declareLegacyOnboardingFile = <File extends ProjectedFile>(request: {
-  readonly dialect: LegacyOnboardingDialect | undefined;
+const declareLegacyFile = <File extends ProjectedFile>(request: {
+  readonly context: LegacyNativeContext | undefined;
+  readonly declaration: LegacyAuthoringDeclaration;
   readonly fragments: readonly LegacyAuthoringFragment[];
   readonly file: File;
 }): File & { readonly nativeAuthoring?: LegacyNativeProgram } => {
-  if (request.dialect === undefined) return request.file;
+  if (request.context === undefined) return request.file;
   const fragments = Object.freeze(request.fragments.map(fragment => Object.freeze({ ...fragment })));
   const sourceText = fragments.map(fragment => fragment.text).join("");
   if (request.file.content.kind !== "text" || request.file.content.text !== sourceText) {
     throw new Error("The declared legacy source must be the serializer's exact input program.");
   }
-  const program = brand<LegacyNativeProgram>(Object.freeze({ declaredTemplates: request.dialect.captured,
+  const program = brand<LegacyNativeProgram>(Object.freeze({ declaration: request.declaration,
     path: request.file.path, mode: request.file.mode,
-    fragments, sourceText, ...compile(sourceText, request.dialect) }));
+    fragments, sourceText, ...compile(sourceText, request.context) }));
   return { ...request.file, nativeAuthoring: program };
 };
+
+export const declareLegacyOnboardingFile = <File extends ProjectedFile>(request: {
+  readonly dialect: LegacyOnboardingDialect | undefined;
+  readonly fragments: readonly LegacyAuthoringFragment[];
+  readonly file: File;
+}): File & { readonly nativeAuthoring?: LegacyNativeProgram } => request.dialect === undefined ? request.file
+  : declareLegacyFile({ ...request, context: request.dialect,
+    declaration: { kind: "onboarding", templates: request.dialect.captured } });
+
+export const declareLegacyNeutralFile = <File extends ProjectedFile>(request: {
+  readonly dialect: LegacyNeutralDocumentDialect | undefined;
+  readonly fragments: readonly LegacyAuthoringFragment[];
+  readonly file: File;
+}): File & { readonly nativeAuthoring?: LegacyNativeProgram } => request.dialect === undefined ? request.file
+  : declareLegacyFile({ ...request, context: request.dialect,
+    declaration: { kind: "neutral-document", document: request.dialect.captured } });
 
 export const legacyNativeProgram = (file: ProjectedFile,
   replacements: readonly LegacyNativeReplacement[]): LegacyNativeProgram | undefined => {

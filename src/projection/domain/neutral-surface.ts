@@ -3,13 +3,14 @@ import type { Result } from "../../kernel/result.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 import type { AdmittedOnboardingTemplates } from "./onboarding-source.ts";
 import type { AdmittedCwdDocuments } from "./cwd-guidance.ts";
-import type { LegacyOnboardingDialect } from "./legacy-native-source.ts";
+import type { LegacyOnboardingDialect, LegacyNeutralDocumentDialect } from "./legacy-native-source.ts";
 
 export const NEUTRAL_DOCUMENT_ROLES = ["protocol", "template", "conductor", "stage", "knowledge"] as const;
 
 export type NeutralDocumentRole = (typeof NEUTRAL_DOCUMENT_ROLES)[number];
 
 export type NeutralDocument = {
+  readonly nativeDialect?: LegacyNeutralDocumentDialect;
   readonly source: SourcePath;
   readonly role: NeutralDocumentRole;
   readonly content: FileContent;

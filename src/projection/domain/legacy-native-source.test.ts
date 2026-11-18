@@ -2,7 +2,9 @@ import { expect, mock, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { host, path } from "../../kernel/fixtures/values.fixture.ts";
 import { admitOnboardingSource } from "./onboarding-source.ts";
-import { captureLegacyOnboardingDialect, declareLegacyOnboardingFile, compiledLegacyNativeFile } from "./legacy-native-source.ts";
+import { captureLegacyOnboardingDialect, declareLegacyOnboardingFile, compiledLegacyNativeFile,
+  captureLegacyNeutralDocument, declareLegacyNeutralFile } from "./legacy-native-source.ts";
+import { source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
 import { nativeLayoutFiles } from "../../packaging/application/native-layout.ts";
 
@@ -151,4 +153,27 @@ test("a source program cannot bypass existing non-text eligibility or missing po
     release: { copyOnly: [], replacements, permissions: { kind: "authored" } }, files: [noOriginal] }))
     .toEqual({ ok: false, refusal: [{ kind: "native-text-not-found", distribution: identity.distribution,
       text: "required original" }] });
+});
+
+test("neutral source admission owns its snapshot and declaration, not an onboarding identity", () => {
+  const original = new TextEncoder().encode('User quote: TypeScript, run via bun\r\n');
+  const expected = new Uint8Array(original);
+  const captured = captureLegacyNeutralDocument({ context: dialect,
+    captured: { source: source("knowledge/custom.md"), role: "knowledge",
+      content: { kind: "bytes", bytes: original } } });
+  original.fill(0);
+  const view = captured.content;
+  expect(view).toEqual({ kind: "bytes", bytes: expected });
+  if (view.kind !== "bytes") throw new Error("The byte source must retain its representation.");
+  view.bytes.fill(0);
+  expect(captured.content).toEqual({ kind: "bytes", bytes: expected });
+  const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(expected);
+  const placed = { path: path(".fixture/knowledge/custom.md"), mode: "regular" as const,
+    content: { kind: "text" as const, text }, origin: { kind: "neutral" as const, source: captured.source } };
+  const program = declareLegacyNeutralFile({ dialect: captured.nativeDialect, file: placed,
+    fragments: [{ kind: "neutral-document", text }] });
+  expect(program.nativeAuthoring?.declaration).toEqual<unknown>({ kind: "neutral-document", document: {
+    source: source("knowledge/custom.md"), role: "knowledge", content: { kind: "bytes", bytes: expected } } });
+  expect(compiledLegacyNativeFile(program)).toEqual({ ...placed, content: { kind: "text",
+    text: 'User quote: TypeScript sources invoked through the self-contained `aidlc` runtime\r\n' } });
 });

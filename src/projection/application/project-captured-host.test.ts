@@ -127,8 +127,11 @@ test("the actual first caller binds admitted protocol meaning before hosted inte
     guidance: { kind: "framework-cwd", source: "protocol.md" } }));
   current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface, documents } }));
   await current.projectHost({ ...current.request, onboarding: nativeContext });
-  expect(current.project.mock.calls[0]?.[0].surface.documents).toEqual([{ source: source("protocol.md"), role: "protocol", content: {
-    kind: "text", text: "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.\r\n{{HARNESS_DIR}}\r\n" } }]);
+  const expectedDocument = { source: source("protocol.md"), role: "protocol", content: {
+    kind: "text", text: "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.\r\n{{HARNESS_DIR}}\r\n" } };
+  expect(current.project.mock.calls[0]?.[0].surface.documents).toEqual<unknown>([{ ...expectedDocument,
+    nativeDialect: { host: member.host, commands: nativeCommands, permissions: PERMISSION_POLICIES_FIXTURE["prefix-only"],
+      replacements: [], captured: expectedDocument } }]);
   expect(documents.documents[0]?.content).toEqual({ kind: "text", text: "{{SLOT:framework_cwd_guidance}}\r\n{{HARNESS_DIR}}\r\n" });
   expect(current.assemble.mock.calls[0]?.[0].fills).toEqual({ invoke: "/aidlc", slots: {} });
 });

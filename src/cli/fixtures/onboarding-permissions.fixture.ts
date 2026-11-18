@@ -7,7 +7,7 @@ import { source } from "../../kernel/fixtures/values.fixture.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import { DELEGATE_SHELL_FACTS } from "../../projection/fixtures/delegate-shell-facts.fixture.ts";
 import { tokenBindingsFixture } from "../../projection/fixtures/token-bindings.fixture.ts";
-import type { OnboardingFills } from "../../projection/domain/neutral-surface.ts";
+import type { OnboardingFills, NeutralDocument } from "../../projection/domain/neutral-surface.ts";
 import type { NativeCommandRoutes } from "../../projection/domain/native-command.ts";
 import type { HookGuidanceSource, ToolsGuidanceSource } from "../../projection/domain/onboarding-source.ts";
 import type { Harness, Rendering } from "../../projection/application/ports/harness.ts";
@@ -15,12 +15,13 @@ import type { FullHostCapture } from "../../projection/application/ports/build-s
 import { createProjectCapturedHost } from "../../projection/application/project-captured-host.ts";
 import { createHostedMethodProjection } from "../../projection/core-root.ts";
 import { admitOnboardingSource } from "../../projection/domain/onboarding-source.ts";
-import { admitCwdDocuments } from "../../projection/domain/cwd-guidance.ts";
+import { admitCwdDocuments, type CwdGuidanceSource } from "../../projection/domain/cwd-guidance.ts";
 import { onboardingContext } from "../../projection/domain/onboarding-context.ts";
 import { nativeLayoutFiles } from "../../packaging/application/native-layout.ts";
 import { nativeOnboardingText } from "../../packaging/domain/native-onboarding.ts";
 import { channelTokens } from "../../packaging/domain/channel-tokens.ts";
 import { codexHost } from "../../hosts/codex/host.ts";
+import { claudeHost } from "../../hosts/claude/host.ts";
 import { copilotHost } from "../../hosts/copilot/host.ts";
 import { cursorHost } from "../../hosts/cursor/host.ts";
 import { kiroHost } from "../../hosts/kiro/host.ts";
@@ -30,6 +31,7 @@ import { kiroAgentRenderer } from "../../hosts/kiro/projection/agent-renderer.ts
 import { kiroNativePermissionsLine } from "../../hosts/kiro/distribution.ts";
 
 export const PERMISSION_HOSTS = {
+  claude: accept(claudeHost()),
   codex: accept(codexHost()), copilot: accept(copilotHost()), cursor: accept(cursorHost()), kiro: accept(kiroHost()),
   "kiro-ide": accept(kiroIdeHost({ personas: kiroAgentRenderer, permissionsLine: kiroNativePermissionsLine })),
   opencode: accept(openCodeHost()),
@@ -49,6 +51,8 @@ export const permissionProseFlow = async (input: {
     readonly hookGuidance?: HookGuidanceSource; readonly toolsGuidance?: ToolsGuidanceSource };
   readonly customFills?: OnboardingFills;
   readonly nativeCommands?: NativeCommandRoutes;
+  readonly documents?: readonly NeutralDocument[];
+  readonly cwdGuidance?: CwdGuidanceSource;
 }) => {
   const original: HostModule = PERMISSION_HOSTS[input.host];
   const customFills = input.customFills;
@@ -63,7 +67,8 @@ export const permissionProseFlow = async (input: {
     ...channelTokens({ channel: input.channel, directory: module.host.directory,
       prefix: commands.prefix, namespace: commands.namespace }) };
   const capture: FullHostCapture = { surface: {
-    documents: accept(admitCwdDocuments({ documents: [], guidance: { kind: "legacy-authored" } })), skills: [],
+    documents: accept(admitCwdDocuments({ documents: input.documents ?? [],
+      guidance: input.cwdGuidance ?? { kind: "legacy-authored" } })), skills: [],
     onboarding: accept(admitOnboardingSource({ hookGuidance: input.templates?.hookGuidance ?? "legacy-authored",
       toolsGuidance: input.templates?.toolsGuidance ?? "legacy-authored",
       neutral: input.templates?.neutral ?? "Neutral", harnessSkeleton: input.templates?.harnessSkeleton
@@ -71,7 +76,9 @@ export const permissionProseFlow = async (input: {
   }, runtime: { files: [], version: { kind: "text", text: 'export const AIDLC_VERSION = "fixture";' },
     agentTiers: { kind: "text", text: "{}" }, settingsSchema: { kind: "text", text: "{}" } }, companions: [] };
   const observed: { fills: OnboardingFills | null } = { fills: null };
-  const project = createProjectCapturedHost({ nativeCommands: commands, members: [module], capture: async () => accepted(capture),
+  const members = Object.values(PERMISSION_HOSTS).map(candidate =>
+    candidate.host.distribution === module.host.distribution ? module : candidate);
+  const project = createProjectCapturedHost({ nativeCommands: commands, members, capture: async () => accepted(capture),
     assemble: async (request) => {
       observed.fills = request.fills;
       return accepted({ ...emptyHarness, tokens: request.tokens, ...request.renderers.documents({
