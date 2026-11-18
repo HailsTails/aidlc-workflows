@@ -45,8 +45,8 @@ import {
   extendedSubprocessTimeoutMs,
 } from "../../src/projection/adapters/legacy-runtime-budget.ts";
 import {
-  legacyHookTrustHash,
-} from "../../src/projection/adapters/legacy-trusted-commands.ts";
+  codexHookTrust,
+} from "../../src/hosts/codex/projection/hook-trust.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -89,7 +89,7 @@ function parseTrustDocument(source: string): TrustDocument {
 
 const TRUST_CAPABILITIES = {
   extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(),
-  hookTrust: legacyHookTrustHash,
+  hookTrust: codexHookTrust,
 };
 
 function defaultHooksJson(project: string, harnessDir: string): string {
