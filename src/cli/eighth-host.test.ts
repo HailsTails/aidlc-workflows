@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../projection/domain/harness-record.ts";
 import { expect, test } from "bun:test";
 import { scratchHostDistributionFixture } from "../packaging/fixtures/host-distribution.fixture.ts";
 import { accept } from "../kernel/fixtures/accept.ts";
@@ -23,7 +24,7 @@ const SCRATCH_MODULE: HostModule = {
   host: SCRATCH_HOST, distribution: () => accepted(scratchHostDistributionFixture), routes: () => [],
   projection: {
     tokens: SCRATCH_TOKENS, commands: scratchCommandPlacement, fills: ONBOARDING_FILLS_FIXTURE,
-    bindingHeading: "Scratch", renderData: () => SCRATCH_HOST_DATA, placements: [],
+    bindingHeading: "Scratch", renderData: () => SCRATCH_HOST_DATA, record: commonHarnessRecord, placements: [],
     tierFlavor: "claude",
     agents: { inputs: [], render: scratchAgentRenderer },
     skills: { inputs: [], render: scratchSkillRenderer },
@@ -70,40 +71,41 @@ const projectEighthHost = async (module: HostModule = SCRATCH_MODULE) => {
     runnerFrames: new URL("file:///frames/"), workingDirectory: new URL("file:///H:/working/"),
     plugins: createRecordingPluginProjector() });
   const loaded = accept(await root.loadCore());
-  return accept(await root.projectHost({ host: SCRATCH_HOST,
+  const projected = accept(await root.projectHost({ host: SCRATCH_HOST,
     core: { ...loaded, method: AGENTS_ONLY_METHOD, sources: [] },
     files: [], prepare: accepted, tokens: tokenBindingsFixture({ harnessDir: ".scratch" }), channel: "copy",
     modelCap: null, entrypoints: [], projectRoot: new URL("file:///assembled/"), reviewerAgents: new Set() }));
+  return { projected, distribution: accept(root.readHostDistribution({ host: SCRATCH_HOST })) };
 };
 
 const OWN_OR_HOST_NEUTRAL = /^(?:[.]scratch|aidlc)[/]/;
 
 test("an eighth host registered as one module builds with the layout and files it declares", async () => {
-  const projected = await projectEighthHost();
-  expect(projected.host.layout).toEqual(scratchHostDistributionFixture.layout);
-  expect(projected.projection.files).toContainEqual(
+  const { projected, distribution } = await projectEighthHost();
+  expect(distribution.layout).toEqual(scratchHostDistributionFixture.layout);
+  expect(projected.files).toContainEqual(
     expect.objectContaining({ path: ".scratch/agents/aidlc-product-agent.md" }));
-  expect(projected.projection.files).toContainEqual(
+  expect(projected.files).toContainEqual(
     expect.objectContaining({ path: ".scratch/tools/data/harness.json" }));
-  expect(projected.projection.files).toContainEqual(
+  expect(projected.files).toContainEqual(
     expect.objectContaining({ path: ".scratch/skills/aidlc/SKILL.md" }));
-  expect(projected.projection.files).toContainEqual(
+  expect(projected.files).toContainEqual(
     expect.objectContaining({ path: ".scratch/settings.json" }));
-  expect(projected.projection.files).toContainEqual(
+  expect(projected.files).toContainEqual(
     expect.objectContaining({ path: ".scratch/onboarding.md" }));
 });
 
 test("every file of an eighth host sits under its own folder or a host-neutral path", async () => {
-  const projected = await projectEighthHost();
-  expect(projected.projection.files).not.toContainEqual(
+  const { projected } = await projectEighthHost();
+  expect(projected.files).not.toContainEqual(
     expect.objectContaining({ path: expect.not.stringMatching(OWN_OR_HOST_NEUTRAL) }));
 });
 
 test("an eighth host takes its agents' shipped models from the tier flavor it declares, not its name", async () => {
-  const projected = await projectEighthHost({ ...SCRATCH_MODULE,
+  const { projected } = await projectEighthHost({ ...SCRATCH_MODULE,
     projection: { ...SCRATCH_MODULE.projection, agents: { inputs: [], render: scratchModelledAgentRenderer } } });
-  expect(projected.projection.files).toContainEqual(expect.objectContaining({
+  expect(projected.files).toContainEqual(expect.objectContaining({
     path: ".scratch/agents/aidlc-product-agent.md", content: { kind: "text", text: "model: inherit\n" } }));
-  expect(projected.projection.files).toContainEqual(expect.objectContaining({
+  expect(projected.files).toContainEqual(expect.objectContaining({
     path: ".scratch/agents/aidlc-product-lead-agent.md", content: { kind: "text", text: "model: sonnet\n" } }));
 });

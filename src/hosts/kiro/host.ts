@@ -3,7 +3,7 @@ import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { kiroDistribution } from "./distribution.ts";
 import { KIRO_AUTHORED_PLACEMENTS, KIRO_BINDING_HEADING, KIRO_TIER_FLAVOR, KIRO_HOST_DATA, KIRO_TOKENS, kiroHostIdentity } from "./host-data.ts";
 import { KIRO_ONBOARDING_FILLS } from "./onboarding-fills.ts";
-import { deriveKiroHarnessRecord } from "./projection/harness-record.ts";
+import { createKiroHarnessRecord } from "./projection/harness-record.ts";
 import { KIRO_AGENT_JSON, kiroAgents } from "./projection/json-agent-renderer.ts";
 import { kiroCommandPath } from "./projection/command-renderer.ts";
 import { createKiroDocumentRenderer } from "./projection/document-renderer.ts";
@@ -24,6 +24,7 @@ export const kiroHost = () => {
     projection: {
       tokens: KIRO_TOKENS,
       renderData: () => KIRO_HOST_DATA,
+      record: createKiroHarnessRecord,
       placements: KIRO_AUTHORED_PLACEMENTS,
       tierFlavor: KIRO_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: kiroAgents },
@@ -33,7 +34,6 @@ export const kiroHost = () => {
       documents: { inputs: [], render: createKiroDocumentRenderer },
       fills: KIRO_ONBOARDING_FILLS,
       bindingHeading: KIRO_BINDING_HEADING,
-      derive: deriveKiroHarnessRecord,
     },
     distribution: kiroDistribution,
     routes: () => [],

@@ -173,3 +173,22 @@ test("the second sample cannot hide a mutation behind a flag value", () => {
   }).exclude).toEqual(["aidlc engine query"]);
   expect(lifecycleAdmission.mock.calls).toEqual([["aidlc engine query x"], ["aidlc engine query x y"], ["aidlc engine query"]]);
 });
+
+test("native shell policy uses the supplied trusted commands for allow and ask suffixes", () => {
+  const trustedCommand = mock().mockReturnValueOnce("test-cli protected *")
+    .mockReturnValueOnce("test-cli protected config set *").mockReturnValueOnce("test-cli protected adapter *");
+  const policy = kiroIdeDelegateShellPolicy({ facts: { ...facts, trustedCommand }, directory: ".renamed" });
+  expect(policy.shellCommands("native")).toMatchObject({
+    allow: ["test-cli protected *", "bun --version"],
+    ask: expect.arrayContaining(["test-cli protected config set *", "test-cli protected adapter *"]),
+  });
+  expect(trustedCommand.mock.calls).toEqual([["*"], ["config set *"], ["adapter *"]]);
+});
+
+test("copy shell policy does not consult native trusted commands", () => {
+  const trustedCommand = mock().mockReturnValue("unused");
+  const policy = kiroIdeDelegateShellPolicy({ facts: { ...facts, trustedCommand }, directory: ".renamed" });
+  expect(policy.shellCommands("copy").allow)
+    .toEqual(["bun .renamed/tools/aidlc-*", "bun .renamed/tools/aidlc.ts engine *", "bun --version"]);
+  expect(trustedCommand).not.toHaveBeenCalled();
+});

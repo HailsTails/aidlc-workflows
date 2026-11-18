@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { cursorDistribution } from "./distribution.ts";
@@ -23,6 +24,7 @@ export const cursorHost = () => {
     projection: {
       tokens: CURSOR_TOKENS,
       renderData: () => CURSOR_HOST_DATA,
+      record: commonHarnessRecord,
       placements: CURSOR_AUTHORED_PLACEMENTS,
       tierFlavor: CURSOR_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: cursorAgents },

@@ -1,3 +1,4 @@
+import { renderCursorMarkdown } from "./markdown-surface.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { AgentRenderingInputs, HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
@@ -7,10 +8,7 @@ import { projectActiveMemoryReferences } from "../../../projection/domain/active
 const renderAgent = (inputs: AgentRenderingInputs): Harness["renderAgent"] => ({ agent }) => {
   const surfaced = inputs.documents({
     agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-    frontmatter: {
-      model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-      removeKeys: [], afterProjectionLines: [],
-    },
+    model: "projected", render: renderCursorMarkdown,
   });
   if (!surfaced.ok) return surfaced;
   const path = projectPath(`.cursor/agents/${agent.slug}.md`);

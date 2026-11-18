@@ -3,10 +3,11 @@ import type { FileContent } from "../../kernel/file-content.ts";
 import type { FileSystemError, FolderEntry, TreeReading, ReadFileArgs, ListFolderArgs, ReadTreeArgs }
   from "../../kernel/file-system-port.ts";
 import type { ParseYamlArgs, YamlRefusal } from "../../kernel/yaml-parser-port.ts";
-import type { PluginId } from "../domain/identities.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { Contribution } from "../domain/contribution.ts";
-import type { CoreContent, Method, PluginSelection } from "../domain/method.ts";
+import type { CoreContent, PluginSelection } from "../domain/method.ts";
+import type { PluginBuildTarget } from "../domain/authored-method.ts";
+export type { PluginBuildTarget, AuthoredCoreMethod, AuthoredPluginBuild } from "../domain/authored-method.ts";
 import type { MethodSource } from "../domain/method-source.ts";
 import type { AuthoredBody } from "../domain/outline.ts";
 import type { MethodRefusal } from "../domain/refusals.ts";
@@ -15,7 +16,6 @@ import type { StagePin } from "../domain/stage-graph.ts";
 
 export type MethodReading<Value> = Promise<Result<Value, readonly MethodRefusal[]>>;
 
-export type PluginBuildTarget = { readonly plugin: PluginId; readonly directory: string };
 
 export type MethodSources = {
   readonly core: CoreContent;
@@ -83,14 +83,3 @@ export interface MethodContentDecoder {
   decodeCore(files: CapturedMethodFiles): MethodReading<AuthoredContent>;
   decodeContribution(capture: CapturedPluginFiles): MethodReading<ContributionReading>;
 }
-
-export type AuthoredCoreMethod = {
-  readonly method: Method;
-  readonly authored: CoreContent;
-  readonly sources: readonly MethodSource[];
-};
-
-export type AuthoredPluginBuild = {
-  readonly method: Method;
-  readonly plugins: readonly PluginBuildTarget[];
-};

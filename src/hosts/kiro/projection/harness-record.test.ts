@@ -1,18 +1,28 @@
 import { expect, test } from "bun:test";
-import { path } from "../../../kernel/fixtures/values.fixture.ts";
-import { accepted } from "../../../kernel/result.ts";
-import type { ProjectedFile } from "../../../projection/domain/projected-file.ts";
-import { deriveKiroHarnessRecord, KIRO_LAYOUT } from "./harness-record.ts";
+import { distribution, path } from "../../../kernel/fixtures/values.fixture.ts";
+import { accepted, refused } from "../../../kernel/result.ts";
+import type { HarnessRecordFacts } from "../../../projection/domain/harness-record.ts";
+import { createKiroHarnessRecord, KIRO_LAYOUT } from "./harness-record.ts";
 
-const record = (text: string): ProjectedFile => ({ path: path(".kiro/tools/data/harness.json"),
-  content: { kind: "text", text }, mode: "regular",
-  origin: { kind: "rendered", concept: "host-data", name: "kiro" } });
+const facts: HarnessRecordFacts = { identity: { schemaVersion: 1, distribution: distribution("kiro"),
+  productName: "Kiro", configNextStep: "Open", name: distribution("kiro"), harnessDir: path(".kiro") },
+setup: { rulesSubdir: "steering", newChatStep: { text: "Start" } },
+runtime: { hostShell: { env: ["HOST"] } } };
 
-test("Kiro supplies its layout", () => {
+test("Kiro owns its layout value", () => {
   expect(KIRO_LAYOUT).toBe("agent-v1");
 });
 
-test("Kiro writes its layout line where the projection wrote it before", () => {
-  expect(deriveKiroHarnessRecord({ files: [record('{\n  "newChatStep": 1,\n  "hostShell": 2\n}\n')] }))
-    .toEqual(accepted([record('{\n  "newChatStep": 1,\n  "kiroLayout": "agent-v1",\n  "hostShell": 2\n}\n')]));
+test("Kiro constructs its complete closed record before serialization", () => {
+  expect(createKiroHarnessRecord(facts)).toEqual(accepted({
+    ...facts.identity, ...facts.setup, kiroLayout: "agent-v1", ...facts.runtime,
+  }));
+});
+
+test("a different host cannot receive this layout policy", () => {
+  expect(createKiroHarnessRecord({ ...facts, identity: { ...facts.identity,
+    distribution: distribution("other") } })).toEqual(refused({
+    kind: "render-failed", concept: "host-data", name: "other",
+    reason: "Kiro's harness record requires the Kiro host identity.",
+  }));
 });

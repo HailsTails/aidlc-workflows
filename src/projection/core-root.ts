@@ -1,9 +1,9 @@
 import { createAgentPersonaPreparer } from "./application/agent-persona.ts";
 import type { PluginProjector } from "./application/ports/plugins.ts";
-import { legacyMarkdownAgentSurface, legacyCliModelPolicy,
+import { legacyAgentDocumentModel, legacyCliModelPolicy,
   legacyAgentTiersData, legacyAgentModelPolicy } from "./adapters/legacy-agent-surfaces.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
-import { createLegacyNativeCommands, legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
+import { createLegacyNativeCommands } from "./adapters/legacy-trusted-commands.ts";
 import { createNeutralReading } from "./adapters/neutral-surface-files.ts";
 import { projectMethodDocuments } from "./application/project-method-documents.ts";
 import { legacyDispatcherRoutes, createCopyChannelAllowSource } from "./adapters/legacy-dispatcher.ts";
@@ -39,8 +39,16 @@ import type { DelegateShellFacts } from "./application/ports/delegate-shell.ts";
 import type { HostedHarness, Harness } from "./application/ports/harness.ts";
 import type { SkillTableRenderer } from "./domain/neutral-surface.ts";
 import type { CommandSource } from "./application/ports/commands.ts";
+import type { NativeCommandRoutes } from "./domain/native-command.ts";
 
 export { captureBuildSources } from "./application/capture-build-sources.ts";
+export { createPluginAuthoringEnrichment } from "./application/enrich-plugin-authoring.ts";
+export { createCapturedMethodCompiler } from "./application/compile-captured-method.ts";
+export { createProjectCapturedHost } from "./application/project-captured-host.ts";
+export { createPluginBuildSession } from "./application/plugin-build-session.ts";
+export { renderFrozenCommandSet } from "./application/render-frozen-command-set.ts";
+export { duplicateNativeCommand, selectedScopeDescription, selectLegacyDocuments } from "./application/legacy-command-plan.ts";
+export { captureReleaseEntrypoints } from "./application/release-entrypoints.ts";
 
 const agentInputs = ({ agents, allows, facts }: {
   readonly agents: AgentProjectionRequest; readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts;
@@ -48,29 +56,35 @@ const agentInputs = ({ agents, allows, facts }: {
   const persona = createAgentPersonaPreparer({ sources: agents.sources, tokens: agents.tokens,
     directory: agents.host.directory, rulesFolder: agents.rulesFolder, reviewerAgents: agents.reviewerAgents,
     sharedKnowledge: delegatedSharedKnowledge(agents.host.directory) });
-  const markdown = legacyMarkdownAgentSurface({ flavor: agents.tierFlavor, cap: agents.modelCap });
+  const model = legacyAgentDocumentModel({ flavor: agents.tierFlavor, cap: agents.modelCap });
   return { host: agents.host, files: agents.files, prepare: agents.prepare, tokens: agents.tokens, persona,
     documents: (request) => {
       const prepared = persona(request);
-      return prepared.ok ? markdown({ ...request, content: prepared.value }) : prepared;
+      if (!prepared.ok) return prepared;
+      const projected = model(request);
+      return projected.ok ? request.render({ agent: request.agent.slug, content: prepared.value,
+        model: projected.value }) : projected;
     }, modelCap: agents.modelCap, tierFlavor: agents.tierFlavor, method: agents.method, channel: agents.channel,
     models: legacyAgentModelPolicy({ flavor: agents.tierFlavor, cap: agents.modelCap }), formatDocuments: shippedFormatDocuments(), allows, delegateShellFacts: facts };
 };
 
-const settingsInputs = ({ settings, allows, capabilities }: {
+const settingsInputs = ({ settings, allows, capabilities, nativeCommands }: {
   readonly settings: SettingsProjectionRequest; readonly allows: CopyChannelAllows;
   readonly capabilities: SettingsCapabilities;
+  readonly nativeCommands: NativeCommandRoutes;
 }): SettingsRenderingInputs => ({ files: settings.files, prepare: settings.prepare,
   tokens: settings.tokens, channel: settings.channel, entrypoints: settings.entrypoints, allows,
-  ...capabilities, cliModels: legacyCliModelPolicy(settings.modelCap),
+  ...capabilities, nativeCommands, cliModels: legacyCliModelPolicy(settings.modelCap),
   });
 
-const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, allows, facts, capabilities, tables }: {
+const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, allows, facts, capabilities, tables,
+  nativeCommands }: {
   readonly assembly: HarnessAssemblyRequest;
   readonly surface: Pick<Harness, "renderHostData" | "placeAuthoredFile">;
   readonly rulesFolder: string | null; readonly commands: CommandSource;
   readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts; readonly capabilities: SettingsCapabilities;
   readonly tables: SkillTableRenderer;
+  readonly nativeCommands: NativeCommandRoutes;
 }): Harness => {
   const commands = createCommandRenderers({ source, place: assembly.renderers.commandPlacement });
   const skills = assembly.renderers.skills({ files: assembly.files, prepare: assembly.prepare,
@@ -79,7 +93,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
     ...assembly.renderers.agents(agentInputs({ agents: { ...assembly,
       render: assembly.renderers.agents, rulesFolder }, allows, facts })),
     ...assembly.renderers.settings(settingsInputs({ settings: { ...assembly,
-      render: assembly.renderers.settings }, allows, capabilities })),
+      render: assembly.renderers.settings }, allows, capabilities, nativeCommands })),
     ...assembly.renderers.documents({ fills: assembly.fills, tokens: assembly.tokens,
       bindingHeadings: assembly.bindingHeadings }),
     ...surface,
@@ -93,6 +107,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
 };
 
 const harnessAssembler = (ports: {
+  readonly nativeCommands: NativeCommandRoutes;
   readonly allows: CopyChannelAllowSource; readonly facts: DelegateShellFacts; readonly capabilities: SettingsCapabilities;
   readonly scratch: LegacyRunnerScratch; readonly processRunner: LegacyRunnerProcess;
   readonly frames: URL; readonly child: URL;
@@ -104,6 +119,7 @@ const harnessAssembler = (ports: {
   if (!runtime.ok) return refused([runtime.refusal]);
   const hostData = assembly.renderers.data({ delegateShellFacts: ports.facts });
   const surface = createHostSurfaceMembers({ ...assembly, data: hostData,
+    record: assembly.renderers.record,
     placements: assembly.renderers.placements });
   const descriptor = surface.renderHostData();
   if (!descriptor.ok) return refused([descriptor.refusal]);
@@ -111,7 +127,8 @@ const harnessAssembler = (ports: {
     harnessDir: assembly.host.directory, harnessName: assembly.host.distribution,
     files: [...runtime.value, ...descriptor.value] }, ports);
   return formatting.ok ? accepted(assembledMembers({ assembly, surface, rulesFolder: hostData.rulesFolder,
-    allows: reading.value, facts: ports.facts, capabilities: ports.capabilities, ...formatting.value })) : refused([formatting.refusal]);
+    allows: reading.value, facts: ports.facts, capabilities: ports.capabilities,
+    nativeCommands: ports.nativeCommands, ...formatting.value })) : refused([formatting.refusal]);
 };
 
 export const createHostedMethodProjection = (hosted: HostedHarness) => createProjectMethodForHarness({
@@ -126,20 +143,23 @@ export const createBuildProjection = (request: {
   readonly plugins: PluginProjector;
 }): BuildProjection => {
   const allows = createCopyChannelAllowSource();
-  const facts = delegateShellFacts();
+  const nativeCommands = createLegacyNativeCommands(legacyDispatcherRoutes());
+  const facts = { ...delegateShellFacts(), engineNamespace: nativeCommands.namespace,
+    trustedCommand: nativeCommands.trusted };
   const settingsCapabilities: SettingsCapabilities = {
-    extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(), hookTrust: legacyHookTrustHash };
+    extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs() };
   return {
     plugins: request.plugins,
-    delegateShellFacts: facts, settingsCapabilities, nativeCommands: createLegacyNativeCommands(legacyDispatcherRoutes()),
-    assembleHarness: harnessAssembler({ allows, facts, capabilities: settingsCapabilities, scratch: request.runnerScratch,
+    delegateShellFacts: facts, settingsCapabilities, nativeCommands,
+    assembleHarness: harnessAssembler({ allows, facts, nativeCommands,
+      capabilities: settingsCapabilities, scratch: request.runnerScratch,
       processRunner: request.runnerProcess, frames: request.runnerFrames, child: request.runnerChild }),
     projectWorkspace,
     projectSettings: (settings) => {
       const reading = allows.read();
       return reading.ok ? projectMethodSettings({ method: settings.method,
         harness: settings.render(settingsInputs({ settings, allows: reading.value,
-          capabilities: settingsCapabilities })) }) : reading;
+          capabilities: settingsCapabilities, nativeCommands })) }) : reading;
     },
     projectRuntime, readMemoryCompanions: createMemoryCompanionReading(request.sessionFiles),
     readNeutral: createNeutralReading({ files: request.hostFiles, tree: request.sessionFiles }),

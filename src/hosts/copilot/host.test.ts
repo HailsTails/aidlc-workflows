@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
@@ -17,6 +18,7 @@ test("copilot module gathers the identity, distribution and every projection par
     projection: {
       tokens: COPILOT_TOKENS,
       renderData: expect.any(Function),
+      record: commonHarnessRecord,
       placements: COPILOT_AUTHORED_PLACEMENTS,
       tierFlavor: COPILOT_TIER_FLAVOR,
       agents: { inputs: [], render: copilotAgents },

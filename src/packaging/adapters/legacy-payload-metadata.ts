@@ -6,6 +6,7 @@ import type { ContentHasher, PayloadMetadata, PayloadMetadataRequest } from "../
 import type { PackagingRefusal } from "../domain/artifact.ts";
 import type { HostDistribution, Payload, PayloadFile } from "../domain/payload.ts";
 import type { RootIntegration, Sharing } from "../domain/root-integration.ts";
+import { duplicateRootIntegrations } from "../domain/payload-completion.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, writtenRootIntegration } from "./legacy-distribution.ts";
 
 export type LegacyPayloadRootIntegration = {
@@ -177,12 +178,7 @@ export const createLegacyPayloadMetadata = (request: PayloadMetadataRequest): Pa
   const host = releasePayload.descriptor.host;
   if (!harnessChoiceTextIsPlain(request.distribution.listing)) return refused([
     { kind: "listing-text-not-plain", distribution: host.distribution }]);
-  const paths = new Set<ProjectPath>();
-  const duplicates = metadataRootIntegrations(request, releasePayload).flatMap((root): readonly PackagingRefusal[] => {
-    if (paths.has(root.path)) return [{ kind: "root-integration-duplicate", path: root.path }];
-    paths.add(root.path);
-    return [];
-  });
+  const duplicates = duplicateRootIntegrations(metadataRootIntegrations(request, releasePayload));
   if (duplicates.length > 0) return refused(duplicates);
   const descriptor = descriptorContent(request, releasePayload);
   if (!descriptor.ok) return descriptor;

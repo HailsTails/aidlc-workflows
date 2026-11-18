@@ -1,38 +1,31 @@
-import { asFolder } from "../../kernel/file-system-port.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../../kernel/values.ts";
+import { sourcePath, type KernelRefusal } from "../../kernel/values.ts";
+import { hostSourcesQuery, sameHostSourcesQuery, type HostSourcesQuery } from "../domain/host-sources-query.ts";
 import type { NeutralSurface, SessionSkill, SharedRuntime, MemoryCompanion } from "../domain/neutral-surface.ts";
 import type { ProjectionRefusal } from "../domain/projection.ts";
 import { requiredHostSources } from "./host-source-files.ts";
 import type { BuildCore, BuildSourceCapture, BuildSourceCaptureRequest, CaptureBuildSources,
-  CapturedHostSources, HostSourcesRequest } from "./ports/build-sources.ts";
+  CapturedHostSources } from "./ports/build-sources.ts";
 
 type HostCapture = Promise<Result<CapturedHostSources, readonly (KernelRefusal | ProjectionRefusal)[]>>;
 type SessionReading = () => Promise<Result<readonly SessionSkill[], readonly ProjectionRefusal[]>>;
 type CoreNeutralCapture = (core: BuildCore) => Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
 
 const hostReading = (request: BuildSourceCaptureRequest): BuildSourceCapture["readHostSources"] => {
-  const captures = new Map<string, HostCapture>();
-  return (capture: HostSourcesRequest): HostCapture => {
-    const distribution = distributionId(capture.name);
-    if (!distribution.ok) return Promise.resolve(refused([distribution.refusal]));
-    const directory = projectPath(capture.directory);
-    if (!directory.ok) return Promise.resolve(refused([directory.refusal]));
-    const host = { distribution: distribution.value, directory: directory.value };
-    const members = request.hosts.find((candidate) => candidate.host.distribution === host.distribution);
-    const required = [...capture.required, ...(members ? requiredHostSources(members.projection) : [])];
-    const paths = [...new Set([...capture.copied, ...required])].map(sourcePath);
-    const failures = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
-    if (failures.length > 0) return Promise.resolve(refused(failures));
-    const sources = paths.flatMap((path) => path.ok ? [path.value] : []);
-    const mandatory = sources.filter((path) => required.includes(path));
-    const key = JSON.stringify([host.distribution, host.directory, asFolder(capture.root).href, sources, mandatory]);
-    const existing = captures.get(key);
-    if (existing) return existing;
-    const captured: HostCapture = request.projection.readHostSources({ root: capture.root, host, sources,
-      required: mandatory }).then((files) => files.ok ? accepted({ host, files: files.value }) : files);
-    captures.set(key, captured);
+  const captures: { readonly query: HostSourcesQuery; readonly captured: HostCapture }[] = [];
+  const read = (query: HostSourcesQuery): HostCapture => {
+    const existing = captures.find((entry) => sameHostSourcesQuery(entry.query, query));
+    if (existing) return existing.captured;
+    const captured: HostCapture = request.projection.readHostSources({ root: query.root, host: query.host,
+      sources: query.sources, required: query.required })
+      .then((files) => files.ok ? accepted({ host: query.host, files: files.value }) : files);
+    captures.push({ query, captured });
     return captured;
+  };
+  return (input): HostCapture => {
+    const members = request.hosts.find((candidate) => candidate.host.distribution === input.name);
+    const query = hostSourcesQuery(input, members ? requiredHostSources(members.projection) : []);
+    return query.ok ? read(query.value) : Promise.resolve(query);
   };
 };
 

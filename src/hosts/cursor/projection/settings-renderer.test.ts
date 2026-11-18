@@ -161,7 +161,8 @@ test("native Cursor settings match the independently generated legacy release by
 
 test("native Cursor permissions preserve unrelated values and the exact legacy prefix rule", () => {
   expect(createCursorSettingsRenderer({ ...inputs, channel: "native",
-    tokens: { ...inputs.tokens, ["TRUSTED_NAMESPACE"]: "renamed" }, files: [{ ...file,
+    tokens: { ...inputs.tokens, ["TRUSTED_NAMESPACE"]: "renamed" },
+    nativeCommands: { trusted: () => "aidlc renamed *" }, files: [{ ...file,
       content: { kind: "text", text: '{"before":1,"permissions":{"deny":["Write(secret)"],"allow":[' +
         '"Shell(bun:.renamed/tools/aidlc-*)","Shell(bun:other)","Shell(bunx safe)",' +
         '"Shell(git status)","Shell(aidlc:custom)",{"extension":true},"Task"]},"after":true}' } }] })
@@ -197,4 +198,26 @@ test("native Cursor settings refuse a missing trusted namespace", () => {
     tokens: { ...inputs.tokens, ["TRUSTED_NAMESPACE"]: null } }).renderSettings({ method: methodSliceFixture }))
     .toEqual(refused({ kind: "render-failed", concept: "settings", name: "cli.json",
       reason: "The native settings require a trusted route namespace." }));
+});
+
+test("native Cursor formats the supplied trusted command in its shell permission syntax", () => {
+  const trusted = mock().mockReturnValue("test-cli protected *");
+  expect(createCursorSettingsRenderer({ ...inputs, channel: "native", nativeCommands: { trusted } })
+    .renderSettings({ method: methodSliceFixture })).toMatchObject({ ok: true,
+    value: [{ content: { text: expect.stringContaining('"Shell(test-cli:protected *)"') } }] });
+  expect(trusted.mock.calls).toEqual([["*"]]);
+});
+
+test("Cursor does not invent a namespace when the modeled command has no argument separator", () => {
+  const trusted = mock().mockReturnValue("single-command");
+  expect(createCursorSettingsRenderer({ ...inputs, channel: "native", nativeCommands: { trusted } })
+    .renderSettings({ method: methodSliceFixture })).toMatchObject({ ok: true,
+    value: [{ content: { text: expect.stringContaining('"Shell(single-command)"') } }] });
+});
+
+test("copy Cursor settings do not consult native routes", () => {
+  const trusted = mock().mockReturnValue("unused");
+  expect(createCursorSettingsRenderer({ ...inputs, nativeCommands: { trusted } })
+    .renderSettings({ method: methodSliceFixture })).toEqual(expected);
+  expect(trusted).not.toHaveBeenCalled();
 });

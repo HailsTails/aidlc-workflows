@@ -18,7 +18,7 @@ const yaml = createInMemoryYamlParser({ documents: {} });
 const terminal = createRecordingTerminal();
 const digester: ContentDigester = { hash: () => accepted(hash("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")) };
 const root: PackageBuildRoot = {
-  settingsCapabilities: { extendedSubprocessTimeoutMs: 1, hookTrust: () => "unused" },
+  settingsCapabilities: { extendedSubprocessTimeoutMs: 1 },
   projectHost: mock<PackageBuildRoot["projectHost"]>(),
   readHostDistribution: mock<PackageBuildRoot["readHostDistribution"]>(),
   buildPayload: mock<PackageBuildRoot["buildPayload"]>(),

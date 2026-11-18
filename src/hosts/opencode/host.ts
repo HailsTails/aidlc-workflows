@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { openCodeDistribution } from "./distribution.ts";
@@ -23,6 +24,7 @@ export const openCodeHost = () => {
     projection: {
       tokens: OPENCODE_TOKENS,
       renderData: () => OPENCODE_HOST_DATA,
+      record: commonHarnessRecord,
       placements: OPENCODE_AUTHORED_PLACEMENTS,
       tierFlavor: OPENCODE_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: openCodeAgents },

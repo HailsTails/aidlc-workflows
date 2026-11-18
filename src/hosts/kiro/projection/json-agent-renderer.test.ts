@@ -1,3 +1,4 @@
+import { renderKiroMarkdown } from "./markdown-surface.ts";
 import { methodSliceFixture } from "../../../workflow-definition/fixtures/method.fixture.ts";
 import { DELEGATE_SHELL_FACTS } from "../../../projection/fixtures/delegate-shell-facts.fixture.ts";
 import type { AgentDocumentSurface, AgentRenderingInputs } from "../../../projection/application/ports/agents.ts";
@@ -31,6 +32,7 @@ const file: AuthoredHostFile = {
 const host = { distribution: brand<DistributionId>("kiro"), directory: brand<ProjectPath>(".kiro") };
 const formatDocuments = new Set<string>();
 const allows = { dispatcherCommands: [], toolScripts: [] };
+const trusted = () => "aidlc engine .*";
 
 const allowFile: AuthoredHostFile = {
   source: brand<SourcePath>("agents/aidlc-allow-fixture.json"),
@@ -41,7 +43,7 @@ const allowFile: AuthoredHostFile = {
 
 test("persona uses captured input and a typed policy decision", () => {
   const decision = mock(() => accepted({ kind: "project", model: "chosen" } as const));
-  expect(kiroJsonAgentRenderer({ channel: "copy", namespace: "engine", host, allows, files: [file], formatDocuments,
+  expect(kiroJsonAgentRenderer({ trusted, channel: "copy", namespace: "engine", host, allows, files: [file], formatDocuments,
     modelDecision: decision, hookCommandSuffix: undefined })({ agent, knowledge: [] }))
     .toMatchObject({ ok: true, value: [{
       path: ".kiro/agents/aidlc-architect-agent.json",
@@ -52,7 +54,7 @@ test("persona uses captured input and a typed policy decision", () => {
 
 test("missing captured persona refuses before policy resolution", () => {
   const decision = mock(() => accepted({ kind: "preserve" } as const));
-  expect(kiroJsonAgentRenderer({ channel: "copy", namespace: "engine", host, allows, files: [], formatDocuments,
+  expect(kiroJsonAgentRenderer({ trusted, channel: "copy", namespace: "engine", host, allows, files: [], formatDocuments,
     modelDecision: decision, hookCommandSuffix: undefined })({ agent, knowledge: [] }))
     .toMatchObject({ ok: false, refusal: { kind: "render-failed" } });
   expect(decision).not.toHaveBeenCalled();
@@ -61,14 +63,14 @@ test("missing captured persona refuses before policy resolution", () => {
 test("policy refusal precedes malformed JSON preparation", () => {
   const failure = { kind: "render-failed", concept: "agent", name: agent.slug,
     reason: "Missing model tier." } as const;
-  expect(kiroJsonAgentRenderer({ channel: "copy", namespace: "engine", host, allows,
+  expect(kiroJsonAgentRenderer({ trusted, channel: "copy", namespace: "engine", host, allows,
     files: [{ ...file, content: { kind: "text", text: "malformed" } }], formatDocuments,
     modelDecision: () => refused(failure), hookCommandSuffix: undefined,
   })({ agent, knowledge: [] })).toEqual(refused(failure));
 });
 
 test("preparation refusal preserves its host, source and stage reason", () => {
-  expect(kiroJsonAgentRenderer({ channel: "copy", namespace: "engine", host, allows,
+  expect(kiroJsonAgentRenderer({ trusted, channel: "copy", namespace: "engine", host, allows,
     files: [{ ...file, content: { kind: "text", text: "null" } }], formatDocuments,
     modelDecision: () => accepted({ kind: "preserve" }), hookCommandSuffix: undefined,
   })({ agent, knowledge: [] })).toEqual(refused({
@@ -176,6 +178,18 @@ const nativeInputs = (documents: AgentDocumentSurface): AgentRenderingInputs => 
   channel: "copy", files: [file, allowFile], prepare: accepted, models: () => accepted(undefined), allows,
 });
 
+test("the Kiro conductor receives the single injected trusted route through the agent input", () => {
+  const trustedCommand = mock().mockReturnValue("test-cli protected .*");
+  const conductor = { ...allowFile, source: brand<SourcePath>("agents/aidlc.json") };
+  const renderer = createKiroJsonAgentRenderer({ host, formatDocuments })({
+    ...nativeInputs(() => accepted("unused")), channel: "native", files: [conductor],
+    delegateShellFacts: { ...DELEGATE_SHELL_FACTS, trustedCommand },
+  });
+  expect(renderer.renderConductorAgent({ knowledge: [] })).toMatchObject({ ok: true,
+    value: [{ content: { text: expect.stringContaining('"test-cli protected .*"') } }] });
+  expect(trustedCommand.mock.calls).toEqual([[".*"]]);
+});
+
 test("Kiro's native factory returns JSON then Markdown with the exact in-parts request", () => {
   const documents = mock(() => accepted("---\nname: architect\n---\nRead .kiro/steering/project.md.\n"));
   const prepare = mock(accepted<AuthoredHostFile>);
@@ -191,8 +205,7 @@ test("Kiro's native factory returns JSON then Markdown with the exact in-parts r
   ]));
   expect(documents).toHaveBeenCalledTimes(1);
   expect(documents).toHaveBeenCalledWith({ agent, text: "authored-file", knowledge: "absorbed", reading: kiroKnowledgeReading(".kiro"),
-    frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
-      insertBeforeKeys: [], removeKeys: ["disallowedTools"], afterProjectionLines: [] } });
+    model: "projected", render: renderKiroMarkdown });
   expect(prepare).toHaveBeenCalledTimes(2);
 });
 
@@ -229,6 +242,7 @@ const nativeChannelFiles: readonly AuthoredHostFile[] = [
   { source: brand<SourcePath>("agents/aidlc.json"), content: { kind: "text", text: "{\n  \"name\": \"native-conductor\",\n  \"toolsSettings\": {\n    \"execute_bash\": {\n      \"allowedCommands\": [\n        \"bun (run )?[\\\"']?\\\\.kiro/tools/[A-Za-z0-9._-]+\\\\.ts[\\\"']?( .*)?\"\n      ]\n    }\n  }\n}\n" } },
 ];
 const nativeChannelInputs: AgentRenderingInputs = { ...nativeInputs(() => accepted("unused")), channel: "native",
+  delegateShellFacts: { ...DELEGATE_SHELL_FACTS, trustedCommand: trusted },
   tokens: { ...tokenBindingsFixture({ harnessDir: ".kiro" }), ["TRUSTED_NAMESPACE"]: "engine" },
   files: nativeChannelFiles, allows: { dispatcherCommands: [
   "doctor",

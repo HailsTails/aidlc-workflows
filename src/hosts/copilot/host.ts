@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { copilotDistribution } from "./distribution.ts";
@@ -23,6 +24,7 @@ export const copilotHost = () => {
     projection: {
       tokens: COPILOT_TOKENS,
       renderData: () => COPILOT_HOST_DATA,
+      record: commonHarnessRecord,
       placements: COPILOT_AUTHORED_PLACEMENTS,
       tierFlavor: COPILOT_TIER_FLAVOR,
       agents: { inputs: agentInputs.value, render: copilotAgents },

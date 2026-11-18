@@ -67,6 +67,54 @@
   },
   "bridges": [
     {
+      "module": "core/tools/aidlc-model-policy.ts",
+      "readBy": "src/hosts/claude/projection/markdown-surface.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2 model-policy cutover: the frozen Markdown writer moves into src with its runtime owner; host spelling and surface policy remain private to the host."
+    },
+    {
+      "module": "core/tools/aidlc-model-policy.ts",
+      "readBy": "src/hosts/codex/projection/markdown-surface.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2 model-policy cutover: the frozen Markdown writer moves into src with its runtime owner; host spelling and surface policy remain private to the host."
+    },
+    {
+      "module": "core/tools/aidlc-model-policy.ts",
+      "readBy": "src/hosts/cursor/projection/markdown-surface.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2 model-policy cutover: the frozen Markdown writer moves into src with its runtime owner; host spelling and surface policy remain private to the host."
+    },
+    {
+      "module": "core/tools/aidlc-model-policy.ts",
+      "readBy": "src/hosts/kiro/projection/markdown-surface.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2 model-policy cutover: the frozen Markdown writer moves into src with its runtime owner; host spelling and surface policy remain private to the host."
+    },
+    {
+      "module": "core/tools/aidlc-model-policy.ts",
+      "readBy": "src/hosts/kiro-ide/projection/markdown-surface.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2 model-policy cutover: the frozen Markdown writer moves into src with its runtime owner; host spelling and surface policy remain private to the host."
+    },
+    {
+      "module": "core/tools/aidlc-model-policy.ts",
+      "readBy": "src/hosts/opencode/projection/markdown-surface.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2 model-policy cutover: the frozen Markdown writer moves into src with its runtime owner; host spelling and surface policy remain private to the host."
+    },
+    {
+      "module": "core/tools/aidlc-model-policy.ts",
+      "readBy": "src/hosts/copilot/projection/markdown-surface.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2 model-policy cutover: the frozen Markdown writer moves into src with its runtime owner; host spelling and surface policy remain private to the host."
+    },
+    {
+      "module": "core/tools/aidlc-command.ts",
+      "readBy": "src/hosts/codex/projection/hook-trust.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2: the frozen hook-trust hash moves into src with its runtime owner."
+    },
+    {
       "module": "core/tools/aidlc-lib.ts",
       "readBy": "src/projection/domain/host-surface.ts",
       "reads": "types",

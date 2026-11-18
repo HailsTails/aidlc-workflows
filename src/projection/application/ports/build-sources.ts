@@ -6,14 +6,9 @@ import type { MemoryCompanion, NeutralSurface, SharedRuntime } from "../../domai
 import type { ProjectionRefusal } from "../../domain/projection.ts";
 import type { BuildProjection } from "./build-projection.ts";
 import type { HostProjectionParts } from "./host-parts.ts";
+import type { HostSourcesInput } from "../../domain/host-sources-query.ts";
 
-export type HostSourcesRequest = {
-  readonly name: string;
-  readonly directory: string;
-  readonly root: URL;
-  readonly copied: readonly string[];
-  readonly required: readonly string[];
-};
+export type { HostSourcesInput } from "../../domain/host-sources-query.ts";
 
 export type CapturedHostSources = {
   readonly host: HostIdentity;
@@ -42,7 +37,7 @@ export type BuildCore = {
 
 export type BuildSourceCapture = {
   readHostSources(
-    request: HostSourcesRequest,
+    request: HostSourcesInput,
   ): Promise<Result<CapturedHostSources, readonly (KernelRefusal | ProjectionRefusal)[]>>;
   captureFullHost(core: BuildCore): Promise<Result<FullHostCapture, readonly ProjectionRefusal[]>>;
 };

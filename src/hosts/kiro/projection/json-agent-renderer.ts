@@ -1,5 +1,6 @@
-import { kiroCliAgentRenderer } from "./agent-renderer.ts";
 import { kiroKnowledgeReading } from "./knowledge-reading.ts";
+import { kiroCliAgentRenderer } from "./agent-renderer.ts";
+import { renderKiroMarkdown } from "./markdown-surface.ts";
 import { prepareKiroAgentBatch, expandKiroAgentAllows } from "./tool-allows.ts";
 import type { CopyChannelAllows } from "../../../projection/application/ports/copy-channel.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
@@ -12,6 +13,7 @@ import type { HostAgentRenderer } from "../../../projection/application/ports/ag
 import type { AuthoredHostFile } from "../../../projection/domain/host-surface.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
+import type { NativeCommandRoutes } from "../../../projection/domain/native-command.ts";
 import { prepareKiroAgentDocument, type KiroModelDecision } from "./prepared-agent-document.ts";
 
 export type KiroJsonModelDecision = (request: {
@@ -20,6 +22,7 @@ export type KiroJsonModelDecision = (request: {
 }) => Result<KiroModelDecision, ProjectionRefusal>;
 
 export type KiroJsonAgentProfile = {
+  readonly trusted: NativeCommandRoutes["trusted"];
   readonly channel: DistributionChannel;
   readonly namespace: string | null | undefined;
   readonly host: HostIdentity;
@@ -35,6 +38,7 @@ const renderFailed = (name: string, reason: string): ProjectionRefusal => ({
 });
 
 export const placeKiroAgentDocument = (file: AuthoredHostFile, request: {
+  readonly trusted: NativeCommandRoutes["trusted"];
   readonly content: FileContent;
   readonly allows: CopyChannelAllows;
   readonly channel: DistributionChannel;
@@ -42,7 +46,8 @@ export const placeKiroAgentDocument = (file: AuthoredHostFile, request: {
   readonly namespace: string | null | undefined;
 }): Rendering => {
   const expanded = expandKiroAgentAllows({ file: { ...file, content: request.content }, allows: request.allows,
-    channel: request.channel, directory: request.directory, namespace: request.namespace });
+    channel: request.channel, directory: request.directory, namespace: request.namespace,
+    trusted: request.trusted });
   if (!expanded.ok) return expanded;
   const path = projectPath(`.kiro/${file.source}`);
   return path.ok ? accepted([{
@@ -67,7 +72,8 @@ export const kiroJsonAgentRenderer = (profile: KiroJsonAgentProfile): Harness["r
       hookCommandSuffix: profile.hookCommandSuffix,
     });
     return prepared.ok ? placeKiroAgentDocument(file, { content: prepared.value, allows: profile.allows,
-      channel: profile.channel, directory: profile.host.directory, namespace: profile.namespace })
+      channel: profile.channel, directory: profile.host.directory, namespace: profile.namespace,
+      trusted: profile.trusted })
       : refused(prepared.refusal);
   };
 
@@ -92,7 +98,8 @@ export const createKiroJsonAgentRenderer = (profile: {
   const files = prepared.value;
   return {
     renderAgent: kiroJsonAgentRenderer({ ...profile, files, allows: inputs.allows,
-      channel: inputs.channel, namespace: inputs.tokens.TRUSTED_NAMESPACE, hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX,
+      channel: inputs.channel, namespace: inputs.tokens.TRUSTED_NAMESPACE,
+      trusted: inputs.delegateShellFacts.trustedCommand, hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX,
       modelDecision: ({ agent, file }) => {
         if (agent.model.kind !== "tier") return refused({ kind: "host-source-unreadable",
           host: profile.host, source: file.source, reason: "the accepted core Method supplies no model tier" });
@@ -108,17 +115,17 @@ export const createKiroJsonAgentRenderer = (profile: {
         knowledge: { documents: knowledge, formatDocuments: profile.formatDocuments },
         hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX });
       return content.ok ? placeKiroAgentDocument(file, { content: content.value, allows: inputs.allows,
-        channel: inputs.channel, directory: profile.host.directory, namespace: inputs.tokens.TRUSTED_NAMESPACE }) : content;
+        channel: inputs.channel, directory: profile.host.directory, namespace: inputs.tokens.TRUSTED_NAMESPACE,
+        trusted: inputs.delegateShellFacts.trustedCommand }) : content;
     },
   };
 };
 
 export const kiroAgents: HostAgentRenderer = (inputs) => {
   const json = createKiroJsonAgentRenderer({ host: inputs.host, formatDocuments: inputs.formatDocuments })(inputs);
-  const markdown = kiroCliAgentRenderer(({ agent, removeKeys }) => inputs.documents({
+  const markdown = kiroCliAgentRenderer(({ agent }) => inputs.documents({
     agent, text: "authored-file", knowledge: "absorbed", reading: kiroKnowledgeReading(inputs.host.directory),
-    frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
-      insertBeforeKeys: [], removeKeys, afterProjectionLines: [] },
+    model: "projected", render: renderKiroMarkdown,
   }));
   return {
     renderConductorAgent: json.renderConductorAgent,

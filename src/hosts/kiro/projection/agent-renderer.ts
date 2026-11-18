@@ -9,7 +9,6 @@ import { withFrontmatterLines, type FrontmatterLinesRefusal } from "./frontmatte
 
 export type KiroModelSurface = (request: {
   readonly agent: Agent;
-  readonly removeKeys: readonly string[];
 }) => Result<string, ProjectionRefusal>;
 
 export type InlineReading = "reads-inline" | "dispatched-only";
@@ -110,7 +109,7 @@ export const kiroAgentRenderer =
         renderFailed(agent, "Kiro needs the agent to deny exactly one tool, Task, and nothing else."),
       );
     }
-    const surfaced = profile.modelSurface({ agent, removeKeys: ["disallowedTools"] });
+    const surfaced = profile.modelSurface({ agent });
     return surfaced.ok ? prompted(profile, { agent, text: surfaced.value }) : surfaced;
   };
 

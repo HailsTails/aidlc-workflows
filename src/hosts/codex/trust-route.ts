@@ -5,6 +5,7 @@ import type { Terminal } from "../../kernel/terminal-port.ts";
 import type { SettingsCapabilities } from "../../projection/application/ports/settings.ts";
 import type { ChannelTokens } from "../../projection/domain/template-token.ts";
 import { trustEntries } from "./projection/settings-renderer.ts";
+import type { CodexHookTrustHash } from "./projection/hook-trust.ts";
 
 const usage = "usage: package.ts codex trust --project <abs-dir> [--hooks-json <abs-path>]";
 const pathQualification = (path: string): "absolute" | "relative" => (path.startsWith("\\\\") || path.startsWith("//")
@@ -51,7 +52,7 @@ const argumentsSchema = z.array(z.string()).transform((argv, validation) => {
   return { project: parsed.value.project, hooksJson: parsed.value.hooksJson };
 });
 
-export const codexTrustRoutes = ({ terminal, settings, copyTokens }: {
+export const codexTrustRoutes = (hookTrust: CodexHookTrustHash) => ({ terminal, settings, copyTokens }: {
   readonly terminal: Terminal;
   readonly settings: SettingsCapabilities;
   readonly copyTokens: ChannelTokens;
@@ -71,7 +72,7 @@ export const codexTrustRoutes = ({ terminal, settings, copyTokens }: {
     }
     const trusted = trustEntries({ hooksJsonPath: parsed.data.hooksJson ?? joinNativePath({
       base: parsed.data.project, segments: [".codex", "hooks.json"] }),
-    harnessName: "codex", invoke, trustedNamespace: copyTokens.TRUSTED_NAMESPACE ?? undefined }, settings);
+    harnessName: "codex", invoke, trustedNamespace: copyTokens.TRUSTED_NAMESPACE ?? undefined }, { ...settings, hookTrust });
     if (!trusted.ok) {
       terminal.writeError(`${trusted.refusal.reason}\n`);
       return 1;

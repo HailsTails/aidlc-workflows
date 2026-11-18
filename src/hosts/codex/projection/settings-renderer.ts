@@ -7,6 +7,9 @@ import type { Rendering } from "../../../projection/application/ports/harness.ts
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { RenderedConcept } from "../../../projection/domain/projected-file.ts";
 import { HOOK_WIRING, type CodexHookEvent } from "./hook-wiring.ts";
+import type { CodexHookTrustHash } from "./hook-trust.ts";
+
+export type CodexSettingsCapabilities = SettingsCapabilities & { readonly hookTrust: CodexHookTrustHash };
 
 type SettingsFailure = Extract<ProjectionRefusal, { readonly kind: "render-failed" }>;
 type HookCommand = { readonly harnessName: string; readonly invoke: string; readonly trustedNamespace: string };
@@ -15,14 +18,14 @@ export const CODEX_SETTINGS_INPUTS = [] as const;
 
 const adapterCmd = ({ harnessName, target, trustedNamespace }: { harnessName: string; target: string; trustedNamespace: string }) => `{{INVOKE}} ${trustedNamespace} adapter ${harnessName} ${target}`;
 
-function hookTimeoutSeconds(target: string, capabilities: SettingsCapabilities): number {
+function hookTimeoutSeconds(target: string, capabilities: CodexSettingsCapabilities): number {
   const ordinary = capabilities.extendedSubprocessTimeoutMs / 1000;
   return target === "continue-workflow" || target === "audit-and-sensors"
     ? ordinary * 2
     : ordinary;
 }
 
-function emitHooksJson({ invoke, harnessName, trustedNamespace }: HookCommand, capabilities: SettingsCapabilities): string {
+function emitHooksJson({ invoke, harnessName, trustedNamespace }: HookCommand, capabilities: CodexSettingsCapabilities): string {
   const hooks = HOOK_WIRING.reduce<Record<string, readonly Record<string, unknown>[]>>(
     (groups, { event, matcher, target }) => ({
       ...groups,
@@ -102,7 +105,7 @@ export function trustEntries({ hooksJsonPath, harnessName, invoke, trustedNamesp
   readonly harnessName: string;
   readonly invoke: string;
   readonly trustedNamespace: string | undefined;
-}, capabilities: SettingsCapabilities): Result<string, SettingsFailure> {
+}, capabilities: CodexSettingsCapabilities): Result<string, SettingsFailure> {
   if (!trustedNamespace) return refused({ kind: "render-failed", concept: "hook-registration",
     name: "hooks.json", reason: "trusted route namespace is required" });
   const entries = HOOK_WIRING.reduce<Result<TrustState, SettingsFailure>>(
@@ -135,7 +138,7 @@ export function trustEntries({ hooksJsonPath, harnessName, invoke, trustedNamesp
   }
 }
 
-export function emitTrustSeed({ harnessDir, harnessName, invoke, trustedNamespace }: Omit<HookCommand, "trustedNamespace"> & { readonly harnessDir: string; readonly trustedNamespace: string | undefined }, capabilities: SettingsCapabilities): Result<string, SettingsFailure> {
+export function emitTrustSeed({ harnessDir, harnessName, invoke, trustedNamespace }: Omit<HookCommand, "trustedNamespace"> & { readonly harnessDir: string; readonly trustedNamespace: string | undefined }, capabilities: CodexSettingsCapabilities): Result<string, SettingsFailure> {
   const entries = trustEntries({ hooksJsonPath: `<PROJECT_DIR>/${harnessDir}/hooks.json`,
     harnessName, invoke, trustedNamespace }, capabilities);
   if (!entries.ok) return entries;
@@ -165,7 +168,7 @@ const file = ({ name, text, concept }: { name: string; text: string; concept: Re
     mode: "regular", origin: { kind: "rendered", concept, name } }]);
 };
 
-const hookFiles = ({ harnessDir, invoke, trustedNamespace, harnessName }: HookCommand & { readonly harnessDir: string }, capabilities: SettingsCapabilities): Rendering => {
+const hookFiles = ({ harnessDir, invoke, trustedNamespace, harnessName }: HookCommand & { readonly harnessDir: string }, capabilities: CodexSettingsCapabilities): Rendering => {
       const hooks = file({ name: "hooks.json", text: emitHooksJson({ invoke, harnessName, trustedNamespace }, capabilities), concept: "hook-registration" });
       if (!hooks.ok) return hooks;
       const seedText = emitTrustSeed({ harnessDir, harnessName, invoke, trustedNamespace }, capabilities);
@@ -175,7 +178,7 @@ const hookFiles = ({ harnessDir, invoke, trustedNamespace, harnessName }: HookCo
       return accepted([...hooks.value, ...seed.value]);
 };
 
-export const createCodexSettingsRenderer: HostSettingsRenderer = (inputs) => ({
+export const createCodexSettingsRenderer = (hookTrust: CodexHookTrustHash): HostSettingsRenderer => (inputs) => ({
   renderSettings: () => {
     const harnessDir = inputs.tokens.HARNESS_DIR;
     const trustedNamespace = inputs.tokens.TRUSTED_NAMESPACE;
@@ -190,6 +193,6 @@ export const createCodexSettingsRenderer: HostSettingsRenderer = (inputs) => ({
     const trustedNamespace = inputs.tokens.TRUSTED_NAMESPACE;
     if (harnessDir === null || invoke === null || !trustedNamespace) return refused({ kind: "render-failed",
       concept: "hook-registration", name: "hooks.json", reason: "trusted route namespace, invocation and harness directory are required" });
-    return hookFiles({ harnessDir, invoke, trustedNamespace, harnessName: "codex" }, inputs);
+    return hookFiles({ harnessDir, invoke, trustedNamespace, harnessName: "codex" }, { ...inputs, hookTrust });
   },
 });

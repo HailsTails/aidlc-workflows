@@ -1,4 +1,5 @@
 import type { HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
+import { renderOpenCodeMarkdown } from "./markdown-surface.ts";
 import { projectActiveMemoryReferences as projectSharedActiveMemoryReferences } from "../../../projection/domain/active-memory.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -16,18 +17,15 @@ export const openCodeAgents: HostAgentRenderer = (inputs) => ({
     if (unsupported) return refused({ kind: "render-failed", concept: "agent", name: agent.slug,
       reason: `OpenCode cannot translate disallowedTools without Task: ${agent.tools.disallowed.join(", ")}.` });
     const native = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-      frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
-        removeKeys: ["disallowedTools", "maxTurns"], afterProjectionLines: ["mode: subagent",
-          ...(agent.maxTurns === null ? [] : [`steps: ${agent.maxTurns}`]),
-          ...(agent.tools.disallowed.length > 0 ? ["permission:", "  task: deny"] : []),
-        ] } });
+      model: "projected", render: (document) => renderOpenCodeMarkdown({ document,
+        surface: { kind: "subagent", steps: agent.maxTurns,
+          delegation: agent.tools.disallowed.length > 0 ? "denied" : "authored" } }) });
     if (!native.ok) return native;
     const nativePath = projectPath(`.opencode/agents/${agent.slug}.md`);
     if (!nativePath.ok) return refused({ kind: "render-failed", concept: "agent", name: agent.slug,
       reason: "The native agent destination must be a project-relative path." });
     const inline = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-      frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
-        removeKeys: [], afterProjectionLines: [] } });
+      model: "projected", render: (document) => renderOpenCodeMarkdown({ document, surface: { kind: "companion" } }) });
     if (!inline.ok) return inline;
     const inlinePath = projectPath(`.aidlc/agents/${agent.slug}.md`);
     if (!inlinePath.ok) return refused({ kind: "render-failed", concept: "agent", name: agent.slug,

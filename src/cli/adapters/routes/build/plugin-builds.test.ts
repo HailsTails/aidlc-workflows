@@ -59,3 +59,14 @@ test("an empty plugin set still refreshes the selected host catalogues", () => {
   expect(emit).not.toHaveBeenCalled();
   expect(catalogues).toHaveBeenCalledTimes(1);
 });
+
+test("a later emission refusal retains the earlier literal success line and stops before catalogues", () => {
+  const { emit, catalogues, terminal, build } = fixture();
+  const failure = refused([{ kind: "render-failed" as const, concept: "host-data" as const,
+    name: "second", reason: "later emission refused" }]);
+  emit.mockReturnValueOnce(accepted(new URL("file:///dist/plugins/test-pro/first/"))).mockReturnValueOnce(failure);
+  expect(build(request)).toBe(failure);
+  expect(emit).toHaveBeenCalledTimes(2);
+  expect(catalogues).not.toHaveBeenCalled();
+  expect(terminal.output()).toEqual(["[plugin:test-pro] emitted dist/plugins/test-pro/first/\n"]);
+});

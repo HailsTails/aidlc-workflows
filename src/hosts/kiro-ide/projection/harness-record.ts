@@ -1,11 +1,15 @@
-import type { HostFileDeriver } from "../../../projection/application/ports/harness.ts";
-import { harnessRecordWithLine } from "../../../projection/domain/host-surface.ts";
+import { accepted, refused, type Result } from "../../../kernel/result.ts";
+import type { HarnessRecord, HarnessRecordFacts } from "../../../projection/domain/harness-record.ts";
+import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 
 export type KiroIdeLayout = "kas";
 
 export const KIRO_IDE_LAYOUT: KiroIdeLayout = "kas";
 
-const HARNESS_RECORD_PATH = ".kiro/tools/data/harness.json";
+export type KiroIdeHarnessRecord = HarnessRecord & { readonly kiroLayout: KiroIdeLayout };
 
-export const deriveKiroIdeHarnessRecord: HostFileDeriver = ({ files }) => harnessRecordWithLine({
-  files, path: HARNESS_RECORD_PATH, line: { key: "kiroLayout", value: KIRO_IDE_LAYOUT } });
+export const createKiroIdeHarnessRecord = (facts: HarnessRecordFacts): Result<KiroIdeHarnessRecord, ProjectionRefusal> =>
+  facts.identity.distribution === "kiro-ide"
+    ? accepted({ ...facts.identity, ...facts.setup, kiroLayout: KIRO_IDE_LAYOUT, ...facts.runtime })
+    : refused({ kind: "render-failed", concept: "host-data", name: facts.identity.distribution,
+      reason: "Kiro IDE's harness record requires the Kiro IDE host identity." });

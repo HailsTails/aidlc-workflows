@@ -1,5 +1,4 @@
-import type { DistributionChannel, ProjectedFile } from "./projected-file.ts";
-import type { ProjectionRefusal } from "./projection.ts";
+import type { DistributionChannel } from "./projected-file.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { sourcePath, type KernelRefusal, type SourcePath } from "../../kernel/values.ts";
@@ -47,41 +46,6 @@ export const authoredSourcePaths = (raws: readonly string[]): Result<readonly So
   return failed && !failed.ok
     ? refused(failed.refusal)
     : accepted(paths.flatMap((path) => (path.ok ? [path.value] : [])));
-};
-
-type HarnessRecordLine = {
-  readonly key: string;
-  readonly value: string;
-};
-
-const RECORD_KEYS_BEFORE_A_HOST_LINE = [
-  "rulesSubdir", "runnerFrontmatterAdditions", "documentExtractors", "hookActivation", "newChatStep",
-] as const;
-
-const parsedRecord = (text: string): readonly (readonly [string, unknown])[] | null => {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? Object.entries(parsed) : null;
-  } catch {
-    return null;
-  }
-};
-
-const recordFailure = (path: string, reason: string): Result<never, ProjectionRefusal> =>
-  refused({ kind: "render-failed", concept: "host-data", name: path, reason });
-
-export const harnessRecordWithLine = (request: {
-  readonly files: readonly ProjectedFile[];
-  readonly path: string;
-  readonly line: HarnessRecordLine;
-}): Result<readonly ProjectedFile[], ProjectionRefusal> => {
-  const record = request.files.find((file) => file.path === request.path);
-  if (record?.content.kind !== "text") return recordFailure(request.path, "The host's harness record was not projected as text.");
-  const entries = parsedRecord(record.content.text);
-  if (entries === null) return recordFailure(request.path, "The host's harness record is not a JSON object.");
-  const after = entries.findLastIndex(([key]) => RECORD_KEYS_BEFORE_A_HOST_LINE.some((before) => before === key)) + 1;
-  const completed = [...entries.slice(0, after), [request.line.key, request.line.value], ...entries.slice(after)];
-  return accepted([{ ...record, content: { kind: "text", text: `${JSON.stringify(Object.fromEntries(completed), null, 2)}\n` } }]);
 };
 
 export type HostPluginTarget = {

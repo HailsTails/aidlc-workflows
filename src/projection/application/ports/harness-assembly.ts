@@ -16,7 +16,7 @@ import type { CommandPlacement } from "./commands.ts";
 import type { HostDocumentRenderer } from "./documents.ts";
 import type { Harness, HostFileDeriver } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
-import type { HostDataRenderer } from "./host-surface.ts";
+import type { HostDataRenderer, HarnessRecordConstructor } from "./host-surface.ts";
 import type { HostSettingsRenderer } from "./settings.ts";
 import type { HostSkillRenderer } from "./skills.ts";
 
@@ -26,6 +26,7 @@ export type HarnessRenderers = {
   readonly settings: HostSettingsRenderer;
   readonly documents: HostDocumentRenderer;
   readonly data: HostDataRenderer;
+  readonly record: HarnessRecordConstructor;
   readonly placements: readonly AuthoredPlacement[];
   readonly commandPlacement: CommandPlacement;
   readonly derive?: HostFileDeriver;

@@ -1,14 +1,53 @@
+import { commonHarnessRecord } from "../domain/harness-record.ts";
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { host, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { claudeHostDataFixture, AUTHORED_PLACEMENTS_FIXTURE } from "../fixtures/host-data.fixture.ts";
 import { tokenBindingsFixture } from "../fixtures/token-bindings.fixture.ts";
 import { createHostSurfaceMembers } from "./host-surface-members.ts";
+import type { HarnessRecordConstructor } from "./ports/host-surface.ts";
+import type { HarnessRecord } from "../domain/harness-record.ts";
 
 const claude = host({ name: "claude", directory: ".claude" });
 const tokens = tokenBindingsFixture({ harnessDir: ".claude" });
-const request = { host: claude, data: claudeHostDataFixture, placements: AUTHORED_PLACEMENTS_FIXTURE,
+const request = { record: commonHarnessRecord, host: claude, data: claudeHostDataFixture, placements: AUTHORED_PLACEMENTS_FIXTURE,
   tokens, channel: "copy", prepare: accepted } as const;
+
+test("constructor refusal is preserved atomically before any plugin or record file is emitted", () => {
+  const failure = refused({ kind: "render-failed" as const, concept: "host-data" as const,
+    name: "closed-record", reason: "Record construction refused." });
+  const record = mock<HarnessRecordConstructor>().mockReturnValue(failure);
+  expect(createHostSurfaceMembers({ ...request, record }).renderHostData()).toBe(failure);
+  expect(record).toHaveBeenCalledTimes(1);
+});
+
+test("a completed record cannot change the common product identity", () => {
+  const record = mock<HarnessRecordConstructor>().mockReturnValue(accepted({ schemaVersion: 1,
+    distribution: claude.distribution, name: claude.distribution, harnessDir: claude.directory,
+    productName: "Different", configNextStep: "Open", rulesSubdir: "rules" }));
+  expect(createHostSurfaceMembers({ ...request, record,
+    data: { productName: "Captured", configNextStep: "Open", rulesFolder: null,
+      pluginAgentFrontmatter: { copy: ["must not emit"], native: [] } } }).renderHostData()).toEqual(refused({
+    kind: "render-failed", concept: "host-data", name: "claude",
+    reason: "The host record changed common facts: productName.",
+  }));
+});
+
+type CompleteSurfaceRecord = HarnessRecord & { readonly privateLayout: "custom" };
+const customRecord: CompleteSurfaceRecord = { schemaVersion: 1, distribution: claude.distribution,
+  productName: "Captured", configNextStep: "Open", name: claude.distribution, harnessDir: claude.directory,
+  rulesSubdir: "rules", privateLayout: "custom", directiveMaxBytes: 2048 };
+
+test("the one serializer retains a closed host constructor's complete order without reparsing", () => {
+  const record = mock<HarnessRecordConstructor>().mockReturnValue(accepted(customRecord));
+  expect(createHostSurfaceMembers({ ...request, record,
+    data: { productName: "Captured", configNextStep: "Open", rulesFolder: null, directiveMaxBytes: 2048 },
+  }).renderHostData()).toEqual(accepted([{
+    path: path(".claude/tools/data/harness.json"), mode: "regular",
+    origin: { kind: "rendered", concept: "host-data", name: "claude" },
+    content: { kind: "text", text: '{\n  "schemaVersion": 1,\n  "distribution": "claude",\n  "productName": "Captured",\n  "configNextStep": "Open",\n  "name": "claude",\n  "harnessDir": ".claude",\n  "rulesSubdir": "rules",\n  "privateLayout": "custom",\n  "directiveMaxBytes": 2048\n}\n' },
+  }]));
+});
 
 const claudeDescriptor = `{
   "schemaVersion": 1,

@@ -30,12 +30,33 @@ const RUNTIME = "---\nname: aidlc-delivery-agent\ndisallowedTools: Task\n---\nRu
 const NATIVE_PLACED = '---\nname: aidlc-delivery-agent\ntools: ["read"]\n---\nRead aidlc/active-memory/org.md first.\n';
 const RUNTIME_PLACED = "---\nname: aidlc-delivery-agent\ndisallowedTools: Task\n---\nRuntime. Read aidlc/active-memory/org.md first.\n";
 
-const surfaces = () => mock().mockReturnValueOnce(accepted(NATIVE)).mockReturnValueOnce(accepted(RUNTIME));
+const surfaces = () => mock<AgentDocumentSurface>()
+  .mockReturnValueOnce(accepted(NATIVE)).mockReturnValueOnce(accepted(RUNTIME));
 
 const noFrontmatter = { kind: "render-failed", concept: "agent", name: "aidlc-delivery-agent", reason: "No frontmatter." } as const;
 
 const render = (agent: Agent, documents: AgentDocumentSurface = surfaces()) =>
   copilotAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent, knowledge: [] });
+
+const preparedDocument = { agent: delivery.slug,
+  content: "---\nname: Example\ntier: balanced\ndisallowedTools: Task\nmaxTurns: 12\n---\nPersona\n",
+  model: {} };
+
+test("the actual native and companion renderer callbacks preserve different host meanings", () => {
+  const documents = surfaces();
+  render(delivery, documents);
+  expect(documents.mock.calls[0]?.[0].render(preparedDocument)).toEqual(accepted(
+    '---\nname: Example\ntools: ["read", "edit", "search", "execute", "web", "todo"]\nmaxTurns: 12\n---\nPersona\n'));
+  expect(documents.mock.calls[1]?.[0].render(preparedDocument)).toEqual(accepted(
+    "---\nname: Example\ndisallowedTools: Task\nmaxTurns: 12\n---\nPersona\n"));
+});
+
+test("the unrestricted native callback omits worker tools rather than selecting the companion", () => {
+  const documents = surfaces();
+  render(unrestricted, documents);
+  expect(documents.mock.calls[0]?.[0].render(preparedDocument)).toEqual(accepted(
+    "---\nname: Example\nmaxTurns: 12\n---\nPersona\n"));
+});
 
 describe("copilotAgents", () => {
   test("places the runtime and native personas with the engine's copy of the active memory", () => {
@@ -54,9 +75,7 @@ describe("copilotAgents", () => {
     render(delivery, documents);
     expect(documents).toHaveBeenCalledWith({
       agent: delivery, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-      frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-        removeKeys: ["disallowedTools"],
-        afterProjectionLines: ['tools: ["read", "edit", "search", "execute", "web", "todo"]'] },
+      model: "omitted", render: expect.any(Function),
     });
   });
 
@@ -65,8 +84,7 @@ describe("copilotAgents", () => {
     render(delivery, documents);
     expect(documents).toHaveBeenCalledWith({
       agent: delivery, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-      frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-        removeKeys: [], afterProjectionLines: [] },
+      model: "projected", render: expect.any(Function),
     });
   });
 
@@ -74,7 +92,7 @@ describe("copilotAgents", () => {
     const documents = surfaces();
     render(unrestricted, documents);
     expect(documents).toHaveBeenCalledWith(expect.objectContaining({ knowledge: "absorbed",
-      frontmatter: expect.objectContaining({ model: "omitted", afterProjectionLines: [] }) }));
+      model: "omitted", render: expect.any(Function) }));
   });
 
   test("has no separate conductor agent file", () => {

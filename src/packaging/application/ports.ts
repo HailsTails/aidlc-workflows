@@ -1,5 +1,5 @@
 import type { HostIdentity } from "../../kernel/host.ts";
-import type { Projection, ProjectionRefusal } from "../../projection/domain/projection.ts";
+import type { Projection, HostProjection, ProjectionRefusal } from "../../projection/domain/projection.ts";
 import type { HostData } from "../../projection/domain/host-surface.ts";
 import type { HostDistribution } from "../domain/payload.ts";
 import type { FrameworkVersion, ProjectPath } from "../../kernel/values.ts";
@@ -72,6 +72,21 @@ export interface BuildPackaging {
   readonly stamp: VersionStamp;
   packageHost(request: HostPayloadRequest): Promise<Result<Payload, readonly (PackagingRefusal | KernelRefusal)[]>>;
 }
+
+export type ReadHostDistribution = (request: { readonly host: HostIdentity }) =>
+  Result<HostDistribution, readonly (KernelRefusal | ProjectionRefusal)[]>;
+
+export type HostPayloadBuildRequest = {
+  readonly host: HostIdentity;
+  readonly project: () => Promise<Result<HostProjection, readonly (KernelRefusal | ProjectionRefusal)[]>>;
+  readonly enrich: (projection: HostProjection) =>
+    Promise<Result<HostProjection, readonly (KernelRefusal | ProjectionRefusal)[]>>;
+  readonly channel: Channel;
+  readonly copy: Payload | null;
+};
+
+export type BuildHostPayload = (request: HostPayloadBuildRequest) =>
+  Promise<Result<Payload, readonly DistributionBuildFailure[]>>;
 
 export interface CopyRuntimeOmissions {
   omitted(copyPayload: Payload): readonly ProjectPath[];

@@ -8,6 +8,7 @@ import type {
 } from "../../../projection/application/ports/settings.ts";
 import type { Rendering } from "../../../projection/application/ports/harness.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
+import { projectCapturedClaudeHooks } from "./captured-hooks.ts";
 
 export const CLAUDE_SETTINGS_INPUTS = ["settings.json"] as const;
 
@@ -62,13 +63,15 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
   const channelAllow = inputs.channel === "native" ? [
     ...allow.filter((entry) => entry !== "Bash" && !(typeof entry === "string"
       && (entry.startsWith("Bash(bun ") || entry.startsWith("Bash(aidlc ")))),
-    `Bash(aidlc ${namespace} *)`,
+    `Bash(${inputs.nativeCommands.trusted("*")})`,
     ...inputs.allows.dispatcherCommands.map((command) => `Bash(aidlc ${command})`),
   ] : expanded;
   const path = projectPath(".claude/settings.json");
   if (!path.ok) return refused(settingsRefusal("The settings destination must be project-relative."));
   return accepted([{ path: path.value, content: { kind: "text",
-    text: `${JSON.stringify({ ...fields, permissions: { ...permissions, allow: channelAllow } }, null, 2)}\n` },
+    text: `${JSON.stringify({ ...fields, hooks: projectCapturedClaudeHooks({ captured: fields["hooks"],
+      directory: inputs.tokens.HARNESS_DIR, channel: inputs.channel, trusted: inputs.nativeCommands.trusted }),
+    permissions: { ...permissions, allow: channelAllow } }, null, 2)}\n` },
     mode: "regular",
     origin: { kind: "rendered", concept: "settings", name: "settings.json" } }]);
 };

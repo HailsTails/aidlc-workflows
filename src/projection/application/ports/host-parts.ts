@@ -7,7 +7,7 @@ import type { HostAgentRenderer } from "./agents.ts";
 import type { CommandPlacement } from "./commands.ts";
 import type { HostDocumentRenderer } from "./documents.ts";
 import type { HostFileDeriver } from "./harness.ts";
-import type { HostDataRenderer } from "./host-surface.ts";
+import type { HostDataRenderer, HarnessRecordConstructor } from "./host-surface.ts";
 import type { HostSettingsRenderer } from "./settings.ts";
 import type { HostSkillRenderer } from "./skills.ts";
 
@@ -19,6 +19,7 @@ export type ConceptMembers<Render> = {
 export type HostProjectionParts = {
   readonly tokens: HostTokenChoices;
   readonly renderData: HostDataRenderer;
+  readonly record: HarnessRecordConstructor;
   readonly placements: readonly AuthoredPlacement[];
   readonly tierFlavor: TierFlavor;
   readonly agents: ConceptMembers<HostAgentRenderer>;

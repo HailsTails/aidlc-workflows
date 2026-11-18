@@ -1,3 +1,4 @@
+import { renderKiroIdeMarkdown } from "./markdown-surface.ts";
 import { describe, expect, mock, test } from "bun:test";
 import { createKiroIdeAgents, kiroIdePermissionLines, type KiroIdePersonaRendering } from "./agent-renderer.ts";
 import { kiroIdeKnowledgeReading } from "./knowledge-reading.ts";
@@ -31,11 +32,10 @@ test("Kiro IDE gives its persona port the exact in-parts model and native policy
   });
   expect(personas).toHaveBeenCalledTimes(1);
   const profile = personas.mock.calls[0]?.[0];
-  expect(profile?.modelSurface({ agent: architect, removeKeys: ["disallowedTools"] })).toEqual(accepted(surfaced));
+  expect(profile?.modelSurface({ agent: architect })).toEqual(accepted(surfaced));
   expect(documents).toHaveBeenCalledWith({ agent: architect,
     text: "authored-file", knowledge: "absorbed", reading: kiroIdeKnowledgeReading(".kiro"),
-    frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain",
-      insertBeforeKeys: [], removeKeys: ["disallowedTools"], afterProjectionLines: [] },
+    model: "projected", render: renderKiroIdeMarkdown,
   });
   expect(profile?.promptLines(architect)).toContain('        - "bun .kiro/tools/aidlc.ts --fixture"');
   expect(admittedVerbs).toHaveBeenCalledWith("aidlc-architect-agent");
@@ -63,7 +63,7 @@ test("Kiro IDE preserves its document refusal and uses the persona port's exact 
   const renderAgent = mock(() => refused(failure));
   const personas = mock<KiroIdePersonaRendering>(() => renderAgent);
   const rendering = createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, documents: () => refused(failure) });
-  expect(personas.mock.calls[0]?.[0].modelSurface({ agent: architect, removeKeys: [] })).toEqual(refused(failure));
+  expect(personas.mock.calls[0]?.[0].modelSurface({ agent: architect })).toEqual(refused(failure));
   expect(rendering.renderAgent).toBe(renderAgent);
   expect(rendering.renderAgent({ agent: architect, knowledge: [] })).toEqual(refused(failure));
   expect(renderAgent).toHaveBeenCalledWith({ agent: architect, knowledge: [] });

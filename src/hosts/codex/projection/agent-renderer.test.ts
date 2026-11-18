@@ -1,3 +1,4 @@
+import { renderCodexMarkdown } from "./markdown-surface.ts";
 import { SCRATCH_AGENT_INPUTS } from "../../../projection/fixtures/scratch-host.fixture.ts";
 import { expect, test, mock } from "bun:test";
 import { projectPath } from "../../../kernel/values.ts";
@@ -28,8 +29,7 @@ test("the registered Codex factory supplies exact Markdown and persona requests 
   const renderer = codexAgents({ ...SCRATCH_AGENT_INPUTS, host: codex, tierFlavor: "codex",
     documents: (request) => {
       expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-        frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-          removeKeys: [], afterProjectionLines: [] } });
+        model: "projected", render: renderCodexMarkdown });
       return accepted("Markdown persona\n");
     },
     persona: (request) => {

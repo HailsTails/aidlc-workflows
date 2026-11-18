@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../domain/harness-record.ts";
 import type { DelegateShellFacts } from "./ports/delegate-shell.ts";
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
@@ -15,7 +16,7 @@ const projectHostSurface = createHostSurfaceProjection(facts);
 
 const identity = host({ name: "surface-host", directory: ".surface" });
 const request: HostSurfaceProjectionRequest = {
-  host: identity, renderData: () => ({ productName: "Surface", configNextStep: "Open", rulesFolder: null }),
+  record: commonHarnessRecord, host: identity, renderData: () => ({ productName: "Surface", configNextStep: "Open", rulesFolder: null }),
   placements: [{ source: "notice.md", destination: ".surface/notice.md" }],
   files: [{ source: source("notice.md"), content: { kind: "text", text: "Captured" } },
     { source: source("other.md"), content: { kind: "text", text: "Other concept" } }],

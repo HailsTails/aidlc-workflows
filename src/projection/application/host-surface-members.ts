@@ -8,6 +8,8 @@ import { bindTemplateTokens } from "../domain/token-binding.ts";
 import type { AuthoredFilePreparer } from "./ports/host-sources.ts";
 import type { Harness, Rendering } from "./ports/harness.ts";
 import { collectCommandRenderings } from "./command-renderers.ts";
+import type { HarnessRecordConstructor } from "./ports/host-surface.ts";
+import { harnessRecordConflicts, type HarnessRecord, type HarnessRecordFacts } from "../domain/harness-record.ts";
 
 const hookStrings = (hookValue: unknown, tokens: TokenBindings): unknown => {
   if (typeof hookValue === "string") return bindTemplateTokens({ text: hookValue, tokens,
@@ -19,25 +21,30 @@ const hookStrings = (hookValue: unknown, tokens: TokenBindings): unknown => {
   return hookValue;
 };
 
-const descriptorText = (request: {
+const recordFacts = (request: {
   readonly host: HostIdentity; readonly data: HostData; readonly tokens: TokenBindings;
-}): string => {
-  const { host, data: hostData, tokens } = request;
-  return `${JSON.stringify({
+}): HarnessRecordFacts => {
+  const { host, data: hostData } = request;
+  return { identity: {
     schemaVersion: 1, distribution: host.distribution, productName: hostData.productName,
     configNextStep: hostData.configNextStep, name: host.distribution, harnessDir: host.directory,
-    rulesSubdir: hostData.rulesFolder ?? "rules",
+  }, setup: { rulesSubdir: hostData.rulesFolder ?? "rules",
     ...(hostData.runnerFrontmatterAdditions?.length
       ? { runnerFrontmatterAdditions: hostData.runnerFrontmatterAdditions } : {}),
     ...(hostData.documentExtractors ? { documentExtractors: hostData.documentExtractors } : {}),
-    ...(hostData.hookActivation ? { hookActivation: hookStrings(hostData.hookActivation, tokens) } : {}),
+    ...(hostData.hookActivation ? { hookActivation: hostData.hookActivation } : {}),
     ...(hostData.newChatStep ? { newChatStep: hostData.newChatStep } : {}),
-    ...(hostData.directiveMaxBytes ? { directiveMaxBytes: hostData.directiveMaxBytes } : {}),
+  }, runtime: { ...(hostData.directiveMaxBytes ? { directiveMaxBytes: hostData.directiveMaxBytes } : {}),
     ...(hostData.statusLine ? { statusLine: hostData.statusLine } : {}),
     ...(hostData.agentFinishRecorded ? { agentFinishRecorded: hostData.agentFinishRecorded } : {}),
     ...(hostData.hostShell ? { hostShell: hostData.hostShell } : {}),
-  }, null, 2)}\n`;
+  } };
 };
+
+const descriptorText = (record: HarnessRecord, tokens: TokenBindings): string => `${JSON.stringify({
+  ...record,
+  ...(record.hookActivation ? { hookActivation: hookStrings(record.hookActivation, tokens) } : {}),
+}, null, 2)}\n`;
 
 const hostDataFile = (request: { readonly host: HostIdentity; readonly within: string;
   readonly text: string }): Rendering => {
@@ -70,15 +77,24 @@ const placeFile = (request: {
 export const createHostSurfaceMembers = (request: {
   readonly host: HostIdentity;
   readonly data: HostData;
+  readonly record: HarnessRecordConstructor;
   readonly placements: readonly AuthoredPlacement[];
   readonly tokens: TokenBindings;
   readonly channel: DistributionChannel;
   readonly prepare: AuthoredFilePreparer;
 }): Pick<Harness, "renderHostData" | "placeAuthoredFile"> => ({
   renderHostData: () => {
+    const facts = recordFacts(request);
+    const record = request.record(facts);
+    if (!record.ok) return record;
+    const conflicts = harnessRecordConflicts({ facts, record: record.value });
+    if (conflicts.length > 0) return refused({ kind: "render-failed", concept: "host-data",
+      name: request.host.distribution,
+      reason: `The host record changed common facts: ${conflicts.join(", ")}.` });
     const frontmatter = request.data.pluginAgentFrontmatter?.[request.channel];
     return collectCommandRenderings([
-      hostDataFile({ host: request.host, within: "tools/data/harness.json", text: descriptorText(request) }),
+      hostDataFile({ host: request.host, within: "tools/data/harness.json",
+        text: descriptorText(record.value, request.tokens) }),
       frontmatter?.length ? hostDataFile({ host: request.host, within: "tools/data/plugin-agent.md",
         text: `---\n${frontmatter.join("\n")}\n---\n` }) : accepted([]),
     ]);

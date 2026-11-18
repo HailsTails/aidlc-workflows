@@ -6,6 +6,7 @@ import type { AuthoredHostFile } from "../../../projection/domain/host-surface.t
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { DistributionChannel } from "../../../projection/domain/projected-file.ts";
 import type { ProjectPath, SourcePath } from "../../../kernel/values.ts";
+import type { NativeCommandRoutes } from "../../../projection/domain/native-command.ts";
 
 const fieldsSchema = z.array(z.object({ name: z.string(), content: z.unknown() }));
 const objectSchema = z.preprocess((document: unknown) => {
@@ -63,21 +64,23 @@ const nativeEntries = (request: {
   readonly directory: ProjectPath;
   readonly namespace: string | null | undefined;
   readonly source: SourcePath;
+  readonly trusted: NativeCommandRoutes["trusted"];
 }): Result<readonly unknown[], ProjectionRefusal> => {
   if (!request.namespace) return refused({ kind: "render-failed", concept: "agent", name: request.source,
     reason: "The native agent permissions require a trusted route namespace." });
-  const trusted = `aidlc ${request.namespace} .*`;
+  const trusted = request.trusted(".*");
   const rewritten = request.entries.map((command) => typeof command === "string" && command.startsWith("bun ")
     && command.includes(`${request.directory.replace(".", "\\.")}/tools/`) ? trusted : command);
   return accepted([...new Set(rewritten)].flatMap((command) => command === trusted
     ? [command, ...request.commands.map((command) => escaped(`aidlc ${command}`))] : [command]));
 };
-export const expandKiroAgentAllows = ({ file, allows, channel, directory, namespace }: {
+export const expandKiroAgentAllows = ({ file, allows, channel, directory, namespace, trusted }: {
   readonly file: AuthoredHostFile;
   readonly allows: CopyChannelAllows;
   readonly channel: DistributionChannel;
   readonly directory: ProjectPath;
   readonly namespace: string | null | undefined;
+  readonly trusted: NativeCommandRoutes["trusted"];
 }): Result<{ readonly file: AuthoredHostFile; readonly expansion: "expanded" | "unchanged" }, ProjectionRefusal> => {
   const decoded = decode(file);
   if (!decoded.ok) return decoded;
@@ -86,7 +89,7 @@ export const expandKiroAgentAllows = ({ file, allows, channel, directory, namesp
   const matched = entries.some((entry) => typeof entry === "string" && toolPattern.test(entry));
   const expanded = entries.flatMap((entry) => expand(entry, allows));
   const projected = channel === "native" ? nativeEntries({ entries: expanded, commands: allows.dispatcherCommands,
-    directory, namespace, source: file.source }) : accepted(expanded);
+    directory, namespace, trusted, source: file.source }) : accepted(expanded);
   if (!projected.ok) return projected;
   const document = { ...fields, toolsSettings: { ...settings, ["execute_bash"]: {
     ...bash, allowedCommands: projected.value,

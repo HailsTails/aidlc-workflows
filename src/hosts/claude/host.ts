@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { accepted } from "../../kernel/result.ts";
 import { authoredSourcePaths } from "../../projection/domain/host-surface.ts";
 import { claudeDistribution } from "./distribution.ts";
@@ -21,6 +22,7 @@ export const claudeHost = () => {
     projection: {
       tokens: CLAUDE_TOKENS,
       renderData: () => CLAUDE_HOST_DATA,
+      record: commonHarnessRecord,
       placements: CLAUDE_AUTHORED_PLACEMENTS,
       tierFlavor: CLAUDE_TIER_FLAVOR,
       agents: { inputs: [], render: claudeAgents },

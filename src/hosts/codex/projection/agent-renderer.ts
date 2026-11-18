@@ -1,3 +1,4 @@
+import { renderCodexMarkdown } from "./markdown-surface.ts";
 import type { HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -25,8 +26,7 @@ export const codexAgents: HostAgentRenderer = (inputs) => ({
       reason: "Codex agent destinations must be project-relative paths.",
     });
     const markdown = inputs.documents({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-      frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-        removeKeys: [], afterProjectionLines: [] } });
+      model: "projected", render: renderCodexMarkdown });
     if (!markdown.ok) return markdown;
     const persona = inputs.persona({ agent, text: "persona-body", knowledge: "absorbed", reading: { kind: "whole-files" } });
     if (!persona.ok) return persona;

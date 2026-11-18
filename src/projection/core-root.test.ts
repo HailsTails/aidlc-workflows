@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "./domain/harness-record.ts";
 import type { HostDataRenderer } from "./application/ports/host-surface.ts";
 import { agent } from "../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../workflow-definition/fixtures/method-source.fixture.ts";
@@ -8,16 +9,53 @@ import { host, path, source } from "../kernel/fixtures/values.fixture.ts";
 import { methodSliceFixture } from "../workflow-definition/fixtures/method.fixture.ts";
 import { accepted, refused } from "../kernel/result.ts";
 import { tokenBindingsFixture } from "./fixtures/token-bindings.fixture.ts";
-import type { HostAgentRenderer } from "./application/ports/agents.ts";
+import type { AgentDocumentRenderer, HostAgentRenderer } from "./application/ports/agents.ts";
+import type { CoreAgent } from "../workflow-definition/domain/agent.ts";
 import type { HostSettingsRenderer } from "./application/ports/settings.ts";
 import { createBuildProjection as createProjection } from "./core-root.ts";
 import { createRecordingPluginProjector } from "./fixtures/plugin-projector.fake.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
-import { legacyHookTrustHash } from "./adapters/legacy-trusted-commands.ts";
+
 
 const identity = host({ name: "claude", directory: ".claude" });
 const createBuildProjection = (request: Omit<Parameters<typeof createProjection>[0], "plugins">) =>
   createProjection({ ...request, plugins: createRecordingPluginProjector() });
+
+const documentAgent: CoreAgent = {
+  slug: agent("aidlc-example-agent"), source: methodSource({ kind: "agent", within: "aidlc-example-agent.md" }),
+  displayName: "Example", description: "Role", examples: [], owner: { kind: "core" },
+  model: { kind: "tier", tier: "balanced" }, tools: { disallowed: [] }, maxTurns: null,
+  persona: { text: "No fallback", headings: [] }, additions: { afterPreflight: [], endOfBody: [] },
+};
+
+test("root preparation sends captured facts to the host renderer and preserves its exact refusal", () => {
+  const fileSystem = createInMemoryFileSystem({ files: {} });
+  const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
+    runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
+    runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
+  const render = mock<HostAgentRenderer>(() => ({ renderAgent: () => accepted([]),
+    renderConductorAgent: () => accepted([]) }));
+  expect(projection.projectAgents({ rulesFolder: null, method: methodSliceFixture,
+    host: host({ name: "unknown", directory: ".unknown" }), render, files: [], prepare: accepted,
+    channel: "copy", modelCap: "templated", tierFlavor: "claude", reviewerAgents: new Set(),
+    tokens: tokenBindingsFixture({ harnessDir: ".unknown" }), sources: [{ owner: { kind: "core" },
+      path: documentAgent.source, content: { kind: "text", text: "\uFEFF---\nname: Example\n---\nPersona\n" } }],
+  })).toEqual(accepted([]));
+  const rendererFailure = refused({ kind: "render-failed" as const, concept: "agent" as const,
+    name: documentAgent.slug, reason: "Host-owned refusal." });
+  const formatter = mock<AgentDocumentRenderer>().mockReturnValueOnce(accepted("Host-owned output"))
+    .mockReturnValueOnce(rendererFailure);
+  const documentRequest = { agent: documentAgent, text: "authored-file", knowledge: "absorbed",
+    reading: { kind: "whole-files" }, model: "omitted", render: formatter } as const;
+  const agentInputs = render.mock.calls[0]?.[0];
+  expect(agentInputs?.documents(documentRequest)).toEqual(accepted("Host-owned output"));
+  expect(formatter).toHaveBeenNthCalledWith(1, { agent: documentAgent.slug,
+    content: "---\nname: Example\n---\n<!-- aidlc-delegated-knowledge-preflight -->\n" +
+      "**Delegated knowledge preflight (mandatory):** Before substantive work, ensure every readable Markdown file under these directories is loaded, in order: `.unknown/knowledge/aidlc-shared/` (all but its format references `audit-format.md`, `knowledge-readme-template.md`, `memory-template.md`, `state-template.md` and `worktree-info-schema.md`: a step that needs one names it), `.unknown/knowledge/aidlc-example-agent/`, `aidlc/spaces/<active-space>/knowledge/aidlc-shared/`, then `aidlc/spaces/<active-space>/knowledge/aidlc-example-agent/`. A native resource preload satisfies this requirement; otherwise read the files now. The dispatch brief supplies rules and artifact paths separately.\n\nPersona\n",
+    model: {} });
+  expect(agentInputs?.documents(documentRequest)).toBe(rendererFailure);
+  expect(formatter).toHaveBeenCalledTimes(2);
+});
 
 test("Projection composes host capture and graph serialization through its own adapters", async () => {
   const fileSystem = createInMemoryFileSystem({ files: { "file:///host/SKILL.md": "raw" } });
@@ -39,7 +77,7 @@ test("Projection composition serves the shared delegate facts to a native data r
   const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
     runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
-  expect(projection.projectHostSurface({ host: identity, files: [], placements: [], prepare: accepted,
+  expect(projection.projectHostSurface({ record: commonHarnessRecord, host: identity, files: [], placements: [], prepare: accepted,
     tokens: tokenBindingsFixture({ harnessDir: ".claude" }), channel: "copy",
     renderData: ({ delegateShellFacts }) => ({ productName: "Policy fixture", configNextStep: "Open", rulesFolder: null,
       pluginAgentFrontmatter: { copy: [delegateShellFacts.engineNamespace], native: [] } }),
@@ -74,10 +112,10 @@ test("settings composition supplies captured timeout, trust identity and capped 
     channel: "copy", entrypoints: [], modelCap: "templated" })).toEqual(accepted([]));
   expect(render).toHaveBeenCalledTimes(1);
   const inputs = render.mock.calls[0]?.[0];
+  expect(inputs?.nativeCommands).toBe(projection.nativeCommands);
+  expect(projection.delegateShellFacts.trustedCommand).toBe(projection.nativeCommands.trusted);
   expect(inputs?.extendedSubprocessTimeoutMs).toBe(1_800_000);
-  expect(inputs?.hookTrust({ event: "session_start", command: "aidlc engine hook session-start",
-    timeoutSeconds: 1800, matcher: undefined }))
-    .toBe("sha256:2b4117d0e4fefa944da660b81b311dfd50426b70b8612cf9046f1cbcf4c7f163");
+  expect(inputs).not.toHaveProperty("hookTrust");
   expect(inputs?.cliModels({ source: source("settings/cli.json"), content: { kind: "text", text: "{}" } }))
     .toEqual(accepted({ source: source("settings/cli.json"), content: { kind: "text", text: "{}\n" } }));
 });
@@ -95,6 +133,7 @@ test("agent composition supplies shipped allows to one native factory for the co
   expect(render).toHaveBeenCalledTimes(1);
   expect(render.mock.calls[0]?.[0].allows.dispatcherCommands).toContain("doctor");
   expect(render.mock.calls[0]?.[0].allows.toolScripts).toContain("aidlc-graph.ts");
+  expect(render.mock.calls[0]?.[0].delegateShellFacts.trustedCommand).toBe(projection.nativeCommands.trusted);
   expect(render.mock.calls[0]?.[0].delegateShellFacts).toBe(projection.delegateShellFacts);
 });
 
@@ -113,8 +152,7 @@ test("agent composition exposes a missing captured source refusal without recons
     tools: { disallowed: [] }, maxTurns: null, persona: { text: "No fallback", headings: [] },
     additions: { afterPreflight: [], endOfBody: [] },
   }, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-    frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-      removeKeys: [], afterProjectionLines: [] } }))
+    model: "projected", render: ({ content }) => accepted(content) }))
     .toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
       reason: "The accepted agent's authored source was not captured." } });
 });
@@ -148,7 +186,7 @@ test("Projection exposes the exact facts instance its native data route receives
     runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
   const renderData = mock<HostDataRenderer>(() => ({ productName: "Facts", configNextStep: "Open", rulesFolder: null }));
-  projection.projectHostSurface({ host: identity, files: [], placements: [], prepare: accepted,
+  projection.projectHostSurface({ record: commonHarnessRecord, host: identity, files: [], placements: [], prepare: accepted,
     tokens: tokenBindingsFixture({ harnessDir: ".claude" }), channel: "copy", renderData });
   expect(renderData).toHaveBeenCalledTimes(1);
   expect(renderData.mock.calls[0]?.[0]?.delegateShellFacts).toBe(projection.delegateShellFacts);
@@ -160,7 +198,7 @@ test("Projection binds the settings capabilities once for every renderer and cal
     runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
   expect(projection.settingsCapabilities).toEqual({
-    extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(), hookTrust: legacyHookTrustHash,
+    extendedSubprocessTimeoutMs: extendedSubprocessTimeoutMs(),
   });
 });
 

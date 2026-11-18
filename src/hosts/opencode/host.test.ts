@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
@@ -17,6 +18,7 @@ test("openCode module gathers the identity, distribution and every projection pa
     projection: {
       tokens: OPENCODE_TOKENS,
       renderData: expect.any(Function),
+      record: commonHarnessRecord,
       placements: OPENCODE_AUTHORED_PLACEMENTS,
       tierFlavor: OPENCODE_TIER_FLAVOR,
       agents: { inputs: [], render: openCodeAgents },

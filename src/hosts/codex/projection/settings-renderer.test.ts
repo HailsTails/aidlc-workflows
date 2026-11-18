@@ -2,12 +2,16 @@ import { accept } from "../../../kernel/fixtures/accept.ts";
 import { refused } from "../../../kernel/result.ts";
 import { path } from "../../../kernel/fixtures/values.fixture.ts";
 import { expect, mock, test } from "bun:test";
-import { createCodexSettingsRenderer, emitDefaultRules, emitTrustSeed, trustEntries } from "./settings-renderer.ts";
+import { createCodexSettingsRenderer as createRenderer, emitDefaultRules, emitTrustSeed, trustEntries } from "./settings-renderer.ts";
 import { settingsRenderingInputsFixture } from "../../../projection/fixtures/settings-rendering.fixture.ts";
 import { methodSliceFixture } from "../../../workflow-definition/fixtures/method.fixture.ts";
-import type { HookTrustHash } from "../../../projection/application/ports/settings.ts";
+import type { SettingsRenderingInputs } from "../../../projection/application/ports/settings.ts";
+import type { CodexHookTrustHash } from "./hook-trust.ts";
 const inputs = settingsRenderingInputsFixture({ harnessDir: ".codex", files: [] });
 const legacy = { extendedSubprocessTimeoutMs: 12000, hookTrust: ({ event, command, timeoutSeconds, matcher }: { event: string; command: string; timeoutSeconds: number; matcher: string | undefined }) => JSON.stringify([event, command, timeoutSeconds, matcher ?? null]) };
+
+const createCodexSettingsRenderer = (request: SettingsRenderingInputs & { readonly hookTrust?: CodexHookTrustHash }) =>
+  createRenderer(request.hookTrust ?? legacy.hookTrust)(request);
 
 test("copy rules preserve literal retained bytes and injected tool scripts", () => {
   expect(createCodexSettingsRenderer({ ...inputs, ...legacy }).renderSettings({ method: methodSliceFixture })).toEqual({
@@ -124,7 +128,7 @@ test("settings refuse a missing captured harness directory", () => {
 
 
 test("native hooks and trust seed preserve release literals and pass every exact identity to the hash port", () => {
-  const hookTrust = mock<HookTrustHash>(() => "native-hook-trust");
+  const hookTrust = mock<CodexHookTrustHash>(() => "native-hook-trust");
   const native = createCodexSettingsRenderer({ ...inputs, channel: "native", extendedSubprocessTimeoutMs: 1_800_000,
     tokens: { ...inputs.tokens, ["INVOKE"]: "aidlc", ["TOOL_PREFIX"]: "aidlc ", ["TRUSTED_NAMESPACE"]: "engine" }, hookTrust });
   expect(native.renderHookRegistrations({ hooks: [] })).toEqual({

@@ -1,5 +1,8 @@
 import type { DistributionChannel } from "../../../projection/domain/projected-file.ts";
 import type { DelegateShellPolicy } from "./delegate-shell-deny.ts";
+import { renderConductorPermissions } from "./conductor-permission-template.ts";
+import type { Result } from "../../../kernel/result.ts";
+import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 
 const matchLines = (effect: "allow" | "ask", patterns: readonly string[]): string[] => [
   "    - capability: shell", `      effect: ${effect}`, "      match:",
@@ -25,15 +28,7 @@ export const kiroIdeConductorPermissionSource = ({ source, policy, channel, disp
   readonly policy: DelegateShellPolicy;
   readonly channel: DistributionChannel;
   readonly dispatcherCommands: readonly string[];
-}): string => {
-  const newline = source.startsWith("---\r\n") ? "\r\n" : "\n";
-  const end = source.startsWith(`---${newline}`) ? source.indexOf(`${newline}---`, 3 + newline.length) : -1;
-  if (end < 0) return source;
+}): Result<string, ProjectionRefusal> => {
   const shell = kiroIdeShellPermissionLines({ policy, channel, dispatcherCommands, role: "conductor" });
-  const authored = source.slice(0, end);
-  const blocks = [...authored.matchAll(/^ {4}- capability: shell\r?\n {6}effect: (allow|ask)\r?\n[\s\S]*?(?=\r?\n {4}- capability:|(?![\s\S]))/gm)];
-  return blocks.reduceRight((text, block) => {
-    const lines = block[1] === "allow" ? shell.allow : shell.ask;
-    return text.slice(0, block.index) + lines.join(newline) + text.slice(block.index + block[0].length);
-  }, authored) + source.slice(end);
+  return renderConductorPermissions({ source, shell });
 };

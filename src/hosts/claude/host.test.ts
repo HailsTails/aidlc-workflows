@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../../projection/domain/harness-record.ts";
 import { expect, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
@@ -18,6 +19,7 @@ test("Claude's module gathers the identity, distribution and every projection pa
     projection: {
       tokens: CLAUDE_TOKENS,
       renderData: expect.any(Function),
+      record: commonHarnessRecord,
       placements: CLAUDE_AUTHORED_PLACEMENTS,
       tierFlavor: CLAUDE_TIER_FLAVOR,
       agents: { inputs: [], render: claudeAgents },

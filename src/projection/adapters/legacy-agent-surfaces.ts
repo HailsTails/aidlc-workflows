@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { modelAgentName, resolveModelPolicy, serializeAgentTiers, writeKiroCliSurface, writeMarkdownAgentSurface, type EffectiveModelPolicy } from "../../../core/tools/aidlc-model-policy.ts";
+import { modelAgentName, resolveModelPolicy, serializeAgentTiers, writeKiroCliSurface, type EffectiveModelPolicy } from "../../../core/tools/aidlc-model-policy.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
@@ -11,6 +11,7 @@ import type { Result } from "../../kernel/result.ts";
 import type { AgentDocumentRequest } from "../application/ports/agents.ts";
 import type { AgentModelPolicy } from "../application/ports/agents.ts";
 import type { CliModelPolicy } from "../application/ports/settings.ts";
+import type { AgentModelProjection } from "../domain/agent-surface.ts";
 
 type FlavoredPolicy = { readonly flavor: TierFlavor; readonly cap: Tier | null };
 
@@ -62,18 +63,12 @@ const agentSurfacePolicy = (request: FlavoredPolicy & {
   }
 };
 
-export const legacyMarkdownAgentSurface = (binding: FlavoredPolicy) =>
-  (request: Pick<AgentDocumentRequest, "agent" | "frontmatter"> & { readonly content: string }): Result<string, ProjectionRefusal> => {
-    const policy = request.frontmatter.model === "omitted" ? accepted({}) : agentSurfacePolicy({ ...binding, agent: request.agent });
-    if (!policy.ok) return policy;
-    try {
-      return accepted(writeMarkdownAgentSurface(request.content, policy.value, {
-        effortKey: request.frontmatter.effortKey, quoteModel: request.frontmatter.modelQuoting === "quoted",
-        insertBeforeKeys: request.frontmatter.insertBeforeKeys, removeKeys: request.frontmatter.removeKeys,
-        afterProjectionLines: request.frontmatter.afterProjectionLines,
-      }));
-    } catch (error) {
-      return refused({ kind: "render-failed", concept: "agent", name: request.agent.slug,
-        reason: error instanceof Error ? error.message : String(error) });
-    }
+export const legacyAgentDocumentModel = (binding: FlavoredPolicy) =>
+  (request: Pick<AgentDocumentRequest, "agent" | "model">): Result<AgentModelProjection, ProjectionRefusal> => {
+    if (request.model === "omitted") return accepted({});
+    const policy = agentSurfacePolicy({ ...binding, agent: request.agent });
+    return policy.ok ? accepted({
+      ...(policy.value.model === undefined ? {} : { model: policy.value.model }),
+      ...(policy.value.effort === undefined ? {} : { effort: policy.value.effort }),
+    }) : policy;
   };

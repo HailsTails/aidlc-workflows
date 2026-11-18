@@ -2,7 +2,7 @@ import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../kernel/result.ts";
 import { host, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
-import type { BuildCore, BuildSourceCaptureRequest, HostSourceMember, HostSourcesRequest }
+import type { BuildCore, BuildSourceCaptureRequest, HostSourceMember, HostSourcesInput }
   from "./ports/build-sources.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import type { MemoryCompanion, NeutralSurface, SessionSkill, SharedRuntime } from "../domain/neutral-surface.ts";
@@ -26,7 +26,7 @@ const runtime: SharedRuntime = { files: [{ source: source("tools/a.ts"),
   agentTiers: { kind: "text", text: "tiers" }, settingsSchema: { kind: "text", text: "schema" } };
 const companions: readonly MemoryCompanion[] = [{ source: source("memory.md"),
   content: { kind: "text", text: "retained\r\n" } }];
-const request: HostSourcesRequest = { name: "fixture-host", directory: ".fixture", root: new URL("file:///host/"),
+const request: HostSourcesInput = { name: "fixture-host", directory: ".fixture", root: new URL("file:///host/"),
   copied: ["copy.md", "shared.md", "copy.md"], required: ["caller.md", "shared.md"] };
 const binary = { kind: "bytes" as const, bytes: new Uint8Array([0, 255]) };
 const capturedFiles: readonly AuthoredHostFile[] = [
@@ -161,6 +161,35 @@ test("a different required subset is not hidden by an earlier optional capture",
     .toEqual(refused([{ kind: "host-source-unreadable", host: identity, source: source("missing.md"),
       reason: "Host source is unreadable: not-found." }]));
   expect(current.readHostSources).toHaveBeenCalledTimes(2);
+});
+
+test("admitted equivalent folder queries share the same in-flight failure and original refusal result", async () => {
+  const current = fixture([]);
+  const failed = refused<readonly ProjectionRefusal[]>([failure]);
+  const pending = Promise.withResolvers<typeof failed>();
+  current.readHostSources.mockReturnValue(pending.promise);
+  const first = current.capture.readHostSources({ ...request, root: new URL("file:///host"),
+    copied: ["shared.md", "caller.md"], required: ["caller.md", "shared.md"] });
+  const equivalent = current.capture.readHostSources({ ...request, root: new URL("file:///host/"),
+    copied: ["shared.md", "caller.md", "shared.md"], required: ["shared.md", "caller.md"] });
+  expect(equivalent).toBe(first);
+  pending.resolve(failed);
+  expect(await first).toBe(failed);
+  expect(await current.capture.readHostSources({ ...request, copied: ["shared.md", "caller.md"],
+    required: ["shared.md", "caller.md"] })).toBe(failed);
+  expect(current.readHostSources).toHaveBeenCalledTimes(1);
+});
+
+test("cache equality keeps host, directory, folder and source-order changes distinct", async () => {
+  const current = fixture([]);
+  const original = { ...request, copied: ["first.md", "second.md"], required: [] };
+  const first = current.capture.readHostSources(original);
+  expect(current.capture.readHostSources({ ...original, name: "other" })).not.toBe(first);
+  expect(current.capture.readHostSources({ ...original, directory: ".other" })).not.toBe(first);
+  expect(current.capture.readHostSources({ ...original, root: new URL("file:///other/") })).not.toBe(first);
+  expect(current.capture.readHostSources({ ...original, copied: ["second.md", "first.md"] })).not.toBe(first);
+  expect(current.readHostSources).toHaveBeenCalledTimes(5);
+  await first;
 });
 
 test("full capture keeps neutral-session-runtime-companion order and exact returned content", async () => {

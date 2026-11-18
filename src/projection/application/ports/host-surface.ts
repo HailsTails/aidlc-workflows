@@ -5,6 +5,11 @@ import type { TokenBindings } from "../../domain/template-token.ts";
 import type { DelegateShellFacts } from "./delegate-shell.ts";
 import type { Rendering } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
+import type { Result } from "../../../kernel/result.ts";
+import type { HarnessRecord, HarnessRecordFacts } from "../../domain/harness-record.ts";
+import type { ProjectionRefusal } from "../../domain/projection.ts";
+
+export type HarnessRecordConstructor = (facts: HarnessRecordFacts) => Result<HarnessRecord, ProjectionRefusal>;
 
 export type HostDataInputs = {
   readonly delegateShellFacts: DelegateShellFacts;
@@ -15,6 +20,7 @@ export type HostDataRenderer = (inputs: HostDataInputs) => HostData;
 export type HostSurfaceProjectionRequest = {
   readonly host: HostIdentity;
   readonly renderData: HostDataRenderer;
+  readonly record: HarnessRecordConstructor;
   readonly placements: readonly AuthoredPlacement[];
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;

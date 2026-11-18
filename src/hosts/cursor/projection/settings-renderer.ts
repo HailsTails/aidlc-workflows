@@ -16,6 +16,11 @@ const settingsRefusal = (reason: string): ProjectionRefusal => ({
   kind: "render-failed", concept: "settings", name: "cli.json", reason,
 });
 const objectSchema = z.record(z.string(), z.unknown());
+const shellPermission = (command: string): string => {
+  const separator = command.indexOf(" ");
+  return separator < 0 ? `Shell(${command})`
+    : `Shell(${command.slice(0, separator)}:${command.slice(separator + 1)})`;
+};
 type SettingsDocument = {
   readonly fields: Record<string, unknown>;
   readonly permissions: Record<string, unknown>;
@@ -62,7 +67,7 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
   }
   const channelAllow = inputs.channel === "native" ? [
     ...allow.filter((entry) => typeof entry !== "string" || !entry.startsWith("Shell(bun")),
-    `Shell(aidlc:${namespace} *)`,
+    shellPermission(inputs.nativeCommands.trusted("*")),
     ...inputs.allows.dispatcherCommands.map((command) => `Shell(aidlc:${command})`),
   ] : expanded;
   const path = projectPath(".cursor/cli.json");

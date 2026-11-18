@@ -35,6 +35,38 @@ test("packaging obtains host layout independently of Projection", async () => {
     descriptor: fixture.descriptor } });
 });
 
+test("successful metadata cannot bypass duplicate root admission", async () => {
+  const root = { path: path("settings.json"), policy: "jsonc-settings" as const,
+    presence: "optional" as const };
+  const packagePayload = createPackagePayload({ routes: nativeRoutes, releases: nativeReleases,
+    bundler: { bundle: async () => accepted([]) }, hasher: { hash: () => accepted(ZERO_HASH) },
+    stamp: stampedText, layouts: { layout: () => accepted({ ...fixture.descriptor.layout,
+      rootIntegrations: [root, root] }) },
+    history: { history: async () => accepted(fixture.descriptor.history) },
+    metadata: { files: () => accepted([]) },
+  });
+  expect(await packagePayload.package({ version: fixture.version, channel: "copy", runtime: [],
+    projection: { host: fixture.descriptor.host, files: [versionModule("v")], findings: [] } }))
+    .toEqual(refused([{ kind: "root-integration-duplicate", path: root.path }]));
+});
+
+test("metadata failure retains precedence over completion and its result identity", async () => {
+  const root = { path: path("settings.json"), policy: "jsonc-settings" as const,
+    presence: "optional" as const };
+  const metadataFailure = refused([{ kind: "listing-text-not-plain" as const,
+    distribution: fixture.descriptor.host.distribution }]);
+  const packagePayload = createPackagePayload({ routes: nativeRoutes, releases: nativeReleases,
+    bundler: { bundle: async () => accepted([]) }, hasher: { hash: () => accepted(ZERO_HASH) },
+    stamp: stampedText, layouts: { layout: () => accepted({ ...fixture.descriptor.layout,
+      rootIntegrations: [root, root] }) },
+    history: { history: async () => accepted(fixture.descriptor.history) },
+    metadata: { files: () => metadataFailure },
+  });
+  expect(await packagePayload.package({ version: fixture.version, channel: "copy", runtime: [],
+    projection: { host: fixture.descriptor.host, files: [versionModule("v")], findings: [] } }))
+    .toBe(metadataFailure);
+});
+
 test("the one version module is stamped and its hash follows the stamped bytes", async () => {
   const stamp = mock(stampedText);
   const packaged = await application(stamp).package({ version: fixture.version, channel: "copy",

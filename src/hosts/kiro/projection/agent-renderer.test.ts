@@ -53,7 +53,7 @@ describe("kiroAgentRenderer", () => {
     const surface = mock(surfacing);
     kiroCliAgentRenderer(surface)({ agent: architect, knowledge: [] });
 
-    expect(surface).toHaveBeenCalledWith({ agent: architect, removeKeys: ["disallowedTools"] });
+    expect(surface).toHaveBeenCalledWith({ agent: architect });
   });
 });
 

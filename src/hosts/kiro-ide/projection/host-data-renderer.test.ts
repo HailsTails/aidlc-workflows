@@ -1,11 +1,12 @@
 import { expect, mock, test } from "bun:test";
+import { DELEGATE_SHELL_FACTS } from "../../../projection/fixtures/delegate-shell-facts.fixture.ts";
 import type { DelegateShellFacts } from "../../../projection/application/ports/delegate-shell.ts";
 import { kiroIdeHostData } from "./host-data-renderer.ts";
 
 const facts: DelegateShellFacts = {
   engineNamespace: "engine", engineRoutes: [], dispatcherCommands: [], launcherGlobalFlags: [], workspaceNouns: [],
   workspaceRead: () => "other", admittedVerbs: () => ({}), engineRouteAdmission: () => "refused",
-  lifecycleAdmission: () => "admitted", trustedCommand: () => "unused",
+  lifecycleAdmission: () => "admitted", trustedCommand: DELEGATE_SHELL_FACTS.trustedCommand,
 };
 const expectedLines = [
   'tools: ["read", "write", "shell"]', "includeMcpJson: true", "permissions:", "  rules:",

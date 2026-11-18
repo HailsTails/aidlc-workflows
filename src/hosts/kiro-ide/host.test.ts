@@ -1,3 +1,4 @@
+import { createKiroIdeHarnessRecord } from "./projection/harness-record.ts";
 import { expect, mock, test } from "bun:test";
 import { distribution, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
@@ -24,6 +25,7 @@ test("kiroIde module gathers the identity, distribution and every projection par
     projection: {
       tokens: KIRO_IDE_TOKENS,
       renderData: kiroIdeHostData,
+      record: createKiroIdeHarnessRecord,
       placements: KIRO_IDE_AUTHORED_PLACEMENTS,
       tierFlavor: KIRO_IDE_TIER_FLAVOR,
       agents: { inputs: [source("agents/aidlc-aidlc.md")], render: expect.any(Function) },
@@ -44,12 +46,12 @@ const record = (text: string): ProjectedFile => ({ path: path(".kiro/tools/data/
   content: { kind: "text", text }, mode: "regular",
   origin: { kind: "rendered", concept: "host-data", name: "kiro-ide" } });
 
-test("kiroIde derives its steering file and completes its harness record in one step", () => {
+test("kiroIde derives only steering after its complete record was already constructed", () => {
   const derived = accept(accept(kiroIdeHost(kiroCli)).projection.derive?.({
     files: [record('{\n  "newChatStep": 1\n}\n')] }) ?? accepted([]));
   expect(derived).toEqual([
     expect.objectContaining({ path: path(".kiro/steering/aidlc-active-memory.md") }),
-    record('{\n  "newChatStep": 1,\n  "kiroLayout": "kas"\n}\n'),
+
   ]);
 });
 

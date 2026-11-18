@@ -143,13 +143,14 @@ export const kiroIdeDelegateShellPolicy = ({ facts, directory }: {
 }): DelegateShellPolicy => ({
   shellCommands: (channel) => {
     const invoke = channel === "native" ? "aidlc" : `bun ${directory}/tools/aidlc.ts`;
-    const engine = `${invoke} ${facts.engineNamespace}`;
+    const engine = (suffix: string): string => channel === "native" ? facts.trustedCommand(suffix)
+      : `${invoke} ${facts.engineNamespace} ${suffix}`;
     const tools = `bun ${directory}/tools/aidlc`;
     return {
       invoke,
       conductorAsk: ["doctor", "init", "lifecycle", "machine-config"].map((name) => `*aidlc-${name}.ts*`),
-      allow: [...(channel === "copy" ? [`${tools}-*`] : []), `${engine} *`, "bun --version"],
-      ask: [`${engine} config set *`, `${engine} adapter *`,
+      allow: [...(channel === "copy" ? [`${tools}-*`] : []), engine("*"), "bun --version"],
+      ask: [engine("config set *"), engine("adapter *"),
         ...RISKY_SHELL_FORMS.map((form) => `${channel === "native" ? "aidlc" : tools}*${form}*`)],
     };
   },

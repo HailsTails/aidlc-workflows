@@ -84,6 +84,20 @@ test("listing, duplicate and missing root checks are refusals", () => {
   ] });
 });
 
+test("listing refuses before duplicate roots, which refuse before missing root files", () => {
+  const duplicateDistribution = { ...distribution(), layout: { ...distribution().layout,
+    rootIntegrations: [settingsIntegration(), settingsIntegration()] } };
+  const duplicatePayload = { ...metadataPayload(), files: [] };
+  expect(createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher,
+    distribution: { ...duplicateDistribution, listing: { choiceName: "bad\nline" } },
+    hostData: SCRATCH_HOST_DATA }).files(duplicatePayload)).toEqual(refused([
+    { kind: "listing-text-not-plain", distribution: distributionId("claude") },
+  ]));
+  expect(createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher,
+    distribution: duplicateDistribution, hostData: SCRATCH_HOST_DATA }).files(duplicatePayload))
+    .toEqual(refused([{ kind: "root-integration-duplicate", path: path(".vscode/settings.json") }]));
+});
+
 test("root blocks retain the payload's binary bytes without a text round trip", () => {
   const reading = createLegacyPayloadMetadata({ projection: originalProjection(), copy: null, hasher, distribution: { ...distribution(), layout: {
     ...distribution().layout, rootIntegrations: [{ path: path("settings.json"), policy: "json-map", key: "servers",

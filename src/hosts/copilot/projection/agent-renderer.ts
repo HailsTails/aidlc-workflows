@@ -1,12 +1,11 @@
 import { accepted, refused } from "../../../kernel/result.ts";
+import { renderCopilotMarkdown } from "./markdown-surface.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { AgentRenderingInputs, HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
 import type { Harness } from "../../../projection/application/ports/harness.ts";
 import { projectActiveMemoryReferences } from "../../../projection/domain/active-memory.ts";
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import type { Agent } from "../../../workflow-definition/domain/agent.ts";
-
-const COPILOT_WORKER_TOOLS: readonly string[] = ["read", "edit", "search", "execute", "web", "todo"];
 
 type TaskDenial = "none" | "task-only" | "other";
 
@@ -20,19 +19,15 @@ const renderFailed = (agent: Agent, reason: string): ProjectionRefusal => ({
   kind: "render-failed", concept: "agent", name: agent.slug, reason,
 });
 
-const workerTools = (denial: TaskDenial): readonly string[] =>
-  denial === "task-only" ? [`tools: [${COPILOT_WORKER_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`] : [];
-
 const nativeDocument = (inputs: AgentRenderingInputs, request: { readonly agent: Agent; readonly denial: TaskDenial }) => inputs.documents({
   agent: request.agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-  frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-    removeKeys: ["disallowedTools"], afterProjectionLines: workerTools(request.denial) },
+  model: "omitted", render: (document) => renderCopilotMarkdown({ document,
+    surface: { kind: "native", delegation: request.denial === "task-only" ? "worker" : "unrestricted" } }),
 });
 
 const runtimeDocument = (inputs: AgentRenderingInputs, agent: Agent) => inputs.documents({
   agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-  frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-    removeKeys: [], afterProjectionLines: [] },
+  model: "projected", render: (document) => renderCopilotMarkdown({ document, surface: { kind: "companion" } }),
 });
 
 const renderAgent = (inputs: AgentRenderingInputs): Harness["renderAgent"] => ({ agent }) => {

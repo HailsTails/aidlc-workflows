@@ -1,3 +1,4 @@
+import { renderClaudeMarkdown } from "./markdown-surface.ts";
 import { expect, test } from "bun:test";
 import { accept } from "../../../kernel/fixtures/accept.ts";
 import { path } from "../../../kernel/fixtures/values.fixture.ts";
@@ -21,8 +22,7 @@ const markdown = "---\nmodel: sonnet\neffort: high\ndisallowedTools: Task\nmaxTu
 test("Claude's native Markdown uses the frozen effort surface without rewriting its persona", () => {
   const renderer = claudeAgents({ ...SCRATCH_AGENT_INPUTS, documents: (request) => {
     expect(request).toEqual({ agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-      frontmatter: { model: "projected", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-        removeKeys: [], afterProjectionLines: [] } });
+      model: "projected", render: renderClaudeMarkdown });
     return accepted(markdown);
   } });
   expect(renderer.renderAgent({ agent, knowledge: [] })).toEqual(accepted([{

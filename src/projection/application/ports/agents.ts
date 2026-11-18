@@ -14,6 +14,7 @@ import type { CopyChannelAllows } from "./copy-channel.ts";
 import type { DelegateShellFacts } from "./delegate-shell.ts";
 import type { Harness, Rendering } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
+import type { PreparedAgentDocument } from "../../domain/agent-surface.ts";
 
 export type AgentModelPolicy = (request: {
   readonly agent: AgentSlug;
@@ -33,19 +34,11 @@ export type AgentPersonaRequest = {
 
 export type AgentPersonaPreparer = (request: AgentPersonaRequest) => Result<string, ProjectionRefusal>;
 
-export type MarkdownEffortKey = "effort" | "variant" | "effortLevel";
-
-export type AgentFrontmatter = {
-  readonly model: "projected" | "omitted";
-  readonly effortKey: MarkdownEffortKey;
-  readonly modelQuoting: "plain" | "quoted";
-  readonly insertBeforeKeys: readonly string[];
-  readonly removeKeys: readonly string[];
-  readonly afterProjectionLines: readonly string[];
-};
+export type AgentDocumentRenderer = (document: PreparedAgentDocument) => Result<string, ProjectionRefusal>;
 
 export type AgentDocumentRequest = AgentPersonaRequest & {
-  readonly frontmatter: AgentFrontmatter;
+  readonly model: "projected" | "omitted";
+  readonly render: AgentDocumentRenderer;
 };
 
 export type AgentDocumentSurface = (request: AgentDocumentRequest) => Result<string, ProjectionRefusal>;

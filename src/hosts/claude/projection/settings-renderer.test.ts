@@ -210,6 +210,7 @@ test("native permission bytes match the independently generated legacy release",
 test("native permissions remove only legacy Bash grants and preserve unrelated values", () => {
   expect(createClaudeSettingsRenderer({ ...inputs, channel: "native",
     tokens: { ...inputs.tokens, ["INVOKE"]: "aidlc", ["TRUSTED_NAMESPACE"]: "renamed" },
+    nativeCommands: { trusted: () => "aidlc renamed *" },
     files: [{ ...file, content: { kind: "text", text: '{"before":1,"permissions":{"deny":["Write(secret)"],'
       + '"allow":["Bash","Bash(bun .renamed/tools/aidlc-*)","Bash(bun other)","Bash(aidlc stale)",'
       + '"Bash(git status)","Bash(bunx safe)",{"extension":true},"Task"]},"after":true}' } }] })
@@ -245,4 +246,74 @@ test("native settings refuse a missing namespace rather than emitting a null gra
     tokens: { ...inputs.tokens, ["TRUSTED_NAMESPACE"]: null } }).renderSettings({ method: methodSliceFixture }))
     .toEqual(refused({ kind: "render-failed", concept: "settings", name: "settings.json",
       reason: "The native settings require a trusted route namespace." }));
+});
+
+test("native Claude grants wrap the supplied trusted route rather than reconstructing its spelling", () => {
+  const trusted = mock().mockReturnValue("test-cli protected *");
+  expect(createClaudeSettingsRenderer({ ...inputs, channel: "native", nativeCommands: { trusted } })
+    .renderSettings({ method: methodSliceFixture })).toMatchObject({ ok: true,
+    value: [{ content: { text: expect.stringContaining('"Bash(test-cli protected *)"') } }] });
+  expect(trusted.mock.calls).toEqual([["*"]]);
+});
+
+test("copy Claude settings do not consult native routes", () => {
+  const trusted = mock().mockReturnValue("unused");
+  expect(createClaudeSettingsRenderer({ ...inputs, nativeCommands: { trusted } })
+    .renderSettings({ method: methodSliceFixture })).toEqual(expected);
+  expect(trusted).not.toHaveBeenCalled();
+});
+
+test("Claude refuses an absent namespace before consulting a native route", () => {
+  const trusted = mock().mockReturnValue("unused");
+  expect(createClaudeSettingsRenderer({ ...inputs, channel: "native", nativeCommands: { trusted },
+    tokens: { ...inputs.tokens, ["TRUSTED_NAMESPACE"]: null } }).renderSettings({ method: methodSliceFixture }))
+    .toEqual(refused({ kind: "render-failed", concept: "settings", name: "settings.json",
+      reason: "The native settings require a trusted route namespace." }));
+  expect(trusted).not.toHaveBeenCalled();
+});
+
+const capturedHookFile = { source: source("settings.json"), content: { kind: "text" as const, text:
+  '{"hooks":{"Start":[{"hooks":[{"command":"bun \\"$CLAUDE_PROJECT_DIR/.renamed/tools/aidlc.ts\\" engine hook session-start","type":"command"}]}]},"permissions":{"allow":["Bash(bun .renamed/tools/aidlc-*)"]}}',
+} };
+
+test("the actual native settings caller renders admitted hook meaning before JSON serialization", () => {
+  const trusted = mock().mockReturnValueOnce("bound engine *")
+    .mockReturnValueOnce("bound engine hook session-start");
+  expect(createClaudeSettingsRenderer({ ...inputs, files: [capturedHookFile], channel: "native",
+    allows: { dispatcherCommands: [], toolScripts: [] }, nativeCommands: { trusted } })
+    .renderSettings({ method: methodSliceFixture })).toEqual(accepted([{
+      path: path(".claude/settings.json"), mode: "regular",
+      origin: { kind: "rendered", concept: "settings", name: "settings.json" },
+      content: { kind: "text", text: `{
+  "hooks": {
+    "Start": [
+      {
+        "hooks": [
+          {
+            "command": "bound engine hook session-start",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bound engine *)"
+    ]
+  }
+}
+` },
+    }]));
+  expect(trusted.mock.calls).toEqual([["*"], ["hook session-start"]]);
+});
+
+test("the existing namespace refusal precedes admission of captured hook commands", () => {
+  const trusted = mock().mockReturnValue("unused");
+  expect(createClaudeSettingsRenderer({ ...inputs, files: [capturedHookFile], channel: "native",
+    nativeCommands: { trusted }, tokens: { ...inputs.tokens, ["TRUSTED_NAMESPACE"]: null } })
+    .renderSettings({ method: methodSliceFixture })).toEqual(refused({ kind: "render-failed",
+      concept: "settings", name: "settings.json",
+      reason: "The native settings require a trusted route namespace." }));
+  expect(trusted).not.toHaveBeenCalled();
 });

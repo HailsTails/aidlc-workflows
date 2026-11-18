@@ -51,11 +51,13 @@ export type ProjectionRefusal =
       readonly code: UnreadableTreeFile["code"];
     };
 
-export type Projection = {
+export type HostProjection = {
   readonly host: HostIdentity;
   readonly files: readonly ProjectedFile[];
   readonly findings: readonly ProjectionFinding[];
 };
+
+export type Projection = HostProjection;
 
 export type CompiledMethodFiles = {
   readonly graph: string;

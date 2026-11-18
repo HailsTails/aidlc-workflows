@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import { source, path } from "../../../kernel/fixtures/values.fixture.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { expandKiroAgentAllows } from "./tool-allows.ts";
@@ -6,7 +6,8 @@ import { expandKiroAgentAllows } from "./tool-allows.ts";
 const file = { source: source("agents/aidlc.json"), content: { kind: "text" as const, text:
   '{"name":"aidlc","toolsSettings":{"execute_bash":{"allowedCommands":["bun (run )?[\\"\']?\\\\.kiro/tools/[A-Za-z0-9._-]+\\\\.ts[\\"\']?( .*)?","keep",7]}}}' } };
 const allows = { dispatcherCommands: ["doctor"], toolScripts: ["aidlc-graph.ts"] };
-const copyChannel = { channel: "copy" as const, directory: path(".kiro"), namespace: "engine" };
+const copyChannel = { channel: "copy" as const, directory: path(".kiro"), namespace: "engine",
+  trusted: () => "aidlc engine .*" };
 
 test("the tools-folder pattern expands into bare and both quoted command forms", () => {
   expect(expandKiroAgentAllows({ ...copyChannel, file, allows })).toEqual(accepted({
@@ -58,4 +59,19 @@ test("native permissions refuse an absent trusted namespace with the actual sour
   expect(expandKiroAgentAllows({ ...copyChannel, channel: "native", namespace: undefined, file, allows }))
     .toEqual(refused({ kind: "render-failed", concept: "agent", name: source("agents/aidlc.json"),
       reason: "The native agent permissions require a trusted route namespace." }));
+});
+
+test("Kiro native permission patterns consume the modeled trusted route", () => {
+  const trusted = mock().mockReturnValue("test-cli protected .*");
+  expect(expandKiroAgentAllows({ ...copyChannel, channel: "native", file, allows, trusted }))
+    .toMatchObject({ ok: true, value: { file: { content: {
+      text: expect.stringContaining('"test-cli protected .*"'),
+    } } } });
+  expect(trusted.mock.calls).toEqual([[".*"]]);
+});
+
+test("Kiro copy permissions never consult the native route", () => {
+  const trusted = mock().mockReturnValue("unused");
+  expect(expandKiroAgentAllows({ ...copyChannel, file, allows, trusted })).toMatchObject({ ok: true });
+  expect(trusted).not.toHaveBeenCalled();
 });

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { source } from "../../kernel/fixtures/values.fixture.ts";
 import { agent } from "../../workflow-definition/fixtures/identities.fixture.ts";
-import { legacyAgentModelPolicy, legacyAgentTiersData, legacyCliModelPolicy, legacyMarkdownAgentSurface } from "./legacy-agent-surfaces.ts";
+import { legacyAgentModelPolicy, legacyAgentTiersData, legacyCliModelPolicy, legacyAgentDocumentModel } from "./legacy-agent-surfaces.ts";
 
 test("the Kiro flavor inherits its session model under the frozen policy", () => {
   expect(legacyAgentModelPolicy({ flavor: "kiro", cap: null })({
@@ -73,19 +73,14 @@ const surfaceAgent = (): CoreAgent => ({ slug: agent("aidlc-example-agent"),
   model: { kind: "tier", tier: "balanced" }, tools: { disallowed: [] }, maxTurns: null,
   persona: { text: "Persona", headings: [] }, additions: { afterPreflight: [], endOfBody: [] } });
 
-test("omitted Markdown models preserve removal and appended lines without consulting host model policy", () => {
-  expect(legacyMarkdownAgentSurface({ flavor: "claude", cap: null })({
-    agent: surfaceAgent(), content: "---\nname: Example\ntier: balanced\nmodel: old\ndisallowedTools: Task\n---\nPersona\n",
-    frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-      removeKeys: ["disallowedTools"], afterProjectionLines: ["tools: Read"] },
-  })).toEqual({ ok: true, value: "---\nname: Example\ntools: Read\n---\nPersona\n" });
+test("omitted document models return before tier policy admission", () => {
+  expect(legacyAgentDocumentModel({ flavor: "claude", cap: null })({
+    agent: surfaceAgent(), model: "omitted",
+  })).toEqual({ ok: true, value: {} });
 });
 
-test("a frozen Markdown formatting failure remains a refusal naming the actual agent", () => {
-  expect(legacyMarkdownAgentSurface({ flavor: "claude", cap: null })({
-    agent: surfaceAgent(), content: "No frontmatter",
-    frontmatter: { model: "omitted", effortKey: "effort", modelQuoting: "plain", insertBeforeKeys: [],
-      removeKeys: [], afterProjectionLines: [] },
-  })).toEqual({ ok: false, refusal: { kind: "render-failed", concept: "agent", name: "aidlc-example-agent",
-    reason: "agent markdown has no closed frontmatter block" } });
+test("projected document models use the declared tier flavor rather than host identity", () => {
+  expect(legacyAgentDocumentModel({ flavor: "kiro", cap: null })({
+    agent: surfaceAgent(), model: "projected",
+  })).toEqual({ ok: true, value: {} });
 });

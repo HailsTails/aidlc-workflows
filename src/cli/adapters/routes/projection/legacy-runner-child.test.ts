@@ -2,7 +2,13 @@ import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../../../kernel/result.ts";
 import { createInMemoryFileSystem } from "../../../../kernel/fixtures/file-system.fake.ts";
 import type { FileSystem } from "../../../../kernel/file-system-port.ts";
-import { runChild, runChildWithCapability } from "./legacy-runner-child.ts";
+import { runChild as runChildAdapter, runChildWithCapability as runCapabilityAdapter } from "./legacy-runner-child.ts";
+import { renderFrozenCommandSet } from "../../../../projection/core-root.ts";
+
+const runChild = (request: Omit<Parameters<typeof runChildAdapter>[0], "render">) =>
+  runChildAdapter({ ...request, render: renderFrozenCommandSet });
+const runChildWithCapability = (request: Omit<Parameters<typeof runCapabilityAdapter>[0], "render">) =>
+  runCapabilityAdapter({ ...request, render: renderFrozenCommandSet });
 
 const plan = (): Parameters<typeof runChild>[0]["plan"] => ({
   duplicateNativeCommand: () => null,

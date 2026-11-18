@@ -9,7 +9,7 @@ import type { PackagePayload, PackagePayloadRequest } from "./use-cases.ts";
 import type { PackagingRefusal } from "../domain/artifact.ts";
 import type { Payload, PayloadFile } from "../domain/payload.ts";
 import type { KernelRefusal } from "../../kernel/values.ts";
-import { orderedPayloadFiles } from "../domain/payload-files.ts";
+import { completePayload } from "../domain/payload-completion.ts";
 
 type Dependencies = {
   readonly bundler: ToolBundler;
@@ -60,26 +60,14 @@ const missingEntries = (request: {
     reason: "The bundler returned no file for this entry point.",
   }));
 
-const declaredFiles = (releasePayload: Payload): readonly PackagingRefusal[] => releasePayload.files
-  .filter((file) => !releasePayload.descriptor.layout.rootIntegrations.some((root) =>
-    root.path === file.path) && !releasePayload.descriptor.layout.managedDirectories.some((directory) =>
-    file.path.startsWith(`${directory.path}/`)))
-  .map((file) => file.origin.kind === "projected"
-    ? { kind: "path-undeclared", path: file.path, origin: file.origin.origin }
-    : { kind: "entry-not-bundled", entry: file.path,
-      reason: "Declare the generated file's directory in the distribution layout." });
-
 const assemble = (request: {
   readonly payload: Payload;
   readonly dependencies: Dependencies;
 }): ReturnType<PackagePayload["package"]> => {
   const metadataFiles = request.dependencies.metadata.files(request.payload);
   if (!metadataFiles.ok) return Promise.resolve(metadataFiles);
-  const ordered = orderedPayloadFiles([...request.payload.files, ...metadataFiles.value]);
-  if (!ordered.ok) return Promise.resolve(ordered);
-  const releasePayload = { ...request.payload, files: ordered.value };
-  const issues = declaredFiles(releasePayload);
-  return Promise.resolve(issues.length > 0 ? refused(issues) : accepted(releasePayload));
+  return Promise.resolve(completePayload({ ...request.payload,
+    files: [...request.payload.files, ...metadataFiles.value] }));
 };
 
 type PreparedPayloadProjection = { readonly projection: Projection; readonly layout: DistributionLayout };

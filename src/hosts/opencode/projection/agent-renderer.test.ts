@@ -8,6 +8,7 @@ import type { Agent } from "../../../workflow-definition/domain/agent.ts";
 import { agentSlug } from "../../../workflow-definition/domain/identities.ts";
 import { methodSourcePath } from "../../../workflow-definition/domain/method-source.ts";
 import { openCodeAgents } from "./agent-renderer.ts";
+import type { AgentDocumentSurface } from "../../../projection/application/ports/agents.ts";
 
 const agent: Agent = {
   slug: accept(agentSlug("aidlc-example-agent")),
@@ -18,6 +19,28 @@ const agent: Agent = {
   persona: { text: "Budget `maxTurns: 12`", headings: [] },
   additions: { afterPreflight: [], endOfBody: [] },
 };
+
+const preparedDocument = { agent: agent.slug,
+  content: "---\nname: Example\ntier: balanced\ndisallowedTools: Task\nmaxTurns: 12\n---\nPersona\n",
+  model: {} };
+
+test("the registered callbacks carry native role/cap/delegation and independent companion meaning", () => {
+  const documents = mock<AgentDocumentSurface>().mockReturnValue(accepted("Prepared\n"));
+  openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent, knowledge: [] });
+  expect(documents.mock.calls[0]?.[0].render(preparedDocument)).toEqual(accepted(
+    "---\nname: Example\nmode: subagent\nsteps: 12\npermission:\n  task: deny\n---\nPersona\n"));
+  expect(documents.mock.calls[1]?.[0].render(preparedDocument)).toEqual(accepted(
+    "---\nname: Example\ndisallowedTools: Task\nmaxTurns: 12\n---\nPersona\n"));
+});
+
+test("the actual uncapped and mixed-denial callbacks retain their existing native admission", () => {
+  const documents = mock<AgentDocumentSurface>().mockReturnValue(accepted("Prepared\n"));
+  openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({
+    agent: { ...agent, maxTurns: null, tools: { disallowed: [] } }, knowledge: [],
+  });
+  expect(documents.mock.calls[0]?.[0].render(preparedDocument)).toEqual(accepted(
+    "---\nname: Example\nmode: subagent\n---\nPersona\n"));
+});
 
 test("native and inline personas request distinct frontmatters and retain exact separate bytes", () => {
   const documents = mock().mockReturnValueOnce(accepted("---\nmode: subagent\nsteps: 12\npermission:\n  task: deny\n---\n" +
@@ -40,13 +63,9 @@ test("native and inline personas request distinct frontmatters and retain exact 
         "aidlc/active-memory/project.md aidlc/active-memory/other.md\n" } },
   ]));
   expect(documents).toHaveBeenNthCalledWith(1, { agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-    frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
-      removeKeys: ["disallowedTools", "maxTurns"], afterProjectionLines: [
-        "mode: subagent", "steps: 12", "permission:", "  task: deny",
-      ] } });
+    model: "projected", render: expect.any(Function) });
   expect(documents).toHaveBeenNthCalledWith(2, { agent, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-    frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
-      removeKeys: [], afterProjectionLines: [] } });
+    model: "projected", render: expect.any(Function) });
   expect(documents).toHaveBeenCalledTimes(2);
 });
 
@@ -56,8 +75,7 @@ test("the registered factory keeps optional cap and denial lines absent", () => 
   expect(openCodeAgents({ ...SCRATCH_AGENT_INPUTS, documents }).renderAgent({ agent: uncapped, knowledge: [] }).ok)
     .toBe(true);
   expect(documents).toHaveBeenNthCalledWith(1, { agent: uncapped, text: "authored-file", knowledge: "absorbed", reading: { kind: "whole-files" },
-    frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain", insertBeforeKeys: [],
-      removeKeys: ["disallowedTools", "maxTurns"], afterProjectionLines: ["mode: subagent"] } });
+    model: "projected", render: expect.any(Function) });
 });
 
 test("the registered factory refuses unsupported denials before any document call", () => {
@@ -94,7 +112,5 @@ test("the native factory retains mixed Task denial translation", () => {
     agent: mixed, knowledge: [],
   }).ok).toBe(true);
   expect(documents).toHaveBeenNthCalledWith(1, { agent: mixed, text: "authored-file", knowledge: "absorbed",
-    reading: { kind: "whole-files" }, frontmatter: { model: "projected", effortKey: "variant", modelQuoting: "plain",
-      insertBeforeKeys: [], removeKeys: ["disallowedTools", "maxTurns"],
-      afterProjectionLines: ["mode: subagent", "steps: 12", "permission:", "  task: deny"] } });
+    reading: { kind: "whole-files" }, model: "projected", render: expect.any(Function) });
 });

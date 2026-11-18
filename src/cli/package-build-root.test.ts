@@ -1,3 +1,4 @@
+import { commonHarnessRecord } from "../projection/domain/harness-record.ts";
 import { SCRATCH_HOST, SCRATCH_TOKENS, SCRATCH_HOST_DATA, scratchAgentRenderer, scratchCommandPlacement,
   scratchSkillRenderer, scratchSettingsRenderer, scratchDocumentRenderer }
   from "../projection/fixtures/scratch-host.fixture.ts";
@@ -101,6 +102,23 @@ test("release entrypoint listing uses the published neutral-source refusal", asy
   expect(await root.buildReleaseArchives({ ...releaseRequest, stampedAs: buildVersionFixture() })).toEqual(refused([{
     kind: "neutral-source-unreadable", source: source("hooks"), reason: "permission-denied",
   }]));
+});
+
+test("release entrypoint refusal wins before host capture without ordinary-build exception conversion", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const listFolder = mock<Platform["fileSystem"]["listFolder"]>().mockResolvedValueOnce(refused({
+    kind: "unreadable", code: "permission-denied" })).mockResolvedValueOnce(accepted([]));
+  const root = createPackageBuildRoot({ hosts: [distributionMembers()],
+    platform: { fileSystem: { ...fileSystem, listFolder }, processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  spyOn(root, "loadPlugins").mockResolvedValue(accepted({ method: methodSliceFixture, plugins: [] }));
+  const readHostSources = spyOn(root, "readHostSources");
+  const buildPayload = spyOn(root, "buildPayload");
+  expect(await root.buildReleaseArchives({ ...releaseRequest, stampedAs: buildVersionFixture() })).toEqual(refused([
+    { kind: "neutral-source-unreadable", source: source("hooks"), reason: "permission-denied" },
+  ]));
+  expect(readHostSources).not.toHaveBeenCalled();
+  expect(buildPayload).not.toHaveBeenCalled();
 });
 
 test.each([null, "balanced"] as const)("release root pairs each copy payload with native under repository cap %s", async (modelCap) => {
@@ -585,7 +603,7 @@ test("settings remain required by the shared snapshot after the legacy copy row 
 const distributionMembers = (): HostModule => ({
   host: SCRATCH_HOST, distribution: () => accepted(scratchHostDistributionFixture), routes: () => [],
   projection: {
-    tokens: SCRATCH_TOKENS, renderData: () => SCRATCH_HOST_DATA, placements: [], tierFlavor: "claude",
+    tokens: SCRATCH_TOKENS, renderData: () => SCRATCH_HOST_DATA, record: commonHarnessRecord, placements: [], tierFlavor: "claude",
     agents: { inputs: [], render: scratchAgentRenderer }, commands: scratchCommandPlacement,
     skills: { inputs: [], render: scratchSkillRenderer },
     settings: { inputs: [], render: scratchSettingsRenderer },
@@ -710,17 +728,18 @@ test("the full host compiles once per projection and reuses raw neutral and runt
   const project = mock(loaded.project);
   const request = fullHostRequest({ ...loaded, project });
   const first = accept(await root.projectHost(request));
+  expect(first).toEqual({ host: SCRATCH_HOST, files: expect.any(Array), findings: [] });
   const reads = readTree.mock.calls.length;
   accept(await fileSystem.writeFile({ file: new URL("file:///core/memory/templates/.gitkeep"),
     content: { kind: "text", text: "Changed companion after capture" } }));
   accept(await fileSystem.writeFile({ file: new URL("file:///core/aidlc-common/conductor.md"),
     content: { kind: "text", text: "Changed after capture" } }));
   const second = accept(await root.projectHost(request));
-  expect(first.projection.files).toContainEqual({ path: path(".scratch/conductor.md"),
+  expect(first.files).toContainEqual({ path: path(".scratch/conductor.md"),
     content: { kind: "text", text: "Raw {{INVOKE}}" }, mode: "regular",
     origin: { kind: "neutral", source: source("aidlc-common/conductor.md") } });
-  expect(second.projection.files).toEqual(first.projection.files);
-  expect(first.projection.files).toContainEqual({ path: path("aidlc/spaces/default/memory/templates/.gitkeep"),
+  expect(second.files).toEqual(first.files);
+  expect(first.files).toContainEqual({ path: path("aidlc/spaces/default/memory/templates/.gitkeep"),
     content: { kind: "bytes", bytes: new TextEncoder().encode("Raw {{INVOKE}} companion") },
     mode: "regular",
     origin: { kind: "memory-companion", copy: "space", source: source("memory/templates/.gitkeep") } });
@@ -729,7 +748,7 @@ test("the full host compiles once per projection and reuses raw neutral and runt
     name: "scratch", directory: ".scratch", memoryRoot: "aidlc/spaces/default/memory",
   });
   expect(readTree).toHaveBeenCalledTimes(reads);
-  expect(first.projection.files).toContainEqual({ path: path("aidlc/active-space"),
+  expect(first.files).toContainEqual({ path: path("aidlc/active-space"),
     content: { kind: "text", text: "default\n" }, mode: "regular",
     origin: { kind: "active-space" } });
 });
@@ -742,6 +761,21 @@ test("the full host refuses an unknown distribution before compiling or reading 
   const project = mock(loaded.project);
   expect(await root.projectHost(fullHostRequest({ ...loaded, project })))
     .toEqual(refused([{ kind: "unknown-harness", harness: "scratch" }]));
+  expect(project).not.toHaveBeenCalled();
+});
+
+test("distribution refusal precedes Projection's missing-placement decision and any compiler call", async () => {
+  const fileSystem = createInMemoryFileSystem({ files: fullHostFiles() });
+  const distribution: HostDistributionReader = () => refused({ kind: "invalid-path", base: "project", raw: "../outside" });
+  const root = createPackageBuildRoot({ hosts: [{ ...withProjection({ placements: [
+    { source: "missing.md", destination: ".scratch/missing.md" },
+  ] }), distribution }], platform: { fileSystem, processRunner, yaml, digester, terminal },
+    outliner, sources, runnerFrames });
+  const loaded = accept(await root.loadCore());
+  const project = mock(loaded.project);
+  expect(await root.projectHost(fullHostRequest({ ...loaded, project }))).toEqual(refused([
+    { kind: "invalid-path", base: "project", raw: "../outside" },
+  ]));
   expect(project).not.toHaveBeenCalled();
 });
 
@@ -814,7 +848,7 @@ test("copy and native payloads share captured history while Projection keeps the
   const core = accept(await root.loadCore());
   const request = fullHostRequest(core);
   const projected = accept(await root.projectHost(request));
-  expect(projected.projection.files).toContainEqual(expect.objectContaining({
+  expect(projected.files).toContainEqual(expect.objectContaining({
     path: path(".scratch/tools/aidlc-version.ts"),
     content: { kind: "text", text: 'export const AIDLC_VERSION = "fixture";' } }));
   const copy = accept(await root.buildPayload({ ...request, copy: null }));
@@ -927,6 +961,35 @@ test("bulk plugin builds refuse before emission when no plugin Method was loaded
   expect(root.buildPlugins({ plugins: [], hosts: [], output: new URL("file:///H:/output/"), boundary: new URL("file:///H:/output/") }))
     .toEqual(refused([{ kind: "render-failed", concept: "host-data", name: "plugin-build",
       reason: "Load the plugin Method before building its projections." }]));
+});
+
+test("the real root binds its loaded plugin session to the injected projector and terminal adapter", async () => {
+  const fileSystem = createInMemoryFileSystem({ files });
+  const recorded = createRecordingPluginProjector({ catalogues: [".scratch-plugin/marketplace.json"] });
+  const terminal = createRecordingTerminal();
+  const root = createRoot({ hosts: [distributionMembers()],
+    platform: { fileSystem, processRunner, yaml, digester, terminal }, outliner, sources, runnerFrames,
+    workingDirectory: new URL("file:///working/"), plugins: recorded });
+  const core = accept(await root.loadCore());
+  accept(await root.loadPlugins({ core }));
+  const plugin = { plugin: accept(pluginId("test-pro")), directory: "test-pro" };
+  expect(root.buildPlugins({ plugins: [plugin], hosts: [SCRATCH_HOST],
+    output: new URL("file:///output/"), boundary: new URL("file:///boundary/") })).toEqual(accepted({
+      emitted: [new URL("file:///output/plugins/test-pro/scratch/")],
+      catalogues: [".scratch-plugin/marketplace.json"],
+    }));
+  expect(recorded.projections()).toEqual([{ plugin: plugin.plugin,
+    pluginFolder: new URL("file:///plugins/test-pro/"), host: SCRATCH_HOST,
+    target: scratchHostDistributionFixture.plugin, output: new URL("file:///output/plugins/test-pro/scratch/"),
+    boundary: new URL("file:///boundary/"), reviewerAgents: new Set(),
+  }]);
+  expect(recorded.catalogues()).toEqual([{ output: new URL("file:///output/plugins/"),
+    targets: [{ host: SCRATCH_HOST, target: scratchHostDistributionFixture.plugin }] }]);
+  expect(terminal.output()).toEqual([
+    "[plugin:test-pro] emitted dist/plugins/test-pro/scratch/\n",
+    "[plugins] emitted dist/plugins/.scratch-plugin/marketplace.json\n",
+  ]);
+  expect(terminal.errors()).toEqual([]);
 });
 
 test("bulk plugin builds preserve the distribution reader's KernelRefusal before emitter IO", async () => {
