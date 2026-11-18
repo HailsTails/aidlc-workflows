@@ -1,0 +1,36 @@
+import { MONOLITH_FILES } from "../../context-map.ts";
+import type { MonolithRecordFiles, RecordLocations } from "./ratchet-records.ts";
+
+export const UPSTREAM_PIN = "66d08a909";
+
+export const LIB_DECLARATIONS = "tests/fixtures/aidlc-lib-declarations.txt";
+
+export const MONOLITH_TEST = "tests/unit/t-aidlc-lib-only-shrinks.test.ts";
+
+const CORE_TOOLS = "core/tools/";
+
+const recordName = (file: string): string => {
+  const stem = file.replace(/\.ts$/, "");
+  return stem.startsWith(CORE_TOOLS) ? stem.slice(CORE_TOOLS.length) : stem.replaceAll("/", "-");
+};
+
+export const EMIT_FILES: readonly string[] = [
+  "harness/copilot/emit.ts",
+  "harness/copilot/manifest.ts",
+];
+
+export const MEMBER_TYPES: Readonly<Record<string, readonly string[]>> = {};
+
+const declarationsRecordOf = (file: string): MonolithRecordFiles => ({
+  file,
+  declarations: file.endsWith("/aidlc-lib.ts")
+    ? LIB_DECLARATIONS
+    : `tests/ratchets/${recordName(file)}-declarations.txt`,
+});
+
+export const RECORD_LOCATIONS: RecordLocations = {
+  boundary: "lint/boundary-baseline.json",
+  monolithLines: "tests/ratchets/monolith-lines.json",
+  monoliths: [...MONOLITH_FILES, ...EMIT_FILES].map(declarationsRecordOf),
+  upstream: UPSTREAM_PIN,
+};

@@ -1,0 +1,136 @@
+import type { NativeCommandRoutes } from "../../projection/domain/native-command.ts";
+import type { Projection } from "../../projection/domain/projection.ts";
+import type { DistributionLayout } from "../domain/payload.ts";
+import { nativeLayoutFiles } from "./native-layout.ts";
+import { accepted, refused, type Result } from "../../kernel/result.ts";
+import type { DistributionLayouts, VersionStamp, NativeReleases } from "./boundary-ports.ts";
+import type { ContentHasher, ReleaseHistorySource, ToolBundler, PayloadMetadata } from "./ports.ts";
+import type { PackagePayload, PackagePayloadRequest } from "./use-cases.ts";
+import type { PackagingRefusal } from "../domain/artifact.ts";
+import type { Payload, PayloadFile } from "../domain/payload.ts";
+import type { KernelRefusal } from "../../kernel/values.ts";
+import { orderedPayloadFiles } from "../domain/payload-files.ts";
+
+type Dependencies = {
+  readonly bundler: ToolBundler;
+  readonly routes: NativeCommandRoutes;
+  readonly releases: NativeReleases;
+  readonly hasher: ContentHasher;
+  readonly layouts: DistributionLayouts;
+  readonly history: ReleaseHistorySource;
+  readonly metadata: PayloadMetadata;
+  readonly stamp: VersionStamp;
+};
+
+const projectionFiles = (request: {
+  readonly package: PackagePayloadRequest;
+  readonly hasher: ContentHasher;
+}): readonly Result<PayloadFile, KernelRefusal>[] => request.package.projection.files
+  .map((file) => {
+    const hash = request.hasher.hash(file.content);
+    return hash.ok ? accepted({ path: file.path, content: file.content, mode: file.mode,
+      hash: hash.value, origin: { kind: "projected" as const, origin: file.origin } }) : hash;
+  });
+
+const stampedVersionModule = (request: {
+  readonly files: readonly PayloadFile[];
+  readonly stamp: VersionStamp;
+  readonly hasher: ContentHasher;
+}): Result<readonly PayloadFile[], PackagingRefusal | KernelRefusal> => {
+  const modules = request.files.filter((file) => file.origin.kind === "projected"
+    && file.origin.origin.kind === "runtime-data" && file.origin.origin.name === "version-module");
+  const [versionModule] = modules;
+  if (!versionModule || modules.length !== 1) return refused({ kind: "version-module-count", found: modules.length });
+  const stamped = request.stamp(versionModule.content);
+  if (!stamped.ok) return stamped;
+  const hash = request.hasher.hash(stamped.value);
+  if (!hash.ok) return hash;
+  return accepted(request.files.map((file) => file === versionModule
+    ? { ...file, content: stamped.value, hash: hash.value } : file));
+};
+
+const missingEntries = (request: {
+  readonly package: PackagePayloadRequest;
+  readonly files: readonly PayloadFile[];
+}): readonly PackagingRefusal[] => request.package.runtime
+  .filter((entry) => !request.files.some((file) => file.origin.kind === "bundled-runtime"
+    && file.origin.entry.name === entry.name
+    && file.origin.entry.compositionRoot === entry.compositionRoot))
+  .map((entry) => ({ kind: "entry-not-bundled", entry: entry.name,
+    reason: "The bundler returned no file for this entry point.",
+  }));
+
+const declaredFiles = (releasePayload: Payload): readonly PackagingRefusal[] => releasePayload.files
+  .filter((file) => !releasePayload.descriptor.layout.rootIntegrations.some((root) =>
+    root.path === file.path) && !releasePayload.descriptor.layout.managedDirectories.some((directory) =>
+    file.path.startsWith(`${directory.path}/`)))
+  .map((file) => file.origin.kind === "projected"
+    ? { kind: "path-undeclared", path: file.path, origin: file.origin.origin }
+    : { kind: "entry-not-bundled", entry: file.path,
+      reason: "Declare the generated file's directory in the distribution layout." });
+
+const assemble = (request: {
+  readonly payload: Payload;
+  readonly dependencies: Dependencies;
+}): ReturnType<PackagePayload["package"]> => {
+  const metadataFiles = request.dependencies.metadata.files(request.payload);
+  if (!metadataFiles.ok) return Promise.resolve(metadataFiles);
+  const ordered = orderedPayloadFiles([...request.payload.files, ...metadataFiles.value]);
+  if (!ordered.ok) return Promise.resolve(ordered);
+  const releasePayload = { ...request.payload, files: ordered.value };
+  const issues = declaredFiles(releasePayload);
+  return Promise.resolve(issues.length > 0 ? refused(issues) : accepted(releasePayload));
+};
+
+type PreparedPayloadProjection = { readonly projection: Projection; readonly layout: DistributionLayout };
+
+const preparePayloadProjection = (request: {
+  readonly package: PackagePayloadRequest; readonly layout: DistributionLayout;
+  readonly routes: NativeCommandRoutes; readonly releases: NativeReleases;
+}): Result<PreparedPayloadProjection, readonly PackagingRefusal[]> => {
+  if (request.package.channel === "copy") return accepted({ projection: request.package.projection, layout: request.layout });
+  const release = request.releases.release(request.package.projection.host.distribution);
+  if (!release.ok) return refused([release.refusal]);
+  const files = nativeLayoutFiles({ files: request.package.projection.files, host: request.package.projection.host,
+    release: release.value, routes: request.routes });
+  return files.ok ? accepted({ projection: { ...request.package.projection, files: files.value },
+    layout: { ...request.layout, rootIntegrations: request.layout.rootIntegrations
+      .filter((root) => !release.value.copyOnly.includes(root.path)) },
+  }) : files;
+};
+
+export const createPackagePayload = (dependencies: Dependencies): PackagePayload => ({
+  async package(request) {
+    const host = request.projection.host;
+    const layout = dependencies.layouts.layout(host.distribution);
+    if (!layout.ok) return refused([layout.refusal]);
+    const prepared = preparePayloadProjection({ package: request, layout: layout.value,
+      routes: dependencies.routes, releases: dependencies.releases });
+    if (!prepared.ok) return prepared;
+    const preparedRequest = { ...request, projection: prepared.value.projection };
+    const history = await dependencies.history.history(host.distribution);
+    if (!history.ok) return refused([history.refusal]);
+    const bundled = await dependencies.bundler.bundle({ entries: request.runtime,
+      channel: request.channel, host });
+    if (!bundled.ok) return refused([bundled.refusal]);
+    const missing = missingEntries({ package: request, files: bundled.value });
+    if (missing.length > 0) return refused(missing);
+    const readings = [
+      ...projectionFiles({ package: preparedRequest, hasher: dependencies.hasher }),
+      ...bundled.value.map((file) => {
+        const hash = dependencies.hasher.hash(file.content);
+        return hash.ok ? accepted({ ...file, hash: hash.value }) : hash;
+      }),
+
+    ];
+    const failures = readings.flatMap((reading) => reading.ok ? [] : [reading.refusal]);
+    if (failures.length > 0) return refused(failures);
+    const projected = stampedVersionModule({ stamp: dependencies.stamp, hasher: dependencies.hasher,
+      files: readings.flatMap((reading) => reading.ok ? [reading.value] : []) });
+    if (!projected.ok) return refused([projected.refusal]);
+    const files = projected.value;
+    return assemble({ dependencies, payload: { version: request.version,
+      channel: request.channel, descriptor: { host, layout: prepared.value.layout,
+        history: history.value }, files } });
+  },
+});

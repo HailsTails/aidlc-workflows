@@ -76,6 +76,29 @@ function allocatedCopyBytes(path: string, sourceRoot: string): number {
   return 4096 + readdirSync(path).reduce((sum, entry) => sum + allocatedCopyBytes(join(path, entry), sourceRoot), 0);
 }
 
+function validatedTemporaryDirectory(configured: string): string {
+  if (!isAbsolute(configured)) throw new Error("must be absolute");
+  const root = realpathSync(configured);
+  if (!lstatSync(root).isDirectory()) throw new Error("must be a directory");
+  for (let parent = root; ; parent = dirname(parent)) {
+    if (existsSync(join(parent, ".git"))) throw new Error("must be outside Git markers");
+    if (dirname(parent) === parent) break;
+  }
+  return root;
+}
+
+function explicitTemporaryRoot(): string | undefined {
+  const configured = process.env.AIDLC_TEST_TEMP_ROOT;
+  if (configured === undefined) return undefined;
+  try {
+    const root = validatedTemporaryDirectory(configured);
+    const current = realpathSync(tmpdir());
+    return insideRoot(root, current) ? current : root;
+  } catch (error) {
+    throw new Error(`invalid AIDLC_TEST_TEMP_ROOT ${configured}: ${error}`);
+  }
+}
+
 let shortRoot: string | undefined;
 
 /**
@@ -86,6 +109,8 @@ let shortRoot: string | undefined;
  * deep for AI-DLC's records.
  */
 export function shortTemporaryRoot(): string {
+  const explicit = explicitTemporaryRoot();
+  if (explicit !== undefined) return explicit;
   if (shortRoot !== undefined) return shortRoot;
   const user = tmpdir();
   shortRoot = user;
@@ -114,6 +139,8 @@ export function shortTemporaryRoot(): string {
 // sandbox refuses AI-DLC's writes under %SystemRoot%, where no person's
 // project lives, so falling back there would only fail later.
 function defaultTemporaryRoots(): string[] {
+  const explicit = explicitTemporaryRoot();
+  if (explicit !== undefined) return [explicit];
   if (process.platform !== "win32") return [tmpdir(), "/var/tmp"];
   if (process.env.AIDLC_CODEX_EXEC_LIVE === "1") return [tmpdir()];
   return [shortTemporaryRoot(), tmpdir(), join(process.env.SystemRoot || "C:\\Windows", "Temp")];
@@ -122,7 +149,9 @@ function defaultTemporaryRoots(): string[] {
 /** Some applications discover .git markers even when Git rejects the marker.
  * Avoid both valid repositories and incomplete markers without modifying them. */
 export async function createE2eTemporaryRoot(candidates?: string[]): Promise<string> {
-  for (const candidate of new Set(candidates ?? defaultTemporaryRoots())) {
+  const explicit = explicitTemporaryRoot();
+  const roots = explicit === undefined ? candidates ?? defaultTemporaryRoots() : [explicit];
+  for (const candidate of new Set(roots)) {
     let base: string;
     try {
       base = await realpath(candidate);
@@ -136,7 +165,7 @@ export async function createE2eTemporaryRoot(candidates?: string[]): Promise<str
     }
     if (insideRepository) continue;
     try {
-      return await mkdtemp(join(base, "aidlc-e2e-fixtures-"));
+      return await mkdtemp(join(base, "f-"));
     } catch (error) {
       if (!["EACCES", "EPERM", "ENOENT"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
     }
@@ -244,6 +273,15 @@ export function normalizeE2eExternalPaths(
   return env;
 }
 
+async function workerSnapshotRoot(runDir: string): Promise<string> {
+  const explicit = explicitTemporaryRoot();
+  if (explicit !== undefined) return mkdtemp(join(explicit, "ae-"));
+  if (process.platform === "win32") {
+    return mkdtemp(join(process.env.SystemRoot || "C:\\Windows", "Temp", "ae-"));
+  }
+  return join(runDir, "e2e-workers");
+}
+
 /**
  * Freeze authored bytes once, including uncommitted changes, then give each
  * worker its own checkout and generated trees. Only dependencies and Git
@@ -255,9 +293,7 @@ export async function prepareE2eWorkers(
   if (!Number.isSafeInteger(count) || count < 1) throw new Error("e2e worker count must be positive");
   // Windows fixture consumers do not all support extended-length paths. A deep
   // report directory must not determine the checkout path they have to copy.
-  const root = process.platform === "win32"
-    ? await mkdtemp(join(process.env.SystemRoot || "C:\\Windows", "Temp", "ae-"))
-    : join(runDir, "e2e-workers");
+  const root = await workerSnapshotRoot(runDir);
   const snapshot = join(root, "snapshot");
   await mkdir(root, { recursive: true });
   const sourceRevision = (await git(["rev-parse", "HEAD"], source)).trim();
@@ -351,19 +387,27 @@ export async function prepareE2eWorkers(
   }
 }
 
+function assertNativeRootBoundary(path: string, explicit: string | undefined): void {
+  if (explicit !== undefined && !insideRoot(explicit, path)) {
+    throw new Error("existing native root is outside AIDLC_TEST_TEMP_ROOT");
+  }
+}
+
 /** Artifact ancestors may be shared; native launch evidence must not be. */
 export function createE2eNativeRoot(artifactDir: string): string {
+  const explicit = explicitTemporaryRoot();
   const scope = resolve(artifactDir);
   const existing = nativeRoots.get(scope);
   if (existing) {
+    assertNativeRootBoundary(existing, explicit);
     ensurePrivateRoot(existing, "explicit");
     return existing;
   }
   const failures: unknown[] = [];
-  for (const base of new Set([
+  for (const base of new Set(explicit === undefined ? [
     tmpdir(),
     process.platform === "win32" ? join(process.env.SystemRoot || "C:\\Windows", "Temp") : "/var/tmp",
-  ])) {
+  ] : [explicit])) {
     let parent: string | undefined;
     try {
       parent = mkdtempSync(join(base, "aidlc-tui-root-"));

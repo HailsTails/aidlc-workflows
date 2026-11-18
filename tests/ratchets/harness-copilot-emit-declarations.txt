@@ -1,0 +1,7 @@
+COMPOUND_HOOK_TIMEOUT_SECONDS
+HOOK_TIMEOUT_SECONDS
+HOOK_WIRING
+authoredInputs
+default
+emit
+emitHooksJson

@@ -2650,11 +2650,9 @@ describe("t230 native review-brief dispatch", () => {
       // names the agent's step for it, here one fresh `next`, and each rules
       // part then names its own `continue`.
       expect(feedback.reason).toStartWith("AI-DLC is carrying on");
-      const skillPath = [join(harnessDir, "skills", "aidlc", "SKILL.md"), join(".agents", "skills", "aidlc", "SKILL.md"), join(".github", "skills", "aidlc", "SKILL.md")]
-        .map((rel) => join(project, rel))
-        .find((path) => existsSync(path));
-      expect(skillPath, harness.name).toBeDefined();
-      const recovery = /run one fresh `(aidlc engine orchestrate next)`/.exec(readFileSync(skillPath!, "utf-8"))?.[1];
+      const skillPath = join(project, harness.manifest.orchestratorSkillPath);
+      expect(existsSync(skillPath), harness.name).toBe(true);
+      const recovery = /run one fresh `(aidlc engine orchestrate next)`/.exec(readFileSync(skillPath, "utf-8"))?.[1];
       expect(recovery, harness.name).toBeDefined();
       let command = recovery!;
       let kind = "";
@@ -3047,7 +3045,7 @@ describe("t230 dispatcher route completeness", () => {
       ok: false,
       code: 2,
       status: "usage",
-      message: "unknown command or noun 'unknown-command'; try 'aidlc --help'",
+      message: "unknown command or noun 'unknown-command'; try 'bun .claude/tools/aidlc.ts --help'",
     });
   });
 
@@ -3568,18 +3566,17 @@ describe("t230 dispatcher help and errors", () => {
     const start = lines.indexOf("HARNESSES");
     expect(start, "config help has a HARNESSES list").toBeGreaterThan(0);
     const rows = lines.slice(start + 1, lines.indexOf("", start)).map((line) => line.trim().split(/\s{2,}/));
-    const ids = readdirSync(join(REPO_ROOT, "harness"))
-      .filter((name) => existsSync(join(REPO_ROOT, "harness", name, "manifest.ts")))
-      .sort();
     const expected: string[][] = [];
-    for (const id of ids) {
-      const manifest = (await import(join(REPO_ROOT, "harness", id, "manifest.ts"))).default as {
+    for (const harness of [...HARNESS_MATRIX].sort((left, right) => left.name.localeCompare(right.name))) {
+      const listing = JSON.parse(readFileSync(join(harness.engineRoot, "tools", "data",
+        "aidlc-projection.json"), "utf8")) as {
         productName: string;
         choiceName?: string;
         choiceNote?: string;
       };
-      const words = manifest.choiceName ?? manifest.productName;
-      expected.push([typedHarnessName(id), manifest.choiceNote ? `${words} (${manifest.choiceNote})` : words]);
+      const words = listing.choiceName ?? listing.productName;
+      expected.push([typedHarnessName(harness.name),
+        listing.choiceNote ? `${words} (${listing.choiceNote})` : words]);
     }
     expect(rows).toEqual(expected);
   }, NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
@@ -3631,7 +3628,7 @@ describe("t230 dispatcher help and errors", () => {
       type: "help",
       scope: "system",
     });
-    expect(text).toContain("aidlc system <noun> <verb> [args]");
+    expect(text).toContain("bun .claude/tools/aidlc.ts system <noun> <verb> [args]");
     expect(text).toContain(
       "Operations on this user's aidlc installation; never system-wide (root only with --allow-root):",
     );
@@ -3656,10 +3653,10 @@ describe("t230 dispatcher help and errors", () => {
     expect(expanded).toStartWith(defaultHelp.trimEnd());
     expect(expanded).toContain("Hidden namespaces:");
     expect(expanded).toContain(
-      "engine  Generated harness surfaces only; not for human scripts. Run: aidlc engine --help",
+      "engine  Generated harness surfaces only; not for human scripts. Run: bun .claude/tools/aidlc.ts engine --help",
     );
     expect(expanded).toContain(
-      "system  This user's installation; unsupported interface. Run: aidlc system --help",
+      "system  This user's installation; unsupported interface. Run: bun .claude/tools/aidlc.ts system --help",
     );
     expect(defaultHelp).not.toContain("Hidden namespaces:");
     expect(defaultHelp).not.toContain("aidlc engine --help");
@@ -3712,7 +3709,7 @@ describe("t230 dispatcher help and errors", () => {
     expect(res.exitCode).toBe(2);
     expect(res.stdout.toString("utf-8")).toBe("");
     expect(res.stderr.toString("utf-8")).toBe(
-      "aidlc: unknown verb 'bogus' for engine noun 'state'; try 'aidlc engine --help'\n",
+      "aidlc: unknown verb 'bogus' for engine noun 'state'; try 'bun .claude/tools/aidlc.ts engine --help'\n",
     );
   });
 
@@ -3720,19 +3717,20 @@ describe("t230 dispatcher help and errors", () => {
     const res = viaDispatcher(["system", "versions"], REPO_ROOT);
     expect(res.exitCode).toBe(2);
     expect(res.stderr.toString("utf-8")).toBe(
-      "aidlc: missing verb for system noun 'versions'; try 'aidlc system --help'\n",
+      "aidlc: missing verb for system noun 'versions'; try 'bun .claude/tools/aidlc.ts system --help'\n",
     );
   });
 
   test("plugin help and invalid plugin verbs use the shared noun grammar", () => {
     const help = viaDispatcher(["engine", "plugin", "help"], REPO_ROOT);
     expect(help.exitCode).toBe(0);
-    expect(help.stdout.toString("utf-8")).toContain("plugin: select [names]");
+    expect(help.stdout.toString("utf-8")).toMatch(/^ {2}plugin select \[names\] +set enabled plugins$/m);
+    expect(help.stdout.toString("utf-8")).not.toContain("Engine machinery");
 
     const invalid = viaDispatcher(["engine", "plugin", "remove"], REPO_ROOT);
     expect(invalid.exitCode).toBe(1);
     expect(invalid.stderr.toString("utf-8")).toBe(
-      "aidlc: unknown verb 'remove' for noun 'plugin'; try 'aidlc help --all'\n",
+      "`bun .claude/tools/aidlc.ts engine plugin remove` is not a plugin command; the plugin commands are select, list, sync, validate and build\n",
     );
   });
 

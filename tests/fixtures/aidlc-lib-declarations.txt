@@ -46,7 +46,6 @@ AttemptView
 AuditShardNote
 Authority
 AuthorityActor
-AuthorityCover
 AuthorityGrantSource
 BLOCKING_SENSOR_BOUNDARY_EVENTS
 BLOCKING_SENSOR_OVERRIDE_CHOICE
@@ -82,12 +81,10 @@ CODEX_SESSION_RECORD_MAX_BYTES
 COMMAND_TURN_REPLY
 COMMAND_TURN_SENTENCE
 COMPLETE_INTENT_STATUS
-COMPOSE_MARKER_TTL_MS
 CONDUCTOR_SUMMARY_FIELD
 CONFIGURATION_STEP
 CONFIG_KEYS
 CONSTRUCTION_POLICY_CHECKPOINT
-CONSTRUCTION_POLICY_RECOVERY
 CONSTRUCTION_STAFFING_ASK
 CREATION_RECEIPT_FILE
 CURRENT_FINGERPRINTS
@@ -216,7 +213,6 @@ HookActivation
 HookHeartbeatStamp
 HookLiveness
 HookOutput
-HostHookCall
 HostTurnTemplate
 HumanTurnState
 INSTRUCTION_KINDS
@@ -451,7 +447,6 @@ STEERING_TOKEN_KEY_BYTES
 STEERING_TOKEN_KEY_FILE
 STRUCTURED_FIELD_HEAD
 STRUCTURED_FIELD_NAMES
-SUBAGENT_INFLIGHT_TTL_MS
 SUMMARY_AUTHORIZATION_DIR
 SUMMARY_AUTHORIZATION_FIELD
 SUMMARY_AUTHORIZATION_ID_RE
@@ -483,11 +478,6 @@ StageAnswerMode
 StageEntry
 StaleReviewProgress
 StateVersionClassification
-SubagentInflightEntry
-SubagentInflightLedger
-SubagentInflightMatch
-SubagentInflightRead
-SubagentInflightSummary
 SummaryAuthorization
 SummaryConfirmationEvidence
 SummaryConfirmationStage
@@ -530,7 +520,6 @@ UnitSourceManifest
 UnitSourceManifestWrite
 UnitSourceSnapshot
 UnitsRepoChange
-UnmetPlanInput
 UnsavedReason
 VERIFICATION_COMMAND_CHECKPOINT
 VerificationCommand
@@ -592,7 +581,6 @@ aidlcRootIntegrations
 aidlcRootSettingsExcluded
 allowMainCheckoutChangeCommand
 ambiguousWorkspaceRecordDirs
-annotateSubagentInflight
 answerModeFromReply
 answerModeStageStartedFields
 answeredBeforeShownStep
@@ -632,7 +620,6 @@ authorityFor
 authorityStateText
 authorizedConstructionPolicyChange
 authorizedVerificationCommand
-backgroundAgentOutSince
 backwardJumpBoundary
 baselineSourceSnapshotMissing
 beforeDelimiter
@@ -708,7 +695,6 @@ codekbAnalysed
 codekbDir
 codekbFingerprintExcludes
 codekbRepoName
-codekbScopeChangedFiles
 codekbScopeFingerprint
 codekbSourceFingerprint
 codekbSourceRoot
@@ -728,11 +714,9 @@ committedTextBytes
 committedTextParts
 committedTextSha256
 comparablePath
-completeSubagentInflight
 completedPipelineLinks
 completionCarriesVerifiedReview
 composeGateOpen
-composeMarkerPath
 composedPlanLabel
 composedPluginBase
 composerProposalPath
@@ -786,7 +770,6 @@ defaultScopeResolution
 deriveHarnessDir
 developerHandoffPaths
 dictatedReviewNotice
-discardSubagentInflight
 discoverSiblingRepos
 dispatchStep
 docsDir
@@ -847,7 +830,6 @@ findIntentByUuid
 findPlanApprovalLegacyOwner
 findStageByNumber
 findStageBySlug
-findSubagentInflight
 finishUnitStepRemedy
 finishedBeforeSummaryOn
 finishedWork
@@ -869,7 +851,6 @@ formatGuardsOffLine
 formatGuardsOnLine
 freshActiveDirectiveMarker
 freshReviewReceipts
-freshSubagentEntries
 frontmatterBlock
 gateEstimateSeconds
 gateEventCovers
@@ -880,7 +861,6 @@ gateRejectionMatchesAttempt
 gateWordsDir
 gateWordsPath
 gateWordsSinceUnitReview
-gcSessionPidEntries
 generatedRunnerSkill
 gitAlternateEntry
 gitCommitSourceListing
@@ -893,7 +873,6 @@ gitSourceClaimHeadAndTree
 gitSourceClaimIgnored
 gitSourceClaimRepoCache
 gitSourceClaimRepoKey
-gitSubmoduleNames
 gitTreeLeafEntries
 governedChangeControl
 governedGuardPolicy
@@ -941,9 +920,7 @@ hasDurableSourceBindingEvidence
 hasModernSourceBindingEvidence
 hasPendingDecision
 hasRunnerGenMarker
-hasSubagentInflight
 hasUnsafeSingleLineCharacter
-heartbeatAt
 holdsAnyFile
 holdsDotnetProject
 hookActivation
@@ -963,7 +940,6 @@ hooksNeverRanHere
 hooksOffAgentStep
 hostChatStartFolder
 hostEnvelopeTurnText
-hostHookCallsDir
 hostLine
 hostRecordsAgentFinishes
 hostTemplateOrigin
@@ -981,7 +957,6 @@ ignoredSourceClaimReason
 inertPath
 inspectArtifactPath
 inspectContinuationCursor
-inspectSubagentInflight
 installPlanApprovalLegacyOffer
 installedHarnessName
 installedHarnessNameForTarget
@@ -1145,9 +1120,7 @@ markPersonLinesHeard
 markProtectedQuestionReplied
 markSelectedWork
 markStageWorkLogged
-markSubagentInflight
 markTurnEnd
-matchSubagentInflight
 materializeCommitTree
 materializeRawGitTree
 memoryChangeControlDeclarations
@@ -1368,10 +1341,8 @@ readCurrentSessionId
 readGateWords
 readGuardRefusalRecord
 readHeartbeats
-readHostHookCall
 readIssuedDirectiveMarker
 readKiroIdeLegacyPlanApprovalHost
-readListedIntents
 readNextLine
 readNextTokens
 readOrchestratorLauncherOptions
@@ -1400,7 +1371,6 @@ readShippedHarnessData
 readSourceSnapshot
 readStableReviewArtifacts
 readStageBaseline
-readSubagentInflightLedger
 readSummaryAuthorization
 readSyncBufferedBytes
 readSyncBufferedLine
@@ -1423,7 +1393,6 @@ recordGuardRefusal
 recordGuardStoodAside
 recordHookDrop
 recordHookTrace
-recordHostHookCall
 recordIntentKey
 recordPreWorkflowHeartbeat
 recordRelativeFileName
@@ -1480,7 +1449,6 @@ repoBaselineAdditionField
 repoChangeWords
 repoCwdOrThrow
 repoDir
-repoIsWorkspace
 repoScopeAsked
 repoScopePassedOver
 reportResult
@@ -1493,7 +1461,6 @@ requireLiveClaimForTeamUnit
 requireProtectedResponse
 resetStateWrites
 resolveActiveDirectiveTarget
-resolveAuthoredBoltDag
 resolveBoltDag
 resolveBoltIdentity
 resolveCeremony
@@ -1558,7 +1525,6 @@ reviewedSourceRefPrefix
 reviewerCompletionAfter
 reviewerDispatchPath
 reviewerGateGuardDisabled
-rootCarriesWorkspaceShell
 rotatePlanApprovalLegacyOwner
 rowsAfterMark
 rulesSubdir
@@ -1590,11 +1556,9 @@ scopeCostSummary
 scopeDefinitionGuardPolicy
 scopeGridOnProject
 scopeGridPath
-scopeGridStages
 scopeGuardPolicyDefault
 scopeMappingPath
 scopePathCovered
-scopePlanGrid
 scopeSettingsOffList
 scopedReviewCopyName
 scopesDir
@@ -1732,8 +1696,6 @@ stripYamlComment
 structuredField
 structuredFieldSpan
 subagentDispatchesShowNoReviewer
-subagentInflightMarkerPath
-subagentSessionIdentity
 summaryAnswerCleared
 summaryAnswerFromFile
 summaryAnswerLines
@@ -1811,7 +1773,6 @@ unitChangeCommand
 unitCompletedReceipts
 unitDependencyPath
 unitGateStatus
-unitIntegratingReceipts
 unitLifecycleReceiptsInUse
 unitLifecycleRunFloorForProject
 unitLifecycleSnapshot
@@ -1834,7 +1795,6 @@ unitSourceFingerprint
 unitStageRecordRelPath
 unitStepInProgress
 unitStepRedoClears
-unitTeams
 unitsBlockRepair
 unitsRepoChange
 unitsRepoChangeAcceptance
@@ -1844,7 +1804,6 @@ unitsReposAskPassedOver
 unknownRuntimeSessionWarning
 unlistedRecordForQuestion
 unmergedRootSettingsNotices
-unmetProducerInPlan
 unrecordedKiroCliSteers
 unresolvedTeamGateRemedy
 unsavedOutputsMessage
@@ -1954,7 +1913,6 @@ writeSessionPidRecord
 writeSessionRebindOffer
 writeSessionSelectionNotice
 writeSourceSnapshot
-writeSubagentInflightLedger
 writeSummaryAuthorization
 writeUnitClaimRegistryCache
 writeUnitMergeTransaction

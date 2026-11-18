@@ -26,6 +26,7 @@ import {
 } from "../harness/runner-profile.ts";
 import { FILE_ATTEMPT_ENV, MODEL_API_REASON, modelApiLine, personTurnLine } from "../lib/file-retry.ts";
 import { assertRunnerFixtureImports } from "../lib/runner-fixture-imports.ts";
+import { createE2eTemporaryRoot } from "../lib/e2e-workers.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -244,13 +245,22 @@ function runnerFixture(files: Record<string, string>) {
   const scratch = process.env.TMPDIR || join(checkoutRoot, "tmp", "runner-production-guards");
   mkdirSync(scratch, { recursive: true });
   const root = mkdtempSync(join(scratch, "runner-fixture-"));
+  const temporary = mkdtempSync(join(scratch, "runner-temp-"));
   for (const file of [
     "tests/run-tests.sh",
     "tests/run-tests.ts",
+    "lint/gate/adapters/runner-progress.ts",
+    "lint/gate/adapters/package-lock.ts",
+    "tests/lib/test-matrix.ts", "tests/lib/test-source.ts",
+    "tests/harness/tui-bun-backend.ts", "tests/harness/tui-bun-process.ts",
+    "tests/harness/tui-process-identity.ts",
+    "tests/harness/tui-screen.ts", "tests/harness/tui-time-budget.ts",
     "tests/harness/runner-profile.ts",
     "tests/harness/test-budget.ts",
     "tests/gen-coverage-registry.ts",
-    "scripts/package-sources.ts",
+    "src/packaging/adapters/packaged-sources-file.ts",
+    "src/kernel/file-system.ts", "src/kernel/file-system-port.ts", "src/kernel/content-digester.ts",
+    "src/kernel/values.ts", "src/kernel/brand.ts", "src/kernel/result.ts",
     "tests/harness/tui-runtime.ts",
     "tests/harness/tui-record-file.ts",
     "tests/harness/tui-windows-private-file.ts",
@@ -267,6 +277,8 @@ function runnerFixture(files: Record<string, string>) {
     copyFileSync(join(REPO_ROOT, file), join(root, file));
   }
   assertRunnerFixtureImports(root);
+  assertRunnerFixtureImports(root, ["tests/gen-coverage-registry.ts"]);
+  assertRunnerFixtureImports(root, ["tests/run-tests.ts"]);
   for (const [file, source] of Object.entries(files)) {
     mkdirSync(dirname(join(root, "tests", file)), { recursive: true });
     writeFileSync(join(root, "tests", file), source);
@@ -285,7 +297,7 @@ function runnerFixture(files: Record<string, string>) {
         ...Object.fromEntries(Object.keys(process.env).filter((key) => /_LIVE$/.test(key)).map((key) => [key, "0"])),
         AIDLC_NO_LLM: "0",
         ...overrides,
-        AIDLC_TEST_PACKAGE_READY: "1", TMPDIR: root, TMP: root, TEMP: root,
+        AIDLC_TEST_PACKAGE_READY: "1", TMPDIR: temporary, TMP: temporary, TEMP: temporary,
       };
       delete env.BUN_OPTIONS;
       const fd = openSync(log, "w");
@@ -744,6 +756,27 @@ test("fresh file state", async () => {
 `;
 
 describe("bounded file workers through the public runner", () => {
+  test("an explicit temp boundary keeps the isolated fixture workspace Git-free", async () => {
+    const boundary = await createE2eTemporaryRoot();
+    withProcessEnv({ TMPDIR: boundary }, () => {
+      const fixture = isolatedRunnerFixture({
+        "integration/t-temp-boundary.test.ts": `
+          import { test } from "bun:test";
+          import { writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          test("the isolated file executes", () => {
+            writeFileSync(join(process.env.AIDLC_ISOLATION_OBSERVER!, "temp-boundary"), "executed");
+          });`,
+      });
+      const result = fixture.run(["--integration", "--isolated-files", "--no-llm", "-P", "1"], {
+        AIDLC_TEST_TEMP_ROOT: boundary, AIDLC_ISOLATION_OBSERVER: join(fixture.root, "observer"),
+      });
+      expect(result.status, result.out + result.failures).toBe(0);
+      const execution = readFileSync(join(fixture.root, "observer", "temp-boundary"), "utf8");
+      expect(execution).toBe("executed");
+    });
+  });
+
   test("restores state between files and retries only the failed file with retained attempts", () => {
     const fixture = isolatedRunnerFixture({
       ...Object.fromEntries(["a", "b-retry", "c"].map(name => [`integration/t-${name}.test.ts`, FRESH_FILE_CASE])),

@@ -267,9 +267,9 @@ harness/<name>/        # per-CLI surface: manifest.ts + orchestrator skill +
 scripts/package.ts     # the build: copy core (token→.claude/.kiro/.codex) +
                        #   harness, compile the graph, generate runners, emit;
                        #   writes both channels; `--check` builds twice and compares
-scripts/package-sources.ts # content fingerprint of the build's inputs, recorded
-                       #   per harness in dist/.package-sources.json; tools that
-                       #   read dist/ (the coverage generator) refuse a stale tree
+src/packaging/adapters/packaged-sources-file.ts # PackagedSources owner: input
+                       #   fingerprint and per-host dist/.package-sources.json,
+                       #   through injected file-system and content-hasher ports
 scripts/build-binaries.ts # release-only binary compiler + smoke gate, writing
                        #   per-target executable + runtime/<harness>/ bundles
                        #   under ignored build/binaries/
@@ -277,6 +277,21 @@ dist/<harness>/        # GENERATED + ignored: claude/.claude, kiro/.kiro,
                        #   kiro-ide/.kiro, codex/{.codex,.agents},
                        #   opencode/{.aidlc,.opencode}, copilot/{.aidlc,.github} — never hand-edited
 ```
+
+Packaging's `PackagedSources` port is implemented by
+`createPackagedSourcesFile({ repository, record, fileSystem, hasher })`; both
+locations are explicit absolute URLs, not the current directory. Its async
+`fingerprint`, `forget`, `record` and `staleness` operations return `Result`
+values. The fingerprint preserves the legacy input selection and single
+sorted stream of portable path, NUL, raw file bytes, NUL. It stores the bare
+SHA-256 hex in the unchanged schema-1 per-host record, rather than the
+hasher's `sha256:` prefix. A source edit during a build produces
+`"inputs-changed"`; a stale host keeps the existing command-to-rebuild message.
+Missing, malformed or unreadable records retain the legacy empty-record
+outcome; input-read, hash and record-write failures are explicit Packaging
+refusals. The build and coverage generator use this adapter; isolated runner
+fixtures copy its explicit runtime module closure alongside the kernel
+file-system and content-digester adapters.
 
 `core/` `.ts` is byte-copied untransformed; the runtime `harnessDir()` seam
 (`core/tools/aidlc-lib.ts`) derives the harness dir from the shipped layout at
@@ -980,6 +995,15 @@ cannot restore the previous session when process inspection recovers; explicit
 payload identity, environment identity, and the shared-cursor fallback still
 apply. A later successful SessionStart replaces the null record.
 
+Beside an entry, `aidlc/.aidlc-sessions/pids/<pid>.release-check` records that a
+pinned project's release passed its whole-release check in that session
+process for that chat (the release, the project's harness and the resolved
+executable). The pinned dispatch writes it after a full check and, while the
+live entry names the same chat with the same known start time, later calls
+leave out only the hashing. An entry with no start time never counts. GC
+removes a `.release-check` with its stale entry, and the dispatch's own write
+sweeps any whose entry is gone.
+
 The Codex adapter additionally pins its validated payload identity into every
 POSIX Bash command and core-hook child, so sandboxed macOS does not depend on
 `ps` ancestry. Windows x64/arm64 ancestry uses a stable `OpenProcess` handle for
@@ -1072,7 +1096,7 @@ readers read the rows they share once (`copiedAuditBlocks` in
 
 14. **Session resume** -- Bare `/aidlc` in a new session carries on from the checkpoint; the person can ask to redo the current stage, jump to a specific stage, or start fresh (a new intent alongside). Gives users fine-grained control over workflow navigation without manual state file editing.
 
-15. **Stage/Phase jump commands** -- `--stage <slug|#>` and `--phase <name|#>` jump directly to a specific stage or phase. `--scope <scope>` sets or overrides the workflow scope. Forward jumps mark intermediate stages as `[S]` (skipped); under solo unit-major Construction a jump to the step the walk is on just continues it, once a Unit has finished work a jump to a later per-unit step moves only the Unit in flight on, and any other forward jump names what it skips or starts over; backward jumps reset downstream stages to `[ ]` and replay forward from the target. Composable with each other.
+15. **Stage/Phase jump commands** -- `--stage <slug|#>` and `--phase <name|#>` jump directly to a specific stage or phase. `--scope <scope>` sets or overrides the workflow scope. Forward jumps mark intermediate stages as `[S]` (skipped); under solo unit-major Construction, and on a team's main checkout that works every Unit itself, a jump to the step the walk is on just continues it, a jump to a later per-unit step moves only the Unit in flight on, and any other forward jump names what it skips or starts over; backward jumps reset downstream stages to `[ ]` and replay forward from the target. Composable with each other.
 
 ## Directory Structure: Tests
 

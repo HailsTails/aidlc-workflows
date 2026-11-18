@@ -58,3 +58,50 @@ test("every other file still gets the shorter temp folder", async () => {
   const temp = await runnerTemp();
   expect(dirname(fixtureRoot(temp, false)).length).toBeLessThanOrEqual(temp.length);
 });
+
+test("an explicit root contains the descendant fixture and its cache", async () => {
+  const base = await createE2eTemporaryRoot([process.env.TEMP!]);
+  made.push(base);
+  const root = join(base, "explicit-root-deeper-than-the-system-temp");
+  mkdirSync(root);
+  const script = `
+    const { shortTemporaryRoot, createE2eTemporaryRoot } = await import(process.argv[1]);
+    const { realpathSync } = await import("node:fs");
+    if (shortTemporaryRoot() !== realpathSync(process.env.AIDLC_TEST_TEMP_ROOT)) {
+      throw Error("explicit root ignored");
+    }
+    const fixture = await createE2eTemporaryRoot();
+    const descendant = Bun.spawnSync([process.execPath, "-e", \`
+      const { tmpdir } = require("node:os");
+      const { join } = require("node:path");
+      const { mkdirSync, writeFileSync } = require("node:fs");
+      const cache = join(tmpdir(), "aidlc-release-fixture-cache");
+      mkdirSync(cache); writeFileSync(join(cache, "probe"), "fixture cache");
+      console.log(JSON.stringify({fixture: tmpdir(), cache}));
+    \` ], {env: {...process.env, TEMP: fixture, TMP: fixture, TMPDIR: fixture}});
+    if (descendant.exitCode !== 0) throw Error(descendant.stderr.toString());
+    console.log(descendant.stdout.toString());
+  `;
+  const child = spawnSync(process.execPath, ["-e", script, WORKERS], {
+    env: {...process.env, AIDLC_TEST_TEMP_ROOT: root},
+    encoding: "utf8", timeout: NATIVE_STARTUP_TIMEOUT_MS,
+  });
+  expect(child.status, `${child.stdout}${child.stderr}`).toBe(0);
+  const paths = JSON.parse(child.stdout);
+  expect(dirname(paths.fixture)).toBe(realpathSync(root));
+  expect(dirname(paths.cache)).toBe(paths.fixture);
+});
+
+test("an unavailable explicit root refuses instead of choosing an OS fallback", async () => {
+  const base = await createE2eTemporaryRoot([process.env.TEMP!]);
+  made.push(base);
+  const missing = join(base, "missing");
+  const child = spawnSync(process.execPath, ["-e",
+    'const { createE2eTemporaryRoot } = await import(process.argv[1]);' +
+      'console.log(await createE2eTemporaryRoot());', WORKERS], {
+    env: {...process.env, AIDLC_TEST_TEMP_ROOT: missing},
+    encoding: "utf8", timeout: NATIVE_STARTUP_TIMEOUT_MS,
+  });
+  expect(child.status).not.toBe(0);
+  expect(child.stderr).toContain("AIDLC_TEST_TEMP_ROOT");
+});

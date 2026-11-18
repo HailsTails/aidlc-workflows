@@ -22,10 +22,9 @@
 // would only prove this file agrees with itself -- the circularity that hid two
 // real schema bugs behind 48 green tests earlier in this build.
 //
-// The all-harness sweep is the other half. Codex and Copilot do NOT enumerate core/skills/
-// (each carries a hardcoded array in its emit.ts), so a skill can pass
-// every claude-tree assertion while being absent from exactly one harness. The
-// registration seams are asymmetric, so the test walks EVERY root in harness/.
+// The all-harness sweep is the other half. A skill can pass every claude-tree
+// assertion while being absent from exactly one harness, so the test walks EVERY
+// built host tree.
 //
 // Path references are RESOLVED, not string-matched: `{{HARNESS_DIR}}` renders to a
 // different prefix per harness, and a token that substitutes to a path which does
@@ -102,11 +101,6 @@ const HARNESSES = HARNESS_NAMES.map((name) => {
   return { name, root: join("dist", name), skill: join(rel, "aidlc-knowledge", "SKILL.md") };
 });
 
-// Harnesses that do NOT enumerate core/skills/ and instead carry a hardcoded
-// array in their emit.ts. A skill missing from one of these ships to every OTHER
-// harness and no count-based test notices.
-const HARDCODED_SKILL_ARRAY_HARNESSES = ["codex", "copilot"] as const;
-
 const CLAUDE_SKILL = join(REPO, "dist", "claude", ".claude", "skills", "aidlc-knowledge", "SKILL.md");
 const TOOL_SRC = join(REPO, "core", "tools", "aidlc-knowledge.ts");
 
@@ -131,16 +125,14 @@ function flagsInTool(source: string): Set<string> {
 // t230 enforces on the dispatcher. Named here so its absence is a decision on the
 // record rather than a gap the extractor happened to miss.
 //
-// `--copied-from`, `--copied-ignored` and `--copied-left-out` are the same
-// class, one layer up: the dispatcher sets them on the onboard it delegates
-// after copying a document the person named from elsewhere in the project
-// (withNamedDocumentCopied in aidlc.ts), so the verb can say what happened,
-// including how many files inside a named folder git ignores and were left
-// where they are. Neither a person nor an agent ever types them, and the skill
-// tells the agent to run the engine route that adds them.
-const PLUMBING_FLAGS = new Set([
-  "--project-dir", "--copied-from", "--copied-ignored", "--copied-left-out",
-]);
+// `--copied` is the same class, one layer up: the dispatcher sets it on the
+// onboard it delegates after copying documents the person named from elsewhere
+// in the project, or leaving one of several out (withNamedDocumentCopied in
+// aidlc.ts), so the verb can say what happened, including how many files
+// inside a named folder git ignores and were left where they are. Neither a
+// person nor an agent ever types it, and the skill tells the agent to run the
+// engine route that adds it.
+const PLUMBING_FLAGS = new Set(["--project-dir", "--copied"]);
 
 let proj: string | undefined;
 
@@ -197,22 +189,6 @@ describe("t285 - the knowledge skill ships everywhere, and its prose matches the
       test(`${h.name}: no unsubstituted {{HARNESS_DIR}} token survives`, () => {
         const text = readFileSync(join(REPO, h.root, h.skill), "utf-8");
         expect(text).not.toContain("{{HARNESS_DIR}}");
-      });
-    }
-
-    for (const h of HARDCODED_SKILL_ARRAY_HARNESSES) {
-      test(`the ${h} hardcoded skill array names the skill (the N-of-N trap)`, () => {
-        // These harnesses do not enumerate core/skills/. This asserts the ARRAY, not
-        // just the emitted file, so deleting the entry fails here with a clear cause
-        // rather than only as a missing file in one tree.
-        const emit = readFileSync(join(REPO, "harness", h, "emit.ts"), "utf-8");
-        const match = emit.match(/for \(const skill of \[([^\]]+)\]/);
-        expect(
-          match,
-          `harness/${h}/emit.ts no longer matches the hardcoded skill-array extractor`,
-        ).not.toBeNull();
-        const array = match?.[1] ?? "";
-        expect(array, `harness/${h}/emit.ts omits aidlc-knowledge`).toContain("aidlc-knowledge");
       });
     }
 
@@ -947,7 +923,7 @@ describe("t285 - the knowledge skill ships everywhere, and its prose matches the
       // blank or the verb spelling drifted, `documentedEmits` would throw rather
       // than silently compare against an empty set.
       for (const verb of [
-        "onboard [path]",
+        "onboard [path ...]",
         "sync",
         "associate <id> --intent [slug]",
         "dissociate <id> --intent [slug]",

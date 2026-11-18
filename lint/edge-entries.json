@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": "src/cli/legacy-runner-child.ts",
+      "effects": ["Bun", "import()"],
+      "bridge": "aidlc-runner-gen",
+      "retiresWhen": "The aidlc-runner-gen LEGACY_BRIDGES record in lint/context-map.ts retires."
+    }
+  ]
+}

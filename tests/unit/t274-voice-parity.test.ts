@@ -29,13 +29,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readConductorSurface } from "../harness/conductor-skill.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
-import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
+import { HARNESS_MATRIX, onboardingFillsSource } from "../harness/harness-matrix.ts";
 
 const PROTOCOL_REL = "core/aidlc-common/protocols/stage-protocol.md";
 
 function read(rel: string): string {
-  return readFileSync(join(REPO_ROOT, rel), "utf-8");
+  return readConductorSurface(rel);
 }
 
 function authoredSkills(): Array<{ name: string; rel: string }> {
@@ -150,7 +151,7 @@ describe("t272 §3 retired framework-voice phrases stay out of user-visible pros
       // framework ships. t100 pins its exact wording, this pins that the retired
       // vocabulary cannot come back.
       "core/knowledge/aidlc-shared/memory-template.md",
-      ...HARNESS_MATRIX.map((h) => `harness/${h.name}/onboarding.fills.ts`),
+      ...HARNESS_MATRIX.map((h) => onboardingFillsSource(h.name)),
     ].sort();
   }
 

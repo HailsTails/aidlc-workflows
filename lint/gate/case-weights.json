@@ -1,0 +1,2359 @@
+{
+  "version": 1,
+  "files": {
+    "tests/unit/t243-install-mechanism.test.ts": [
+      {
+        "name": "t243 archive and transaction safety tar round-trip is deterministic and rejects traversal",
+        "seconds": 0.004207
+      },
+      {
+        "name": "t243 archive and transaction safety runtime extraction rejects entries that could replace the verified executable",
+        "seconds": 0.002617
+      },
+      {
+        "name": "t243 archive and transaction safety transaction rejects symlink traversal and restores every committed byte on fault",
+        "seconds": 0.033315
+      },
+      {
+        "name": "t243 archive and transaction safety transaction refuses a copy source that changed after planning",
+        "seconds": 0.002014
+      },
+      {
+        "name": "t243 archive and transaction safety transaction validates staged candidates before live mutation",
+        "seconds": 0.017999
+      },
+      {
+        "name": "t243 archive and transaction safety named transaction boundaries restore the prior state",
+        "seconds": 0.232637
+      },
+      {
+        "name": "t243 archive and transaction safety rollback restores file mode and symlink target and rejects a dangling symlink parent",
+        "seconds": 0.001615
+      },
+      {
+        "name": "t243 archive and transaction safety archive supports ustar prefixes and rejects file-descendant collisions",
+        "seconds": 0.001028
+      },
+      {
+        "name": "t243 archive and transaction safety archive expansion is bounded before tar parsing",
+        "seconds": 0.000842
+      },
+      {
+        "name": "t243 archive and transaction safety transaction quarantines dead-process staging instead of deleting recovery evidence",
+        "seconds": 0.019482
+      },
+      {
+        "name": "t243 archive and transaction safety rollback continues after a restore failure and preserves remaining evidence",
+        "seconds": 0.021708
+      },
+      {
+        "name": "t243 archive and transaction safety transaction never reclaims a live lock with complete metadata",
+        "seconds": 0.009146
+      },
+      {
+        "name": "t243 archive and transaction safety pending Windows uninstall fence blocks machine mutation under the shared lock",
+        "seconds": 0.045835
+      },
+      {
+        "name": "t243 archive and transaction safety transaction release never unlinks a replacement lock it does not own",
+        "seconds": 0.017192
+      },
+      {
+        "name": "t243 archive and transaction safety route mutation policy blocks a plan before it creates destination bytes",
+        "seconds": 0.000896
+      },
+      {
+        "name": "t243 archive and transaction safety route mutation policy enforces canonical project and machine roots",
+        "seconds": 0.061658
+      },
+      {
+        "name": "t243 archive and transaction safety target selection distinguishes glibc and musl Linux releases",
+        "seconds": 0.000068
+      },
+      {
+        "name": "t243 archive and transaction safety package-manager executable detection yields to Homebrew and Nix",
+        "seconds": 0.000239
+      },
+      {
+        "name": "t243 archive and transaction safety source-mode Bun is not classified as a package-managed AI-DLC executable",
+        "seconds": 0.000058
+      },
+      {
+        "name": "t243 archive and transaction safety shared release fixture is byte-deterministic and emits hostile archives",
+        "seconds": 1.236676
+      },
+      {
+        "name": "t243 archive and transaction safety release fixtures isolate versions and outputs while observing changed source files",
+        "seconds": 1.643322
+      },
+      {
+        "name": "t243 project initialization active-version runtime wins over an executable-adjacent path alias",
+        "seconds": 0.00988
+      },
+      {
+        "name": "t243 project initialization OpenCode metadata selects refresh source, and a non-colliding harness is added alongside",
+        "seconds": 5.040377
+      },
+      {
+        "name": "t243 project initialization a harness that shares an engine directory it cannot switch in place cannot coexist",
+        "seconds": 2.06789
+      },
+      {
+        "name": "t243 project initialization --harness switches a Kiro project between the kiro and kiro-ide rows in place",
+        "seconds": 8.38632
+      },
+      {
+        "name": "t243 project initialization a Kiro switch and a refresh keep a dropped plugin's own registration and never name it as a hook AI-DLC does not own",
+        "seconds": 9.640971
+      },
+      {
+        "name": "t243 project initialization a Kiro switch recognises a dropped plugin's registration again while it runs, and lets it be removed",
+        "seconds": 11.860503
+      },
+      {
+        "name": "t243 project initialization a Kiro switch and a refresh keep a plugin dropped from 2.11.0 and never name its registration as a hook AI-DLC does not own",
+        "seconds": 8.546671
+      },
+      {
+        "name": "t243 project initialization a Kiro switch and a refresh keep a plugin dropped from 2.11.1-preview.20261018.1 and never name its registration as a hook AI-DLC does not own",
+        "seconds": 8.533908
+      },
+      {
+        "name": "t243 project initialization a Kiro switch and a refresh keep a plugin dropped from 2.11.1 and never name its registration as a hook AI-DLC does not own",
+        "seconds": 8.56216
+      },
+      {
+        "name": "t243 project initialization a Kiro switch names a registration beside a plugin folder no build names as a hook AI-DLC does not own",
+        "seconds": 5.755999
+      },
+      {
+        "name": "t243 project initialization a Kiro switch recognises a dropped plugin's registration only when it is a plain file",
+        "seconds": 0
+      },
+      {
+        "name": "t243 project initialization a Kiro switch that would let Kiro run unowned hook files applies only the approved set",
+        "seconds": 15.126341
+      },
+      {
+        "name": "t243 project initialization a Kiro switch neither names nor rechecks a hook file it removes",
+        "seconds": 4.153545
+      },
+      {
+        "name": "t243 project initialization a Kiro switch refuses a linked hooks directory or hook entry instead of following it",
+        "seconds": 0
+      },
+      {
+        "name": "t243 project initialization a Kiro switch prints a hook name as repository data, however it reads",
+        "seconds": 18.966132
+      },
+      {
+        "name": "t243 project initialization a Kiro switch spells out every non-ASCII character in a hook name it asks about",
+        "seconds": 58.859187
+      },
+      {
+        "name": "t243 project initialization a Kiro switch binds a hook file it cannot read instead of failing",
+        "seconds": 0
+      },
+      {
+        "name": "t243 project initialization a Kiro switch refuses a hooks directory it cannot list",
+        "seconds": 0
+      },
+      {
+        "name": "t243 project initialization a Kiro switch while work is open is done, like any refresh, and the work carries on in the new row",
+        "seconds": 5.859505
+      },
+      {
+        "name": "t243 project initialization a copied Kiro project that needs release files for a switch names the switch, not an add",
+        "seconds": 2.527008
+      },
+      {
+        "name": "t243 project initialization a Kiro switch keeps local edits as conflicts and needs the installed row's ownership baseline, which a refresh records",
+        "seconds": 7.599688
+      },
+      {
+        "name": "t243 project initialization a Kiro switch refuses an unusable ownership baseline without changing it and prints the steps that record one",
+        "seconds": 63.979703
+      },
+      {
+        "name": "t243 project initialization a printed command is read back as quoteCommandArgument quoted it, on either shell",
+        "seconds": 0.000194
+      },
+      {
+        "name": "t243 project initialization a baseline refusal's steps name the baseline by its path in the project",
+        "seconds": 0.006803
+      },
+      {
+        "name": "t243 project initialization a Kiro switch prints no version the project's own files could have forged",
+        "seconds": 2.65757
+      },
+      {
+        "name": "t243 project initialization a Kiro switch through a linked tools/data changes nothing outside the project",
+        "seconds": 0
+      },
+      {
+        "name": "t243 project initialization a Kiro switch keeps a baseline from a newer release and leaves the switch to that release",
+        "seconds": 2.684545
+      },
+      {
+        "name": "t243 project initialization a Kiro switch asks for a refresh when the baseline predates shipped-only recording",
+        "seconds": 6.070178
+      },
+      {
+        "name": "t243 project initialization a Kiro switch does not carry the trust acknowledgement to the other row",
+        "seconds": 10.787184
+      },
+      {
+        "name": "t243 project initialization a Kiro release without --harness does not switch the installed row and names the flag that does",
+        "seconds": 3.159745
+      },
+      {
+        "name": "t243 project initialization a refresh source that disagrees with the sole project harness is refused",
+        "seconds": 1.837491
+      },
+      {
+        "name": "t243 project initialization an explicit installed harness never silently yields to the existing project harness",
+        "seconds": 3.432941
+      },
+      {
+        "name": "t243 project initialization coexisting harnesses converge on one union .gitignore block",
+        "seconds": 8.874602
+      },
+      {
+        "name": "t243 project initialization a sibling installed without a shipped block copy keeps ownership of the shared block",
+        "seconds": 4.594729
+      },
+      {
+        "name": "t243 project initialization a converged install refuses to shrink the shared block when a sibling's shipped copy is missing",
+        "seconds": 9.823284
+      },
+      {
+        "name": "t243 project initialization a second harness adopts a sibling's legacy unmarked .gitignore",
+        "seconds": 5.457965
+      },
+      {
+        "name": "t243 project initialization an unowned managed block with no sibling harness stays a conflict",
+        "seconds": 0.277568
+      },
+      {
+        "name": "t243 project initialization adding a harness is refused while an installed sibling has no readable projection descriptor, even with --force",
+        "seconds": 2.493681
+      },
+      {
+        "name": "t243 project initialization refreshing a coexisting harness is refused while the sibling's descriptor is missing but its baseline co-owns AGENTS.md",
+        "seconds": 7.999239
+      },
+      {
+        "name": "t243 project initialization a refresh is refused while a stamped sibling has lost both its descriptor and baseline and the block would change",
+        "seconds": 8.231041
+      },
+      {
+        "name": "t243 project initialization coexisting harnesses that both lost their descriptors are repaired one at a time from the same release",
+        "seconds": 7.302125
+      },
+      {
+        "name": "t243 project initialization coexisting harnesses restore missing projection descriptors one at a time",
+        "seconds": 7.034285
+      },
+      {
+        "name": "t243 project initialization harnesses sharing the neutral AGENTS.md block coexist and converge",
+        "seconds": 9.048047
+      },
+      {
+        "name": "t243 project initialization a shared block owned by a sibling from a different release conflicts without dropping ownership",
+        "seconds": 5.337105
+      },
+      {
+        "name": "t243 project initialization adding a harness is refused when the installed sibling's AGENTS.md predates shared onboarding",
+        "seconds": 2.578787
+      },
+      {
+        "name": "t243 project initialization copilot config adds the VS Code request cap when absent and records it as its own",
+        "seconds": 4.525288
+      },
+      {
+        "name": "t243 project initialization copilot config keeps the team's request cap, other keys, and comments",
+        "seconds": 7.073853
+      },
+      {
+        "name": "t243 project initialization copilot config follows only its own request cap and retires only what it added",
+        "seconds": 17.679579
+      },
+      {
+        "name": "t243 project initialization copilot config does not add the request cap back after the team took it out",
+        "seconds": 7.047738
+      },
+      {
+        "name": "t243 project initialization a copied project's refresh leaves .vscode/settings.json alone when its runtime ships none",
+        "seconds": 9.398029
+      },
+      {
+        "name": "t243 project initialization JSONC settings edits keep every other byte",
+        "seconds": 0.000645
+      },
+      {
+        "name": "t243 project initialization copilot's AGENTS.md stays exclusive",
+        "seconds": 2.771801
+      },
+      {
+        "name": "t243 project initialization a neutral-sharing harness added next to a current Copilot install is refused as exclusive",
+        "seconds": 2.346469
+      },
+      {
+        "name": "t243 project initialization preview versions distinguish an install that predates shared onboarding from a newer exclusive block",
+        "seconds": 2.064565
+      },
+      {
+        "name": "t243 project initialization refreshing a coexisting harness from a release that does not share AGENTS.md is refused",
+        "seconds": 5.097249
+      },
+      {
+        "name": "t243 project initialization config without --harness on a multi-harness project demands --harness",
+        "seconds": 4.392537
+      },
+      {
+        "name": "t243 project initialization --force cannot overwrite an unowned whole-file root integration",
+        "seconds": 0.22722
+      },
+      {
+        "name": "t243 project initialization --force keeps the team's own entries in opencode.json",
+        "seconds": 1.906434
+      },
+      {
+        "name": "t243 project initialization dry-run against a missing explicit target creates no directory",
+        "seconds": 0.595932
+      },
+      {
+        "name": "t243 project initialization Kiro project context resolves without a command-line target",
+        "seconds": 0.000948
+      },
+      {
+        "name": "t243 project initialization refresh replays a recorded requires_stage edge only where it still holds",
+        "seconds": 0.009087
+      },
+      {
+        "name": "t243 project initialization fresh init, dry-run, refresh preservation, conflict, and force use one projection",
+        "seconds": 7.941105
+      },
+      {
+        "name": "t243 project initialization refresh updates hand-authored orchestrator prose and protects local edits",
+        "seconds": 7.165513
+      },
+      {
+        "name": "t243 project initialization refresh updates shipped skills while preserving project-only skill overlays",
+        "seconds": 3.580873
+      },
+      {
+        "name": "project-owned files under the harness dir (#1516) t243 project initialization a project-owned skill survives repeated refreshes and is never recorded as framework-owned",
+        "seconds": 6.682619
+      },
+      {
+        "name": "project-owned files under the harness dir (#1516) t243 project initialization a project-owned stage the staged merge rewrites is never recorded either",
+        "seconds": 5.510352
+      },
+      {
+        "name": "project-owned files under the harness dir (#1516) t243 project initialization a framework file the release no longer ships is still removed",
+        "seconds": 4.220494
+      },
+      {
+        "name": "project-owned files under the harness dir (#1516) t243 project initialization a refresh lists what it removes, by folder, and names git restore when git tracks them",
+        "seconds": 13.833105
+      },
+      {
+        "name": "project-owned files under the harness dir (#1516) t243 project initialization project files an older refresh recorded are kept and dropped from the record",
+        "seconds": 4.799373
+      },
+      {
+        "name": "project-owned files under the harness dir (#1516) t243 project initialization a record-only adoption leaves the manifest unmarked, so the next refresh keeps project files",
+        "seconds": 3.746021
+      },
+      {
+        "name": "t243 project initialization a host subagent in .claude/agents does not stop a refresh",
+        "seconds": 3.77287
+      },
+      {
+        "name": "t243 project initialization pre-manifest adoption preserves all mutable harness policy keys",
+        "seconds": 1.90025
+      },
+      {
+        "name": "t243 project initialization a refresh while a workflow runs is done and says the work carries on",
+        "seconds": 4.943715
+      },
+      {
+        "name": "t243 project initialization a dry run previews the refresh under an active workflow, and its plan token applies it",
+        "seconds": 4.349729
+      },
+      {
+        "name": "t243 project initialization a copied harness added from another release while a workflow runs is added from the files named",
+        "seconds": 5.665469
+      },
+      {
+        "name": "t243 project initialization a copied harness added beside a release that predates sharing a project is added, as with no open work",
+        "seconds": 3.894331
+      },
+      {
+        "name": "t243 project initialization a pinned project's add from other files names the pinned release, not the running workflow",
+        "seconds": 2.801117
+      },
+      {
+        "name": "t243 project initialization adding a harness on another version is allowed once no workflow runs",
+        "seconds": 3.860375
+      },
+      {
+        "name": "t243 project initialization a refresh names each harness left on another release with the command that brings it there",
+        "seconds": 15.510726
+      },
+      {
+        "name": "t243 project initialization exact legacy root signatures are adopted",
+        "seconds": 3.391996
+      },
+      {
+        "name": "t243 project initialization a refresh keeps an earlier release's template lines as the project's own",
+        "seconds": 3.728931
+      },
+      {
+        "name": "t243 project initialization config from a copy runtime without root files adds AI-DLC's part to the team's files",
+        "seconds": 2.862225
+      },
+      {
+        "name": "t243 project initialization config replaces an earlier combined part with notes in a copy it never ran in",
+        "seconds": 2.532864
+      },
+      {
+        "name": "t243 project initialization a fresh copy's own config on GitHub Copilot and opencode keeps the shipped scope runners",
+        "seconds": 4.672461
+      },
+      {
+        "name": "t243 project initialization a refresh over an edited shipped file names moving it aside or --force, and both go through",
+        "seconds": 5.985601
+      },
+      {
+        "name": "t243 project initialization a section's conflict names the config command that takes --force, and it and the section go through",
+        "seconds": 22.147938
+      },
+      {
+        "name": "t243 project initialization a not-valid-JSON settings.json's fix asks for the mirror back and never prints it",
+        "seconds": 3.376158
+      },
+      {
+        "name": "t243 project initialization a first install's conflict names no other harness's command",
+        "seconds": 0.585765
+      },
+      {
+        "name": "t243 project initialization unmarked gitignore hiding committed records configures with a warning naming the rule",
+        "seconds": 4.623726
+      },
+      {
+        "name": "t243 project initialization a hiding rule is named from the project, with control characters made visible",
+        "seconds": 0.474625
+      },
+      {
+        "name": "t243 project initialization unmarked harmless AI-DLC rules remain user-owned in a real git repository",
+        "seconds": 1.825269
+      },
+      {
+        "name": "t243 project initialization unmarked blanket aidlc ignore is preserved outside a git repository",
+        "seconds": 1.667566
+      },
+      {
+        "name": "t243 project initialization unmarked gitignore preserves ordinary ignore rules through dry-run, apply, and refresh",
+        "seconds": 4.703748
+      },
+      {
+        "name": "t243 project initialization unmarked gitignore preserves aidlc rules and an AI-DLC comment through dry-run, apply, and refresh",
+        "seconds": 5.236076
+      },
+      {
+        "name": "t243 project initialization unmarked gitignore preserves CRLF rules without a final newline through dry-run, apply, and refresh",
+        "seconds": 4.723316
+      },
+      {
+        "name": "t243 project initialization unmarked gitignore preserves a locally edited shipped gitignore through dry-run, apply, and refresh",
+        "seconds": 4.749806
+      },
+      {
+        "name": "t243 project initialization unmarked gitignore with invalid UTF-8 refuses without changing its bytes even with --force",
+        "seconds": 0.585087
+      },
+      {
+        "name": "t243 project initialization an AGENTS.md that is not valid UTF-8 refuses without changing its bytes even with --force",
+        "seconds": 1.585246
+      },
+      {
+        "name": "t243 project initialization an AGENTS.md that is not valid UTF-8 but already holds the current block is kept and config carries on",
+        "seconds": 4.533933
+      },
+      {
+        "name": "t243 project initialization gitignore with missing end marker still refuses even with --force",
+        "seconds": 0.562347
+      },
+      {
+        "name": "t243 project initialization gitignore with missing begin marker still refuses even with --force",
+        "seconds": 0.535859
+      },
+      {
+        "name": "t243 project initialization gitignore with duplicate blocks still refuses even with --force",
+        "seconds": 0.543324
+      },
+      {
+        "name": "t243 project initialization gitignore with reversed markers still refuses even with --force",
+        "seconds": 0.55975
+      },
+      {
+        "name": "t243 project initialization a modified unmarked AGENTS.md is kept as the team's text and gets the marked block after it",
+        "seconds": 2.256865
+      },
+      {
+        "name": "t243 project initialization a team's AGENTS.md that mentions AI-DLC in its own words is kept, and the block is added after it",
+        "seconds": 3.630398
+      },
+      {
+        "name": "t243 project initialization --force does not replace a pre-existing user-owned JSON entry",
+        "seconds": 1.719734
+      },
+      {
+        "name": "t243 project initialization MCP consent and managed AGENTS blocks preserve user-owned configuration",
+        "seconds": 13.232266
+      },
+      {
+        "name": "t243 project initialization a whole-file integration is adopted by an exact legacy signature",
+        "seconds": 2.002011
+      },
+      {
+        "name": "t243 project initialization an unmarked AGENTS body is adopted only when it matches the shipped file exactly",
+        "seconds": 8.28985
+      },
+      {
+        "name": "t243 project initialization two managed AGENTS blocks from different versions are a conflict",
+        "seconds": 3.20464
+      },
+      {
+        "name": "t243 project initialization managed AGENTS block is stable above or below the user H1 and rules",
+        "seconds": 6.082477
+      },
+      {
+        "name": "t243 project initialization a symlinked AGENTS.md is a root-integration conflict",
+        "seconds": 0.001835
+      },
+      {
+        "name": "t243 project initialization a project carrying only CLAUDE.md keeps it and gains managed AGENTS.md",
+        "seconds": 2.342957
+      },
+      {
+        "name": "t243 project initialization config in a monorepo subdirectory mutates only the selected project",
+        "seconds": 2.359845
+      },
+      {
+        "name": "t243 project initialization gitignored AGENTS.md generated by another tool preserves generator bytes",
+        "seconds": 3.692942
+      },
+      {
+        "name": "t243 project initialization all local init modes open no internet sockets",
+        "seconds": 0.000946
+      },
+      {
+        "name": "t243 project initialization init treats dangling managed symlinks as conflicts and cleans failed refresh staging",
+        "seconds": 0.002321
+      },
+      {
+        "name": "t243 project initialization refresh reapplies recorded plugin contributions onto newer upstream stage bytes",
+        "seconds": 4.713323
+      },
+      {
+        "name": "t243 project initialization refresh reapplies a plugin output on a stage that maps every output to Unit kinds with the entry the incoming stage gives it",
+        "seconds": 8.021524
+      },
+      {
+        "name": "t243 project initialization refresh reapplies a plugin consumes entry recorded in the object shape compose writes (#1247)",
+        "seconds": 4.932411
+      },
+      {
+        "name": "t243 project initialization refresh hands a core-adopted or refused requires_stage edge back out of plugin provenance",
+        "seconds": 4.640948
+      },
+      {
+        "name": "t243 project initialization refresh keeps a composed persona's own bytes, before and after its plugin is disabled",
+        "seconds": 6.313889
+      },
+      {
+        "name": "t243 project initialization refresh replays persona fragments into the codex native twin and keeps its own bytes",
+        "seconds": 8.26512
+      },
+      {
+        "name": "t243 project initialization refresh replays persona fragments into the opencode native twin and keeps its own bytes",
+        "seconds": 8.333107
+      },
+      {
+        "name": "t243 project initialization refresh replays persona fragments into the copilot native twin and keeps its own bytes",
+        "seconds": 13.03609
+      },
+      {
+        "name": "t243 project initialization refresh planning never mutates generated runners on dry-run or conflict",
+        "seconds": 3.547273
+      },
+      {
+        "name": "t243 project initialization Kiro IDE installs leave the user's .vscode settings alone on either channel",
+        "seconds": 3.626319
+      },
+      {
+        "name": "t243 project initialization runtime state written into an installed runtime never reaches the project",
+        "seconds": 3.478537
+      },
+      {
+        "name": "t243 release lifecycle project pins require the retained OpenCode runtime selected by project metadata",
+        "seconds": 3.260497
+      },
+      {
+        "name": "t243 release lifecycle installer renders order-independent usage failures as valid JSON",
+        "seconds": 0.139373
+      },
+      {
+        "name": "t243 release lifecycle Unix installer refuses root unless opted in, and never under sudo or a non-root home",
+        "seconds": 0.000261
+      },
+      {
+        "name": "t243 release lifecycle Unix installer warns, then installs, a root release that cannot uninstall itself as root",
+        "seconds": 0.000289
+      },
+      {
+        "name": "t243 release lifecycle Unix installer rejects an authenticated version mismatch before acquiring or invoking assets",
+        "seconds": 0.000495
+      },
+      {
+        "name": "t243 release lifecycle a packaged Unix preview installer downloads its own release without an explicit version",
+        "seconds": 0.000433
+      },
+      {
+        "name": "t243 release lifecycle route network policy blocks acquisition before opening a socket",
+        "seconds": 0.000541
+      },
+      {
+        "name": "t243 release lifecycle shared release server covers redirect, delay, truncation, captive portal, oversized metadata, and missing assets",
+        "seconds": 1.110446
+      },
+      {
+        "name": "t243 release lifecycle opt-in live release endpoint matches the fixture contract",
+        "seconds": 0.000155
+      },
+      {
+        "name": "t243 release lifecycle online acquisition trusts released checksums instead of manifest-synthesized rows",
+        "seconds": 0.852064
+      },
+      {
+        "name": "t243 release lifecycle release verification requires and authenticates version.json",
+        "seconds": 1.229923
+      },
+      {
+        "name": "t243 release lifecycle local release acquisition requires an authenticated provenance bundle",
+        "seconds": 2.085647
+      },
+      {
+        "name": "t243 release lifecycle local release acquisition accepts a GitHub CLI without required attestation flags",
+        "seconds": 0.657813
+      },
+      {
+        "name": "t243 release lifecycle release readers tolerate unselected future assets but validate selected metadata",
+        "seconds": 1.811753
+      },
+      {
+        "name": "t243 release lifecycle release client classifies HTTP failures, follows redirects, and enforces metadata timeout",
+        "seconds": 0.872639
+      },
+      {
+        "name": "t243 release lifecycle release client honors proxy, NO_PROXY, mirror precedence, custom CA, and redaction",
+        "seconds": 1.627725
+      },
+      {
+        "name": "t243 release lifecycle use selects only the machine version while config owns project pins",
+        "seconds": 11.180482
+      },
+      {
+        "name": "t243 release lifecycle installed runtime integrity baseline rejects ordinary retained-file tampering",
+        "seconds": 3.627573
+      },
+      {
+        "name": "t243 release lifecycle a git worktree of a registered checkout runs the release its own pin names",
+        "seconds": 8.851228
+      },
+      {
+        "name": "t243 release lifecycle fresh-clone pins require target and registry reconciliation before dispatch",
+        "seconds": 4.477346
+      },
+      {
+        "name": "t243 release lifecycle pin registry canonicalizes aliases and reconciles equivalent keys",
+        "seconds": 8.805843
+      },
+      {
+        "name": "t243 release lifecycle a declared pin keeps protecting its retained version when the local target marker is lost",
+        "seconds": 12.796986
+      },
+      {
+        "name": "t243 release lifecycle another project's conflicting alias entries never block this project",
+        "seconds": 12.197833
+      },
+      {
+        "name": "t243 release lifecycle literal --project-dir text cannot select another project's pinned binary",
+        "seconds": 10.898265
+      },
+      {
+        "name": "t243 release lifecycle launcher ownership does not depend on the spelling of the machine roots",
+        "seconds": 20.186342
+      },
+      {
+        "name": "t243 release lifecycle use refuses to create a native ownership domain beside Homebrew or Nix",
+        "seconds": 0.868175
+      },
+      {
+        "name": "t243 release lifecycle a dispatched-version reservation protects the runtime until release",
+        "seconds": 16.265791
+      },
+      {
+        "name": "t243 release lifecycle a dispatched-version reservation waits out a live transaction lock holder",
+        "seconds": 0
+      },
+      {
+        "name": "t243 release lifecycle parallel dispatched-version reservations all land, as parallel hooks make them",
+        "seconds": 11.150773
+      },
+      {
+        "name": "t243 release lifecycle a pinned hook still runs, with a one-line note, when the machine lock stays busy",
+        "seconds": 10.04025
+      },
+      {
+        "name": "t243 release lifecycle a pinned hook checks its release once, after the lock wait or before running unreserved",
+        "seconds": 13.852084
+      },
+      {
+        "name": "t243 release lifecycle Unix purge removes completions and installer-owned empty state directories",
+        "seconds": 0
+      },
+      {
+        "name": "t243 release lifecycle Windows uninstall retries reject a purge-mode change before cleanup",
+        "seconds": 0.011551
+      },
+      {
+        "name": "t243 release lifecycle Windows uninstall recovery guards the install root only for a pending continuation",
+        "seconds": 0.014002
+      },
+      {
+        "name": "t243 release lifecycle Windows uninstall recovery rejects a journal whose PATH receipt was removed after binding",
+        "seconds": 0.017543
+      },
+      {
+        "name": "t243 release lifecycle a failed project pin commit rolls the machine registry reservation back",
+        "seconds": 6.155045
+      },
+      {
+        "name": "t243 release lifecycle stable launcher enters the active dispatcher and tampered pins fail before execution",
+        "seconds": 0
+      },
+      {
+        "name": "t243 release lifecycle activation fault rolls pointer, active marker, and rollback marker back together",
+        "seconds": 12.441974
+      },
+      {
+        "name": "t243 release lifecycle failed post-flip version validation restores the prior active install",
+        "seconds": 10.561731
+      },
+      {
+        "name": "t243 release lifecycle a failed version probe says what the command printed on stderr",
+        "seconds": 0
+      },
+      {
+        "name": "t243 release lifecycle the launcher helper has a BOM only for a non-ASCII install path, and an older release keeps the text it accepts",
+        "seconds": 0.00741
+      },
+      {
+        "name": "t243 release lifecycle an install under a folder with a non-ASCII letter starts aidlc through aidlc.cmd",
+        "seconds": 11.040165
+      },
+      {
+        "name": "t243 release lifecycle retained versions reject executable checksum and runtime stamp corruption",
+        "seconds": 3.142208
+      },
+      {
+        "name": "t243 release lifecycle lifecycle exit taxonomy distinguishes usage, transport, operation, and integrity",
+        "seconds": 1.311826
+      },
+      {
+        "name": "t243 release lifecycle a moved project pin fails read-only until its machine records are reconciled",
+        "seconds": 9.647063
+      },
+      {
+        "name": "t243 projection channel Claude release stamp and every native source file retain their projection contract",
+        "seconds": 0.072417
+      },
+      {
+        "name": "t243 projection channel copy projections stay Bun-invoked while release projections are native (claude)",
+        "seconds": 0.127092
+      },
+      {
+        "name": "t243 projection channel copy projections stay Bun-invoked while release projections are native (codex)",
+        "seconds": 0.169023
+      },
+      {
+        "name": "t243 projection channel copy projections stay Bun-invoked while release projections are native (copilot)",
+        "seconds": 0.138476
+      },
+      {
+        "name": "t243 projection channel copy projections stay Bun-invoked while release projections are native (cursor)",
+        "seconds": 0.179996
+      },
+      {
+        "name": "t243 projection channel copy projections stay Bun-invoked while release projections are native (kiro)",
+        "seconds": 0.142817
+      },
+      {
+        "name": "t243 projection channel copy projections stay Bun-invoked while release projections are native (kiro-ide)",
+        "seconds": 0.153346
+      },
+      {
+        "name": "t243 projection channel copy projections stay Bun-invoked while release projections are native (opencode)",
+        "seconds": 0.15327
+      },
+      {
+        "name": "t243 projection channel native release onboarding retains its runtime contract",
+        "seconds": 0.000928
+      },
+      {
+        "name": "t243 projection channel legacy signature inventory covers every shipped unmarked root variant",
+        "seconds": 0.00093
+      },
+      {
+        "name": "t243 projection channel release runtime-generated commands remain binary-invoked",
+        "seconds": 0.140932
+      },
+      {
+        "name": "t243 projection channel release projections carry native host trust entries",
+        "seconds": 0.0068
+      },
+      {
+        "name": "t243 projection channel projection descriptors cannot name paths outside the projection",
+        "seconds": 0.300058
+      },
+      {
+        "name": "t243 projection channel config refuses a projection descriptor with an invalid onboarding path",
+        "seconds": 0.882922
+      },
+      {
+        "name": "t243 projection channel projection descriptors reject invalid shared modes even for absent optional integrations",
+        "seconds": 0.387124
+      },
+      {
+        "name": "t243 projection channel projection descriptors reject a marker on anything but a managed block",
+        "seconds": 0.387409
+      },
+      {
+        "name": "t243 projection channel projection descriptors reject malformed or policy-mismatched legacy signatures",
+        "seconds": 0.852964
+      }
+    ],
+    "tests/unit/t265-plan-approval-guard.test.ts": [
+      {
+        "name": "t265a plan-approval decision table blocks the developer dispatch when no unit has any plan",
+        "seconds": 0.00052
+      },
+      {
+        "name": "t265a plan-approval decision table blocks when the plan exists but Plan Approval is unanswered",
+        "seconds": 0.000039
+      },
+      {
+        "name": "t265a plan-approval decision table allows once the marked unit's plan is approved",
+        "seconds": 0.000032
+      },
+      {
+        "name": "t265a plan-approval decision table allows a zero-unit dispatch only through the explicit stage marker",
+        "seconds": 0.000053
+      },
+      {
+        "name": "t265a plan-approval decision table a prompt naming only an unapproved unit blocks even when a sibling is approved",
+        "seconds": 0.000018
+      },
+      {
+        "name": "t265a plan-approval decision table contextual sibling mentions do not change the explicit target",
+        "seconds": 0.000024
+      },
+      {
+        "name": "t265a plan-approval decision table missing, unknown, or conflicting target markers block",
+        "seconds": 0.000049
+      },
+      {
+        "name": "t265a plan-approval decision table duplicate copies of the same marker remain unambiguous",
+        "seconds": 0.000021
+      },
+      {
+        "name": "t265a plan-approval decision table a workflow with no known units blocks outright (the reported failure)",
+        "seconds": 0.000053
+      },
+      {
+        "name": "t265a plan-approval decision table missing, conflicting, or stale Testing Contract markers block",
+        "seconds": 0.00005
+      },
+      {
+        "name": "t265a plan-approval decision table out-of-scope calls always allow: other tools, other agents, other stages",
+        "seconds": 0.00002
+      },
+      {
+        "name": "t265a plan-approval decision table display-cased Current Stage still guards (normalizeStageName)",
+        "seconds": 0.000032
+      },
+      {
+        "name": "t265a plan-approval decision table unit markers are explicit, line-scoped, non-empty, and de-duplicated",
+        "seconds": 0.000018
+      },
+      {
+        "name": "t265a plan-approval decision table stage markers are explicit, normalized, and de-duplicated",
+        "seconds": 0.00001
+      },
+      {
+        "name": "t265a plan-approval decision table only a blank visible Plan Approval section is a pending mandatory stop",
+        "seconds": 0.003817
+      },
+      {
+        "name": "t265a plan-approval decision table a handoff cut to the marker lines is refused once the plan is approved; the brief's sections pass in either fence variant",
+        "seconds": 0.000776
+      },
+      {
+        "name": "t265a plan-approval decision table blockReason names the scope and what happens next",
+        "seconds": 0.000178
+      },
+      {
+        "name": "t265a plan-approval decision table a refused path or command stays out of the refusal",
+        "seconds": 0.944759
+      },
+      {
+        "name": "t265a plan-approval decision table with plan approval off, both refusals say next starts the build without asking, never that the person is asked",
+        "seconds": 0.000242
+      },
+      {
+        "name": "t265a plan-approval decision table the shipped hook under plan approval off: a code write or a developer dispatch before next gets the off clause",
+        "seconds": 1.70086
+      },
+      {
+        "name": "t265b hook lifecycle summary confirmation is a planning prerequisite, never Plan Approval (#2265)",
+        "seconds": 1.772406
+      },
+      {
+        "name": "t265b hook lifecycle runtime integrity refuses session-record writes even when Plan Approval is disabled",
+        "seconds": 2.24284
+      },
+      {
+        "name": "t265b hook lifecycle a review section appended to the instructions after approval blocks the dispatch and begin",
+        "seconds": 2.398489
+      },
+      {
+        "name": "t265b hook lifecycle a handoff that quotes the plan's excluded review appendix is refused; the brief command hands off the body",
+        "seconds": 19.671254
+      },
+      {
+        "name": "t265b hook lifecycle the shipped hook refuses the marker-lines-only handoff with the brief command, and never a reviewer dispatch",
+        "seconds": 3.793885
+      },
+      {
+        "name": "t265b hook lifecycle blocks the unplanned dispatch with exit 2 + a redirecting reason",
+        "seconds": 1.625447
+      },
+      {
+        "name": "t265b hook lifecycle judges the payload session's intent, not the shared cursor's",
+        "seconds": 7.6842
+      },
+      {
+        "name": "t265b hook lifecycle a payload id with no binding does not override the caller's ancestry",
+        "seconds": 1.252424
+      },
+      {
+        "name": "t265b hook lifecycle still blocks when the plan exists but the tag is blank; allows once answered",
+        "seconds": 9.155725
+      },
+      {
+        "name": "t265b hook lifecycle zero-unit stage-level evidence resolves, fingerprints, and authorizes dispatch",
+        "seconds": 3.644287
+      },
+      {
+        "name": "t265b hook lifecycle native forwarding can resume Plan Approval without authorizing generation (#1047)",
+        "seconds": 6.009684
+      },
+      {
+        "name": "t265b hook lifecycle the held Code Generation gate admits the human's answer and its own report (strict, #1369)",
+        "seconds": 4.193864
+      },
+      {
+        "name": "t265b hook lifecycle the held Code Generation gate admits the human's answer and its own report (relaxed, #1369)",
+        "seconds": 18.623101
+      },
+      {
+        "name": "t265b hook lifecycle the held Code Generation gate admits the human's answer and its own report (off, #1369)",
+        "seconds": 4.949089
+      },
+      {
+        "name": "t265b hook lifecycle direct abort recovery keeps source/native admission parity without a selection marker or Plan Approval",
+        "seconds": 5.152522
+      },
+      {
+        "name": "t265b hook lifecycle native redo requires the issued recovery's human selection and leaves generation closed",
+        "seconds": 8.066742
+      },
+      {
+        "name": "t265b hook lifecycle selected native redo admits no different target, scope, direction, flags, commands or wrappers",
+        "seconds": 3.268662
+      },
+      {
+        "name": "t265b hook lifecycle native backward recovery must match the actual current position",
+        "seconds": 8.731192
+      },
+      {
+        "name": "t265b hook lifecycle native reset requires current selection rather than an earlier state or another remedy",
+        "seconds": 4.202085
+      },
+      {
+        "name": "t265b hook lifecycle a Unit reopen the recovery question offers waits for the person's pick of it",
+        "seconds": 8.49731
+      },
+      {
+        "name": "t265b hook lifecycle an open recovery ask admits the answer the person picked and keeps code changes waiting (#1317)",
+        "seconds": 15.194831
+      },
+      {
+        "name": "t265b hook lifecycle one verdict per operation, however it is spelled (#1387)",
+        "seconds": 10.30213
+      },
+      {
+        "name": "t265b hook lifecycle the status line switch passes while the plan waits; nothing else rides along",
+        "seconds": 72.085232
+      },
+      {
+        "name": "t265b hook lifecycle a config section change passes while the plan waits; a release once the person asked; another folder is the engine's",
+        "seconds": 39.048177
+      },
+      {
+        "name": "t265b hook lifecycle the person's words that name --bypass on a next line are not a switch while the plan waits",
+        "seconds": 1.469583
+      },
+      {
+        "name": "t265b hook lifecycle a recorded switch passes while the plan waits, once the person has spoken",
+        "seconds": 3.84061
+      },
+      {
+        "name": "t265b hook lifecycle a per-work check the person asks to switch passes while the plan waits",
+        "seconds": 8.389454
+      },
+      {
+        "name": "t265b hook lifecycle park and unpark pass at every point of Code Generation (strict)",
+        "seconds": 1.402483
+      },
+      {
+        "name": "t265b hook lifecycle park and unpark pass at every point of Code Generation (off)",
+        "seconds": 2.574505
+      },
+      {
+        "name": "t265b hook lifecycle a typed ask's own commands pass while the plan waits (#1426)",
+        "seconds": 1.757991
+      },
+      {
+        "name": "t265b hook lifecycle while the engine asks for plan approval, the way to its answer stays open (#1490)",
+        "seconds": 2.445835
+      },
+      {
+        "name": "t265b hook lifecycle while the plan waits, the person's other asks run and the build still waits (Guard Policy strict (set by you))",
+        "seconds": 4.041187
+      },
+      {
+        "name": "t265b hook lifecycle while the plan waits, the person's other asks run and the build still waits (Guard Policy off (from scope poc))",
+        "seconds": 2.533841
+      },
+      {
+        "name": "t265b hook lifecycle a call the adapter marks as the person's MCP server runs at any point of Code Generation (Guard Policy strict (set by you))",
+        "seconds": 1.673103
+      },
+      {
+        "name": "t265b hook lifecycle a call the adapter marks as the person's MCP server runs at any point of Code Generation (Guard Policy off (from scope poc))",
+        "seconds": 1.269865
+      },
+      {
+        "name": "t265b hook lifecycle what the plan never governs runs in every Code Generation state (Guard Policy strict (set by you))",
+        "seconds": 4.323946
+      },
+      {
+        "name": "t265b hook lifecycle what the plan never governs runs in every Code Generation state (Guard Policy off (from scope poc))",
+        "seconds": 2.918095
+      },
+      {
+        "name": "t265b hook lifecycle a selected restart continues in its source-install spelling too",
+        "seconds": 1.740295
+      },
+      {
+        "name": "t265b hook lifecycle native reset checks the effective plan and rejects a forward target even with a reset direction",
+        "seconds": 2.318372
+      },
+      {
+        "name": "t265b hook lifecycle the shipped Bun entry point permits planning before directive publication",
+        "seconds": 1.516774
+      },
+      {
+        "name": "t265b hook lifecycle the shipped Bun entry point permits planning with pending approval",
+        "seconds": 1.475353
+      },
+      {
+        "name": "t265b hook lifecycle a redundant absolute cd permits recovery without changing execution context",
+        "seconds": 1.33616
+      },
+      {
+        "name": "t265b hook lifecycle a next that carries the person's request file is followed through Git Bash's /c/ and named back whole when refused",
+        "seconds": 1.042303
+      },
+      {
+        "name": "t265b hook lifecycle a removed shell continuation cannot authorize a different cwd",
+        "seconds": 0
+      },
+      {
+        "name": "t265b hook lifecycle a write through a Windows short-name spelling of the project waits for the plan as one through its own spelling does",
+        "seconds": 2.296546
+      },
+      {
+        "name": "t265b hook lifecycle a write through a linked parent of the project waits for the plan as one through its own spelling does",
+        "seconds": 2.339446
+      },
+      {
+        "name": "t265b hook lifecycle a write through a drive letter substituted for the project folder waits for the plan as one through its own spelling does",
+        "seconds": 2.58037
+      },
+      {
+        "name": "t265b hook lifecycle Windows cwd casing preserves recovery without authorizing workspace changes",
+        "seconds": 1.201661
+      },
+      {
+        "name": "t265b hook lifecycle a Windows short-name spelling of the project runs AI-DLC's own tools and authorizes nothing else",
+        "seconds": 1.446424
+      },
+      {
+        "name": "t265b hook lifecycle a project folder reached through a linked parent runs AI-DLC's own tools and authorizes nothing else",
+        "seconds": 2.119213
+      },
+      {
+        "name": "t265b hook lifecycle planning through the Bun entry point requires a real installed file",
+        "seconds": 0.938824
+      },
+      {
+        "name": "t265b hook lifecycle a recorded legacy write target stays out of the refusal",
+        "seconds": 2.253183
+      },
+      {
+        "name": "t265b hook lifecycle plan-approval refusals never offer a switch, and an edited plan is asked about again",
+        "seconds": 1.190147
+      },
+      {
+        "name": "t265b hook lifecycle zero-unit inline generation is refused before approval and allowed after approval",
+        "seconds": 0.98124
+      },
+      {
+        "name": "t265b hook lifecycle a PowerShell command keeps its read-only planning forms and refuses writes",
+        "seconds": 5.782789
+      },
+      {
+        "name": "t265b hook lifecycle a PowerShell line makes the stage's own record folder and files while the plan is written",
+        "seconds": 2.358786
+      },
+      {
+        "name": "t265b hook lifecycle #2456: the doctor and status reads run while the plan-approval guard blocks the build",
+        "seconds": 1.13173
+      },
+      {
+        "name": "t265b hook lifecycle a line that starts with a cd is read from where the cd leads: a write into the project still waits for the plan",
+        "seconds": 1.803427
+      },
+      {
+        "name": "t265b hook lifecycle a conductor-authored Approve Plan markdown answer has no authority receipt",
+        "seconds": 2.592115
+      },
+      {
+        "name": "t265b hook lifecycle aidlc-log emits Plan Approval authority only after its prompt and a later human turn",
+        "seconds": 6.190419
+      },
+      {
+        "name": "t265b hook lifecycle Plan Approval names the Runtime Session and warns before an unreachable prompt is shown (#1369)",
+        "seconds": 1.622688
+      },
+      {
+        "name": "t265b hook lifecycle a Plan Approval section titled with the question names the heading, not a mismatch",
+        "seconds": 2.783676
+      },
+      {
+        "name": "t265b hook lifecycle a refused Testing Contract names which defect it has and the re-render repair",
+        "seconds": 2.978508
+      },
+      {
+        "name": "t265b hook lifecycle a bare numeric reply reaches the offered-choice match instead of being parsed away",
+        "seconds": 3.980801
+      },
+      {
+        "name": "t265b hook lifecycle a JSON-quoted reply still unwraps to the offered label",
+        "seconds": 2.962615
+      },
+      {
+        "name": "t265b hook lifecycle Plan Approval rechecks the source floor after acquiring the audit lock",
+        "seconds": 4.322964
+      },
+      {
+        "name": "t265b hook lifecycle a setting recorded while the plan waits keeps the plan current",
+        "seconds": 2.707156
+      },
+      {
+        "name": "t265b hook lifecycle missing and legacy directive markers fail closed instead of selecting stage-level authority",
+        "seconds": 0.86742
+      },
+      {
+        "name": "t265b hook lifecycle record-directory symlink and junction aliases cannot exempt workspace writes",
+        "seconds": 1.640612
+      },
+      {
+        "name": "t265b hook lifecycle a symlinked workspace root preserves trusted planning paths without trusting child symlinks",
+        "seconds": 1.385785
+      },
+      {
+        "name": "t265b hook lifecycle unit-bound inline generation consumes the active unit's existing approval",
+        "seconds": 2.710708
+      },
+      {
+        "name": "t265b hook lifecycle approved bytes cannot replay across targets, and survive a reissued directive",
+        "seconds": 1.807674
+      },
+      {
+        "name": "t265b hook lifecycle fingerprint CLI requires an explicit target that matches the directive",
+        "seconds": 2.811308
+      },
+      {
+        "name": "t265b hook lifecycle an empty plan file remains blocked even with an explicit approval answer",
+        "seconds": 1.963628
+      },
+      {
+        "name": "t265b hook lifecycle a post-approval plan or instruction change invalidates the fingerprint",
+        "seconds": 2.1285
+      },
+      {
+        "name": "t265b hook lifecycle autonomous Construction still requires the mandatory per-unit approval",
+        "seconds": 2.961582
+      },
+      {
+        "name": "t265b hook lifecycle an interleaved code-generation directive stays guarded while Current Stage remains earlier",
+        "seconds": 3.038322
+      },
+      {
+        "name": "t265b hook lifecycle fail-open outside identified generation paths; missing authority fails closed",
+        "seconds": 1.039202
+      },
+      {
+        "name": "t265b hook lifecycle a block appends a PLAN_APPROVAL_BLOCKED audit row when a shard exists",
+        "seconds": 3.14503
+      },
+      {
+        "name": "t265b the stage diary during a per-Unit plan wait a write to the stage diary passes while a Unit's plan waits (Guard Policy strict (set by you))",
+        "seconds": 1.590683
+      },
+      {
+        "name": "t265b the stage diary during a per-Unit plan wait a write to the stage diary passes while a Unit's plan waits (Guard Policy off (from scope poc))",
+        "seconds": 1.998761
+      },
+      {
+        "name": "t265b the composer's grid proposal during Code Generation before Plan Approval: only the proposal file passes, by absolute or project-relative path",
+        "seconds": 1.209457
+      },
+      {
+        "name": "t265b the composer's grid proposal during Code Generation while the Plan Approval question is open: only the proposal file passes",
+        "seconds": 1.695701
+      },
+      {
+        "name": "t265b the composer's grid proposal during Code Generation after Plan Approval: the proposal file passes without starting generation",
+        "seconds": 1.002892
+      },
+      {
+        "name": "t265b the composer's grid proposal during Code Generation a redirected proposal path is judged as the place it leads to",
+        "seconds": 1.647724
+      },
+      {
+        "name": "t265c registrations Plan Approval source validation and receipt emission share one audit lock",
+        "seconds": 0.000928
+      },
+      {
+        "name": "t265c registrations code-generation stage requires the explicit dispatch unit marker",
+        "seconds": 0.00077
+      },
+      {
+        "name": "t265c registrations all native projections emit the Plan Approval prerequisite commands",
+        "seconds": 0.008148
+      },
+      {
+        "name": "t265c registrations claude: the guard group row reaches dispatch and mutation, and so does the guard inside it",
+        "seconds": 0.00078
+      },
+      {
+        "name": "t265c registrations codex: hooks.json runs the plan-approval guard inside the guard-tool-call group",
+        "seconds": 0.001317
+      },
+      {
+        "name": "t265c registrations copilot: the shared tool guard invokes the plan-approval guard",
+        "seconds": 0.000534
+      },
+      {
+        "name": "t265c registrations kiro: the conductor agent registers the guard on the subagent matcher",
+        "seconds": 0.000608
+      },
+      {
+        "name": "t265c registrations opencode: the plugin consults the guard on task dispatches",
+        "seconds": 0.00057
+      },
+      {
+        "name": "t265c registrations cursor: the adapter runs the guard before recording a Task spawn",
+        "seconds": 0.000737
+      },
+      {
+        "name": "t265c registrations kiro-ide: populated PreToolUse payloads route through the plan guard",
+        "seconds": 0.001795
+      },
+      {
+        "name": "t265c registrations the documented off-switch preserves initial approval and permits lowered continuation",
+        "seconds": 0.001776
+      }
+    ],
+    "tests/unit/t304-review-brief.test.ts": [
+      {
+        "name": "t304 the brief tool answers --help and names its verbs --help, -h, help and no arguments print every verb's usage and exit 0",
+        "seconds": 0.28732
+      },
+      {
+        "name": "t304 the brief tool answers --help and names its verbs <verb> --help prints that verb's usage and exits 0",
+        "seconds": 0.212999
+      },
+      {
+        "name": "t304 the brief tool answers --help and names its verbs a flag where the verb goes is answered with the verbs, not a flag error",
+        "seconds": 0.235649
+      },
+      {
+        "name": "t304 executable review brief scenarios a stale brief with nothing changed upstream says no reason line",
+        "seconds": 0.056078
+      },
+      {
+        "name": "t304 executable review brief scenarios READY and NOT-READY render the exact first-review outcome without exposing raw verdict tokens",
+        "seconds": 0.067357
+      },
+      {
+        "name": "t304 executable review brief scenarios a READY review with only Minor open findings reads ready, with the points to weigh",
+        "seconds": 0.068701
+      },
+      {
+        "name": "t304 executable review brief scenarios a READY review with a Major finding keeps the concerns, and its Major or not-ready points stay required",
+        "seconds": 0.034003
+      },
+      {
+        "name": "t304 executable review brief scenarios a NOT-READY review with only a Minor finding keeps the concerns, and its Major or not-ready points stay required",
+        "seconds": 0.033493
+      },
+      {
+        "name": "t304 executable review brief scenarios re-review preserves resolved, unresolved, and new stable IDs across multiple referenced artifacts",
+        "seconds": 0.000271
+      },
+      {
+        "name": "t304 executable review brief scenarios a short findings row offers a repair hint for trailing status New",
+        "seconds": 0.000082
+      },
+      {
+        "name": "t304 executable review brief scenarios a short findings row offers a repair hint for trailing status Unresolved",
+        "seconds": 0.000038
+      },
+      {
+        "name": "t304 executable review brief scenarios a short findings row offers a repair hint for trailing status Resolved",
+        "seconds": 0.000018
+      },
+      {
+        "name": "t304 executable review brief scenarios a short findings row offers a repair hint for trailing status Accepted risk",
+        "seconds": 0.00004
+      },
+      {
+        "name": "t304 executable review brief scenarios a short findings row offers a repair hint for trailing status Rejected: duplicate",
+        "seconds": 0.00006
+      },
+      {
+        "name": "t304 executable review brief scenarios a short row without a recognizable trailing status shows the expected columns: | R-05 | Minor | aidlc/requirements.md > FR-1 | Deadline is missing | Fix it |",
+        "seconds": 0.000058
+      },
+      {
+        "name": "t304 executable review brief scenarios a short row without a recognizable trailing status shows the expected columns: | R-05 | Minor | aidlc/requirements.md > FR-1 | Deadline is missing |",
+        "seconds": 0.000024
+      },
+      {
+        "name": "t304 executable review brief scenarios a short row without a recognizable trailing status shows the expected columns: | R-05 | Minor | aidlc/requirements.md > FR-1 | Deadline is missing | |",
+        "seconds": 0.000031
+      },
+      {
+        "name": "t304 executable review brief scenarios reordered headers keep their declared order without treating a non-final Status as shifted",
+        "seconds": 0.00004
+      },
+      {
+        "name": "t304 executable review brief scenarios a findings row with extra cells reports the surplus",
+        "seconds": 0.000028
+      },
+      {
+        "name": "t304 executable review brief scenarios valid findings preserve escaped pipes and explicit empty cells",
+        "seconds": 0.000099
+      },
+      {
+        "name": "t304 executable review brief scenarios review completion carries the short-row repair hint without recording a terminal receipt",
+        "seconds": 1.003318
+      },
+      {
+        "name": "t304 executable review brief scenarios a first review's report may leave out the empty Prior findings table",
+        "seconds": 0.969493
+      },
+      {
+        "name": "t304 executable review brief scenarios a later review's report without the Prior findings table is refused",
+        "seconds": 2.970088
+      },
+      {
+        "name": "t304 executable review brief scenarios a findings header the record schema cannot read is refused, not read as no findings",
+        "seconds": 0.00015
+      },
+      {
+        "name": "t304 executable review brief scenarios a NOT-READY review whose findings section is prose is still recorded",
+        "seconds": 1.004519
+      },
+      {
+        "name": "t304 executable review brief scenarios review completion refuses a NOT-READY review with a noncanonical findings header without recording a terminal receipt",
+        "seconds": 0.918304
+      },
+      {
+        "name": "t304 executable review brief scenarios review completion refuses a NOT-READY review with a canonical header carrying no rows without recording a terminal receipt",
+        "seconds": 0.903799
+      },
+      {
+        "name": "t304 executable review brief scenarios a legacy embedded review whose findings table cannot be read reaches the gate with its rows as written",
+        "seconds": 0.200324
+      },
+      {
+        "name": "t304 executable review brief scenarios a retried NOT-READY review with a noncanonical findings header records its text and one finding naming the unreadable table",
+        "seconds": 1.214985
+      },
+      {
+        "name": "t304 executable review brief scenarios a retried NOT-READY review with a canonical header carrying no rows records its text and one finding naming the unreadable table",
+        "seconds": 1.210297
+      },
+      {
+        "name": "t304 executable review brief scenarios a readable table that carries R-00 forward renders without the as-written section",
+        "seconds": 1.684624
+      },
+      {
+        "name": "t304 executable review brief scenarios the brief's findings table stays narrow, with the full text below it",
+        "seconds": 1.724321
+      },
+      {
+        "name": "t304 executable review brief scenarios the single per-Unit stage gate displays exactly the open findings approval dispositions cover",
+        "seconds": 0.154553
+      },
+      {
+        "name": "t304 executable review brief scenarios a Unit's own approval brief shows only that Unit's review",
+        "seconds": 0.574382
+      },
+      {
+        "name": "t304 executable review brief scenarios Unit-end disposition readback follows Gate Stages and Unit scope",
+        "seconds": 0.065737
+      },
+      {
+        "name": "t304 executable review brief scenarios Approve records Accepted risk atomically and future context hydrates it",
+        "seconds": 2.22141
+      },
+      {
+        "name": "t304 executable review brief scenarios Guard Policy off: Approve over work changed after its review records Changed after review and the findings stay open",
+        "seconds": 3.240439
+      },
+      {
+        "name": "t304 executable review brief scenarios Guard Policy relaxed: Approve over work changed after its review records Changed after review and the findings stay open",
+        "seconds": 3.080193
+      },
+      {
+        "name": "t304 executable review brief scenarios a finished review after the change saw it: Approve records Accepted risk",
+        "seconds": 3.573271
+      },
+      {
+        "name": "t304 executable review brief scenarios a per-Unit stage records Changed after review only for the Unit whose work changed",
+        "seconds": 0.129961
+      },
+      {
+        "name": "t304 executable review brief scenarios a per-Unit stage with stage-level files records Changed after review for its one review",
+        "seconds": 0.055425
+      },
+      {
+        "name": "t304 executable review brief scenarios a stage approval nobody gave records nothing for a finding the Unit's approval recorded, and Approved autonomously for one it did not",
+        "seconds": 0.131414
+      },
+      {
+        "name": "t304 executable review brief scenarios a Unit's approval an earlier release wrote decides its findings as the row says",
+        "seconds": 0.099109
+      },
+      {
+        "name": "t304 executable review brief scenarios a swarm batch's approval is the own approval of the Units it names, and only of them",
+        "seconds": 0.121749
+      },
+      {
+        "name": "t304 executable review brief scenarios Approve with --fix-finding records Fix requested for that finding, Accepted risk for the rest, and the next review re-checks it",
+        "seconds": 2.222682
+      },
+      {
+        "name": "t304 executable review brief scenarios --fix-finding naming no open finding of the gate is refused before anything is recorded, naming the open ones",
+        "seconds": 2.197027
+      },
+      {
+        "name": "t304 executable review brief scenarios Approve with --fix-finding over work changed after its review records Fix requested for that finding and Changed after review for the rest",
+        "seconds": 3.580333
+      },
+      {
+        "name": "t304 executable review brief scenarios Request Changes records only explicitly rejected findings with the exact reason",
+        "seconds": 2.151702
+      },
+      {
+        "name": "t304 executable review brief scenarios generic Request Changes leaves findings unresolved",
+        "seconds": 1.904925
+      },
+      {
+        "name": "t304 executable review brief scenarios stale artifact brief retains the changed output through the required recovery review",
+        "seconds": 0.113954
+      },
+      {
+        "name": "t304 executable review brief scenarios cross-shard equal-second gate and write do not invent an ordering",
+        "seconds": 0.049368
+      },
+      {
+        "name": "t304 executable review brief scenarios cross-shard equal-second gate does not consume backward-jump invalidation paths",
+        "seconds": 0.054496
+      },
+      {
+        "name": "t304 executable review brief scenarios stale source brief retains changed claimed paths through recovery and a later Unit review",
+        "seconds": 0.134135
+      },
+      {
+        "name": "t304 executable review brief scenarios an unknown reject selector names only rejectable current findings (#1082)",
+        "seconds": 0.038352
+      },
+      {
+        "name": "t304 executable review brief scenarios a short finding id selects the one current finding it names",
+        "seconds": 0.047125
+      },
+      {
+        "name": "t304 executable review brief scenarios a short finding id that two current findings carry is refused naming both",
+        "seconds": 0.043869
+      },
+      {
+        "name": "t304 executable review brief scenarios reviewer-free stages cannot record finding dispositions",
+        "seconds": 0.025367
+      },
+      {
+        "name": "t304 executable review brief scenarios backward jump records concrete upstream, downstream artifact, and review paths",
+        "seconds": 0.305376
+      },
+      {
+        "name": "t304 executable review brief scenarios Guide Me, self-edit, and Chat use the same exact pre-generation decision brief",
+        "seconds": 0.029408
+      },
+      {
+        "name": "t304 executable review brief scenarios the summary brief names what it will generate, never the questions file the person answered in",
+        "seconds": 0.028825
+      },
+      {
+        "name": "t304 executable review brief scenarios the summary brief leaves the coverage record out of what it will generate",
+        "seconds": 0.027144
+      },
+      {
+        "name": "t304 executable review brief scenarios the shipped CLI renders the same summary brief",
+        "seconds": 0.09125
+      },
+      {
+        "name": "t304 engine-owned findings experience A finding you decided comes back unchanged: the exact decision remains and is not asked again",
+        "seconds": 3.802068
+      },
+      {
+        "name": "t304 engine-owned findings experience A decision reason too long for its cell is shown in full below the narrow table",
+        "seconds": 4.356915
+      },
+      {
+        "name": "t304 engine-owned findings experience The reviewer comments on a decided finding at the same or lower severity: it becomes a note, not a question",
+        "seconds": 3.876486
+      },
+      {
+        "name": "t304 engine-owned findings experience A decided finding got more severe: a new finding points at the settled one",
+        "seconds": 3.71174
+      },
+      {
+        "name": "t304 engine-owned findings experience The reviewer says an open finding is fixed: it is resolved without a new question",
+        "seconds": 3.776153
+      },
+      {
+        "name": "t304 engine-owned findings experience The reviewer says a decided finding is now fixed: resolution includes the earlier decision",
+        "seconds": 3.73599
+      },
+      {
+        "name": "t304 engine-owned findings experience Every open finding is reported fixed: the outcome reports the fixed count",
+        "seconds": 3.748251
+      },
+      {
+        "name": "t304 engine-owned findings experience The reviewer says nothing about an open finding: it remains open and is marked not re-checked",
+        "seconds": 3.714409
+      },
+      {
+        "name": "t304 engine-owned findings experience The reviewer tries to write a decision: the report is refused and cannot change it",
+        "seconds": 0.002641
+      },
+      {
+        "name": "t304 engine-owned findings experience Keep or Modify keeps decisions and Redo from scratch starts a fresh list at R-01",
+        "seconds": 3.446421
+      },
+      {
+        "name": "t304 engine-owned findings experience You upgrade mid-workflow: a legacy decision carries by ID with its decided severity",
+        "seconds": 0.058239
+      },
+      {
+        "name": "t304 engine-owned findings experience Request Changes can reopen a reviewer-resolved finding and refuses the same ID in both decision flags",
+        "seconds": 4.314136
+      },
+      {
+        "name": "t304 engine-owned findings experience The readable review copy is the full engine list as of that review",
+        "seconds": 3.824107
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility unknown prior IDs are refused once, then become new findings with the supplied ID noted",
+        "seconds": 3.321716
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility duplicate prior rows and an ID in both tables are refused once, then preserve the first prior row and add the new row",
+        "seconds": 3.22363
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a wholly unreadable retried report adds R-00 and leaves the existing list intact",
+        "seconds": 3.208319
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility the transition six-column format treats known IDs as assessments and unknown IDs as new, never as human decisions",
+        "seconds": 3.848064
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility version 1 records keep compatibility findings and accept omission of the optional derived list",
+        "seconds": 1.655091
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility new version 1 dispositions retain required fields and add decided severity plus the paired review record",
+        "seconds": 2.020575
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility an ID column on New findings is ignored and the engine assigns the next list ID",
+        "seconds": 0.941674
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility an open prior finding takes the reported severity without changing its ID",
+        "seconds": 3.667486
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility an unknown severity on a decided prior finding becomes only a reviewer note",
+        "seconds": 3.784187
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility the new report accepts fixed and open synonyms plus omitted trailing cells",
+        "seconds": 0.002699
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility an all-empty row in either table reads as no row",
+        "seconds": 0.002873
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a NOT-READY review whose only rows are blank still has to record a finding",
+        "seconds": 0.000237
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a row with any filled cell is still read and checked",
+        "seconds": 0.002946
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility the refusal names the rule, the row and the cell",
+        "seconds": 0.001256
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility ownership lines repeated word for word are one line each; a different value is still refused",
+        "seconds": 0.000631
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility You upgrade mid-workflow: a list seeds from an older release's records, keeping IDs and decisions without asking again",
+        "seconds": 1.12136
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility records replay in the order of their REVIEW_COMPLETED rows, never by record path",
+        "seconds": 0.091741
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility the transition six-column read keeps an unchanged decided row exactly as decided and never reads a reviewer-written decision",
+        "seconds": 3.816644
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a report that writes a decision into the Now column is refused once, then adds R-00 and leaves the decision as made",
+        "seconds": 3.202274
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a decided finding already escalated once is not raised again at the same severity",
+        "seconds": 5.772324
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility Approve with open findings accepts every open finding against the paired review and leaves decided ones as decided",
+        "seconds": 4.175427
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility the verdict is over open findings only: a decided Critical leaves no open concern at the gate",
+        "seconds": 3.911526
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility the incomplete fallback after earlier reviews still shows its finding under the next unused ID",
+        "seconds": 3.915367
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility --reopen-finding accepts only a reviewer-fixed finding, and the envelope stays readable by an older release",
+        "seconds": 4.605657
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility an envelope with Fix requested stays readable by an older release, which keeps every other entry",
+        "seconds": 2.169651
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility --single runs keep today's behavior: the record holds the review's own findings, not the stage list",
+        "seconds": 2.634693
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a gate decision that names a review outside this list changes nothing",
+        "seconds": 1.790832
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a later unreadable report never inherits a decision made on an earlier one",
+        "seconds": 8.029181
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility the transition six-column read keeps one new finding for a repeated unknown ID after the retry",
+        "seconds": 3.199533
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility numbering stays lossless past the largest safe integer an older reviewer's ID can carry",
+        "seconds": 1.047351
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a decision another audit shard recorded against an earlier review stands through a later review that did not see it",
+        "seconds": 3.768354
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a decided finding reported fixed stays settled for the reviewer, so a recurrence keeps the decision",
+        "seconds": 5.701161
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a decided finding the person reopened returns to that decision when the reviewer confirms it still applies",
+        "seconds": 5.759462
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a review whose record would exceed the reader limit is refused before anything is recorded",
+        "seconds": 3.379848
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a placeholder row in New findings is refused once, then recorded as unreadable instead of as a finding",
+        "seconds": 3.281213
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a fixed finding the reviewer says applies again is open again, and a decision made before it was fixed stands",
+        "seconds": 6.105148
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility the transition six-column read reopens a fixed finding its reviewer marks unresolved",
+        "seconds": 5.69899
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility a repeated unknown prior ID becomes one new finding, and the repeat is a note on it",
+        "seconds": 3.311038
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility severity words are matched without regard to case: a lower-case critical still escalates a decided finding",
+        "seconds": 3.727218
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility Redo from scratch on one Unit of a per-Unit stage leaves the other Units' lists and decisions",
+        "seconds": 0.36992
+      },
+      {
+        "name": "t304 engine-owned report replay and compatibility You upgrade mid-workflow after an earlier Redo: the legacy review still seeds the list and later decisions carry",
+        "seconds": 0.190284
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer all harnesses ship the review brief tool",
+        "seconds": 0.00176
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer the reviewer context contract names the decided-and-fixed exception everywhere it is described",
+        "seconds": 0.004177
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer advisory review is described as showing the engine-owned findings list at the gate",
+        "seconds": 0.00367
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer authored protocols invoke summary, context, and review modes",
+        "seconds": 0.000654
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer the findings table contract the dispatch passes is the one the logger reads",
+        "seconds": 0.003154
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer text a reviewer copies from an artifact into an unreadable table never reaches the next reviewer",
+        "seconds": 1.421068
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer a valid finding carrying instruction-shaped text reaches the next reviewer only as framed data",
+        "seconds": 1.884692
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer a re-review after a clean review is given no placeholder row to copy",
+        "seconds": 1.843498
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer a review recorded as a record renders at the gate and in redispatch context, and its findings take dispositions",
+        "seconds": 2.348933
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer an empty incomplete-review record leaves room for the explicit gate fallback finding",
+        "seconds": 1.237878
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer the gate says the review did not finish from the record, and why only when the conductor knows it",
+        "seconds": 1.273481
+      },
+      {
+        "name": "t304 protocol and harness projections use the deterministic renderer a record replaces a legacy embedded review for the same scope at the gate",
+        "seconds": 1.685442
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts three open findings: one line naming each with its text, and the Approve option says no more",
+        "seconds": 2.20873
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts one open finding reads in the singular",
+        "seconds": 1.872354
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts no open finding: no line, and the option says none are open",
+        "seconds": 0.034159
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts after one is rejected, the revision brief names the ones still open",
+        "seconds": 2.399176
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts work changed after its review: a finding Approve records as Changed after review is not named",
+        "seconds": 2.48091
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts a long finding is cut at a word, so the line stays one line",
+        "seconds": 1.793319
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts a per-Unit stage's final gate labels each finding with its Unit when the findings named span Units",
+        "seconds": 0.082661
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts a per-Unit stage names only the Unit whose findings Approve accepts; the changed one keeps its clause",
+        "seconds": 0.120819
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts a Unit's own approval says nothing new: its checkpoint takes no finding flag",
+        "seconds": 0.221347
+      },
+      {
+        "name": "t304 the gate brief says once what Approve accepts the printed brief leaves the line to the gate's step, and the brief kept for the gate holds it",
+        "seconds": 1.88736
+      }
+    ],
+    "tests/unit/t248-steering-content-delivery.test.ts": [
+      {
+        "name": "t248 deterministic steering delivery delivers substantive rules inside the run-stage and keeps knowledge path-loaded",
+        "seconds": 0.456503
+      },
+      {
+        "name": "t248 deterministic steering delivery a populated placeholder is delivered as part of the ordered bundle",
+        "seconds": 0.40988
+      },
+      {
+        "name": "t248 deterministic steering delivery a blockquoted policy is substantive and delivered verbatim",
+        "seconds": 0.403419
+      },
+      {
+        "name": "t248 deterministic steering delivery large rules are automatically chunked and every directive fits 28 KiB",
+        "seconds": 0.412381
+      },
+      {
+        "name": "t248 deterministic steering delivery a retired policy notice tips a near-limit inline bundle into bounded steering parts",
+        "seconds": 0.483735
+      },
+      {
+        "name": "t248 deterministic steering delivery JSON-escaped control characters are chunked by serialized size",
+        "seconds": 0.412711
+      },
+      {
+        "name": "t248 deterministic steering delivery plain next reuses a random, private machine-local key and mints deterministic receipts",
+        "seconds": 0.568638
+      },
+      {
+        "name": "t248 deterministic steering delivery a continuation issued before the engine-directory migration remains valid",
+        "seconds": 1.072991
+      },
+      {
+        "name": "t248 deterministic steering delivery engine observers are read-only for team and solo, and route checks bypass transport",
+        "seconds": 2.500742
+      },
+      {
+        "name": "t248 deterministic steering delivery sessionless continuation advances the same receipt exactly once",
+        "seconds": 1.275163
+      },
+      {
+        "name": "t248 deterministic steering delivery stage validity advisory survives every steering continuation",
+        "seconds": 0.574446
+      },
+      {
+        "name": "t248 deterministic steering delivery a forged receipt cannot skip chunks and is answered with part 1",
+        "seconds": 0.47263
+      },
+      {
+        "name": "t248 deterministic steering delivery editing the marker payload index cannot skip chunks with a genuine receipt",
+        "seconds": 1.478864
+      },
+      {
+        "name": "t248 deterministic steering delivery editing the fallback cursor payload index cannot skip chunks with a genuine receipt",
+        "seconds": 1.449032
+      },
+      {
+        "name": "t248 deterministic steering delivery an edited stateless run-stage route cannot redirect a mismatched receipt",
+        "seconds": 0.505945
+      },
+      {
+        "name": "t248 deterministic steering delivery an edited stateless load-steering route cannot redirect a mismatched receipt",
+        "seconds": 0.439164
+      },
+      {
+        "name": "t248 deterministic steering delivery a legacy stateless marker without an authenticated route refuses unmatched receipts",
+        "seconds": 0.376675
+      },
+      {
+        "name": "t248 deterministic steering delivery an edited stateful hint cannot override the state route for a mismatched receipt",
+        "seconds": 0.585286
+      },
+      {
+        "name": "t248 deterministic steering delivery stateless run-stage markers authenticate the route after inline and chunked delivery",
+        "seconds": 0.401625
+      },
+      {
+        "name": "t248 deterministic steering delivery a stateless probe walks an authenticated route without publishing",
+        "seconds": 0.402614
+      },
+      {
+        "name": "t248 deterministic steering delivery a changed rule restarts an in-flight continuation from part 1 of the current bundle",
+        "seconds": 0.414761
+      },
+      {
+        "name": "t248 deterministic steering delivery a changed workflow state re-routes an in-flight continuation to the new part 1",
+        "seconds": 1.22119
+      },
+      {
+        "name": "t248 deterministic steering delivery a changed scope route re-routes an in-flight continuation to the new part 1",
+        "seconds": 0.470795
+      },
+      {
+        "name": "t248 deterministic steering delivery one message: a stateful next carries its rules inline and any continue re-answers it byte for byte",
+        "seconds": 0.849088
+      },
+      {
+        "name": "t248 deterministic steering delivery oversize forces chunks with the receipt and next command ahead of the payload",
+        "seconds": 1.949799
+      },
+      {
+        "name": "t248 deterministic steering delivery a mismatched receipt re-sends part 1 with the same receipt, stateful and stateless",
+        "seconds": 1.889137
+      },
+      {
+        "name": "t248 deterministic steering delivery a receipt behind `--` continues to the next part, and so does one that starts with `-`",
+        "seconds": 3.617302
+      },
+      {
+        "name": "t248 deterministic steering delivery a consumed receipt restarts delivery at part 1, and after run-stage every repeat ask gets the rules again",
+        "seconds": 2.48215
+      },
+      {
+        "name": "t248 deterministic steering delivery the Stop-hook probe retains the current part with its receipt and never publishes",
+        "seconds": 0.793832
+      },
+      {
+        "name": "t248 deterministic steering delivery a Stop-hook probe walks an oversize delivery to run-stage and leaves state, audit, and marker byte-identical",
+        "seconds": 1.39719
+      },
+      {
+        "name": "t248 deterministic steering delivery the directive validator requires receipt and next on load-steering and well-formed inline rules on run-stage",
+        "seconds": 1.088935
+      },
+      {
+        "name": "t248 deterministic steering delivery missing required rules block before stage work with repair guidance",
+        "seconds": 0.358545
+      },
+      {
+        "name": "t248 deterministic steering delivery a rule file that is there but not UTF-8 is repaired in place, never checked out over the team's edits",
+        "seconds": 0.35368
+      },
+      {
+        "name": "t248 deterministic steering delivery rejected background dispatch leaves no in-flight ledger",
+        "seconds": 0.318578
+      },
+      {
+        "name": "t248 deterministic steering delivery invalid UTF-8 required rules block before stage work",
+        "seconds": 0.351028
+      },
+      {
+        "name": "t248 deterministic steering delivery active-space paths and delivered content name the same files",
+        "seconds": 0.35067
+      },
+      {
+        "name": "t248 deterministic steering delivery a space made before its phase rules shipped starts its first stage (empty phases folder)",
+        "seconds": 0.372002
+      },
+      {
+        "name": "t248 deterministic steering delivery a space made before its phase rules shipped starts its first stage (no phases folder)",
+        "seconds": 0.344924
+      },
+      {
+        "name": "t248 deterministic steering delivery a phase rule file the team wrote stays as it is while the missing ones are added",
+        "seconds": 0.346533
+      },
+      {
+        "name": "t248 deterministic steering delivery the person hears once which rules files were added, and where",
+        "seconds": 0.344012
+      },
+      {
+        "name": "t248 deterministic steering delivery the Stop hook's look at the step starts the stage too, and writes nothing",
+        "seconds": 0.339835
+      },
+      {
+        "name": "t248 deterministic steering delivery a sub-agent in such a space gets the framework's phase rules, and nothing is written",
+        "seconds": 0.302642
+      },
+      {
+        "name": "t248 deterministic steering delivery the default space keeps its own way back for a phase rule file it is missing",
+        "seconds": 0.420733
+      },
+      {
+        "name": "t248 deterministic steering delivery readable optional knowledge is listed for inline loading",
+        "seconds": 0.396625
+      },
+      {
+        "name": "t248 deterministic steering delivery Minimal intent capture loads only stage-relevant shipped knowledge",
+        "seconds": 0.347158
+      },
+      {
+        "name": "t248 deterministic steering delivery Minimal requirements analysis keeps brownfield and requirements knowledge only",
+        "seconds": 0.352808
+      },
+      {
+        "name": "t248 deterministic steering delivery Minimal routing retains recursively composed plugin knowledge that collides by basename",
+        "seconds": 0.772681
+      },
+      {
+        "name": "t248 deterministic steering delivery Standard depth keeps the complete shipped methodology roster",
+        "seconds": 0.360545
+      },
+      {
+        "name": "t248 deterministic steering delivery unreadable optional knowledge warns and is omitted without blocking",
+        "seconds": 0.217681
+      },
+      {
+        "name": "t248 deterministic steering delivery invalid UTF-8 optional knowledge warns and is omitted",
+        "seconds": 0.345597
+      },
+      {
+        "name": "t248 deterministic steering delivery many optional-context failures aggregate without overflowing run-stage",
+        "seconds": 0.224534
+      },
+      {
+        "name": "t248 deterministic steering delivery many readable knowledge paths are bounded with a visible omission warning",
+        "seconds": 0.461262
+      },
+      {
+        "name": "t248 deterministic steering delivery a dispatch rewrite carries exact rules once (Codex, opencode, Copilot)",
+        "seconds": 0.421378
+      },
+      {
+        "name": "t248 deterministic steering delivery on Claude Code a dispatch runs as the agent wrote it, and is recorded once",
+        "seconds": 0.336459
+      },
+      {
+        "name": "t248 deterministic steering delivery on Claude Code the agent gets the stage's exact rules as it starts, and nothing is recorded twice",
+        "seconds": 0.311083
+      },
+      {
+        "name": "t248 deterministic steering delivery on Claude Code an agent that is not one of AI-DLC's starts with nothing added",
+        "seconds": 0.399773
+      },
+      {
+        "name": "t248 deterministic steering delivery rule text under adversarial framing does not replace the authoritative bundle",
+        "seconds": 0.323491
+      },
+      {
+        "name": "t248 deterministic steering delivery oversized dispatch bundles fail before emitting partial JSON",
+        "seconds": 0.357136
+      },
+      {
+        "name": "t248 deterministic steering delivery dispatch stage resolution: Current Stage outranks an incidental slug mention",
+        "seconds": 0.378118
+      },
+      {
+        "name": "t248 deterministic steering delivery dispatch stage resolution: an unknown explicit path falls back to Current Stage",
+        "seconds": 0.341929
+      },
+      {
+        "name": "a stage run on its own t248 deterministic steering delivery on Claude Code its helper gets that stage's rules, the team's own included",
+        "seconds": 1.03956
+      },
+      {
+        "name": "a stage run on its own t248 deterministic steering delivery a rewritten brief that names no stage file carries that stage's rules (Codex, opencode, Copilot)",
+        "seconds": 1.025496
+      },
+      {
+        "name": "a stage run on its own t248 deterministic steering delivery with no work in progress its helper still gets that stage's rules",
+        "seconds": 0.361153
+      },
+      {
+        "name": "a stage run on its own t248 deterministic steering delivery a stage of another phase run on its own does the same",
+        "seconds": 0.856465
+      },
+      {
+        "name": "a stage run on its own t248 deterministic steering delivery a step of the work itself hands its helpers the work's stage",
+        "seconds": 0.923206
+      },
+      {
+        "name": "a stage run on its own t248 deterministic steering delivery once it is reported, a helper gets the work's stage again",
+        "seconds": 1.184887
+      },
+      {
+        "name": "t248 deterministic steering delivery installed plugin agents receive the active-stage rule bundle",
+        "seconds": 0.349596
+      },
+      {
+        "name": "t248 deterministic steering delivery Codex item rewrites preserve existing items and append the exact bundle",
+        "seconds": 0.33969
+      },
+      {
+        "name": "t248 deterministic steering delivery SDK capture prefers the Agent prompt executed after hook rewriting",
+        "seconds": 0.000092
+      },
+      {
+        "name": "t248 reviewer knowledge absorption claude embeds each reviewer checklist in its execution surface",
+        "seconds": 0.003253
+      },
+      {
+        "name": "t248 reviewer knowledge absorption codex embeds each reviewer checklist in its execution surface",
+        "seconds": 0.002516
+      },
+      {
+        "name": "t248 reviewer knowledge absorption copilot embeds each reviewer checklist in its execution surface",
+        "seconds": 0.000367
+      },
+      {
+        "name": "t248 reviewer knowledge absorption cursor embeds each reviewer checklist in its execution surface",
+        "seconds": 0.000315
+      },
+      {
+        "name": "t248 reviewer knowledge absorption kiro embeds each reviewer checklist in its execution surface",
+        "seconds": 0.00027
+      },
+      {
+        "name": "t248 reviewer knowledge absorption kiro-ide embeds each reviewer checklist in its execution surface",
+        "seconds": 0.000305
+      },
+      {
+        "name": "t248 reviewer knowledge absorption opencode embeds each reviewer checklist in its execution surface",
+        "seconds": 0.000676
+      },
+      {
+        "name": "t248 reviewer knowledge absorption plugin stage reviewers absorb knowledge from their plugin source",
+        "seconds": 0.003429
+      },
+      {
+        "name": "t248 the shipped skill delivers the Stop-note step for its tool claude ships one carrying-on paragraph that says nothing about the note",
+        "seconds": 0.000201
+      },
+      {
+        "name": "t248 the shipped skill delivers the Stop-note step for its tool codex ships one carrying-on paragraph that says nothing about the note",
+        "seconds": 0.000445
+      },
+      {
+        "name": "t248 the shipped skill delivers the Stop-note step for its tool copilot ships one carrying-on paragraph that says nothing about the note",
+        "seconds": 0.000438
+      },
+      {
+        "name": "t248 the shipped skill delivers the Stop-note step for its tool cursor ships one carrying-on paragraph that says nothing about the note",
+        "seconds": 0.000412
+      },
+      {
+        "name": "t248 the shipped skill delivers the Stop-note step for its tool kiro ships one carrying-on paragraph that says nothing about the note",
+        "seconds": 0.000385
+      },
+      {
+        "name": "t248 the shipped skill delivers the Stop-note step for its tool kiro-ide ships one carrying-on paragraph that says nothing about the note",
+        "seconds": 0.000377
+      },
+      {
+        "name": "t248 the shipped skill delivers the Stop-note step for its tool opencode ships one carrying-on paragraph that says nothing about the note",
+        "seconds": 0.000391
+      }
+    ],
+    "tests/unit/t-copilot-directive-budget.test.ts": [
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) Copilot declares a directive budget under VS Code's cut; no other harness declares one",
+        "seconds": 0.00162
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) the state fixture places every shipped stage",
+        "seconds": 0.0007
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) stock memory: every stage's results fit, and an oversized stage takes one extra continue",
+        "seconds": 10.562847
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) grown memory: every stage steers in parts that each fit, then reaches its run-stage",
+        "seconds": 16.043843
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) a notice rides on every part and each part, cut as full as the budget allows, still fits",
+        "seconds": 1.796733
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) asking again after the rules part, as a new chat or /aidlc --resume does, gets the rules again",
+        "seconds": 2.080337
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) the first stage with a long knowledge roster sends the conductor persona ahead of its run-stage",
+        "seconds": 0.981507
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) a step that still cannot fit is an error the person can act on, not a failed command",
+        "seconds": 0.452718
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) a project's harness.json cannot put its own words in the size error",
+        "seconds": 0.447308
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) the size message names the host's limit only when a harness declares one",
+        "seconds": 0.047116
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) the size message gives advice that fits what made the step long",
+        "seconds": 0.000198
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) when the persona goes ahead, rules that now fit ride with the run-stage",
+        "seconds": 1.208743
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) the stage and scope runners follow the rules parts to the run-stage",
+        "seconds": 2.05728
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) with Claude installed beside Copilot, every engine keeps Copilot's smaller limit",
+        "seconds": 1.705305
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) functional-design steers on Copilot, and a step that steers on Copilot stays one message on Claude",
+        "seconds": 0.824942
+      },
+      {
+        "name": "t-copilot-directive-budget: every Copilot directive fits VS Code's terminal result (#1411) Reverse Engineering for 60 registered repos fits, with whole per-repo link chains in order",
+        "seconds": 0.944898
+      },
+      {
+        "name": "t-copilot-directive-budget: a workflow already under way when AI-DLC is updated (#1411) the updated native engine keeps every stage within the budget of the project's older harness.json",
+        "seconds": 10.910047
+      },
+      {
+        "name": "t-copilot-directive-budget: a workflow already under way when AI-DLC is updated (#1411) a budget already in the project's harness.json wins over the release's",
+        "seconds": 1.076549
+      },
+      {
+        "name": "t-copilot-directive-budget: a workflow already under way when AI-DLC is updated (#1411) a larger budget in the project's harness.json cannot raise the release's",
+        "seconds": 1.656828
+      },
+      {
+        "name": "t-copilot-directive-budget: a workflow already under way when AI-DLC is updated (#1411) a limit that changes between two rules parts starts the rules over, so none are skipped or repeated",
+        "seconds": 5.99279
+      },
+      {
+        "name": "t-copilot-directive-budget: a workflow already under way when AI-DLC is updated (#1411) without a readable runtime copy of the project's harness, the engine keeps its old limit",
+        "seconds": 2.209526
+      },
+      {
+        "name": "t-copilot-directive-budget: a workflow already under way when AI-DLC is updated (#1411) with Claude installed beside Copilot, the native engine takes Copilot's limit from its release copy",
+        "seconds": 2.179169
+      },
+      {
+        "name": "t-copilot-directive-budget: a workflow already under way when AI-DLC is updated (#1411) a Bun engine reads its own tree, so the project's older harness.json needs nothing more",
+        "seconds": 11.55487
+      },
+      {
+        "name": "t-copilot-directive-budget: Code Generation's rules in parts keep Plan Approval on Copilot (#1411) approved once, the plan is built after its rules parts and is not asked about again (stock memory)",
+        "seconds": 13.039906
+      },
+      {
+        "name": "t-copilot-directive-budget: Code Generation's rules in parts keep Plan Approval on Copilot (#1411) approved once, the plan is built after its rules parts and is not asked about again (grown memory)",
+        "seconds": 21.397717
+      },
+      {
+        "name": "t-copilot-directive-budget: Code Generation's rules in parts keep Plan Approval on Copilot (#1411) with Plan Approval off, the build is handed over after the rules part with its record, so it can start",
+        "seconds": 4.620264
+      },
+      {
+        "name": "t-copilot-directive-budget: Code Generation's rules in parts keep Plan Approval on Copilot (#1411) with Plan Approval off, a handover whose record could not be written is finished by the next `next` (stock memory)",
+        "seconds": 6.046908
+      },
+      {
+        "name": "t-copilot-directive-budget: Code Generation's rules in parts keep Plan Approval on Copilot (#1411) with Plan Approval off, a handover whose record could not be written is finished by the next `next` (grown memory)",
+        "seconds": 10.165724
+      },
+      {
+        "name": "t-copilot-directive-budget: a Unit whose step is longer than one command result still starts the workflow's opening stage, with the conductor persona, starts its Unit (Guard Policy off)",
+        "seconds": 2.070025
+      },
+      {
+        "name": "t-copilot-directive-budget: a Unit whose step is longer than one command result still starts the workflow's opening stage, with the conductor persona, starts its Unit (Guard Policy relaxed)",
+        "seconds": 2.109302
+      },
+      {
+        "name": "t-copilot-directive-budget: a Unit whose step is longer than one command result still starts the workflow's opening stage, with the conductor persona, starts its Unit (Guard Policy strict)",
+        "seconds": 2.063623
+      },
+      {
+        "name": "t-copilot-directive-budget: a Unit whose step is longer than one command result still starts after Inception, a grown lead persona: the agent's step lists the persona and fits, and the Unit starts",
+        "seconds": 1.789299
+      },
+      {
+        "name": "t-copilot-directive-budget: a Unit whose step is longer than one command result still starts after Inception, 130 knowledge files for the lead: the agent's step lists the persona and fits, and the Unit starts",
+        "seconds": 1.7039
+      },
+      {
+        "name": "t-copilot-directive-budget: a Unit whose step is longer than one command result still starts on Claude, a lead persona grown past the common limit still starts its Unit",
+        "seconds": 1.745833
+      },
+      {
+        "name": "t-copilot-directive-budget: building the Units in parallel hands them out within the budget the workflow's opening stage lists both Units in its wave, and every part fits",
+        "seconds": 1.203524
+      },
+      {
+        "name": "t-copilot-directive-budget: building the Units in parallel hands them out within the budget a wave step too long for even one Unit is the size error that says what to change",
+        "seconds": 0.546595
+      },
+      {
+        "name": "t-copilot-directive-budget: building the Units in parallel hands them out within the budget a Unit's questions picked up with the person's kept replies still go out before its wave",
+        "seconds": 1.614058
+      }
+    ]
+  }
+}

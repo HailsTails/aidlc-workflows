@@ -1,0 +1,629 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "lint/eslint-port.ts",
+      "reason": "The single port through which the lint layer reaches the eslint package.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/eslint-port.ts import the eslint package?",
+            "because": "The flat config modules and custom rules need ESLint's Linter and Rule types, and this file is the one place they take them from.",
+            "evidence": "lint/standards.ts, lint/no-comments.ts and eslint.config.ts import from lint/eslint-port.ts"
+          },
+          {
+            "why": "Why do the flat config modules and custom rules need ESLint's types?",
+            "because": "ESLint itself loads eslint.config.ts and calls each custom rule's create function, so their shapes are fixed by ESLint's plugin interface.",
+            "evidence": "Rule.RuleModule and Linter.Config in node_modules/eslint/lib/types/index.d.ts"
+          },
+          {
+            "why": "Why does ESLint's plugin interface fix those shapes rather than a type the repository owns?",
+            "because": "The repository chose ESLint as its lint gate when Biome was retired, and a gate's configuration is written in the host tool's own format.",
+            "evidence": "package.json devDependencies pin eslint 10.11.0 and no longer list @biomejs/biome"
+          },
+          {
+            "why": "Why was ESLint chosen as the lint gate when Biome was retired?",
+            "because": "The boundary rules need no-restricted-imports patterns and AST selectors per context, which ESLint's flat config expresses and Biome's configuration cannot.",
+            "evidence": "lint/restrictions.ts builds no-restricted-imports patterns and no-restricted-syntax selectors"
+          },
+          {
+            "why": "Why do the boundary rules need import patterns and AST selectors per context?",
+            "because": "The clean-architecture rebuild enforces the context map's dependency arrows mechanically, so every arrow becomes an import restriction checked on every file.",
+            "evidence": "lint/context-map.ts CONTEXT_MAP declares dependsOn for each context"
+          }
+        ],
+        "rootCause": "The rebuild enforces the context map's dependency arrows mechanically through ESLint, so ESLint is a dependency the lint layer wraps at one port.",
+        "rootCheck": "Read lint/context-map.ts and lint/restrictions.ts on 2026-11-08: CONTEXT_MAP still declares dependsOn arrows and srcImportRestrictions still turns them into no-restricted-imports patterns.",
+        "readback": "The rebuild enforces the context map's arrows mechanically through ESLint, therefore the boundary rules are ESLint patterns and selectors, therefore ESLint is the lint gate, therefore the config modules and rules need ESLint's types, therefore lint/eslint-port.ts imports the eslint package as their one port.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "lint/node-builtins.ts",
+      "reason": "The single port through which the lint layer reads the runtime's built-in module list.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/node-builtins.ts import node:module?",
+            "because": "The node-import-protocol rule needs the runtime's list of built-in names to tell a bare built-in such as fs from a package.",
+            "evidence": "lint/node-import-protocol.ts builds BARE_BUILTINS from NODE_BUILTINS"
+          },
+          {
+            "why": "Why does the protocol rule need to tell a bare built-in from a package?",
+            "because": "A bare specifier like fs can be shadowed by an installed package of that name, while node:fs always resolves to the runtime, so the rule reports the unprefixed form.",
+            "evidence": "https://nodejs.org/api/esm.html#node-imports"
+          },
+          {
+            "why": "Why does the repository report the unprefixed form instead of allowing it?",
+            "because": "Biome's useNodejsImportProtocol enforced the prefix before ESLint replaced Biome, and the gate keeps a successor for every rule Biome enforced.",
+            "evidence": "lint/standards.ts registers aidlc/node-import-protocol beside lint/biome-successor.ts"
+          },
+          {
+            "why": "Why does the gate keep a successor for every rule Biome enforced?",
+            "because": "Retiring a rule without a successor would let debt-zone code regress silently while the ratchet still reads green.",
+            "evidence": "lint/boundary-baseline.json records counts per rule category for 1609 debt files"
+          },
+          {
+            "why": "Why would the ratchet read green while debt-zone code regresses?",
+            "because": "The baseline counts only findings of rules that run, so a rule that stops running drops its category to zero instead of failing.",
+            "evidence": "lint/gate/domain/violation-ratchet.ts increasesOver compares measured counts with recorded counts"
+          }
+        ],
+        "rootCause": "The baseline counts only rules that run, so the protocol rule must keep running, and it needs the built-in list that node:module holds.",
+        "rootCheck": "Read lint/gate/domain/violation-ratchet.ts on 2026-11-08: increasesOver reports only measured counts above recorded ones, so a category that stops running never fails.",
+        "readback": "The baseline counts only rules that run, therefore every Biome rule keeps a successor, therefore the protocol rule tells bare built-ins from packages, therefore it needs the runtime's built-in list, therefore lint/node-builtins.ts imports node:module.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "lint/harness-folders.ts",
+      "reason": "The single place the lint layer reads which harnesses exist, from the harness folders on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/harness-folders.ts import node:fs and node:url?",
+            "because": "It lists the folders under harness/ and src/hosts/ when the lint config loads, and those folder names are the harness names the boundary rules refuse outside a host bundle.",
+            "evidence": "lint/restrictions.ts builds harnessName and harnessPath from HARNESS_FOLDER_NAMES"
+          },
+          {
+            "why": "Why are the harness names read from folder names rather than written in a list?",
+            "because": "A written list is a second copy of the harness set that drifts when a harness is added, so an eighth harness would need a lint edit to be guarded.",
+            "evidence": "lint/context-map.ts HARNESS_NAMES held 12 hand-written entries beside the 7 folders under harness/"
+          },
+          {
+            "why": "Why does a drifting copy of the harness set matter to the boundary rules?",
+            "because": "The rules refuse harness names in production code outside src/hosts, so a harness missing from the copy could be named anywhere without a finding.",
+            "evidence": "lint/boundaries.ts productionSyntax adds harnessNames to every non-fixture src layer"
+          },
+          {
+            "why": "Why must production code outside src/hosts never name a harness?",
+            "because": "Each harness difference belongs in a host bundle behind a port, so the contexts stay one implementation for every harness the method ships to.",
+            "evidence": "lint/context-map.ts HOST_BUNDLE_ROOT is src/hosts, and hostBundleImportRestrictions limits what a host imports"
+          },
+          {
+            "why": "Why do the contexts stay one implementation for every harness?",
+            "because": "The rebuild ships one hand-authored core to 7 harnesses, and per-harness branches in the core were the coupling the rebuild removes.",
+            "evidence": "AGENTS.md section AI-DLC: one core, many harnesses"
+          }
+        ],
+        "rootCause": "The rebuild keeps every harness difference in src/hosts, so the lint layer must know the real harness set, and the folders on disk are its only source.",
+        "rootCheck": "Listed harness/ on 2026-11-08: 7 folders (claude, codex, copilot, cursor, kiro, kiro-ide, opencode); src/hosts does not exist yet, and the reader returns no names for a missing folder.",
+        "readback": "The rebuild keeps harness differences in host bundles, therefore production code outside src/hosts names no harness, therefore the rules need the full harness set, therefore a written copy would drift, therefore lint/harness-folders.ts reads the harness folders through node:fs and node:url.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "lint/no-comments.ts",
+      "reason": "An ESLint rule's listener keys are ESTree node names that ESLint's API fixes.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/no-comments.ts name a visitor key Program in PascalCase?",
+            "because": "ESLint calls a rule's listeners by AST node type, and the node type for a whole file is spelled Program.",
+            "evidence": "https://eslint.org/docs/latest/extend/custom-rules#rule-structure"
+          },
+          {
+            "why": "Why does ESLint call listeners by AST node type?",
+            "because": "ESLint walks the ESTree syntax tree and dispatches each node to the listener whose key matches its type field, so the key equals the ESTree name exactly.",
+            "evidence": "https://github.com/estree/estree/blob/master/es5.md#programs"
+          },
+          {
+            "why": "Why must the listener key equal the ESTree name exactly?",
+            "because": "Dispatch is a string lookup with no mapping layer, so a camelCase key would never match and the rule would quietly report nothing.",
+            "evidence": "lint/no-comments.test.ts shows the Program listener reporting a comment on line 1"
+          },
+          {
+            "why": "Why would an unmatched camelCase key quietly report nothing?",
+            "because": "ESLint accepts any extra key on the listener object without validation, so an unmatched name is ignored rather than refused.",
+            "evidence": "https://eslint.org/docs/latest/extend/selectors"
+          },
+          {
+            "why": "Why does ESLint accept an unmatched listener key without validation?",
+            "because": "Listener keys are CSS-like selectors as well as node names, so ESLint cannot know which strings are mistakes and leaves them to the rule author.",
+            "evidence": "lint/restrictions.ts writes selectors such as TSAsExpression for no-restricted-syntax"
+          }
+        ],
+        "rootCause": "ESLint's listener keys are selectors and node names its API fixes, so the vendor-facing rule file spells them as ESTree does.",
+        "rootCheck": "Ran bun test lint/no-comments.test.ts on 2026-11-08: the Program listener reported the comment on line 1, and the test passed.",
+        "readback": "ESLint's listener keys are vendor selectors and node names, therefore a rule cannot rename them, therefore the listener for a whole file is spelled Program, therefore lint/no-comments.ts names a visitor key Program in PascalCase.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "lint/node-import-protocol.ts",
+      "reason": "An ESLint rule's listener keys are ESTree node names that ESLint's API fixes.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/node-import-protocol.ts name its visitor keys ImportDeclaration, ExportNamedDeclaration and ExportAllDeclaration?",
+            "because": "ESLint calls a rule's listeners by AST node type, and those are the node types of the three statements that carry a module specifier.",
+            "evidence": "https://github.com/estree/estree/blob/master/es2015.md#imports"
+          },
+          {
+            "why": "Why does ESLint call listeners by AST node type?",
+            "because": "ESLint walks the ESTree syntax tree and dispatches each node to the listener whose key matches its type field, so the key equals the ESTree name exactly.",
+            "evidence": "https://eslint.org/docs/latest/extend/custom-rules#rule-structure"
+          },
+          {
+            "why": "Why must the listener key equal the ESTree name exactly?",
+            "because": "Dispatch is a string lookup with no mapping layer, so a camelCase key would never match and the rule would quietly report nothing.",
+            "evidence": "lint/node-import-protocol.test.ts shows the ImportDeclaration listener reporting a bare fs import"
+          },
+          {
+            "why": "Why would an unmatched camelCase key quietly report nothing?",
+            "because": "ESLint accepts any extra key on the listener object without validation, so an unmatched name is ignored rather than refused.",
+            "evidence": "https://eslint.org/docs/latest/extend/selectors"
+          },
+          {
+            "why": "Why does ESLint accept an unmatched listener key without validation?",
+            "because": "Listener keys are CSS-like selectors as well as node names, so ESLint cannot know which strings are mistakes and leaves them to the rule author.",
+            "evidence": "lint/restrictions.ts writes selectors such as TSAsExpression for no-restricted-syntax"
+          }
+        ],
+        "rootCause": "ESLint's listener keys are selectors and node names its API fixes, so the vendor-facing rule file spells them as ESTree does.",
+        "rootCheck": "Ran bun test lint/node-import-protocol.test.ts on 2026-11-08: the ImportDeclaration listener reported the bare fs import, and the test passed.",
+        "readback": "ESLint's listener keys are vendor selectors and node names, therefore a rule cannot rename them, therefore the listeners for specifier statements are spelled ImportDeclaration, ExportNamedDeclaration and ExportAllDeclaration, therefore lint/node-import-protocol.ts names its visitor keys that way.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/agent-file.ts",
+      "reason": "Decodes upstream agent frontmatter, whose field names such as display_name are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/agent-file.ts declare snake_case schema keys such as display_name?",
+            "because": "Its Zod schema decodes agent frontmatter, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/agents/aidlc-architect-agent.md frontmatter display_name"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: display_name still appears in the upstream agent frontmatter (core/agents/aidlc-architect-agent.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/agent-file.ts declares snake_case schema keys such as display_name to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/plugin-files.ts",
+      "reason": "Decodes upstream plugin contribution manifests, whose field names such as requires_stage are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/plugin-files.ts declare snake_case schema keys such as requires_stage?",
+            "because": "Its Zod schema decodes plugin contribution manifests, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "plugins/test-pro/README.md documents requires_stage and required_sections"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: requires_stage still appears in the upstream plugin contribution manifests (plugins/test-pro/README.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/plugin-files.ts declares snake_case schema keys such as requires_stage to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/rule-file.ts",
+      "reason": "Decodes upstream rule frontmatter, whose field names such as stale_after are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/rule-file.ts declare snake_case schema keys such as stale_after?",
+            "because": "Its Zod schema decodes rule frontmatter, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/tools/aidlc-rule-schema.ts reads stale_after; docs/reference/08-rule-system.md"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: stale_after still appears in the upstream rule frontmatter (core/tools/aidlc-rule-schema.ts), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/rule-file.ts declares snake_case schema keys such as stale_after to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/scope-file.ts",
+      "reason": "Decodes upstream scope frontmatter, whose field names such as existing_code are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/scope-file.ts declare snake_case schema keys such as existing_code?",
+            "because": "Its Zod schema decodes scope frontmatter, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/scopes/aidlc-bugfix.md frontmatter existing_code"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: existing_code still appears in the upstream scope frontmatter (core/scopes/aidlc-bugfix.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/scope-file.ts declares snake_case schema keys such as existing_code to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/sensor-file.ts",
+      "reason": "Decodes upstream sensor manifests, whose field names such as default_severity are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/sensor-file.ts declare snake_case schema keys such as default_severity?",
+            "because": "Its Zod schema decodes sensor manifests, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/sensors/aidlc-claim-sources.md frontmatter default_severity"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: default_severity still appears in the upstream sensor manifests (core/sensors/aidlc-claim-sources.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/sensor-file.ts declares snake_case schema keys such as default_severity to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/stage-file.ts",
+      "reason": "Decodes upstream stage frontmatter, whose field names such as lead_agent are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/stage-file.ts declare snake_case schema keys such as lead_agent?",
+            "because": "Its Zod schema decodes stage frontmatter, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/aidlc-common/stages/construction/build-and-test.md frontmatter lead_agent"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: lead_agent still appears in the upstream stage frontmatter (core/aidlc-common/stages/construction/build-and-test.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/stage-file.ts declares snake_case schema keys such as lead_agent to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/execution/adapters/intent-registry-file.ts",
+      "reason": "Decodes upstream the intent registry records, whose field names such as repos_named are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/execution/adapters/intent-registry-file.ts declare snake_case schema keys such as repos_named?",
+            "because": "Its Zod schema decodes the intent registry records, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/tools/aidlc-lib.ts writes repos_named into each intent registry row"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: repos_named still appears in the upstream the intent registry records (core/tools/aidlc-lib.ts), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/execution/adapters/intent-registry-file.ts declares snake_case schema keys such as repos_named to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-2#cast-expressions",
+      "file": "src/kernel/brand.ts",
+      "reason": "The one place a validated value becomes its branded type; every constructor validates first and then calls it.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/kernel/brand.ts cast its input to the branded type?",
+            "because": "A branded type carries a phantom marker that no runtime value has, so the compiler can only produce one through a type assertion.",
+            "evidence": "src/kernel/brand.ts declares brandName as a unique symbol with no runtime value"
+          },
+          {
+            "why": "Why do identity values carry a phantom marker the runtime never has?",
+            "because": "The contracts brand identity values such as ProjectPath and ContentHash so a validated value cannot be swapped for a raw string at compile time.",
+            "evidence": "src/kernel/values.ts constructors return ProjectPath, SourcePath and ContentHash"
+          },
+          {
+            "why": "Why must a validated identity value be kept apart from a raw string at compile time?",
+            "because": "Each constructor checks portability or format once, and the type is the only proof downstream code holds that the check ran.",
+            "evidence": "src/kernel/values.ts projectPath validates the segments before it brands"
+          },
+          {
+            "why": "Why is the type the only proof downstream code holds that the check ran?",
+            "because": "Domain modules carry no parsing of their own; they trust values that were validated where they entered.",
+            "evidence": "git grep on 2026-11-08 finds no zod import under src/workflow-definition/domain or src/kernel/values.ts"
+          },
+          {
+            "why": "Why do domain modules carry no parsing of their own?",
+            "because": "The clean architecture keeps domain and application pure and puts parsing in adapters and constructors, so each value is validated in exactly one constructor.",
+            "evidence": "lint/restrictions.ts purityRestriction forbids package imports in domain and application"
+          }
+        ],
+        "rootCause": "The clean architecture validates each value in exactly one constructor, so the assertion that brands it exists once, in the kernel helper every constructor calls.",
+        "rootCheck": "Ran the discipline-core audit on 2026-11-08: its only CD-2 finding in src is src/kernel/brand.ts line 11.",
+        "readback": "The clean architecture validates each value in exactly one constructor, therefore the branded type is the downstream proof, therefore identity values carry a phantom marker, therefore src/kernel/brand.ts casts its input to the branded type.",
+        "owner": "Lane 0 (Contracts) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "src/kernel/file-system.ts",
+      "reason": "The one implementer of the kernel FileSystem port: the single place the rebuild reaches the disk through node:fs/promises and node:url.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/kernel/file-system.ts import node:fs/promises and node:url?",
+            "because": "createNodeFileSystem renders each URL natively and performs the reads and scratch writes that the FileSystem port declares.",
+            "evidence": "createNodeFileSystem and NodeFileLib in src/kernel/file-system.ts"
+          },
+          {
+            "why": "Why does createNodeFileSystem render each URL natively and perform the reads and scratch writes the FileSystem port declares?",
+            "because": "The port speaks only URLs and byte arrays, so the implementer maps them onto the runtime and no consumer needs a node: type.",
+            "evidence": "src/kernel/file-system-port.ts imports no node: module"
+          },
+          {
+            "why": "Why does the port speak only URLs and byte arrays so that no consumer needs a node: type?",
+            "because": "Consumers in domain and application stay pure, and a fake can stand in for the port.",
+            "evidence": "src/kernel/fixtures/file-system.fake.ts createInMemoryFileSystem"
+          },
+          {
+            "why": "Why must a fake stand in for the port so that consumers stay pure in domain and application?",
+            "because": "Their tests must not touch the real disk, and a second file importing node:fs would be a second way to reach it.",
+            "evidence": "src/kernel/file-system.test.ts imports no node: module"
+          },
+          {
+            "why": "Why must tests not touch the real disk when a second file importing node:fs would be a second way to reach it?",
+            "because": "The disk is one registered capability: one implementer, proven once against the real runtime by its hermetic test.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          }
+        ],
+        "rootCause": "The rebuild registers each real IO reach as one named implementer behind a port, so the disk is reached in file-system.ts alone.",
+        "rootCheck": "Read lint/implementers.json and the exception entries on 2026-11-09: file-system.ts is the only registered implementer of the file-system capability.",
+        "readback": "Every real IO reach is one named implementer, therefore the disk is reached through the FileSystem port, therefore file-system.ts alone imports node:fs/promises and node:url.",
+        "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "src/kernel/file-system.hermetic.test.ts",
+      "reason": "The hermetic test of the file-system implementer: the only test that exercises the real runtime, in a scratch folder it creates and removes.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/kernel/file-system.hermetic.test.ts import node:fs/promises, node:os, node:path and node:url?",
+            "because": "It creates and removes a scratch folder and checks createNodeFileSystem against the real runtime there.",
+            "evidence": "createNodeFileSystem in src/kernel/file-system.ts"
+          },
+          {
+            "why": "Why does it check createNodeFileSystem against the real runtime in a scratch folder it creates and removes?",
+            "because": "The seam tests use the fake, so only this test can show that the implementer behaves as its port says on the real runtime.",
+            "evidence": "src/kernel/file-system.test.ts imports no node: module"
+          },
+          {
+            "why": "Why can only this test show that the implementer behaves as its port says, when the seam tests use the fake?",
+            "because": "The fake is written from the port and not from the runtime, so it cannot reveal where the runtime differs.",
+            "evidence": "src/kernel/fixtures/file-system.fake.ts"
+          },
+          {
+            "why": "Why must the fake be written from the port and not from the runtime, if the runtime can differ?",
+            "because": "Consumers depend on the port alone, so the port is the contract and the implementer is held to it by one real-runtime proof.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          },
+          {
+            "why": "Why is the implementer held to the port by one real-runtime proof instead of many?",
+            "because": "One registered implementer per capability has one hermeticTest, so no other test imports a node: module.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          }
+        ],
+        "rootCause": "The registered file-system implementer is proven once against the real runtime, so its hermetic test alone may import node: modules.",
+        "rootCheck": "Read lint/implementers.json on 2026-11-09: the hermeticTest field names this file for the capability.",
+        "readback": "The implementer needs one real-runtime proof, therefore its hermetic test uses a scratch folder, therefore file-system.hermetic.test.ts imports the node: modules and no other test does.",
+        "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "src/kernel/process-runner.hermetic.test.ts",
+      "reason": "The hermetic test of the process-runner implementer: the only test that exercises the real runtime, in a scratch folder it creates and removes.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/kernel/process-runner.hermetic.test.ts import node:fs/promises, node:os, node:path and node:url?",
+            "because": "It creates and removes a scratch folder and checks createNodeProcessRunner against the real runtime there.",
+            "evidence": "createNodeProcessRunner in src/kernel/process-runner.ts"
+          },
+          {
+            "why": "Why does it check createNodeProcessRunner against the real runtime in a scratch folder it creates and removes?",
+            "because": "The seam tests use the fake, so only this test can show that the implementer behaves as its port says on the real runtime.",
+            "evidence": "src/kernel/process-runner.test.ts imports no node: module"
+          },
+          {
+            "why": "Why can only this test show that the implementer behaves as its port says, when the seam tests use the fake?",
+            "because": "The fake is written from the port and not from the runtime, so it cannot reveal where the runtime differs.",
+            "evidence": "src/kernel/fixtures/process-runner.fake.ts"
+          },
+          {
+            "why": "Why must the fake be written from the port and not from the runtime, if the runtime can differ?",
+            "because": "Consumers depend on the port alone, so the port is the contract and the implementer is held to it by one real-runtime proof.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          },
+          {
+            "why": "Why is the implementer held to the port by one real-runtime proof instead of many?",
+            "because": "One registered implementer per capability has one hermeticTest, so no other test imports a node: module.",
+            "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+          }
+        ],
+        "rootCause": "The registered process-runner implementer is proven once against the real runtime, so its hermetic test alone may import node: modules.",
+        "rootCheck": "Read lint/implementers.json on 2026-11-09: the hermeticTest field names this file for the capability.",
+        "readback": "The implementer needs one real-runtime proof, therefore its hermetic test uses a scratch folder, therefore process-runner.hermetic.test.ts imports the node: modules and no other test does.",
+        "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+      }
+    }
+  ]
+}

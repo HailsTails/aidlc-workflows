@@ -9,6 +9,7 @@
 // route; an unverifiable stateless route requires a fresh explicit `next`.
 // Optional persona/knowledge remains path-loaded with actionable warnings.
 
+import { readConductorSurface } from "../harness/conductor-skill.ts";
 import {
   NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS,
   NATIVE_STARTUP_TIMEOUT_MS,
@@ -37,8 +38,19 @@ import { join } from "node:path";
 import { parse } from "smol-toml";
 import {
   absorbReviewerKnowledge,
-  reviewerAgentSet,
 } from "../../scripts/agent-knowledge.ts";
+import { inlineAgentSet, reviewerAgentSet }
+  from "../../src/workflow-definition/domain/method-participation.ts";
+import { accept } from "../../src/kernel/fixtures/accept.ts";
+import {
+  createMethodCompiler,
+} from "../../src/workflow-definition/application/create-method-compiler.ts";
+import type { Contribution } from "../../src/workflow-definition/domain/contribution.ts";
+import { pluginId } from "../../src/workflow-definition/domain/identities.ts";
+import {
+  agent, artifact, stage,
+} from "../../src/workflow-definition/fixtures/identities.fixture.ts";
+import { methodSource } from "../../src/workflow-definition/fixtures/method-source.fixture.ts";
 import { appendAuditEntry } from "../../core/tools/aidlc-audit.ts";
 import { validateDirective } from "../../core/tools/aidlc-directive.ts";
 import { withoutCommentBlocks } from "../../core/tools/aidlc-markdown.ts";
@@ -447,7 +459,8 @@ function addTeamInceptionRule(proj: string): string {
 // The persona text the harness actually loads. A Codex persona is the
 // `developer_instructions` string of its TOML role file, read through the
 // parser (the emitter escapes backslashes and quote runs in the raw bytes);
-// every other harness loads the Markdown file as it is.
+// every other harness loads the Markdown file as it is. opencode and Copilot
+// dispatch a reviewer from their own agent folder, not the engine's copy.
 function reviewerExecutionSurface(
   harness: (typeof HARNESS_MATRIX)[number],
   reviewer: (typeof REVIEWER_AGENTS)[number],
@@ -459,6 +472,9 @@ function reviewerExecutionSurface(
   }
   if (harness.name === "opencode") {
     return readFileSync(join(harness.distRoot, ".opencode", "agents", `${reviewer}.md`), "utf-8");
+  }
+  if (harness.name === "copilot") {
+    return readFileSync(join(harness.distRoot, ".github", "agents", `${reviewer}.md`), "utf-8");
   }
   return readFileSync(join(harness.engineRoot, "agents", `${reviewer}.md`), "utf-8");
 }
@@ -2470,6 +2486,48 @@ describe("t248 deterministic steering delivery", () => {
   });
 });
 
+function pluginReviewerMethod() {
+  const plugin = accept(pluginId("example"));
+  const owner = { kind: "plugin" as const, plugin };
+  const reviewer = {
+    slug: agent("example-reviewer-agent"), owner,
+    source: methodSource({ kind: "agent", within: "example-reviewer-agent.md" }),
+    displayName: "Example Reviewer", description: "Review release evidence", examples: [],
+    tools: { disallowed: [] }, maxTurns: null, model: { kind: "host-default" as const },
+    persona: { text: "# Reviewer\n", headings: [] },
+    additions: { afterPreflight: [], endOfBody: [] },
+  };
+  const author = { ...reviewer, slug: agent("example-author-agent"),
+    source: methodSource({ kind: "agent", within: "example-author-agent.md" }) };
+  const contribution: Contribution = { plugin, version: "1", description: "Release review",
+    dependsOn: [{ kind: "core" }], rulesLevel: "team", overlays: [],
+    tools: { scripts: [], doctorCheck: null, commands: [] }, content: {
+      agents: [reviewer, author], scopes: [], memberships: [], freeformDefaults: [],
+      sensors: [], rules: [], knowledge: [], stages: [{
+        slug: stage("release-review"), owner,
+        source: methodSource({ kind: "stage", within: "operation/release-review.md" }),
+        displayName: "Release Review", phase: "operation", orderingHint: null,
+        execution: { trigger: "always", condition: "Review release evidence" },
+        participation: { mode: "inline",
+          lead: { kind: "agent", agent: author.slug }, supports: [] },
+        cardinality: { kind: "once" }, workspace: "read-only",
+        produces: [{ artifact: artifact("release-review"),
+          obligation: "required", unitKinds: "all" }],
+        consumes: [], requires: [], sensors: [], review: { reviewer: reviewer.slug,
+          artifact: artifact("release-review"), maxIterations: 2, reviewClass: "adversarial" },
+        summaryConfirmation: "none", activation: { kind: "always" }, composerPrior: null,
+        requiredSections: [], briefing: { inputs: "Release", outputs: "Review",
+          instructions: { text: "", headings: [] } },
+      }],
+    } };
+  const compiler = createMethodCompiler({ outline: (text) => ({ text, headings: [] }) });
+  return accept(compiler.compile({
+    core: { stages: [], agents: [], scopes: [], memberships: [], freeformDefaults: [],
+      sensors: [], rules: [], knowledge: [], hooks: [] }, contributions: [contribution],
+    saved: [], pins: [], selection: { kind: "every-installed" },
+  }));
+}
+
 describe("t248 reviewer knowledge absorption", () => {
   for (const harness of HARNESS_MATRIX) {
     test(`${harness.name} embeds each reviewer checklist in its execution surface`, () => {
@@ -2500,43 +2558,24 @@ describe("t248 reviewer knowledge absorption", () => {
   test("plugin stage reviewers absorb knowledge from their plugin source", () => {
     const root = mkdtempSync(join(tmpdir(), "t248-plugin-reviewer-"));
     try {
-      const coreRoot = join(root, "core");
       const pluginRoot = join(root, "plugins", "example");
-      const stages = join(pluginRoot, "stages", "operation");
-      const knowledge = join(
-        pluginRoot,
-        "knowledge",
-        "example-reviewer-agent",
-      );
-      mkdirSync(join(coreRoot, "aidlc-common", "stages"), {
-        recursive: true,
-      });
-      mkdirSync(stages, { recursive: true });
+      const knowledge = join(pluginRoot, "knowledge", "example-reviewer-agent");
       mkdirSync(knowledge, { recursive: true });
-      writeFileSync(
-        join(stages, "release-review.md"),
-        "---\nslug: release-review\nreviewer: example-reviewer-agent\n---\n",
-        "utf-8",
-      );
-      writeFileSync(
-        join(knowledge, "reviewing.md"),
-        "# Plugin Review Checklist\n\nVerify release evidence.\n",
-        "utf-8",
-      );
-
-      expect(reviewerAgentSet(coreRoot)).toContain(
-        "example-reviewer-agent",
-      );
-      const absorbed = absorbReviewerKnowledge(
-        "---\nname: example-reviewer-agent\n---\n\n# Reviewer\n",
-        "example-reviewer-agent",
-        coreRoot,
-        pluginRoot,
-      );
-      expect(absorbed).toContain(
-        "Absorbed at build time from knowledge/example-reviewer-agent/reviewing.md",
-      );
-      expect(absorbed).toContain("Verify release evidence.");
+      writeFileSync(join(knowledge, "reviewing.md"),
+        "# Plugin Review Checklist\n\nVerify release evidence.\n", "utf-8");
+      const method = pluginReviewerMethod();
+      const reviewerAgents = reviewerAgentSet(method);
+      expect([...reviewerAgents]).toEqual<readonly string[]>(["example-reviewer-agent"]);
+      expect([...inlineAgentSet(method)]).toEqual([]);
+      const content = "---\nname: example-reviewer-agent\n---\n\n# Reviewer\n";
+      const absorbed = absorbReviewerKnowledge({ content, agentName: "example-reviewer-agent",
+        sourceRoot: pluginRoot, reviewerAgents });
+      expect(absorbed).toBe(`${content.trimEnd()}\n\n---\n\n` +
+        "<!-- Absorbed at build time from knowledge/example-reviewer-agent/reviewing.md - " +
+        "edit that file, not this generated copy. -->\n\n" +
+        "# Plugin Review Checklist\n\nVerify release evidence.\n");
+      expect(absorbReviewerKnowledge({ content, agentName: "example-author-agent",
+        sourceRoot: pluginRoot, reviewerAgents })).toBe(content);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -2550,7 +2589,7 @@ describe("t248 reviewer knowledge absorption", () => {
 describe("t248 the shipped skill delivers the Stop-note step for its tool", () => {
   for (const harness of HARNESS_MATRIX) {
     test(`${harness.name} ships one carrying-on paragraph that says nothing about the note`, () => {
-      const skill = readFileSync(join(harness.skillsRoot, "aidlc", "SKILL.md"), "utf-8");
+      const skill = readConductorSurface(join(harness.skillsRoot, "aidlc", "SKILL.md"));
       const paragraphs = skill.split("\n").filter((line) => line.startsWith("**When AI-DLC carries on by itself.**"));
       expect(paragraphs.length).toBe(1);
       const paragraph = paragraphs[0] as string;

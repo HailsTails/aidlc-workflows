@@ -30,7 +30,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { keepOwnHarnessBindings } from "../../scripts/harness-bindings.ts";
+import { BINDING_HEADINGS } from "../../src/cli/host-table.ts";
+import { keepOwnHarnessBindings } from "../../src/projection/domain/harness-bindings.ts";
 import { AIDLC_SRC, REPO_ROOT } from "../harness/fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 
@@ -156,8 +157,12 @@ describe("t305 construction protocol module — Build-and-Test failure loop-back
       body
         .replaceAll(`${harnessDir}/`, "{{HARNESS_DIR}}/")
         .replaceAll("bun {{HARNESS_DIR}}/tools/aidlc.ts", "{{INVOKE}}");
-    const authoredFor = (harness: string) =>
-      keepOwnHarnessBindings(AUTHORED_CONSTRUCTION_PROTOCOL, harness, "stage-protocol-construction.md");
+    const authoredFor = (harness: string) => {
+      const kept = keepOwnHarnessBindings({ content: AUTHORED_CONSTRUCTION_PROTOCOL, file: "stage-protocol-construction.md",
+        ownHeading: BINDING_HEADINGS[harness], expectedHeadings: Object.values(BINDING_HEADINGS) });
+      if (!kept.ok) throw new Error(kept.refusal);
+      return kept.value;
+    };
     expect(normalize(CONSTRUCTION_PROTOCOL, ".claude")).toBe(authoredFor("claude"));
     const mismatched = HARNESS_MATRIX.flatMap((harness) => {
       const path = join(
@@ -362,7 +367,7 @@ describe("t305 construction protocol module — Build-and-Test failure loop-back
     // The audit call is spelled out in full (positional slug +
     // --artifacts), never abbreviated to a form that errors if run literally.
     expect(tail).toContain(
-      'aidlc-state.ts reuse-artifact <slug>\n--decision <keep|modify> --artifacts "<comma-separated list of existing\nartifacts found>"',
+      'bun .claude/tools/aidlc.ts engine state reuse-artifact <slug>\n--decision <keep|modify> --artifacts "<comma-separated list of existing\nartifacts found>"',
     );
   });
 
@@ -385,7 +390,7 @@ describe("t305 construction protocol module — Build-and-Test failure loop-back
     expect(gated).toContain("**Keep** for all other units");
     expect(gated).toContain("**Modify** for build-and-test itself");
     expect(gated).toContain(
-      "aidlc-state.ts reuse-artifact <slug> --decision <keep|modify>",
+      "bun .claude/tools/aidlc.ts engine state reuse-artifact <slug> --decision <keep|modify>",
     );
     expect(gated).toContain(
       '--artifacts "<comma-separated list of existing artifacts found>"',

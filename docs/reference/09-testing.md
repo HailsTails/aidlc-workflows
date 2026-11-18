@@ -339,8 +339,9 @@ blocked hand-off) and opencode's plugin (loaded into one opencode process, a
 worker thread the host waits on; a refusal is the hook's thrown error).
 `tests/unit/t-scope-hosts.test.ts` pins those payloads against the ones recorded
 from each tool (`tests/fixtures/<tool>-hook-payloads`). Each tool's answer is
-read in its own form: Codex and Kiro refuse with exit 2, Copilot with a deny
-decision, Copilot runs the command its hook rewrote, and Kiro's person-turn hook
+read in its own form: Kiro refuses with exit 2, Codex with exit 2 or, on
+Windows, a deny decision (read by `tests/harness/codex-hook-answer.ts`), Copilot
+with a deny decision, Copilot runs the command its hook rewrote, and Kiro's person-turn hook
 may run the turn's first `next` itself, so the agent acts on that reply. Every
 tool call fires the hooks, so a refusal stops the run, and a hook command that
 fails is a problem. A host can also run on a project an installed release set
@@ -767,7 +768,7 @@ The generator reads the units from the packaged `dist/claude` tree. If that
 tree was packaged from other sources (`core/`, `harness/`, `plugins/` or the
 packager's own scripts) than the checkout, both commands refuse with one line:
 run `bun scripts/package.ts` first. `package.ts` records a content fingerprint of its inputs per harness in
-`dist/.package-sources.json` (`scripts/package-sources.ts`), so undoing an edit
+`dist/.package-sources.json` (`src/packaging/adapters/packaged-sources-file.ts`), so undoing an edit
 needs no rebuild. A build during which an input changed is not recorded and
 fails, saying to run it again. Temp trees from the generator's `AIDLC_COVERAGE_*` seams have
 no `core/` and are not checked.
@@ -2360,7 +2361,12 @@ returned through the actual tool call. `--single` skips hook pre-dispatch
 entirely, leaving its first issuance to that tool call. Only a line the engine
 reads exactly is pre-dispatched at all (`readNextLine`): anything it would hand
 to the agent goes to the agent untouched, so this seam never acts on the
-person's words before anyone has read them.
+person's words before anyone has read them. When the human-turn hook gives
+its first-step note (a line too long for the message record, kept whole beside
+it, under the rules `firstStepNote` owns), the line is neither pre-dispatched
+nor forwarded: the adapter says the note, which has the agent run `next` with
+nothing after it to read the kept copy, and holds no call for the guard to
+match (`t-long-message-note.test.ts`).
 
 `t147-kiro-hook-adapter.test.ts` checks the 10 KiB boundary with multibyte
 content, native shell aliases, retained terminal guards, and a real multipart
@@ -2448,3 +2454,26 @@ annotation and a row in the job summary naming the refresh command. The step
 always succeeds, so a stale weight slows CI but never fails a job or drops a
 PR from the merge queue. `t-ci-test-weights.test.ts` covers the refresh, the
 report, and the checked-in weight files.
+
+## Progress during desktop runs
+
+The runner writes `AIDLC_PROGRESS` observations to stderr when it knows the
+selected inventory, every 30 seconds while its event loop is available, and
+when execution returns. It reports recorded file outcomes against that exact
+inventory, separates PASS/FAIL/SKIP, names active file attempts and their age,
+and reports elapsed execution time and the last observed file advancement.
+These counts are not a percentage of work or time: files differ in cost,
+retries can revise outcomes, and worker cleanup may still remain. They never
+determine coverage, success, admission, retries or deadlines.
+
+Use `--verbose` to retain the per-file logs named by the observation. After
+five minutes without observed file advancement, inspect the active file's
+log tail and existing process/deadline metadata once. A silent long-running
+file is not proof of a hang; no job is automatically cancelled by this report.
+
+Projection lock waiting and generation announce their stage before blocking;
+the file total is unknown then. Synchronous setup, builds and gate checks
+cannot emit intermediate timer observations. Async gate capture forwards
+complete bounded progress lines while retaining the original captured output;
+`--locked` already inherits output. These are diagnostic lines, not trusted
+coverage receipts (nested child output can contain marker-shaped text).
