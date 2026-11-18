@@ -20,7 +20,7 @@ test("Kiro supplies plugin agent frontmatter for each distribution channel", () 
 
 test("Kiro places ancillary authored files without taking the settings producer's inputs", () => {
   expect(KIRO_AUTHORED_PLACEMENTS).toEqual([
-    { source: "hooks/aidlc-kiro-adapter.ts", destination: ".kiro/hooks/aidlc-kiro-adapter.ts" },
+    { source: "hooks/aidlc-kiro-adapter.ts", destination: ".kiro/hooks/aidlc-kiro-adapter.ts", sourceRole: "host-adapter-script" },
     { source: "settings/mcp.json", destination: ".kiro/settings/mcp.json" },
     { source: "dot-gitignore", destination: ".gitignore" },
   ]);

@@ -89,7 +89,8 @@ export const KIRO_IDE_TOKENS = {
 export const KIRO_IDE_AUTHORED_PLACEMENTS = [
   {
     "source": "hooks/aidlc-kiro-adapter.ts",
-    "destination": ".kiro/hooks/aidlc-kiro-adapter.ts"
+    "destination": ".kiro/hooks/aidlc-kiro-adapter.ts",
+    "sourceRole": "host-adapter-script"
   },
   {
     "source": "hooks/aidlc-kiro-tool-names.ts",

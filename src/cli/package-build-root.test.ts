@@ -619,6 +619,33 @@ const distributionMembers = (): HostModule => ({
   },
 });
 
+test("the actual build route prepares declared adapter source with its channel and existing native command owner", async () => {
+  const content = "// bun .scratch/hooks/aidlc-scratch-adapter.ts <target>\n";
+  const member = distributionMembers();
+  const fileSystem = createInMemoryFileSystem({ files: { ...fullHostFiles(),
+    "file:///harness/scratch/hooks/aidlc-scratch-adapter.ts": content } });
+  const root = createPackageBuildRoot({ hosts: [{ ...member, projection: { ...member.projection,
+    placements: [{ source: "hooks/aidlc-scratch-adapter.ts", destination: ".scratch/hooks/aidlc-scratch-adapter.ts",
+      sourceRole: "host-adapter-script" }] } }],
+    platform: { fileSystem, processRunner, yaml, digester, terminal: createRecordingTerminal() },
+    outliner, sources, runnerFrames });
+  const observed: { channel: string; text: unknown }[] = [];
+  const buildPayload = spyOn(root, "buildPayload").mockImplementation(async request => {
+    const [file] = request.files;
+    if (!file) throw new Error("The declared source must have been captured by the production root.");
+    observed.push({ channel: request.channel, text: accept(request.prepare(file)).content });
+    return request.channel === "copy" ? accepted(claudeCopyPayloadFixture)
+      : refused([{ kind: "native-leftover", path: path(".scratch/hooks/aidlc-scratch-adapter.ts"),
+        reason: "Stop this composition proof before payload output mutation." }]);
+  });
+  expect(await root.buildRoutes(NO_MODEL_CAP)[1]?.run([])).toBe(1);
+  expect(buildPayload).toHaveBeenCalledTimes(2);
+  expect(observed).toEqual([
+    { channel: "copy", text: { kind: "text", text: content } },
+    { channel: "native", text: { kind: "text", text: "// aidlc engine adapter scratch <target>\n" } },
+  ]);
+});
+
 const withProjection = (parts: Partial<HostModule["projection"]>): HostModule => {
   const module = distributionMembers();
   return { ...module, projection: { ...module.projection, ...parts } };

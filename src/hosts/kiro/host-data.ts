@@ -50,7 +50,7 @@ export const KIRO_TOKENS = {
 } as const satisfies HostTokenChoices;
 
 export const KIRO_AUTHORED_PLACEMENTS = [
-  { source: "hooks/aidlc-kiro-adapter.ts", destination: ".kiro/hooks/aidlc-kiro-adapter.ts" },
+  { source: "hooks/aidlc-kiro-adapter.ts", destination: ".kiro/hooks/aidlc-kiro-adapter.ts", sourceRole: "host-adapter-script" },
   { source: "settings/mcp.json", destination: ".kiro/settings/mcp.json" },
   { source: "dot-gitignore", destination: ".gitignore" },
 ] as const satisfies readonly AuthoredPlacement[];

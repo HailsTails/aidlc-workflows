@@ -22,7 +22,7 @@ test("Cursor places its native rules and adapter without taking settings or copy
     { source: "rules-aidlc-phase-inception.mdc", destination: ".cursor/rules/aidlc-phase-inception.mdc" },
     { source: "rules-aidlc-phase-construction.mdc", destination: ".cursor/rules/aidlc-phase-construction.mdc" },
     { source: "rules-aidlc-phase-operation.mdc", destination: ".cursor/rules/aidlc-phase-operation.mdc" },
-    { source: "hooks/aidlc-cursor-adapter.ts", destination: ".cursor/hooks/aidlc-cursor-adapter.ts" },
+    { source: "hooks/aidlc-cursor-adapter.ts", destination: ".cursor/hooks/aidlc-cursor-adapter.ts", sourceRole: "host-adapter-script" },
     { source: "dot-gitignore", destination: ".gitignore" },
     { source: "install.ts", destination: "install.ts" },
   ]);

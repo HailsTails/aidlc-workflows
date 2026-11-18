@@ -1,8 +1,6 @@
 import { createBuildPackaging, createBuildHostPayload, createHostDistributionReading,
   createReleaseArtifacts, createBuildReleaseArchives, type BuildPackaging } from "../packaging/core-root.ts";
 import { channelTokens } from "../packaging/domain/channel-tokens.ts";
-import { bindCopiedSource } from "../projection/domain/source-binding.ts";
-import { prepareHostSource } from "../projection/application/prepared-host-source.ts";
 import { onboardingContext } from "../projection/domain/onboarding-context.ts";
 import { createPluginBuildRoute } from "./adapters/routes/build/plugin-route.ts";
 import { createPluginBuilds } from "./adapters/routes/build/plugin-builds.ts";
@@ -17,7 +15,7 @@ import { createAuthoredMethodLoading } from "../workflow-definition/core-root.ts
 import type { AuthoredPluginBuild, MethodReading } from "../workflow-definition/application/ports.ts";
 import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
 import type { PluginBuildSession } from "../projection/application/ports/plugin-session.ts";
-import { captureBuildSources, createCapturedMethodCompiler, createProjectCapturedHost, createPluginAuthoringEnrichment,
+import { captureBuildSources, createCapturedHostSourcePreparation, createCapturedMethodCompiler, createProjectCapturedHost, createPluginAuthoringEnrichment,
   createPluginBuildSession, captureReleaseEntrypoints, createBuildProjection, createHostedMethodProjection }
   from "../projection/core-root.ts";
 import type { CoreBuild, CreatePackageBuildRoot,
@@ -173,8 +171,8 @@ const hostBuildRequest = (ports: {
     ...channelTokens({ channel: hostPayloadRequest.channel, directory: members.host.directory,
       prefix: ports.projection.nativeCommands.prefix, namespace: ports.projection.nativeCommands.namespace }) };
   return accepted({ ...hostPayloadRequest, host: captured.host, core: ports.prepared.core, files: captured.files,
-    prepare: (file: CapturedHostSources["files"][number]) => prepareHostSource({ host: captured.host, file,
-      steps: [(content) => bindCopiedSource({ source: file.source, content, tokens })] }),
+    prepare: createCapturedHostSourcePreparation({ host: captured.host, placements: members.projection.placements,
+      channel: hostPayloadRequest.channel, commands: ports.projection.nativeCommands, tokens }),
     tokens, modelCap: ports.modelCap, entrypoints: ports.prepared.entrypoints,
     reviewerAgents: reviewerAgentSet(ports.prepared.plugins.method) });
 };

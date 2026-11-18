@@ -39,6 +39,7 @@ export type HostData = {
 export type AuthoredPlacement = {
   readonly source: string;
   readonly destination: string;
+  readonly sourceRole?: "host-adapter-script";
 
   readonly prompt?: (request: { readonly content: FileContent;
     readonly channel: DistributionChannel }) => PromptLines | null;

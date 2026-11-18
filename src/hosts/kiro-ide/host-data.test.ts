@@ -64,7 +64,8 @@ test("Kiro IDE places its authored helpers and gitignore", () => {
   expect(KIRO_IDE_AUTHORED_PLACEMENTS).toEqual([
   {
     "source": "hooks/aidlc-kiro-adapter.ts",
-    "destination": ".kiro/hooks/aidlc-kiro-adapter.ts"
+    "destination": ".kiro/hooks/aidlc-kiro-adapter.ts",
+    "sourceRole": "host-adapter-script"
   },
   {
     "source": "hooks/aidlc-kiro-tool-names.ts",

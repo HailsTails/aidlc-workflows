@@ -44,6 +44,7 @@ import type { CapturedFileFrame } from "./application/ports/captured-file-frame.
 import { createCapturedFileFrame, CAPTURED_FRAME_NATIVE_PATH } from "./adapters/captured-file-frame.ts";
 
 export { captureBuildSources } from "./application/capture-build-sources.ts";
+export { createCapturedHostSourcePreparation } from "./application/captured-host-source-preparation.ts";
 export { createPluginAuthoringEnrichment } from "./application/enrich-plugin-authoring.ts";
 export { createCapturedMethodCompiler } from "./application/compile-captured-method.ts";
 export { createProjectCapturedHost } from "./application/project-captured-host.ts";

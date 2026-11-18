@@ -39,7 +39,7 @@ test("Codex declares five-option questions and the existing invocation token cho
 
 test("Codex owns its adapter and project-root gitignore placements", () => {
   expect(CODEX_AUTHORED_PLACEMENTS).toEqual([
-    { source: "hooks/aidlc-codex-adapter.ts", destination: ".codex/hooks/aidlc-codex-adapter.ts" },
+    { source: "hooks/aidlc-codex-adapter.ts", destination: ".codex/hooks/aidlc-codex-adapter.ts", sourceRole: "host-adapter-script" },
     { source: "dot-gitignore", destination: ".gitignore" },
   ]);
 });
