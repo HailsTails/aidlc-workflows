@@ -37,6 +37,8 @@ const member: HostProjectionMember = { host: SCRATCH_HOST, projection: {
 } };
 const other: HostProjectionMember = { host: host({ name: "other", directory: ".other" }),
   projection: { ...member.projection, bindingHeading: "Other" } };
+const nativeCommands = { prefix: "aidlc engine", namespace: "engine", delegates: [], adapterHooks: new Set<string>(),
+  trusted: () => "unused", unresolvable: () => [] };
 const compiled = { graph: "captured graph", grid: "captured grid" };
 const captured: FullHostCapture = { surface: { documents: accept(admitCwdDocuments({ documents: [], guidance: { kind: "legacy-authored" } })), skills: [], onboarding: accept(admitOnboardingSource({ hookGuidance: "legacy-authored" as const, toolsGuidance: "legacy-authored" as const, neutral: "Neutral", harnessSkeleton: "Host" })) },
   runtime: { files: [], version: { kind: "text", text: "Version" }, agentTiers: { kind: "text", text: "Tiers" },
@@ -56,10 +58,11 @@ const fixture = (members: readonly HostProjectionMember[] = [member, other]) => 
   const hosted = mock<CapturedHostProjectionPorts["hosted"]>().mockReturnValue({ project });
   const request: CapturedHostProjectionRequest = { host: SCRATCH_HOST,
     core: { method: methodSliceFixture, sources: [] }, compile, files: [requiredFile, unusedFile], prepare: accepted,
-    tokens, onboarding: { channel: "copy" }, modelCap: "balanced", entrypoints: [source("tools/aidlc.ts")],
+    tokens, onboarding: { channel: "copy" }, nativeReplacements: [], modelCap: "balanced", entrypoints: [source("tools/aidlc.ts")],
     projectRoot: new URL("file:///project/"), reviewerAgents: new Set([agent("reviewer")]) };
   return { compile, capture, assemble, project, hosted, request,
-    projectHost: createProjectCapturedHost({ members, capture, assemble, hosted }) };
+    projectHost: createProjectCapturedHost({ members, capture, assemble, hosted,
+      nativeCommands }) };
 };
 
 const nativeContext = prepareOnboardingContext({ context: { channel: "native", permissions: brand<OnboardingPermissions>({
@@ -84,9 +87,12 @@ test("the first caller binds Tools independently while Hook keeps custom legacy 
     neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_tools_runtime}}", hookGuidance: "legacy-authored", toolsGuidance: "framework-tools" })) } }));
   await current.projectHost({ ...current.request, onboarding: nativeContext });
   expect(current.assemble.mock.calls[0]?.[0].fills).toBe(fills);
-  expect(current.project.mock.calls[0]?.[0].surface.onboarding).toEqual({ neutral: "Neutral",
+  expect(current.project.mock.calls[0]?.[0].surface.onboarding).toEqual<unknown>({ neutral: "Neutral",
     harnessSkeleton: "TypeScript sources invoked through the self-contained `aidlc` runtime",
-    copyAuthoring: { neutral: "Neutral", harnessSkeleton: "TypeScript, run via bun" } });
+    copyAuthoring: { neutral: "Neutral", harnessSkeleton: "TypeScript, run via bun" },
+    nativeDialect: { host: member.host, commands: nativeCommands, replacements: [], permissions: PERMISSION_POLICIES_FIXTURE["prefix-only"],
+      captured: { neutral: "Neutral", harnessSkeleton: "{{SLOT:framework_tools_runtime}}",
+        hookGuidance: "legacy-authored", toolsGuidance: "framework-tools" } } });
   expect(fills).toEqual({ invoke: "/custom", slots: { ["framework_hook_runtime"]: "Custom Hook", ["framework_tools_runtime"]: "Custom Tools" } });
 });
 test("the first caller composes both declared meanings without changing their owned positions", async () => {

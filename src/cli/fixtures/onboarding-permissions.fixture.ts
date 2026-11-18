@@ -71,7 +71,7 @@ export const permissionProseFlow = async (input: {
   }, runtime: { files: [], version: { kind: "text", text: 'export const AIDLC_VERSION = "fixture";' },
     agentTiers: { kind: "text", text: "{}" }, settingsSchema: { kind: "text", text: "{}" } }, companions: [] };
   const observed: { fills: OnboardingFills | null } = { fills: null };
-  const project = createProjectCapturedHost({ members: [module], capture: async () => accepted(capture),
+  const project = createProjectCapturedHost({ nativeCommands: commands, members: [module], capture: async () => accepted(capture),
     assemble: async (request) => {
       observed.fills = request.fills;
       return accepted({ ...emptyHarness, tokens: request.tokens, ...request.renderers.documents({
@@ -82,7 +82,7 @@ export const permissionProseFlow = async (input: {
   const before = await project({ host: module.host, core: { method: methodSliceFixture, sources: [] },
     compile: () => accepted({ graph: "[]", grid: "{}" }),
     files: module.projection.placements.map(placement => ({ source: source(placement.source), content: { kind: "text", text: "Captured" } })),
-    prepare: accepted, tokens, onboarding: context,
+    prepare: accepted, tokens, onboarding: context, nativeReplacements: [],
     modelCap: null, entrypoints: [], projectRoot: new URL("file:///project/"), reviewerAgents: new Set() });
   // Isolate the paragraph consumer's policy port. Unrelated mandatory release
   // replacements are qualified separately; this is not a full release fixture.

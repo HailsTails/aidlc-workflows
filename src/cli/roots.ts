@@ -89,7 +89,8 @@ export type { CapturedHostSources, HostSourcesInput } from "../projection/applic
 
 export type HostBuildTable = readonly HostModule[];
 
-export type HostBuildRequest = Omit<CapturedHostProjectionRequest, "compile" | "core" | "onboarding"> & {
+export type HostBuildRequest = Omit<CapturedHostProjectionRequest,
+  "compile" | "core" | "onboarding" | "nativeReplacements"> & {
   readonly channel: Channel;
   readonly core: CoreBuild;
 };

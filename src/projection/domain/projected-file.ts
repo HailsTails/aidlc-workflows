@@ -3,6 +3,7 @@ import type { ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { MethodSourcePath } from "../../workflow-definition/domain/method-source.ts";
 import type { NativePolicyAdmission } from "./native-policy.ts";
 import type { RootHistory } from "./root-history.ts";
+import type { LegacyNativeProgram } from "./legacy-native-source.ts";
 
 export const RENDERED_CONCEPTS = [
   "agent",
@@ -53,6 +54,7 @@ export type ProjectionOrigin = ProjectionSourceOrigin | {
 export type DistributionChannel = "copy" | "native";
 
 export type ProjectedFile = {
+  readonly nativeAuthoring?: LegacyNativeProgram;
   readonly path: ProjectPath;
   readonly content: FileContent;
   readonly mode: FileMode;

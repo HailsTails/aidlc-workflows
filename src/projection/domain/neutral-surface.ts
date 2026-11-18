@@ -3,6 +3,7 @@ import type { Result } from "../../kernel/result.ts";
 import type { SourcePath } from "../../kernel/values.ts";
 import type { AdmittedOnboardingTemplates } from "./onboarding-source.ts";
 import type { AdmittedCwdDocuments } from "./cwd-guidance.ts";
+import type { LegacyOnboardingDialect } from "./legacy-native-source.ts";
 
 export const NEUTRAL_DOCUMENT_ROLES = ["protocol", "template", "conductor", "stage", "knowledge"] as const;
 
@@ -35,9 +36,9 @@ export type AuthoredOnboardingTemplates = {
   readonly neutral: string;
   readonly harnessSkeleton: string;
 };
-export type OnboardingTemplates = AuthoredOnboardingTemplates | (AuthoredOnboardingTemplates & {
+export type OnboardingTemplates = (AuthoredOnboardingTemplates | (AuthoredOnboardingTemplates & {
   readonly copyAuthoring: Readonly<AuthoredOnboardingTemplates>;
-});
+})) & { readonly nativeDialect?: LegacyOnboardingDialect };
 
 export type AuthoredOnboardingFills = {
   readonly invoke: string;

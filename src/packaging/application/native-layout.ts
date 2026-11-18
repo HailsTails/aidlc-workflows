@@ -9,6 +9,7 @@ import type { NativeRelease } from "../domain/payload.ts";
 import { nativeBareToolPattern, nativeInvocationText } from "../domain/native-invocations.ts";
 import { nativeOnboardingText } from "../domain/native-onboarding.ts";
 import { nativePolicyObligation } from "../../projection/domain/native-policy.ts";
+import { compiledLegacyNativeFile, legacyNativeProgram } from "../../projection/domain/legacy-native-source.ts";
 
 type NativeLayoutRequest = {
   readonly files: readonly ProjectedFile[];
@@ -26,12 +27,16 @@ const replaceNativeBlock = (request: {
   readonly files: readonly ProjectedFile[]; readonly host: HostIdentity;
   readonly replacement: NativeRelease["replacements"][number];
   readonly completed: ReadonlySet<string>;
+  readonly replacements: NativeRelease["replacements"];
+  readonly stage: number;
 }): Result<readonly ProjectedFile[], readonly PackagingRefusal[]> => {
   const found = request.files.some((file) => nativeFileTreatment(file) === "rewrite-text"
-    && textOf(file.content).includes(request.replacement.from));
+    && (legacyNativeProgram(file, request.replacements)?.replacements[request.stage]?.found
+      ?? textOf(file.content).includes(request.replacement.from)));
   if (!found && !request.completed.has(request.replacement.from)) return refused([{ kind: "native-text-not-found", distribution: request.host.distribution,
     text: request.replacement.from }]);
-  return accepted(request.files.map((file): ProjectedFile => nativeFileTreatment(file) === "rewrite-text"
+  return accepted(request.files.map((file): ProjectedFile => legacyNativeProgram(file, request.replacements) !== undefined
+    ? file : nativeFileTreatment(file) === "rewrite-text"
     ? { ...file, content: { kind: "text", text: textOf(file.content)
       .replaceAll(request.replacement.from, request.replacement.to) } } : file));
 };
@@ -44,7 +49,8 @@ const replaceNativeText = (request: NativeLayoutRequest): Result<readonly Projec
     return obligation === undefined ? [] : [obligation];
   }));
   return request.release.replacements.reduce<Result<readonly ProjectedFile[], readonly PackagingRefusal[]>>(
-    (reading, replacement) => reading.ok ? replaceNativeBlock({ files: reading.value, host: request.host, replacement, completed }) : reading,
+    (reading, replacement, stage) => reading.ok ? replaceNativeBlock({ files: reading.value, host: request.host,
+      replacement, completed, replacements: request.release.replacements, stage }) : reading,
     accepted(files.map((file) => file.origin.kind === "native-policy" ? { ...file, origin: file.origin.source } : file)),
   );
 };
@@ -77,11 +83,17 @@ export const nativeLayoutFiles = (request: NativeLayoutRequest)
 : Result<readonly ProjectedFile[], readonly PackagingRefusal[]> => {
   const replaced = replaceNativeText(request);
   if (!replaced.ok) return replaced;
-  const files = replaced.value.map((file): ProjectedFile => nativeFileTreatment(file) === "rewrite-text" ? { ...file, content: { kind: "text",
+  const files = replaced.value.map((source): ProjectedFile => {
+    const compiled = nativeFileTreatment(source) === "rewrite-text"
+      ? compiledLegacyNativeFile(source, request.release.replacements) : undefined;
+    if (compiled !== undefined) return compiled;
+    const { nativeAuthoring: _program, ...file } = source;
+    return nativeFileTreatment(file) === "rewrite-text" ? { ...file, content: { kind: "text",
     text: nativeOnboardingText({ text: nativeInvocationText({ text: textOf(file.content),
       host: request.host, routes: request.routes }), permissions: request.release.permissions,
     prefix: request.routes.prefix }),
-  } } : file);
+  } } : file;
+  });
   const failures = files.toSorted(payloadTreeOrder).flatMap((file) => nativeFailures(file, request));
   return failures.length > 0 ? refused(failures) : accepted(files);
 };

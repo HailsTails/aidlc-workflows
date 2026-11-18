@@ -44,6 +44,7 @@ const hostProjector = (ports: {
   readonly hosts: HostBuildTable; readonly readDistribution: ReadHostDistribution;
 }): ProjectHost => {
   const project = createProjectCapturedHost({
+    nativeCommands: ports.projection.nativeCommands,
     members: ports.hosts.map(({ host, projection }) => ({ host, projection })),
     capture: ports.capture, assemble: ports.projection.assembleHarness, hosted: createHostedMethodProjection,
   });
@@ -55,7 +56,7 @@ const hostProjector = (ports: {
     if (!onboarding.ok) return refused([{ kind: "render-failed", concept: "onboarding",
       name: request.host.distribution, reason: onboarding.refusal }]);
     return project({ ...request, core: { method: request.core.method, sources: request.core.sources },
-      compile: request.core.project, onboarding: onboarding.value });
+      compile: request.core.project, onboarding: onboarding.value, nativeReplacements: distribution.value.native.replacements });
   };
 };
 

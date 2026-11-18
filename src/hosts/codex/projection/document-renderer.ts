@@ -10,6 +10,8 @@ import { renameRulesFolder } from "../../../projection/domain/rules-folder.ts";
 import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts";
 import type { TokenBindings, TemplateToken } from "../../../projection/domain/template-token.ts";
 import { CODEX_BINDING_HEADING, CODEX_HOST_DATA } from "../host-data.ts";
+import { declareLegacyOnboardingFile, type LegacyOnboardingDialect,
+  type LegacyAuthoringFragment } from "../../../projection/domain/legacy-native-source.ts";
 
 const decode = (content: FileContent): string => content.kind === "text" ? content.text
   : new TextDecoder("utf-8", { ignoreBOM: true }).decode(content.bytes);
@@ -23,10 +25,12 @@ const bind = ({ text, tokens, selected }: {
 const onboardingFailure = (name: string, reason: string): Rendering =>
   refused({ kind: "render-failed", concept: "onboarding", name, reason });
 
-const onboardingFile = (name: string, text: string): Rendering => {
+const onboardingFile = (name: string, text: string, dialect: LegacyOnboardingDialect | undefined,
+  fragments: readonly LegacyAuthoringFragment[] = [{ kind: "authored-onboarding", text }]): Rendering => {
   const path = projectPath(name);
-  return path.ok ? accepted([{ path: path.value, content: { kind: "text", text },
-    mode: "regular", origin: { kind: "rendered", concept: "onboarding", name } }])
+  return path.ok ? accepted([declareLegacyOnboardingFile({ dialect, fragments,
+    file: { path: path.value, content: { kind: "text", text },
+      mode: "regular", origin: { kind: "rendered", concept: "onboarding", name } } })])
     : onboardingFailure(name, "The onboarding destination must be project-relative.");
 };
 
@@ -56,15 +60,28 @@ export const createCodexDocumentRenderer: HostDocumentRenderer = (inputs) => ({
     if (onboarding.includes("'''")) return onboardingFailure(".codex/config.toml",
       "Codex onboarding contains the TOML multiline literal delimiter (''').");
     const files = [
-      onboardingFile("AGENTS.md", bind({ text: neutral.value, tokens: inputs.tokens, selected: invocationTokens })),
-      onboardingFile(".codex/onboarding.md", onboarding),
-      onboardingFile(".codex/config.toml", renderConfigToml(onboarding)),
+      onboardingFile("AGENTS.md", bind({ text: neutral.value, tokens: inputs.tokens, selected: invocationTokens }),
+        templates.nativeDialect),
+      onboardingFile(".codex/onboarding.md", onboarding, templates.nativeDialect),
+      onboardingFile(".codex/config.toml", renderConfigToml(onboarding), templates.nativeDialect,
+        configSourceFragments(onboarding)),
     ];
     const failed = files.find((file) => !file.ok);
     return failed && !failed.ok ? failed : accepted(files.flatMap((file) => file.ok ? file.value : []));
   },
   placeNeutralDocument: ({ document }) => placeDocument(document, inputs),
 });
+
+const configSourceFragments = (body: string): readonly LegacyAuthoringFragment[] => {
+  const marker = "AIDLC_PRIVATE_ONBOARDING_BODY";
+  const frame = renderConfigToml(marker).split(marker);
+  const [before, after] = frame;
+  if (before === undefined || after === undefined || frame.length !== 2) {
+    throw new Error("The Codex source frame must contain exactly its one declared body.");
+  }
+  return [{ kind: "host-framing", text: before }, { kind: "authored-onboarding", text: body },
+    { kind: "host-framing", text: after }];
+};
 
 const renderConfigToml = (onboarding: string): string => `# dist/codex shipped config — project-scoped; copy into .codex/config.toml
 # of a trusted project. Do not merge this file into ~/.codex/config.toml:

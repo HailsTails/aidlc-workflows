@@ -1,3 +1,4 @@
+import { declareLegacyOnboardingFile, type LegacyOnboardingDialect } from "../../../projection/domain/legacy-native-source.ts";
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -20,13 +21,16 @@ const onboardingFailure = (name: string, reason: string): Rendering => refused({
   kind: "render-failed", concept: "onboarding", name, reason,
 });
 
-const placeOnboarding = ({ name, text, tokens }: {
+const placeOnboarding = ({ name, text, tokens, dialect }: {
+  readonly dialect: LegacyOnboardingDialect | undefined;
   readonly name: string; readonly text: string; readonly tokens: TokenBindings;
 }): Rendering => {
   const path = projectPath(name);
-  return path.ok ? accepted([{ path: path.value, mode: "regular",
-    content: { kind: "text", text: bindTemplateTokens({ text, tokens, selected: invocationTokens }) },
-    origin: { kind: "rendered", concept: "onboarding", name } }])
+  const bound = bindTemplateTokens({ text, tokens, selected: invocationTokens });
+  return path.ok ? accepted([declareLegacyOnboardingFile({ dialect,
+    fragments: [{ kind: "authored-onboarding", text: bound }], file: { path: path.value, mode: "regular",
+    content: { kind: "text", text: bound },
+    origin: { kind: "rendered", concept: "onboarding", name } } })])
     : onboardingFailure(name, "The onboarding destination must be project-relative.");
 };
 
@@ -35,9 +39,9 @@ const renderSplitOnboarding = (templates: OnboardingTemplates, inputs: DocumentR
   if (!neutral.ok) return onboardingFailure("AGENTS.md", neutral.refusal);
   const rendered = renderOnboarding(templates.harnessSkeleton, inputs.fills);
   if (!rendered.ok) return onboardingFailure(NATIVE_ONBOARDING, rendered.refusal);
-  const root = placeOnboarding({ name: "AGENTS.md", text: neutral.value, tokens: inputs.tokens });
+  const root = placeOnboarding({ name: "AGENTS.md", text: neutral.value, tokens: inputs.tokens, dialect: templates.nativeDialect });
   if (!root.ok) return root;
-  const native = placeOnboarding({ name: NATIVE_ONBOARDING, text: rendered.value, tokens: inputs.tokens });
+  const native = placeOnboarding({ name: NATIVE_ONBOARDING, text: rendered.value, tokens: inputs.tokens, dialect: templates.nativeDialect });
   return native.ok ? accepted([...root.value, ...native.value]) : native;
 };
 

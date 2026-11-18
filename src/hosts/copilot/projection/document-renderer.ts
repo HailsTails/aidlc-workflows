@@ -8,6 +8,7 @@ import type { NeutralDocument, OnboardingFills, OnboardingTemplates } from "../.
 import type { ProjectionRefusal } from "../../../projection/domain/projection.ts";
 import { serializeRootHistory, type RootSerialization } from "../../../projection/domain/root-history.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "../../../projection/domain/onboarding.ts";
+import { declareLegacyOnboardingFile } from "../../../projection/domain/legacy-native-source.ts";
 import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts";
 import type { TokenBindings } from "../../../projection/domain/template-token.ts";
 
@@ -45,10 +46,12 @@ const serializeOnboarding = (inputs: { readonly templates: OnboardingTemplates; 
       `${templates.harnessSkeleton}\n## Shared AI-DLC onboarding\n\n${neutral.value}`, inputs.fills);
     if (!rendered.ok) return onboardingFailure(rendered.refusal);
     const path = projectPath("AGENTS.md");
-    return path.ok ? accepted({ path: path.value, mode: "regular",
-      content: { kind: "text", text: bind(rendered.value, inputs.tokens)
-        .replaceAll(`${inputs.tokens["HARNESS_DIR"]}/skills/`, ".github/skills/") },
-      origin: { kind: "rendered", concept: "onboarding", name: "AGENTS.md" } })
+    const body = bind(rendered.value, inputs.tokens)
+      .replaceAll(`${inputs.tokens["HARNESS_DIR"]}/skills/`, ".github/skills/");
+    return path.ok ? accepted(declareLegacyOnboardingFile({ dialect: templates.nativeDialect,
+      fragments: [{ kind: "authored-onboarding", text: body }], file: { path: path.value, mode: "regular",
+        content: { kind: "text", text: body },
+        origin: { kind: "rendered", concept: "onboarding", name: "AGENTS.md" } } }))
       : onboardingFailure("The onboarding destination must be project-relative.");
 };
 

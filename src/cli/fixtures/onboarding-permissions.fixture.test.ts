@@ -165,6 +165,16 @@ import { createLegacyNativeCommands } from "../../projection/adapters/legacy-tru
 import { legacyDispatcherRoutes } from "../../projection/adapters/legacy-dispatcher.ts";
 
 const realCommands = createLegacyNativeCommands(legacyDispatcherRoutes());
+const deliveredSourceFiles = (files: readonly ProjectedFile[]): readonly ProjectedFile[] => files.map(file => {
+  const { nativeAuthoring, ...plain } = file;
+  if (nativeAuthoring !== undefined) {
+    expect(nativeAuthoring.path).toBe(file.path);
+    expect(nativeAuthoring.mode).toBe(file.mode);
+    expect(file.content).toEqual({ kind: "text", text: nativeAuthoring.sourceText });
+    expect(nativeAuthoring.fragments.map(fragment => fragment.text).join("")).toBe(nativeAuthoring.sourceText);
+  }
+  return plain;
+});
 const quotedRefusal = refused<readonly PackagingRefusal[]>([
   { kind: "native-leftover", path: path(".codex/config.toml"), reason: "bun invocation survived native projection" },
   { kind: "native-leftover", path: path(".codex/config.toml"), reason: ".codex/config.toml:7: unresolvable projected namespace invocation \"aidlc engine engine\"" },
@@ -188,7 +198,7 @@ test.each([...PERMISSION_ORACLES])("$host copy keeps the complete original fills
   const flow = await permissionProseFlow({ host: row.host, channel: "copy", ending: "\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.copy);
   expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
-  expect(flow.after).toEqual(accepted(accept(flow.before).files));
+  expect(flow.after).toEqual(accepted(deliveredSourceFiles(accept(flow.before).files)));
 });
 
 test.each([...PERMISSION_ORACLES])("$host native authors the complete policy before real serialization", async (row) => {
@@ -196,21 +206,21 @@ test.each([...PERMISSION_ORACLES])("$host native authors the complete policy bef
   expect(flow.policy.kind).toBe(row.policy);
   expect(flow.fills).toEqual<OnboardingFills>(row.native);
   expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
-  expect(flow.after).toEqual(accepted(accept(flow.before).files));
+  expect(flow.after).toEqual(accepted(deliveredSourceFiles(accept(flow.before).files)));
 });
 
 test.each([...PERMISSION_ORACLES])("$host native CRLF composition needs no permission-prose repair", async (row) => {
   const flow = await permissionProseFlow({ host: row.host, channel: "native", ending: "\r\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.native);
   expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
-  expect(flow.after).toEqual(accepted(accept(flow.before).files));
+  expect(flow.after).toEqual(accepted(deliveredSourceFiles(accept(flow.before).files)));
 });
 
 test.each([...PERMISSION_ORACLES])("$host copy CRLF composition keeps its full authoring", async (row) => {
   const flow = await permissionProseFlow({ host: row.host, channel: "copy", ending: "\r\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.copy);
   expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
-  expect(flow.after).toEqual(accepted(accept(flow.before).files));
+  expect(flow.after).toEqual(accepted(deliveredSourceFiles(accept(flow.before).files)));
 });
 
 test.each([...PERMISSION_ORACLES])("$host retains the actual neutral serializer refusal", async (row) => {

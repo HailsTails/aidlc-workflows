@@ -10,6 +10,7 @@ import type {
 import type { DistributionChannel, ProjectionOrigin } from "../../projection/domain/projected-file.ts";
 import type { HostPluginTarget } from "../../projection/domain/host-surface.ts";
 import type { ManagedDirectory } from "./managed-directory.ts";
+import type { LegacyNativeReplacement } from "../../projection/domain/legacy-native-source.ts";
 import type { PriorIntegrationShapes, ReleaseHistory } from "./release-history.ts";
 import type { RootIntegration } from "./root-integration.ts";
 
@@ -55,10 +56,7 @@ export type HostListing = {
   readonly cliFirst?: CliFirstSetup;
 };
 
-export type NativeReplacement = {
-  readonly from: string;
-  readonly to: string;
-};
+export type NativeReplacement = LegacyNativeReplacement;
 
 export type { NativePermissionsLine } from "../../projection/domain/onboarding-context.ts";
 export type NativePermissions = NativePermissionPolicy;

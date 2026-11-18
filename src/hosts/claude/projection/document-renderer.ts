@@ -6,6 +6,7 @@ import type { Rendering } from "../../../projection/application/ports/harness.ts
 import { keepOwnHarnessBindings } from "../../../projection/domain/harness-bindings.ts";
 import type { NeutralDocument } from "../../../projection/domain/neutral-surface.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "../../../projection/domain/onboarding.ts";
+import { declareLegacyOnboardingFile } from "../../../projection/domain/legacy-native-source.ts";
 import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts";
 import type { TokenBindings } from "../../../projection/domain/template-token.ts";
 
@@ -42,9 +43,11 @@ export const createClaudeDocumentRenderer: HostDocumentRenderer = (inputs) => ({
       `${templates.harnessSkeleton}\n## Shared AI-DLC onboarding\n\n${neutral.value}`, inputs.fills);
     if (!rendered.ok) return onboardingFailure(rendered.refusal);
     const path = projectPath(".claude/CLAUDE.md");
-    return path.ok ? accepted([{ path: path.value, mode: "regular",
-      content: { kind: "text", text: bind(rendered.value, inputs.tokens) },
-      origin: { kind: "rendered", concept: "onboarding", name: ".claude/CLAUDE.md" } }])
+    const body = bind(rendered.value, inputs.tokens);
+    return path.ok ? accepted([declareLegacyOnboardingFile({ dialect: templates.nativeDialect,
+      fragments: [{ kind: "authored-onboarding", text: body }], file: { path: path.value, mode: "regular",
+        content: { kind: "text", text: body },
+        origin: { kind: "rendered", concept: "onboarding", name: ".claude/CLAUDE.md" } } })])
       : onboardingFailure("The onboarding destination must be project-relative.");
   },
   placeNeutralDocument: ({ document }) => placeDocument(document, inputs),

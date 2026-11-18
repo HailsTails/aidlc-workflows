@@ -8,6 +8,8 @@ import type { HostProjectionParts } from "./host-parts.ts";
 import type { HostedHarness } from "./harness.ts";
 import type { ProjectMethodForHarness } from "./method-projection.ts";
 import type { OnboardingContext } from "../../domain/onboarding-context.ts";
+import type { NativeCommandRoutes } from "../../domain/native-command.ts";
+import type { LegacyNativeReplacement } from "../../domain/legacy-native-source.ts";
 
 export type CompiledMethodTarget = {
   readonly name: string; readonly directory: string; readonly memoryRoot: string;
@@ -20,6 +22,7 @@ export type HostProjectionMember = { readonly host: HostIdentity; readonly proje
 export type CapturedHostProjectionRequest = Pick<HarnessAssemblyRequest,
   "host" | "files" | "prepare" | "tokens" | "modelCap" | "entrypoints" | "projectRoot" | "reviewerAgents"> & {
   readonly onboarding: OnboardingContext;
+  readonly nativeReplacements: readonly LegacyNativeReplacement[];
   readonly core: BuildCore;
   readonly compile: CapturedMethodCompiler;
 };
@@ -28,6 +31,7 @@ export type ProjectCapturedHost = (request: CapturedHostProjectionRequest) =>
   Promise<Result<HostProjection, readonly (KernelRefusal | ProjectionRefusal)[]>>;
 
 export type CapturedHostProjectionPorts = {
+  readonly nativeCommands: NativeCommandRoutes;
   readonly members: readonly HostProjectionMember[];
   readonly capture: BuildSourceCapture["captureFullHost"];
   readonly assemble: HarnessAssembly;
