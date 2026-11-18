@@ -3,7 +3,7 @@ import { accept } from "../../kernel/fixtures/accept.ts";
 import { host, path } from "../../kernel/fixtures/values.fixture.ts";
 import { admitOnboardingSource } from "./onboarding-source.ts";
 import { captureLegacyOnboardingDialect, declareLegacyOnboardingFile, compiledLegacyNativeFile,
-  captureLegacyNeutralDocument, declareLegacyNeutralFile } from "./legacy-native-source.ts";
+  captureLegacyNeutralDocument, declareLegacyNeutralFile, declareLegacyProducedFile } from "./legacy-native-source.ts";
 import { source } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted } from "../../kernel/result.ts";
 import { nativeLayoutFiles } from "../../packaging/application/native-layout.ts";
@@ -176,4 +176,30 @@ test("neutral source admission owns its snapshot and declaration, not an onboard
     source: source("knowledge/custom.md"), role: "knowledge", content: { kind: "bytes", bytes: expected } } });
   expect(compiledLegacyNativeFile(program)).toEqual({ ...placed, content: { kind: "text",
     text: 'User quote: TypeScript sources invoked through the self-contained `aidlc` runtime\r\n' } });
+});
+
+test("a byte-backed producer receipt validates the original representation and owns its byte snapshot", () => {
+  const bytes = new Uint8Array([239, 187, 191, ...new TextEncoder().encode("TypeScript, run via bun"), 255]);
+  const file = { path: path(".fixture/skills/custom.md"), mode: "regular" as const,
+    content: { kind: "bytes" as const, bytes }, origin: { kind: "neutral" as const, source: source("skills/custom.md") } };
+  const declared = declareLegacyProducedFile({ context: dialect, file });
+  expect(declared.content).toBe(file.content);
+  expect(declared.nativeAuthoring?.declaration).toEqual({ kind: "producer", source: file.origin });
+  expect(compiledLegacyNativeFile(declared)?.content).toEqual({ kind: "text",
+    text: "\uFEFFTypeScript sources invoked through the self-contained `aidlc` runtime\uFFFD" });
+  const snapshot = declared.nativeAuthoring?.sourceContent;
+  if (snapshot?.kind !== "bytes") throw new Error("The receipt must retain original bytes.");
+  snapshot.bytes.fill(0);
+  expect(compiledLegacyNativeFile(declared)).toBeDefined();
+  bytes.fill(0);
+  expect(compiledLegacyNativeFile(declared)).toBeUndefined();
+});
+
+test("an opaque producer path and copy producer do not acquire a text admission", () => {
+  const file = { path: path(".fixture/data.bin"), mode: "regular" as const,
+    content: { kind: "bytes" as const, bytes: new Uint8Array([255, 0]) },
+    origin: { kind: "neutral" as const, source: source("data.bin") } };
+  expect(declareLegacyProducedFile({ context: dialect, file })).toBe(file);
+  expect(declareLegacyProducedFile({ context: undefined, file: { ...file, path: path(".fixture/data.md") } }).nativeAuthoring)
+    .toBeUndefined();
 });

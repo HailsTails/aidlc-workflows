@@ -18,6 +18,7 @@ export type HostDataInputs = {
 export type HostDataRenderer = (inputs: HostDataInputs) => HostData;
 
 export type HostSurfaceProjectionRequest = {
+  readonly legacyNative?: import("../../domain/legacy-native-source.ts").LegacyNativeContext | undefined;
   readonly host: HostIdentity;
   readonly renderData: HostDataRenderer;
   readonly record: HarnessRecordConstructor;

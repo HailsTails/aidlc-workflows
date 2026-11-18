@@ -69,6 +69,20 @@ const nativeContext = prepareOnboardingContext({ context: { channel: "native", p
   policy: PERMISSION_POLICIES_FIXTURE["prefix-only"], prefix: "aidlc engine",
 }) }, skeleton: "" });
 
+test("the real captured caller binds one native source context to assembly and hosted runtime/workspace producers", async () => {
+  const current = fixture();
+  const replacements = [{ from: "old authored block", to: "native block" }];
+  await current.projectHost({ ...current.request, onboarding: nativeContext, nativeReplacements: replacements });
+  const assembly = current.assemble.mock.calls[0]?.[0].legacyNative;
+  const hosted = current.project.mock.calls[0]?.[0].legacyNative;
+  expect(assembly).toBe(hosted);
+  expect(assembly?.host).toBe(SCRATCH_HOST);
+  expect(assembly?.commands).toBe(nativeCommands);
+  expect(assembly?.permissions).toBe(PERMISSION_POLICIES_FIXTURE["prefix-only"]);
+  expect(assembly?.replacements).toEqual(replacements);
+  expect(assembly?.replacements).not.toBe(replacements);
+});
+
 test("the real first caller binds declared native guidance before assembly using the captured declaration", async () => {
   const current = fixture();
   current.capture.mockResolvedValue(accepted({ ...captured, surface: { ...captured.surface,

@@ -1,3 +1,4 @@
+import type { LegacyNativeContext } from "../../domain/legacy-native-source.ts";
 import type { AuthoredHostFile } from "../../domain/host-surface.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { DistributionId } from "../../../kernel/values.ts";
@@ -7,6 +8,7 @@ import type { MemoryCompanion, NeutralSurface, SharedRuntime } from "../../domai
 import type { CompiledMethodFiles, Projection, ProjectionRefusal } from "../../domain/projection.ts";
 
 export type ProjectMethodRequest = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly companions: readonly MemoryCompanion[];
   readonly harness: DistributionId;
   readonly method: Method;

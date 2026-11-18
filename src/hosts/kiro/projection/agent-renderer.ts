@@ -1,3 +1,5 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
+import type { LegacyNativeContext } from "../../../projection/domain/legacy-native-source.ts";
 import { KIRO_PROMPT_LINES } from "../host-data.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -15,6 +17,7 @@ export type KiroModelSurface = (request: {
 export type InlineReading = "reads-inline" | "dispatched-only";
 
 export type KiroAgentProfile = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly modelSurface: KiroModelSurface;
   readonly promptLines: (agent: Agent) => PromptLines;
   readonly inlineReading: (agent: Agent) => InlineReading;
@@ -48,15 +51,16 @@ const linesReason = (refusal: FrontmatterLinesRefusal): string => {
 const fileAt = (
   agent: Agent,
   placing: { readonly path: string; readonly text: string },
+  legacyNative?: LegacyNativeContext,
 ): Result<Omit<ProjectedFile, "origin"> & { readonly origin: ProjectionSourceOrigin }, ProjectionRefusal> => {
   const path = projectPath(placing.path);
   return path.ok
-    ? accepted({
+    ? accepted(declareLegacyProducedFile({ context: legacyNative, file: {
         path: path.value,
         content: { kind: "text", text: placing.text },
         mode: "regular",
         origin: { kind: "method-source", path: agent.source },
-      })
+      } }))
     : refused(renderFailed(agent, `${placing.path} must be a project-relative path.`));
 };
 
@@ -73,7 +77,7 @@ const inlineCopy = (
         fileAt(persona.agent, {
           path: `.kiro/aidlc-common/personas/${persona.agent.slug}.md`,
           text: persona.text,
-        }),
+        }, profile.legacyNative),
       ]
     : [];
 
@@ -97,7 +101,7 @@ const prompted = (
   const serialized = serializeNativePolicy<ProjectionRefusal>({ prompt, serialize: (suppliedLines) => {
     const withLines = withFrontmatterLines(text, suppliedLines);
     return withLines.ok
-      ? fileAt(agent, { path: `.kiro/agents/${agent.slug}.md`, text: withLines.value })
+      ? fileAt(agent, { path: `.kiro/agents/${agent.slug}.md`, text: withLines.value }, profile.legacyNative)
       : refused(renderFailed(agent, linesReason(withLines.refusal)));
   } });
   return serialized.ok
@@ -120,9 +124,9 @@ export const kiroAgentRenderer =
     return surfaced.ok ? prompted(profile, { agent, text: surfaced.value }) : surfaced;
   };
 
-export const kiroCliAgentRenderer = (modelSurface: KiroModelSurface): Harness["renderAgent"] =>
+export const kiroCliAgentRenderer = (modelSurface: KiroModelSurface, legacyNative?: LegacyNativeContext): Harness["renderAgent"] =>
   kiroAgentRenderer({
-    modelSurface,
+    modelSurface, legacyNative,
     promptLines: () => KIRO_PROMPT_LINES,
     inlineReading: () => "dispatched-only",
   });

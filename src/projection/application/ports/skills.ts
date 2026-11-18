@@ -1,3 +1,4 @@
+import type { LegacyNativeContext } from "../../domain/legacy-native-source.ts";
 import type { FileSystemError, ReadTreeArgs, TreeReading } from "../../../kernel/file-system-port.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
@@ -12,6 +13,7 @@ import type { Harness, Rendering } from "./harness.ts";
 import type { AuthoredFilePreparer } from "./host-sources.ts";
 
 export type SkillRenderingInputs = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly files: readonly AuthoredHostFile[];
   readonly prepare: AuthoredFilePreparer;
   readonly tokens: TokenBindings;
@@ -40,6 +42,7 @@ export type SessionSkillReading = (
 ) => Promise<Result<readonly SessionSkill[], readonly ProjectionRefusal[]>>;
 
 export type SkillProjectionRequest = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly method: Method;
   readonly host: HostIdentity;
   readonly projectRoot: URL;

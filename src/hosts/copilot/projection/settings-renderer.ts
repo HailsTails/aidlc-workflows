@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { HostSettingsRenderer, SettingsRenderingInputs } from "../../../projection/application/ports/settings.ts";
@@ -16,11 +17,11 @@ const renderHooks = (inputs: SettingsRenderingInputs): Rendering => {
       timeoutSec: seconds * timeoutMultiplier }]];
   }));
   const path = projectPath(".github/hooks/aidlc.json");
-  return path.ok ? accepted([{
+  return path.ok ? accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: {
     path: path.value, mode: "regular",
     content: { kind: "text", text: `${JSON.stringify({ version: 1, hooks }, null, 2)}\n` },
     origin: { kind: "rendered", concept: "hook-registration", name: "aidlc.json" },
-  }]) : refused({ kind: "render-failed", concept: "hook-registration", name: "aidlc.json",
+  } })]) : refused({ kind: "render-failed", concept: "hook-registration", name: "aidlc.json",
     reason: "The Copilot hook destination must be project-relative." });
 };
 
@@ -28,10 +29,10 @@ const renderLauncher = (inputs: SettingsRenderingInputs): Rendering => {
   const path = projectPath(copilotEngineLauncher.path);
   const text = bindTemplateTokens({ text: copilotEngineLauncher.body({ invocation: "{{INVOKE}}" }),
     tokens: inputs.tokens, selected: ["INVOKE"] });
-  return path.ok ? accepted([{
+  return path.ok ? accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: {
     path: path.value, mode: "executable", content: { kind: "text", text },
     origin: { kind: "rendered", concept: "hook-registration", name: "aidlc-engine" },
-  }]) : refused({ kind: "render-failed", concept: "hook-registration", name: "aidlc-engine",
+  } })]) : refused({ kind: "render-failed", concept: "hook-registration", name: "aidlc-engine",
     reason: "The Copilot engine launcher destination must be project-relative." });
 };
 

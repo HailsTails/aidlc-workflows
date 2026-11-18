@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -18,8 +19,8 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
   const prepared = inputs.prepare(file);
   if (!prepared.ok) return prepared;
   const path = projectPath("opencode.json");
-  return path.ok ? accepted([{ path: path.value, content: prepared.value.content,
-    mode: "regular", origin: { kind: "harness-authored", source: file.source } }])
+  return path.ok ? accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: path.value, content: prepared.value.content,
+    mode: "regular", origin: { kind: "harness-authored", source: file.source } } })])
     : refused({ kind: "render-failed", concept: "settings", name: file.source,
       reason: "The OpenCode settings destination must be project-relative." });
 };
@@ -54,8 +55,8 @@ const renderHookRegistrations = (inputs: SettingsRenderingInputs): Rendering => 
     text.replaceAll(authoredLeafImport(leaf), projectedLeafImport(harnessDir, leaf)), embedded);
   const text = bindTemplateTokens({ text: imports, tokens: inputs.tokens, selected: TEMPLATE_TOKENS });
   const path = projectPath(`.opencode/${pluginSource}`);
-  return path.ok ? accepted([{ path: path.value, content: { kind: "text", text },
-    mode: "regular", origin: { kind: "harness-authored", source: file.source } }])
+  return path.ok ? accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: path.value, content: { kind: "text", text },
+    mode: "regular", origin: { kind: "harness-authored", source: file.source } } })])
     : refused({ kind: "render-failed", concept: "hook-registration", name: pluginSource,
       reason: "The OpenCode hook destination must be project-relative." });
 };

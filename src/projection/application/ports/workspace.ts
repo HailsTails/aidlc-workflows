@@ -1,3 +1,4 @@
+import type { LegacyNativeContext } from "../../domain/legacy-native-source.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { MethodSource } from "../../../workflow-definition/domain/method-source.ts";
@@ -7,6 +8,7 @@ import type { TokenBindings } from "../../domain/template-token.ts";
 import type { Rendering } from "./harness.ts";
 
 export type WorkspaceProjectionRequest = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly host: HostIdentity;
   readonly rules: readonly MethodSource[];
   readonly companions: readonly MemoryCompanion[];

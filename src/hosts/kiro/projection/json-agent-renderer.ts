@@ -1,3 +1,5 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
+import type { LegacyNativeContext } from "../../../projection/domain/legacy-native-source.ts";
 import { kiroKnowledgeReading } from "./knowledge-reading.ts";
 import { kiroCliAgentRenderer } from "./agent-renderer.ts";
 import { renderKiroMarkdown } from "./markdown-surface.ts";
@@ -22,6 +24,7 @@ export type KiroJsonModelDecision = (request: {
 }) => Result<KiroModelDecision, ProjectionRefusal>;
 
 export type KiroJsonAgentProfile = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly trusted: NativeCommandRoutes["trusted"];
   readonly channel: DistributionChannel;
   readonly namespace: string | null | undefined;
@@ -39,7 +42,7 @@ const renderFailed = (name: string, reason: string): ProjectionRefusal => ({
 
 export const placeKiroAgentDocument = (file: AuthoredHostFile, request: {
   readonly trusted: NativeCommandRoutes["trusted"];
-  readonly content: FileContent;
+  readonly legacyNative?: LegacyNativeContext | undefined; readonly content: FileContent;
   readonly allows: CopyChannelAllows;
   readonly channel: DistributionChannel;
   readonly directory: ProjectPath;
@@ -50,12 +53,12 @@ export const placeKiroAgentDocument = (file: AuthoredHostFile, request: {
     trusted: request.trusted });
   if (!expanded.ok) return expanded;
   const path = projectPath(`.kiro/${file.source}`);
-  return path.ok ? accepted([{
+  return path.ok ? accepted([declareLegacyProducedFile({ context: request.legacyNative, file: {
     path: path.value,
     content: expanded.value.file.content,
     mode: "regular",
     origin: { kind: "harness-authored", source: file.source },
-  }]) : refused(renderFailed(file.source, "Kiro agent JSON needs a project-relative path."));
+  } })]) : refused(renderFailed(file.source, "Kiro agent JSON needs a project-relative path."));
 };
 
 export const kiroJsonAgentRenderer = (profile: KiroJsonAgentProfile): Harness["renderAgent"] =>
@@ -73,7 +76,7 @@ export const kiroJsonAgentRenderer = (profile: KiroJsonAgentProfile): Harness["r
     });
     return prepared.ok ? placeKiroAgentDocument(file, { content: prepared.value, allows: profile.allows,
       channel: profile.channel, directory: profile.host.directory, namespace: profile.namespace,
-      trusted: profile.trusted })
+      trusted: profile.trusted, legacyNative: profile.legacyNative })
       : refused(prepared.refusal);
   };
 
@@ -99,7 +102,7 @@ export const createKiroJsonAgentRenderer = (profile: {
   return {
     renderAgent: kiroJsonAgentRenderer({ ...profile, files, allows: inputs.allows,
       channel: inputs.channel, namespace: inputs.tokens.TRUSTED_NAMESPACE,
-      trusted: inputs.delegateShellFacts.trustedCommand, hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX,
+      legacyNative: inputs.legacyNative, trusted: inputs.delegateShellFacts.trustedCommand, hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX,
       modelDecision: ({ agent, file }) => {
         if (agent.model.kind !== "tier") return refused({ kind: "host-source-unreadable",
           host: profile.host, source: file.source, reason: "the accepted core Method supplies no model tier" });
@@ -116,7 +119,7 @@ export const createKiroJsonAgentRenderer = (profile: {
         hookCommandSuffix: KIRO_HOOK_COMMAND_SUFFIX });
       return content.ok ? placeKiroAgentDocument(file, { content: content.value, allows: inputs.allows,
         channel: inputs.channel, directory: profile.host.directory, namespace: inputs.tokens.TRUSTED_NAMESPACE,
-        trusted: inputs.delegateShellFacts.trustedCommand }) : content;
+        trusted: inputs.delegateShellFacts.trustedCommand, legacyNative: inputs.legacyNative }) : content;
     },
   };
 };
@@ -126,7 +129,7 @@ export const kiroAgents: HostAgentRenderer = (inputs) => {
   const markdown = kiroCliAgentRenderer(({ agent }) => inputs.documents({
     agent, text: "authored-file", knowledge: "absorbed", reading: kiroKnowledgeReading(inputs.host.directory),
     model: "projected", render: renderKiroMarkdown,
-  }));
+  }), inputs.legacyNative);
   return {
     renderConductorAgent: json.renderConductorAgent,
     renderAgent: (request) => {

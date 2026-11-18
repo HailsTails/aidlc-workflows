@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { renderCodexMarkdown } from "./markdown-surface.ts";
 import type { HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
@@ -34,10 +35,10 @@ export const codexAgents: HostAgentRenderer = (inputs) => ({
       tierFlavor: inputs.tierFlavor, modelCap: inputs.modelCap });
     if (!codex.ok) return codex;
     return accepted([
-      { path: markdownPath.value, content: { kind: "text", text: markdown.value }, mode: "regular",
-        origin: { kind: "method-source", path: agent.source } },
-      { path: codexPath.value, content: { kind: "text", text: codex.value }, mode: "regular",
-        origin: { kind: "method-source", path: agent.source } },
+      declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: markdownPath.value, content: { kind: "text", text: markdown.value }, mode: "regular",
+        origin: { kind: "method-source", path: agent.source } } }),
+      declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: codexPath.value, content: { kind: "text", text: codex.value }, mode: "regular",
+        origin: { kind: "method-source", path: agent.source } } }),
     ]);
   },
   renderConductorAgent: () => accepted([]),

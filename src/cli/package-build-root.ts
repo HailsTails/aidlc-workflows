@@ -63,7 +63,7 @@ const hostProjector = (ports: {
 const payloadBuilder = (ports: {
   readonly projectHost: ProjectHost; readonly hosts: HostBuildTable; readonly packaging: BuildPackaging;
   readonly readDistribution: ReadHostDistribution; readonly hasher: ContentHasher;
-  readonly projection: Pick<BuildProjection, "delegateShellFacts">;
+  readonly projection: Pick<BuildProjection, "delegateShellFacts" | "nativeCommands">;
   readonly enrich: EnrichPluginAuthoring;
 }): BuildPayload => {
   const build = createBuildHostPayload({
@@ -72,7 +72,10 @@ const payloadBuilder = (ports: {
     distribution: ports.readDistribution, hasher: ports.hasher, packaging: ports.packaging,
   });
   return (request) => build({ host: request.host, project: () => ports.projectHost(request),
-    enrich: (projection) => ports.enrich({ projection, method: request.core.method, directory: request.host.directory }),
+    enrich: (projection, distribution) => ports.enrich({ projection, method: request.core.method, directory: request.host.directory,
+      legacyNative: request.channel === "copy" ? undefined : { host: request.host,
+        commands: ports.projection.nativeCommands, permissions: distribution.native.permissions,
+        replacements: distribution.native.replacements } }),
     channel: request.channel, copy: request.copy });
 };
 
@@ -192,7 +195,8 @@ const distributionBuild = (ports: {
   const repository = new URL("../", ports.request.sources.core);
   return createPackageDistributions<PreparationDiagnostic>({
     prepare: async ({ hosts }) => {
-      const captured = await (preparation ??= prepareDistributions(ports, hosts));
+      if (preparation === undefined) preparation = prepareDistributions(ports, hosts);
+      const captured = await preparation;
       if (!captured.ok) return captured;
       prepared = captured.value;
       return accepted(undefined);

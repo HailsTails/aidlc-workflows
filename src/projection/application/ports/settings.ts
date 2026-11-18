@@ -1,3 +1,4 @@
+import type { LegacyNativeContext } from "../../domain/legacy-native-source.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { SourcePath } from "../../../kernel/values.ts";
@@ -15,6 +16,7 @@ import type { AuthoredFilePreparer } from "./host-sources.ts";
 export type CliModelPolicy = (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
 
 export type SettingsRenderingInputs = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly nativeCommands: Pick<NativeCommandRoutes, "trusted">;
   readonly extendedSubprocessTimeoutMs: number;
   readonly cliModels: CliModelPolicy;
@@ -33,6 +35,7 @@ export type HostSettingsRenderer = (
 ) => Pick<Harness, "renderSettings" | "renderHookRegistrations">;
 
 export type SettingsProjectionRequest = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly modelCap: Tier | null;
   readonly method: Method;
   readonly host: HostIdentity;

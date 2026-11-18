@@ -1,3 +1,5 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
+import type { LegacyNativeContext } from "../../../projection/domain/legacy-native-source.ts";
 import { stringify } from "smol-toml";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -9,7 +11,7 @@ import type { RenderedConcept } from "../../../projection/domain/projected-file.
 import { HOOK_WIRING, type CodexHookEvent } from "./hook-wiring.ts";
 import type { CodexHookTrustHash } from "./hook-trust.ts";
 
-export type CodexSettingsCapabilities = SettingsCapabilities & { readonly hookTrust: CodexHookTrustHash };
+export type CodexSettingsCapabilities = SettingsCapabilities & { readonly legacyNative?: LegacyNativeContext | undefined; readonly hookTrust: CodexHookTrustHash };
 
 type SettingsFailure = Extract<ProjectionRefusal, { readonly kind: "render-failed" }>;
 type HookCommand = { readonly harnessName: string; readonly invoke: string; readonly trustedNamespace: string };
@@ -26,20 +28,19 @@ function hookTimeoutSeconds(target: string, capabilities: CodexSettingsCapabilit
 }
 
 function emitHooksJson({ invoke, harnessName, trustedNamespace }: HookCommand, capabilities: CodexSettingsCapabilities): string {
-  const hooks = HOOK_WIRING.reduce<Record<string, readonly Record<string, unknown>[]>>(
-    (groups, { event, matcher, target }) => ({
-      ...groups,
-      [event]: [...(groups[event] ?? []), {
+  const hooks: Record<string, Record<string, unknown>[]> = {};
+  for (const { event, matcher, target } of HOOK_WIRING) {
+    const group = hooks[event] ?? [];
+    group.push({
         hooks: [{
           type: "command",
           command: adapterCmd({ harnessName, target, trustedNamespace }).replace("{{INVOKE}}", invoke),
           timeout: hookTimeoutSeconds(target, capabilities),
         }],
         ...(matcher ? { matcher } : {}),
-      }],
-    }),
-    {},
-  );
+    });
+    hooks[event] = group;
+  }
   return `${JSON.stringify({ hooks }, null, 2)  }\n`;
 }
 
@@ -160,20 +161,20 @@ export function emitTrustSeed({ harnessDir, harnessName, invoke, trustedNamespac
   );
 }
 
-const file = ({ name, text, concept }: { name: string; text: string; concept: RenderedConcept }): Rendering => {
+const file = ({ name, text, concept, legacyNative }: { legacyNative?: LegacyNativeContext | undefined; name: string; text: string; concept: RenderedConcept }): Rendering => {
   const path = projectPath(`.codex/${name}`);
   if (!path.ok) return refused({ kind: "render-failed", concept, name,
     reason: "The settings destination must be project-relative." });
-  return accepted([{ path: path.value, content: { kind: "text", text },
-    mode: "regular", origin: { kind: "rendered", concept, name } }]);
+  return accepted([declareLegacyProducedFile({ context: legacyNative, file: { path: path.value, content: { kind: "text", text },
+    mode: "regular", origin: { kind: "rendered", concept, name } } })]);
 };
 
 const hookFiles = ({ harnessDir, invoke, trustedNamespace, harnessName }: HookCommand & { readonly harnessDir: string }, capabilities: CodexSettingsCapabilities): Rendering => {
-      const hooks = file({ name: "hooks.json", text: emitHooksJson({ invoke, harnessName, trustedNamespace }, capabilities), concept: "hook-registration" });
+      const hooks = file({ legacyNative: capabilities.legacyNative, name: "hooks.json", text: emitHooksJson({ invoke, harnessName, trustedNamespace }, capabilities), concept: "hook-registration" });
       if (!hooks.ok) return hooks;
       const seedText = emitTrustSeed({ harnessDir, harnessName, invoke, trustedNamespace }, capabilities);
       if (!seedText.ok) return seedText;
-      const seed = file({ name: "trust-seed.toml", text: seedText.value, concept: "hook-registration" });
+      const seed = file({ legacyNative: capabilities.legacyNative, name: "trust-seed.toml", text: seedText.value, concept: "hook-registration" });
       if (!seed.ok) return seed;
       return accepted([...hooks.value, ...seed.value]);
 };
@@ -184,7 +185,7 @@ export const createCodexSettingsRenderer = (hookTrust: CodexHookTrustHash): Host
     const trustedNamespace = inputs.tokens.TRUSTED_NAMESPACE;
     if (harnessDir === null || !trustedNamespace) return refused({ kind: "render-failed",
       concept: "settings", name: "rules/default.rules", reason: "trusted route namespace and harness directory are required" });
-    return file({ name: "rules/default.rules", text: renderRules({ harnessDir, channel: inputs.channel,
+    return file({ legacyNative: inputs.legacyNative, name: "rules/default.rules", text: renderRules({ harnessDir, channel: inputs.channel,
       trustedNamespace, toolScripts: inputs.allows.toolScripts }), concept: "settings" });
   },
   renderHookRegistrations: () => {

@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { renderCopilotMarkdown } from "./markdown-surface.ts";
 import { projectPath } from "../../../kernel/values.ts";
@@ -43,10 +44,10 @@ const renderAgent = (inputs: AgentRenderingInputs): Harness["renderAgent"] => ({
   if (!runtimePath.ok || !nativePath.ok) return refused(renderFailed(agent,
     "The Copilot agent destinations must be project-relative paths."));
   return accepted([
-    { path: runtimePath.value, content: { kind: "text", text: projectActiveMemoryReferences(runtime.value) },
-      mode: "regular", origin: { kind: "method-source", path: agent.source } },
-    { path: nativePath.value, content: { kind: "text", text: projectActiveMemoryReferences(native.value) },
-      mode: "regular", origin: { kind: "method-source", path: agent.source } },
+    declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: runtimePath.value, content: { kind: "text", text: projectActiveMemoryReferences(runtime.value) },
+      mode: "regular", origin: { kind: "method-source", path: agent.source } } }),
+    declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: nativePath.value, content: { kind: "text", text: projectActiveMemoryReferences(native.value) },
+      mode: "regular", origin: { kind: "method-source", path: agent.source } } }),
   ]);
 };
 

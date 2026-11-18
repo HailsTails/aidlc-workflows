@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { Rendering } from "../../../projection/application/ports/harness.ts";
@@ -17,8 +18,8 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
   const path = projectPath(".kiro/settings/cli.json");
   if (!path.ok) return refused({ kind: "render-failed", concept: "settings", name: file.source,
     reason: "The Kiro IDE CLI settings destination must be project-relative." });
-  return accepted([{ path: path.value, content: modeled.value.content, mode: "regular",
-    origin: { kind: "harness-authored", source: file.source } }]);
+  return accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: path.value, content: modeled.value.content, mode: "regular",
+    origin: { kind: "harness-authored", source: file.source } } })]);
 };
 
 export const createKiroIdeSettingsRenderer: HostSettingsRenderer = (inputs) => ({

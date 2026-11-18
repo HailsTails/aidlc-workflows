@@ -37,7 +37,7 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
       : documents.map(document => captureLegacyNeutralDocument({ captured: document, context })) };
   const assembled = await ports.assemble({ method: request.core.method,
     sources: request.core.sources, host: request.host, renderers: renderersOf(members),
-    files: request.files, prepare: request.prepare, tokens: request.tokens, channel,
+    files: request.files, prepare: request.prepare, tokens: request.tokens, channel, legacyNative: context,
     modelCap: request.modelCap, tierFlavor: members.projection.tierFlavor, entrypoints: request.entrypoints,
     fills: members.projection.fills(fillsContext),
     bindingHeadings: ports.members.map((member) => member.projection.bindingHeading), projectRoot: request.projectRoot,
@@ -45,7 +45,7 @@ export const createProjectCapturedHost = (ports: CapturedHostProjectionPorts): P
   if (!assembled.ok) return assembled;
   return ports.hosted({ host: request.host, harness: assembled.value }).project({
     harness: request.host.distribution, method: request.core.method, sources: request.core.sources,
-    surface, runtime: captured.value.runtime, compiled: compiled.value,
+    surface, legacyNative: context, runtime: captured.value.runtime, compiled: compiled.value,
     companions: captured.value.companions,
     hostFiles: request.files.filter((file) => members.projection.placements.some((placement) => placement.source === file.source)),
   });

@@ -79,7 +79,7 @@ export type ReadHostDistribution = (request: { readonly host: HostIdentity }) =>
 export type HostPayloadBuildRequest = {
   readonly host: HostIdentity;
   readonly project: () => Promise<Result<HostProjection, readonly (KernelRefusal | ProjectionRefusal)[]>>;
-  readonly enrich: (projection: HostProjection) =>
+  readonly enrich: (projection: HostProjection, distribution: HostDistribution) =>
     Promise<Result<HostProjection, readonly (KernelRefusal | ProjectionRefusal)[]>>;
   readonly channel: Channel;
   readonly copy: Payload | null;

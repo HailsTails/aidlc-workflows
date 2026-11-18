@@ -1,3 +1,4 @@
+import type { LegacyNativeContext } from "../../domain/legacy-native-source.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { Method } from "../../../workflow-definition/domain/method.ts";
@@ -16,6 +17,7 @@ export type RuntimeReading = (
 ) => Promise<Result<SharedRuntime, readonly ProjectionRefusal[]>>;
 
 export type RuntimeProjectionRequest = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly host: HostIdentity;
   readonly runtime: SharedRuntime;
   readonly tokens: TokenBindings;

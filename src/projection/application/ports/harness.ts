@@ -42,6 +42,7 @@ export interface Harness {
 
 export type HostFileDeriver = (request: {
   readonly files: readonly ProjectedFile[];
+  readonly legacyNative?: import("../../domain/legacy-native-source.ts").LegacyNativeContext | undefined;
   readonly frame: CapturedFileFrame;
 }) => Promise<Rendering>;
 

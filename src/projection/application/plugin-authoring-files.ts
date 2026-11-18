@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../domain/legacy-native-source.ts";
 import { brand } from "../../kernel/brand.ts";
 import type { TreeFile } from "../../kernel/file-system-port.ts";
 import type { ProjectPath, SourcePath } from "../../kernel/values.ts";
@@ -15,7 +16,8 @@ export const shippedPluginTarget = ({ host, target }: HostedPluginTarget) => ({
   installRoots: [...target.installRoots],
 });
 
-export const pluginAuthoringFiles = ({ method, targets, templates, directory }: {
+export const pluginAuthoringFiles = ({ method, targets, templates, directory, legacyNative }: {
+  readonly legacyNative?: import("../domain/legacy-native-source.ts").LegacyNativeContext | undefined;
   readonly method: Method;
   readonly targets: readonly HostedPluginTarget[];
   readonly templates: readonly TreeFile[];
@@ -28,16 +30,16 @@ export const pluginAuthoringFiles = ({ method, targets, templates, directory }: 
   const stages = method.stages.filter((stage) => stage.owner.kind === "core")
     .map((stage) => stage.slug).toSorted();
   return [
-    { path: brand<ProjectPath>(`${directory}/tools/data/plugin-targets.json`), mode: "regular",
+    declareLegacyProducedFile({ context: legacyNative, file: { path: brand<ProjectPath>(`${directory}/tools/data/plugin-targets.json`), mode: "regular",
       content: { kind: "text", text: `${JSON.stringify(table, null, 2)}\n` },
-      origin: { kind: "runtime-data", name: "plugin-targets" } },
-    { path: brand<ProjectPath>(`${directory}/tools/data/plugin-authoring-context.json`), mode: "regular",
+      origin: { kind: "runtime-data", name: "plugin-targets" } } }),
+    declareLegacyProducedFile({ context: legacyNative, file: { path: brand<ProjectPath>(`${directory}/tools/data/plugin-authoring-context.json`), mode: "regular",
       content: { kind: "text", text: `${JSON.stringify({ agents, stages }, null, 2)}\n` },
-      origin: { kind: "runtime-data", name: "plugin-authoring-context" } },
-    ...templates.map((template): ProjectedFile => ({
+      origin: { kind: "runtime-data", name: "plugin-authoring-context" } } }),
+    ...templates.map((template): ProjectedFile => (declareLegacyProducedFile({ context: legacyNative, file: {
       path: brand<ProjectPath>(`${directory}/tools/data/plugin-hooks-template/${template.path}`),
       content: template.content, mode: "regular",
       origin: { kind: "neutral", source: brand<SourcePath>(`scripts/plugin-hooks-template/${template.path}`) },
-    })),
+    } }))),
   ];
 };

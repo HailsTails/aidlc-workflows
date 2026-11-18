@@ -1,3 +1,5 @@
+import { declareLegacyProducedFile } from "../domain/legacy-native-source.ts";
+import type { LegacyNativeContext } from "../domain/legacy-native-source.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { ENTRY_SHORTCUTS, type CommandSubject } from "../domain/native-command.ts";
 import type { CommandPlacement, CommandSource } from "./ports/commands.ts";
@@ -15,6 +17,7 @@ export const collectCommandRenderings = (renderings: readonly Rendering[]): Rend
 
 const renderCommand = (request: {
   readonly source: CommandSource;
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly place: CommandPlacement;
   readonly subject: CommandSubject;
 }): Rendering => {
@@ -23,8 +26,8 @@ const renderCommand = (request: {
   if (rendered.value.kind === "declined") return accepted([]);
   return collectCommandRenderings(rendered.value.files.map((file): Rendering => {
     const path = request.place(file);
-    return path.ok ? accepted([{ path: path.value, mode: file.mode, content: file.content,
-      origin: { kind: "rendered", ...request.subject } }])
+    return path.ok ? accepted([declareLegacyProducedFile({ context: request.legacyNative, file: { path: path.value, mode: file.mode, content: file.content,
+      origin: { kind: "rendered", ...request.subject } } })])
       : refused({ kind: "render-failed", ...request.subject,
         reason: "The native command destination must be a project-relative path." });
   }));
@@ -32,6 +35,7 @@ const renderCommand = (request: {
 
 export const createCommandRenderers = (request: {
   readonly source: CommandSource;
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly place: CommandPlacement;
 }): Pick<Harness, "renderStageCommand" | "renderScopeCommand" | "renderOrchestratorSkill"> => ({
   renderStageCommand: ({ stage }) => renderCommand({ ...request,

@@ -5,7 +5,7 @@ import type { ProjectPath } from "../../kernel/values.ts";
 import type { NativeCommandRoutes } from "./native-command.ts";
 import { nativePermissionsLine, type NativePermissionPolicy } from "./onboarding-context.ts";
 import type { AdmittedOnboardingTemplates } from "./onboarding-source.ts";
-import type { ProjectedFile } from "./projected-file.ts";
+import type { ProjectedFile, ProjectionSourceOrigin } from "./projected-file.ts";
 import { LEGACY_NATIVE_GUIDANCE } from "./legacy-native-guidance.ts";
 import { channelTokens } from "./channel-tokens.ts";
 import type { NeutralDocument } from "./neutral-surface.ts";
@@ -42,10 +42,11 @@ export type LegacyNeutralDocumentDialect = Brand<Readonly<LegacyNativeContext & 
 
 export type LegacyAuthoringDeclaration =
   | { readonly kind: "onboarding"; readonly templates: AdmittedOnboardingTemplates }
-  | { readonly kind: "neutral-document"; readonly document: NeutralDocument };
+  | { readonly kind: "neutral-document"; readonly document: NeutralDocument }
+  | { readonly kind: "producer"; readonly source: ProjectionSourceOrigin };
 
 export type LegacyAuthoringFragment = Readonly<{
-  readonly kind: "authored-onboarding" | "host-framing" | "neutral-document";
+  readonly kind: "authored-onboarding" | "host-framing" | "neutral-document" | "produced-source";
   readonly text: string;
 }>;
 
@@ -55,6 +56,7 @@ export type LegacyNativeProgram = Brand<Readonly<{
   readonly mode: FileMode;
   readonly fragments: readonly LegacyAuthoringFragment[];
   readonly sourceText: string;
+  readonly sourceContent: FileContent;
   readonly nativeText: string;
   readonly occurrences: readonly LegacyAuthoringOccurrence[];
   readonly replacements: readonly (LegacyNativeReplacement & { readonly found: boolean })[];
@@ -84,7 +86,7 @@ export const captureLegacyNeutralDocument = (request: {
   return Object.freeze({ ...captured, get content(): FileContent { return captured.content; }, nativeDialect });
 };
 
-const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeLegacyLiteral = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // These are the legacy dialect's string-substitution operators, not command trust.
 const substitution = (request: {
@@ -122,10 +124,10 @@ const compile = (source: string, dialect: LegacyNativeContext) => {
   const { host, commands } = dialect;
   const replacements = dialect.replacements.map(replacement => {
     const found = text.includes(replacement.from);
-    literal("host-native-block", new RegExp(escape(replacement.from), "g"), replacement.to);
+    literal("host-native-block", new RegExp(escapeLegacyLiteral(replacement.from), "g"), replacement.to);
     return Object.freeze({ ...replacement, found });
   });
-  const folder = escape(host.directory);
+  const folder = escapeLegacyLiteral(host.directory);
   const project = String.raw`(?:"?(?:\$\{?CLAUDE_PROJECT_DIR\}?/)?`;
   const quote = `"?)`;
   const hook = (name: string): string => commands.adapterHooks.has(name)
@@ -145,13 +147,13 @@ const compile = (source: string, dialect: LegacyNativeContext) => {
   parse("dispatcher", new RegExp(
     String.raw`\bbun\s+${project}${folder}/tools/aidlc(?:-([a-z0-9-]+))?\.ts${quote}`, "gi"),
   mention => mention[1] === undefined ? commands.prefix : commands.trusted(mention[1]));
-  parse("delegate", new RegExp(String.raw`\bbun\s+aidlc-(${commands.delegates.map(escape).join("|")})\.ts`, "gi"),
+  parse("delegate", new RegExp(String.raw`\bbun\s+aidlc-(${commands.delegates.map(escapeLegacyLiteral).join("|")})\.ts`, "gi"),
     mention => commands.trusted(mention[1] ?? ""));
   parse("hook", new RegExp(String.raw`\bbun\s+${project}${folder}/hooks/aidlc-([a-z0-9-]+)\.ts${quote}`, "gi"),
     mention => hook(mention[1] ?? ""));
   for (const spelling of [`"bun \\\\${host.directory}/tools/.*"`,
     `"bun \\\\$\\\\{?KIRO_PROJECT_DIR\\\\}?/${host.directory}/tools/.*"`]) {
-    literal("allowlist", new RegExp(escape(spelling), "g"), `"${commands.trusted(".*")}"`);
+    literal("allowlist", new RegExp(escapeLegacyLiteral(spelling), "g"), `"${commands.trusted(".*")}"`);
   }
   const tokens = channelTokens({ channel: "native", directory: host.directory,
     prefix: commands.prefix, namespace: commands.namespace });
@@ -177,11 +179,18 @@ const declareLegacyFile = <File extends ProjectedFile>(request: {
   if (request.context === undefined) return request.file;
   const fragments = Object.freeze(request.fragments.map(fragment => Object.freeze({ ...fragment })));
   const sourceText = fragments.map(fragment => fragment.text).join("");
-  if (request.file.content.kind !== "text" || request.file.content.text !== sourceText) {
+  const original = request.file.content;
+  const text = original.kind === "text" ? original.text
+    : new TextDecoder("utf-8", { ignoreBOM: true }).decode(original.bytes);
+  if (text !== sourceText) {
     throw new Error("The declared legacy source must be the serializer's exact input program.");
   }
+  const owned = original.kind === "text" ? Object.freeze({ ...original }) : new Uint8Array(original.bytes);
   const program = brand<LegacyNativeProgram>(Object.freeze({ declaration: request.declaration,
     path: request.file.path, mode: request.file.mode,
+    get sourceContent(): FileContent {
+      return owned instanceof Uint8Array ? { kind: "bytes", bytes: new Uint8Array(owned) } : owned;
+    },
     fragments, sourceText, ...compile(sourceText, request.context) }));
   return { ...request.file, nativeAuthoring: program };
 };
@@ -202,11 +211,31 @@ export const declareLegacyNeutralFile = <File extends ProjectedFile>(request: {
   : declareLegacyFile({ ...request, context: request.dialect,
     declaration: { kind: "neutral-document", document: request.dialect.captured } });
 
+export const legacyNativeTextPath = (path: string): boolean => /\.(?:md|mdc|json|toml|hook|ts)$/.test(path);
+
+// Called at a producer's file construction, before policy/history receipts wrap its origin.
+export const declareLegacyProducedFile = <File extends ProjectedFile & { readonly origin: ProjectionSourceOrigin }>(request: {
+  readonly context: LegacyNativeContext | undefined;
+  readonly file: File;
+}): File & { readonly nativeAuthoring?: LegacyNativeProgram } => {
+  if (request.context === undefined || !legacyNativeTextPath(request.file.path)) return request.file;
+  const content = request.file.content;
+  const text = content.kind === "text" ? content.text
+    : new TextDecoder("utf-8", { ignoreBOM: true }).decode(content.bytes);
+  return declareLegacyFile({ ...request, declaration: { kind: "producer", source: request.file.origin },
+    fragments: [{ kind: "produced-source", text }] });
+};
+
+const sameContent = (left: FileContent, right: FileContent): boolean => left.kind === "text"
+  ? right.kind === "text" && left.text === right.text
+  : right.kind === "bytes" && left.bytes.length === right.bytes.length
+    && left.bytes.every((byte, index) => byte === right.bytes[index]);
+
 export const legacyNativeProgram = (file: ProjectedFile,
   replacements: readonly LegacyNativeReplacement[]): LegacyNativeProgram | undefined => {
   const program = file.nativeAuthoring;
   if (program === undefined || file.path !== program.path || file.mode !== program.mode
-    || file.content.kind !== "text" || file.content.text !== program.sourceText) return undefined;
+    || !sameContent(file.content, program.sourceContent)) return undefined;
   if (program.replacements.length !== replacements.length || program.replacements.some((replacement, index) =>
     replacement.from !== replacements[index]?.from || replacement.to !== replacements[index]?.to)) return undefined;
   return program;

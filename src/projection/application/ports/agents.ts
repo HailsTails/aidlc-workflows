@@ -1,3 +1,4 @@
+import type { LegacyNativeContext } from "../../domain/legacy-native-source.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { Agent, TieredModel } from "../../../workflow-definition/domain/agent.ts";
@@ -44,6 +45,7 @@ export type AgentDocumentRequest = AgentPersonaRequest & {
 export type AgentDocumentSurface = (request: AgentDocumentRequest) => Result<string, ProjectionRefusal>;
 
 export type AgentRenderingInputs = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly tokens: TokenBindings;
   readonly persona: AgentPersonaPreparer;
   readonly documents: AgentDocumentSurface;
@@ -65,6 +67,7 @@ export type HostAgentRenderer = (
 ) => Pick<Harness, "renderAgent" | "renderConductorAgent">;
 
 export type AgentProjectionRequest = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly rulesFolder: string | null;
   readonly reviewerAgents: ReadonlySet<AgentSlug>;
   readonly tokens: TokenBindings;

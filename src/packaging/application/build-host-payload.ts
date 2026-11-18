@@ -16,7 +16,7 @@ export const createBuildHostPayload = (ports: {
   if (!member) return refused([{ kind: "unknown-harness", harness: request.host.distribution }]);
   if (!distribution.ok) return distribution;
   const hostData = member.data();
-  const completed = await request.enrich(projected.value);
+  const completed = await request.enrich(projected.value, distribution.value);
   if (!completed.ok) return completed;
   return ports.packaging.packageHost({ hasher: ports.hasher, distribution: distribution.value, hostData,
     projection: completed.value, channel: request.channel, copy: request.copy });

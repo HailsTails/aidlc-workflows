@@ -1,3 +1,5 @@
+import { declareLegacyProducedFile } from "../domain/legacy-native-source.ts";
+import type { LegacyNativeContext } from "../domain/legacy-native-source.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { projectPath } from "../../kernel/values.ts";
@@ -48,15 +50,15 @@ const descriptorText = (record: HarnessRecord, tokens: TokenBindings): string =>
   ...(record.hookActivation ? { hookActivation: hookStrings(record.hookActivation, tokens) } : {}),
 }, null, 2)}\n`;
 
-const hostDataFile = (request: { readonly host: HostIdentity; readonly within: string;
+const hostDataFile = (request: { readonly legacyNative?: LegacyNativeContext | undefined; readonly host: HostIdentity; readonly within: string;
   readonly text: (lines: readonly string[]) => string; readonly prompt: PromptLines }): Rendering => {
   const { host, within } = request;
   const serialized = serializeNativePolicy<ProjectionRefusal>({ prompt: request.prompt,
     serialize: (lines) => {
       const text = request.text(lines);
       const path = projectPath(`${host.directory}/${within}`);
-      return path.ok ? accepted({ path: path.value, content: { kind: "text", text },
-        mode: "regular", origin: { kind: "rendered", concept: "host-data", name: host.distribution } })
+      return path.ok ? accepted(declareLegacyProducedFile({ context: request.legacyNative, file: { path: path.value, content: { kind: "text", text },
+        mode: "regular", origin: { kind: "rendered", concept: "host-data", name: host.distribution } } }))
         : refused({ kind: "render-failed", concept: "host-data", name: host.distribution,
           reason: "The host data destination must be project-relative." });
     },
@@ -65,7 +67,7 @@ const hostDataFile = (request: { readonly host: HostIdentity; readonly within: s
 };
 
 const placeFile = (request: {
-  readonly file: AuthoredHostFile;
+  readonly legacyNative?: LegacyNativeContext | undefined; readonly file: AuthoredHostFile;
   readonly placements: readonly AuthoredPlacement[];
   readonly prepare: AuthoredFilePreparer;
   readonly channel: DistributionChannel;
@@ -82,19 +84,19 @@ const placeFile = (request: {
   if (prompt != null) {
     const serialized = serializeNativePolicy<ProjectionRefusal>({ prompt, serialize: (lines) => {
       const text = lines.join("\n");
-      return accepted({ path: path.value, content: prepared.value.content.kind === "text"
+      return accepted(declareLegacyProducedFile({ context: request.legacyNative, file: { path: path.value, content: prepared.value.content.kind === "text"
         ? { kind: "text", text } : { kind: "bytes", bytes: new TextEncoder().encode(text) },
-      mode: "regular", origin: { kind: "harness-authored", source: request.file.source } });
+      mode: "regular", origin: { kind: "harness-authored", source: request.file.source } } }));
     } });
     return serialized.ok ? accepted([serialized.value]) : serialized;
   }
-  return accepted([{ path: path.value, content: prepared.value.content,
+  return accepted([declareLegacyProducedFile({ context: request.legacyNative, file: { path: path.value, content: prepared.value.content,
     mode: "regular",
-    origin: { kind: "harness-authored", source: request.file.source } }]);
+    origin: { kind: "harness-authored", source: request.file.source } } })]);
 };
 
 export const createHostSurfaceMembers = (request: {
-  readonly host: HostIdentity;
+  readonly legacyNative?: LegacyNativeContext | undefined; readonly host: HostIdentity;
   readonly data: HostData;
   readonly record: HarnessRecordConstructor;
   readonly placements: readonly AuthoredPlacement[];
@@ -113,12 +115,12 @@ export const createHostSurfaceMembers = (request: {
     const prompt = request.data.pluginAgentFrontmatter?.[request.channel] ?? [];
     const frontmatter = promptLines(prompt);
     return collectCommandRenderings([
-      hostDataFile({ host: request.host, within: "tools/data/harness.json",
+      hostDataFile({ legacyNative: request.legacyNative, host: request.host, within: "tools/data/harness.json",
         text: () => descriptorText(record.value, request.tokens), prompt: [] }),
-      frontmatter.length ? hostDataFile({ host: request.host, within: "tools/data/plugin-agent.md",
+      frontmatter.length ? hostDataFile({ legacyNative: request.legacyNative, host: request.host, within: "tools/data/plugin-agent.md",
         text: (lines) => `---\n${lines.join("\n")}\n---\n`, prompt }) : accepted([]),
     ]);
   },
-  placeAuthoredFile: ({ file }) => placeFile({ file, placements: request.placements,
+  placeAuthoredFile: ({ file }) => placeFile({ legacyNative: request.legacyNative, file, placements: request.placements,
     prepare: request.prepare, channel: request.channel }),
 });

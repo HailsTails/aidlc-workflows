@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { z } from "zod";
 import { createCursorHookRegistrations } from "./hook-registration-renderer.ts";
 import type { FileContent } from "../../../kernel/file-content.ts";
@@ -72,10 +73,10 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
   ] : expanded;
   const path = projectPath(".cursor/cli.json");
   if (!path.ok) return refused(settingsRefusal("The settings destination must be project-relative."));
-  return accepted([{ path: path.value, content: { kind: "text",
+  return accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: path.value, content: { kind: "text",
     text: `${JSON.stringify({ ...fields, permissions: { ...permissions, allow: channelAllow } }, null, 2)}\n` },
     mode: "regular",
-    origin: { kind: "rendered", concept: "settings", name: "cli.json" } }]);
+    origin: { kind: "rendered", concept: "settings", name: "cli.json" } } })]);
 };
 
 export const createCursorSettingsRenderer: HostSettingsRenderer = (inputs) => ({

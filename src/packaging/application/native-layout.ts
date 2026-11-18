@@ -9,7 +9,7 @@ import type { NativeRelease } from "../domain/payload.ts";
 import { nativeBareToolPattern, nativeInvocationText } from "../domain/native-invocations.ts";
 import { nativeOnboardingText } from "../domain/native-onboarding.ts";
 import { nativePolicyObligation } from "../../projection/domain/native-policy.ts";
-import { compiledLegacyNativeFile, legacyNativeProgram } from "../../projection/domain/legacy-native-source.ts";
+import { compiledLegacyNativeFile, legacyNativeProgram, legacyNativeTextPath } from "../../projection/domain/legacy-native-source.ts";
 
 type NativeLayoutRequest = {
   readonly files: readonly ProjectedFile[];
@@ -19,7 +19,7 @@ type NativeLayoutRequest = {
 };
 
 const nativeFileTreatment = (file: ProjectedFile): "rewrite-text" | "preserve-content" =>
-  /\.(?:md|mdc|json|toml|hook|ts)$/.test(file.path) ? "rewrite-text" : "preserve-content";
+  legacyNativeTextPath(file.path) ? "rewrite-text" : "preserve-content";
 const textOf = (content: FileContent): string => content.kind === "text" ? content.text
   : new TextDecoder("utf-8", { ignoreBOM: true }).decode(content.bytes);
 

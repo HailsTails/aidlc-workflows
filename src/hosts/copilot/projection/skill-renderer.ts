@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts";
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
@@ -37,9 +38,9 @@ const renderDocument = (request: SkillRenderingInputs, source: string): Renderin
   const finished = source === "skills/aidlc/SKILL.md"
     ? finishEarlierReleaseSkill({ text: refreshed.value, skillRel: destination, harnessDir: ".aidlc" })
     : refreshed.value;
-  return accepted([{ path: path.value, mode: "regular",
+  return accepted([declareLegacyProducedFile({ context: request.legacyNative, file: { path: path.value, mode: "regular",
     content: { kind: "bytes", bytes: new TextEncoder().encode(finished) },
-    origin: { kind: "harness-authored", source: file.source } }]);
+    origin: { kind: "harness-authored", source: file.source } } })]);
 };
 
 export const createCopilotSkillRenderer: HostSkillRenderer = (request) => ({
@@ -56,9 +57,9 @@ export const createCopilotSkillRenderer: HostSkillRenderer = (request) => ({
         concept: "session-skill", name: skill.name, reason: "The source is outside its session skill." });
       const path = projectPath(`.github/${file.source}`);
       const content = bindTemplateTokens({ text: decode(file.content), tokens: request.tokens, selected: proseTokens });
-      return path.ok ? accepted([{ path: path.value, mode: "regular",
+      return path.ok ? accepted([declareLegacyProducedFile({ context: request.legacyNative, file: { path: path.value, mode: "regular",
         content: { kind: "bytes", bytes: new TextEncoder().encode(content) },
-        origin: { kind: "neutral", source: file.source } }])
+        origin: { kind: "neutral", source: file.source } } })])
         : refused({ kind: "render-failed", concept: "session-skill", name: skill.name,
           reason: "The session skill destination must be project-relative." });
     });

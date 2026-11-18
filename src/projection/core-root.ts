@@ -60,7 +60,7 @@ const agentInputs = ({ agents, allows, facts }: {
     directory: agents.host.directory, rulesFolder: agents.rulesFolder, reviewerAgents: agents.reviewerAgents,
     sharedKnowledge: delegatedSharedKnowledge(agents.host.directory) });
   const model = legacyAgentDocumentModel({ flavor: agents.tierFlavor, cap: agents.modelCap });
-  return { host: agents.host, files: agents.files, prepare: agents.prepare, tokens: agents.tokens, persona,
+  return { legacyNative: agents.legacyNative, host: agents.host, files: agents.files, prepare: agents.prepare, tokens: agents.tokens, persona,
     documents: (request) => {
       const prepared = persona(request);
       if (!prepared.ok) return prepared;
@@ -75,7 +75,7 @@ const settingsInputs = ({ settings, allows, capabilities, nativeCommands }: {
   readonly settings: SettingsProjectionRequest; readonly allows: CopyChannelAllows;
   readonly capabilities: SettingsCapabilities;
   readonly nativeCommands: NativeCommandRoutes;
-}): SettingsRenderingInputs => ({ files: settings.files, prepare: settings.prepare,
+}): SettingsRenderingInputs => ({ legacyNative: settings.legacyNative, files: settings.files, prepare: settings.prepare,
   tokens: settings.tokens, channel: settings.channel, entrypoints: settings.entrypoints, allows,
   ...capabilities, nativeCommands, cliModels: legacyCliModelPolicy(settings.modelCap),
   });
@@ -90,8 +90,8 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
   readonly nativeCommands: NativeCommandRoutes;
   readonly frame: CapturedFileFrame;
 }): Harness => {
-  const commands = createCommandRenderers({ source, place: assembly.renderers.commandPlacement });
-  const skills = assembly.renderers.skills({ files: assembly.files, prepare: assembly.prepare,
+  const commands = createCommandRenderers({ legacyNative: assembly.legacyNative, source, place: assembly.renderers.commandPlacement });
+  const skills = assembly.renderers.skills({ legacyNative: assembly.legacyNative, files: assembly.files, prepare: assembly.prepare,
     tokens: assembly.tokens, tables });
   return { tokens: assembly.tokens,
     ...assembly.renderers.agents(agentInputs({ agents: { ...assembly,
@@ -101,7 +101,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
     ...assembly.renderers.documents({ fills: assembly.fills, tokens: assembly.tokens,
       bindingHeadings: assembly.bindingHeadings }),
     ...surface,
-    deriveFiles: (request) => assembly.renderers.derive?.({ ...request, frame }) ?? accepted([]),
+    deriveFiles: (request) => assembly.renderers.derive?.({ ...request, legacyNative: assembly.legacyNative, frame }) ?? accepted([]),
     renderStageCommand: commands.renderStageCommand, renderScopeCommand: commands.renderScopeCommand,
     renderSessionSkill: skills.renderSessionSkill,
     renderOrchestratorSkill: (entry) => collectCommandRenderings([
@@ -179,8 +179,8 @@ export const createBuildProjection = (request: {
       const tables = await prepareLegacySkillTables(skills, { scratch: request.runnerScratch,
         processRunner: request.runnerProcess, frames: request.runnerFrames });
       return projectMethodSkills({ method: skills.method, sessions: skills.sessions,
-        commands: createCommandRenderers({ source: skills.commands, place: skills.place }),
-        skills: skills.render({ files: skills.files, prepare: skills.prepare, tokens: skills.tokens, tables }) });
+        commands: createCommandRenderers({ legacyNative: skills.legacyNative, source: skills.commands, place: skills.place }),
+        skills: skills.render({ legacyNative: skills.legacyNative, files: skills.files, prepare: skills.prepare, tokens: skills.tokens, tables }) });
     },
     projectAgents: (agents) => {
       const reading = allows.read();

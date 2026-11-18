@@ -1,3 +1,5 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
+import type { LegacyNativeContext } from "../../../projection/domain/legacy-native-source.ts";
 import { kiroIdeShellPermissionLines, kiroIdeConductorPermissionSource } from "./native-permissions.ts";
 import { renderKiroIdeMarkdown } from "./markdown-surface.ts";
 import type { DistributionChannel } from "../../../projection/domain/projected-file.ts";
@@ -15,6 +17,7 @@ import { brand } from "../../../kernel/brand.ts";
 import type { NativePolicyPrompt, PromptLines } from "../../../projection/domain/native-policy.ts";
 
 export type KiroIdePersonaProfile = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly modelSurface: (request: { readonly agent: AgentDocumentRequest["agent"] }) =>
     Result<string, ProjectionRefusal>;
   readonly promptLines: (agent: AgentDocumentRequest["agent"]) => PromptLines;
@@ -89,7 +92,7 @@ export const expandKiroIdeConductorAllows = (request: {
 export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePersonaRendering }): HostAgentRenderer => (inputs) => {
   const inlineAgents = inlineAgentSet(inputs.method);
   return {
-    renderAgent: personas({
+    renderAgent: personas({ legacyNative: inputs.legacyNative,
       modelSurface: ({ agent }) => inputs.documents({
         agent, text: "authored-file", knowledge: "absorbed", reading: kiroIdeKnowledgeReading(inputs.host.directory),
         model: "projected", render: renderKiroIdeMarkdown,
@@ -116,8 +119,8 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
       if (!prepared.ok) return prepared;
       const projectedContent = conductorContent(prepared.value.content, inputs.channel);
       const path = projectPath(".kiro/agents/aidlc-aidlc.md");
-      return path.ok ? accepted([{ path: path.value, content: projectedContent,
-        mode: "regular", origin: { kind: "harness-authored", source: file.source } }])
+      return path.ok ? accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: path.value, content: projectedContent,
+        mode: "regular", origin: { kind: "harness-authored", source: file.source } } })])
         : refused({ kind: "render-failed", concept: "agent", name: file.source,
           reason: "The Kiro IDE conductor destination must be project-relative." });
     },

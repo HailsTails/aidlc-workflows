@@ -7,6 +7,7 @@ import type { HostPluginTarget } from "../../domain/host-surface.ts";
 import type { HostProjection, ProjectionRefusal } from "../../domain/projection.ts";
 
 export type EnrichPluginAuthoring = (request: {
+  readonly legacyNative?: import("../../domain/legacy-native-source.ts").LegacyNativeContext | undefined;
   readonly projection: HostProjection; readonly method: Method; readonly directory: ProjectPath;
 }) => Promise<Result<HostProjection, readonly (KernelRefusal | ProjectionRefusal)[]>>;
 

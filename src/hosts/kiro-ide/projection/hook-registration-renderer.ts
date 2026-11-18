@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
 import { projectPath } from "../../../kernel/values.ts";
 import type { Harness, Rendering } from "../../../projection/application/ports/harness.ts";
@@ -18,10 +19,10 @@ const renderHook = (inputs: SettingsRenderingInputs, source: string): Rendering 
   const prepared = inputs.prepare(file);
   if (!prepared.ok) return prepared;
   const path = projectPath(`.kiro/${source}`);
-  return path.ok ? accepted([{
+  return path.ok ? accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: {
     path: path.value, content: prepared.value.content, mode: "regular",
     origin: { kind: "harness-authored", source: file.source },
-  }]) : refused({ kind: "render-failed", concept: "hook-registration", name: source,
+  } })]) : refused({ kind: "render-failed", concept: "hook-registration", name: source,
     reason: "The Kiro IDE hook destination must be project-relative." });
 };
 

@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import type { HostAgentRenderer } from "../../../projection/application/ports/agents.ts";
 import { renderOpenCodeMarkdown } from "./markdown-surface.ts";
 import { projectActiveMemoryReferences as projectSharedActiveMemoryReferences } from "../../../projection/domain/active-memory.ts";
@@ -31,11 +32,11 @@ export const openCodeAgents: HostAgentRenderer = (inputs) => ({
     if (!inlinePath.ok) return refused({ kind: "render-failed", concept: "agent", name: agent.slug,
       reason: "The inline agent destination must be a project-relative path." });
     return accepted([
-      { path: nativePath.value, content: { kind: "text", text: projectActiveMemoryReferences(native.value)
+      declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: nativePath.value, content: { kind: "text", text: projectActiveMemoryReferences(native.value)
         .replace(/`maxTurns: (\d+)`/g, "`steps: $1`") }, mode: "regular",
-        origin: { kind: "method-source", path: agent.source } },
-      { path: inlinePath.value, content: { kind: "text", text: projectActiveMemoryReferences(inline.value) },
-        mode: "regular", origin: { kind: "method-source", path: agent.source } },
+        origin: { kind: "method-source", path: agent.source } } }),
+      declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: inlinePath.value, content: { kind: "text", text: projectActiveMemoryReferences(inline.value) },
+        mode: "regular", origin: { kind: "method-source", path: agent.source } } }),
     ]);
   },
   renderConductorAgent: () => accepted([]),

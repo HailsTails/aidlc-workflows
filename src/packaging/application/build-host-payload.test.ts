@@ -67,7 +67,7 @@ test.each(["copy", "native"] as const)("the parity-preserving candidate enriches
   const current = fixture();
   expect(await current.build({ ...current.request, channel })).toBe(completion);
   expect(current.project).toHaveBeenCalledTimes(1);
-  expect(current.enrich).toHaveBeenCalledWith(projected);
+  expect(current.enrich).toHaveBeenCalledWith(projected, scratchHostDistributionFixture);
   expect(current.packageHost).toHaveBeenCalledTimes(1);
   expect(current.packageHost).toHaveBeenCalledWith({ projection: projected, distribution: scratchHostDistributionFixture,
     hostData: SCRATCH_HOST_DATA, hasher, channel, copy: null });

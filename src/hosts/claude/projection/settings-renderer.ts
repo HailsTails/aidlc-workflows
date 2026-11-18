@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { z } from "zod";
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../../kernel/result.ts";
@@ -68,12 +69,12 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
   ] : expanded;
   const path = projectPath(".claude/settings.json");
   if (!path.ok) return refused(settingsRefusal("The settings destination must be project-relative."));
-  return accepted([{ path: path.value, content: { kind: "text",
+  return accepted([declareLegacyProducedFile({ context: inputs.legacyNative, file: { path: path.value, content: { kind: "text",
     text: `${JSON.stringify({ ...fields, hooks: projectCapturedClaudeHooks({ captured: fields["hooks"],
       directory: inputs.tokens.HARNESS_DIR, channel: inputs.channel, trusted: inputs.nativeCommands.trusted }),
     permissions: { ...permissions, allow: channelAllow } }, null, 2)}\n` },
     mode: "regular",
-    origin: { kind: "rendered", concept: "settings", name: "settings.json" } }]);
+    origin: { kind: "rendered", concept: "settings", name: "settings.json" } } })]);
 };
 
 export const createClaudeSettingsRenderer: HostSettingsRenderer = (inputs) => ({

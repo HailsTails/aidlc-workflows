@@ -1,3 +1,4 @@
+import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import { bindTemplateTokens } from "../../../projection/domain/token-binding.ts";
 import type { FileContent } from "../../../kernel/file-content.ts";
 import { accepted, refused } from "../../../kernel/result.ts";
@@ -39,9 +40,9 @@ const renderDocument = (request: SkillRenderingInputs, source: string): Renderin
   const finished = source === "skills/aidlc/SKILL.md"
     ? finishEarlierReleaseSkill({ text: refreshed.value, skillRel: destination, harnessDir: ".codex" })
     : refreshed.value;
-  return accepted([{ path: path.value, mode: "regular",
+  return accepted([declareLegacyProducedFile({ context: request.legacyNative, file: { path: path.value, mode: "regular",
     content: { kind: "bytes", bytes: new TextEncoder().encode(finished) },
-    origin: { kind: "harness-authored", source: file.source } }]);
+    origin: { kind: "harness-authored", source: file.source } } })]);
 };
 
 export const createCodexSkillRenderer: HostSkillRenderer = (request) => ({
@@ -61,9 +62,9 @@ export const createCodexSkillRenderer: HostSkillRenderer = (request) => ({
       const prose = bindTemplateTokens({ text: decode(file.content), tokens: request.tokens, selected: proseTokens })
         .replaceAll(".codex/rules/", ".codex/aidlc-rules/");
       const content = file.source.endsWith(".md") ? codexInvocations(prose) : prose;
-      return path.ok ? accepted([{ path: path.value, mode: "regular",
+      return path.ok ? accepted([declareLegacyProducedFile({ context: request.legacyNative, file: { path: path.value, mode: "regular",
         content: { kind: "bytes", bytes: new TextEncoder().encode(content) },
-        origin: { kind: "neutral", source: file.source } }])
+        origin: { kind: "neutral", source: file.source } } })])
         : refused({ kind: "render-failed", concept: "session-skill", name: skill.name,
           reason: "The session skill destination must be project-relative." });
     });
@@ -72,9 +73,9 @@ export const createCodexSkillRenderer: HostSkillRenderer = (request) => ({
     const guardPath = projectPath(`.agents/skills/${skill.name}/agents/openai.yaml`);
     return guardPath.ok ? accepted([
       ...files.flatMap((file) => file.ok ? file.value : []),
-      { path: guardPath.value, mode: "regular",
+      declareLegacyProducedFile({ context: request.legacyNative, file: { path: guardPath.value, mode: "regular",
         content: { kind: "bytes", bytes: new TextEncoder().encode("policy:\n  allow_implicit_invocation: false\n") },
-        origin: { kind: "rendered", concept: "session-skill", name: skill.name } },
+        origin: { kind: "rendered", concept: "session-skill", name: skill.name } } }),
     ]) : refused({ kind: "render-failed", concept: "session-skill", name: skill.name,
       reason: "The session skill destination must be project-relative." });
   },

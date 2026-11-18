@@ -1,3 +1,4 @@
+import type { LegacyNativeContext } from "../../domain/legacy-native-source.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { Result } from "../../../kernel/result.ts";
 import type { SourcePath } from "../../../kernel/values.ts";
@@ -33,6 +34,7 @@ export type HarnessRenderers = {
 };
 
 export type HarnessAssemblyRequest = {
+  readonly legacyNative?: LegacyNativeContext | undefined;
   readonly method: Method;
   readonly sources: readonly MethodSource[];
   readonly host: HostIdentity;

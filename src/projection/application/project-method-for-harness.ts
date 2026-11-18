@@ -34,9 +34,9 @@ export const createProjectMethodForHarness = (registry: HarnessRegistry): Projec
       harness.renderHostData(),
       ...request.surface.documents.map((document) => harness.placeNeutralDocument({ document })),
       ...request.hostFiles.map((file) => harness.placeAuthoredFile({ file })),
-      projectWorkspace({ host, tokens, companions: request.companions,
+      projectWorkspace({ host, tokens, legacyNative: request.legacyNative, companions: request.companions,
         rules: request.sources.filter((source) => source.path.startsWith(`${METHOD_SOURCE_FOLDERS.rule}/`)) }),
-      projectRuntime({ host, runtime: request.runtime, tokens, compiled: request.compiled }),
+      projectRuntime({ host, legacyNative: request.legacyNative, runtime: request.runtime, tokens, compiled: request.compiled }),
     ];
     const failures = rendered.flatMap((rendering) => rendering.ok ? [] : [rendering.refusal]);
     if (failures.length > 0) return refused(failures);

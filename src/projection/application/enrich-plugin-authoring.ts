@@ -43,7 +43,7 @@ export const createPluginAuthoringEnrichment = (ports: PluginAuthoringCapture): 
     const capturedTargets = targets();
     if (!capturedTargets.ok) return capturedTargets;
     const files = collectCommandRenderings([accepted(request.projection.files), accepted(pluginAuthoringFiles({
-      method: request.method, targets: capturedTargets.value, templates: capturedTemplates.value, directory: request.directory,
+      legacyNative: request.legacyNative, method: request.method, targets: capturedTargets.value, templates: capturedTemplates.value, directory: request.directory,
     }))]);
     return files.ok ? accepted({ ...request.projection, files: files.value }) : refused([files.refusal]);
   };
