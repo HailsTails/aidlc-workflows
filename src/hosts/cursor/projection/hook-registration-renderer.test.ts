@@ -1,6 +1,8 @@
 import { expect, mock, test } from "bun:test";
 import { accepted, refused } from "../../../kernel/result.ts";
-import { path, source } from "../../../kernel/fixtures/values.fixture.ts";
+import { host, path, source } from "../../../kernel/fixtures/values.fixture.ts";
+import { accept } from "../../../kernel/fixtures/accept.ts";
+import { nativeLayoutFiles } from "../../../packaging/application/native-layout.ts";
 import { settingsRenderingInputsFixture } from "../../../projection/fixtures/settings-rendering.fixture.ts";
 import { createCursorSettingsRenderer, CURSOR_SETTINGS_INPUTS } from "./settings-renderer.ts";
 
@@ -42,4 +44,23 @@ test("Cursor hook preparation refusal retains the actual source and reason", () 
     name: "hooks.json", reason: "Token preparation refused." });
   expect(createCursorSettingsRenderer({ ...inputs, prepare: () => failure }).renderHookRegistrations({ hooks: [] }))
     .toEqual(failure);
+});
+
+test("Cursor's real hook producer declares the prepared source and the native consumer does not interpret it again", () => {
+  const identity = host({ name: "cursor", directory: ".cursor" });
+  const trusted = mock((suffix: string) => `aidlc engine ${suffix}`);
+  const commands = { prefix: "aidlc engine", namespace: "engine", delegates: [], adapterHooks: new Set<string>(),
+    trusted, unresolvable: () => [] };
+  const permissions = { kind: "authored" as const };
+  const files = accept(createCursorSettingsRenderer({ ...inputs, prepare: () => accepted(prepared),
+    legacyNative: { host: identity, commands, permissions, replacements: [] } }).renderHookRegistrations({ hooks: [] }));
+  expect(files[0]?.content).toEqual(prepared.content);
+  expect(files[0]?.nativeAuthoring?.declaration).toEqual<unknown>({ kind: "producer",
+    source: { kind: "harness-authored", source: source("hooks.json") } });
+  trusted.mockClear();
+  expect(nativeLayoutFiles({ host: identity, routes: commands, release: { copyOnly: [], replacements: [], permissions }, files }))
+    .toEqual(accepted([{ path: path(".cursor/hooks.json"), mode: "regular",
+      content: { kind: "text", text: '{"version":1,"hooks":{"sessionStart":[{"command":"aidlc engine session-start"}]}}\n' },
+      origin: { kind: "harness-authored", source: source("hooks.json") } }]));
+  expect(trusted).not.toHaveBeenCalled();
 });

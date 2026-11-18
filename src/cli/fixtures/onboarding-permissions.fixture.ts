@@ -18,7 +18,7 @@ import { admitOnboardingSource } from "../../projection/domain/onboarding-source
 import { admitCwdDocuments, type CwdGuidanceSource } from "../../projection/domain/cwd-guidance.ts";
 import { onboardingContext } from "../../projection/domain/onboarding-context.ts";
 import { nativeLayoutFiles } from "../../packaging/application/native-layout.ts";
-import { nativeOnboardingText } from "../../packaging/domain/native-onboarding.ts";
+import { compiledLegacyNativeFile } from "../../projection/domain/legacy-native-source.ts";
 import { channelTokens } from "../../packaging/domain/channel-tokens.ts";
 import { codexHost } from "../../hosts/codex/host.ts";
 import { claudeHost } from "../../hosts/claude/host.ts";
@@ -97,10 +97,9 @@ export const permissionProseFlow = async (input: {
     host: module.host, release: { replacements: [], copyOnly: [], permissions: distribution.native.permissions },
     routes: commands,
   }) : before.ok ? accepted(before.value.files) : before;
-  const onboardingOnly = before.ok && input.channel === "native" ? accepted(before.value.files.map(file => ({ ...file,
-    content: { kind: "text" as const, text: nativeOnboardingText({ text: file.content.kind === "text"
-      ? file.content.text : new TextDecoder("utf-8", { ignoreBOM: true }).decode(file.content.bytes),
-    permissions: distribution.native.permissions, prefix: commands.prefix }) },
-  }))) : before.ok ? accepted(before.value.files) : before;
-  return { context, policy: distribution.native.permissions, fills: observed.fills, before, after, onboardingOnly };
+  const sourceOwned = before.ok && input.channel === "native" ? accepted(before.value.files.map(file => {
+    const compiled = compiledLegacyNativeFile(file);
+    return compiled === undefined ? file : { ...file, content: compiled.content };
+  })) : before.ok ? accepted(before.value.files) : before;
+  return { context, policy: distribution.native.permissions, fills: observed.fills, before, after, sourceOwned };
 };

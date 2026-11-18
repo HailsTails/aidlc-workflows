@@ -101,9 +101,36 @@ whole-line slot receives copy/native meaning; absent, duplicate, malformed,
 quoted or stale declarations earn no receipt. Opaque invalid UTF-8 is declined.
 The byte-backed representation is preserved when valid authored bytes are
 reserialized. Packaging still owns eligibility, ordered mandatory-presence
-refusal and masking. Its legacy replacement also continues for separate matching
-custom text, even when another file already carries an admitted obligation.
+refusal and masking. Projection's declared legacy authoring source also retains
+the transformation of separate matching custom input, even when another file
+already carries an admitted obligation.
 
 These contracts are implemented as internal capability boundaries, not a global
 transformation registry. They require neither a host finalizer nor host syntax
 inside Packaging. The previously reviewed doctor behavior is preserved.
+
+## Source programmes and native consumption
+
+The captured root supplies one existing native command/policy context. Each
+onboarding, neutral, agent, command, skill, settings, authored, runtime,
+workspace, derived and enrichment producer declares its source at its actual
+file constructor or serializer. The closed legacy language records ordered
+occurrences and the native variant, with the exact original path, mode and
+text or byte representation. Byte snapshots do not alias caller buffers. The
+original projected view remains available to root-history and policy receipts.
+
+Packaging consumes a programme only while those original values and ordered
+replacement clauses still match. It keeps copy-only and text eligibility,
+mandatory-class admission, masking, leftover/namespace checks and their order.
+It does not recognize or replace invocation/onboarding language in rendered
+text. A native-policy receipt discharges only its own named obligation.
+
+Direct internal callers constructing authoring fixtures must declare that
+source before calling the consumer. Unadmitted output is never promoted into
+the legacy language: it remains literal and undergoes the same validators; it
+cannot satisfy an authoring replacement merely by containing its copy text.
+This internal producer/consumer pairing does not require new annotations in
+user-authored files. Existing accepted custom prose still enters the captured
+source dialect and retains its previous bytes and refusals. The literal oracle
+tests remain, now against that source owner, and the raw-consumer negative
+cases separately prove the absence of implicit interpretation.

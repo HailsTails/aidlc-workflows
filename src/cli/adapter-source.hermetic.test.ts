@@ -13,7 +13,7 @@ import { prepareHostSource } from "../projection/application/prepared-host-sourc
 import { bindCopiedSource } from "../projection/domain/source-binding.ts";
 import { channelTokens } from "../packaging/domain/channel-tokens.ts";
 import { nativeLayoutFiles } from "../packaging/application/native-layout.ts";
-import { nativeInvocationText } from "../packaging/domain/native-invocations.ts";
+import { legacyInvocationSourceFixture } from "../projection/fixtures/legacy-authoring.fixture.ts";
 import { HOSTS } from "./host-table.ts";
 import type { AuthoredFilePreparer } from "../projection/application/ports/host-sources.ts";
 import type { FileContent } from "../kernel/file-content.ts";
@@ -48,6 +48,8 @@ test.each(cases)("$name declared adapter source owns its whole copy/native bytes
     const tokens = { ...member.projection.tokens, ["HARNESS_DIR"]: member.host.directory,
       ...channelTokens({ channel, directory: member.host.directory, prefix: commands.prefix, namespace: commands.namespace }) };
     const place = (prepare: AuthoredFilePreparer): Rendering => createHostSurfaceMembers({ host: member.host,
+      legacyNative: channel === "copy" ? undefined : { host: member.host, commands,
+        permissions: { kind: "authored" }, replacements: [] },
       data: member.projection.renderData({ delegateShellFacts: projection.delegateShellFacts }),
       record: member.projection.record, placements: member.projection.placements, tokens, channel, prepare,
     }).placeAuthoredFile({ file: captured });
@@ -70,11 +72,11 @@ test.each(cases)("$name declared adapter source owns its whole copy/native bytes
       const release = { copyOnly: [], replacements: [], permissions: { kind: "authored" as const } };
       const oldFinal = nativeLayoutFiles({ host: member.host, routes: commands, release, files: beforeFiles });
       const lateRewrite = mock(commands.trusted);
-      expect(nativeInvocationText({ text: output.text, host: member.host, routes: commands })).toBe(output.text);
+      expect(legacyInvocationSourceFixture({ text: output.text, host: member.host, routes: commands })).toBe(output.text);
       const newFinal = nativeLayoutFiles({ host: member.host, routes: { ...commands, trusted: lateRewrite }, release, files: newFiles });
       expect(newFinal).toEqual(oldFinal);
       expect(newFinal.ok).toBe(true);
-      expect(lateRewrite.mock.calls).toEqual([[".*"], [".*"]]);
+      expect(lateRewrite).not.toHaveBeenCalled();
     }
     const output: readonly ProjectedFile[] = channel === "copy" ? newFiles : accept(nativeLayoutFiles({ host: member.host, routes: commands,
       release: { copyOnly: [], replacements: [], permissions: { kind: "authored" } }, files: newFiles }));

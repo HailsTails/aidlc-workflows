@@ -14,7 +14,7 @@ import { cursorHost } from "../hosts/cursor/host.ts";
 import { createHostSurfaceMembers } from "../projection/application/host-surface-members.ts";
 import { prepareHostSource } from "../projection/application/prepared-host-source.ts";
 import { bindCopiedSource } from "../projection/domain/source-binding.ts";
-import { nativeLayoutFiles } from "../packaging/application/native-layout.ts";
+import { nativeLayoutFromAuthoredFixture } from "../projection/fixtures/legacy-authoring.fixture.ts";
 
 const module = accept(cursorHost());
 const release = accept(module.distribution()).native;
@@ -26,7 +26,7 @@ const routes = (unresolvable: NativeCommandRoutes["unresolvable"]): NativeComman
   prefix: "aidlc engine", namespace: "engine", delegates: [], adapterHooks: new Set(),
   trusted: (suffix) => `aidlc engine ${suffix}`, unresolvable,
 });
-const layout = (files: readonly ProjectedFile[]) => nativeLayoutFiles({ files, release,
+const layout = (files: readonly ProjectedFile[]) => nativeLayoutFromAuthoredFixture({ files, release,
   host: module.host, routes: routes(() => []) });
 const placeDeclared = ({ content, channel, placements }: { readonly content: FileContent;
   readonly channel: DistributionChannel; readonly placements: readonly AuthoredPlacement[] }) => accept(createHostSurfaceMembers({
@@ -121,7 +121,7 @@ test.each([
 test("copy-only filtering still precedes admission", () => {
   const [file] = place({ kind: "text", text: authoredLF }, "native");
   assertDefined(file);
-  expect(nativeLayoutFiles({ host: module.host, routes: routes(() => []),
+  expect(nativeLayoutFromAuthoredFixture({ host: module.host, routes: routes(() => []),
     release: { ...release, copyOnly: [path(".cursor/rules/aidlc.mdc")] }, files: [file] })).toEqual(missing);
 });
 
@@ -135,7 +135,7 @@ test("an ineligible output extension cannot carry the obligation", () => {
 
 test("admitted target text retains exact masking before route validation", () => {
   const unresolvable = mock<NativeCommandRoutes["unresolvable"]>().mockReturnValue([]);
-  expect(nativeLayoutFiles({ host: module.host, release, routes: routes(unresolvable),
+  expect(nativeLayoutFromAuthoredFixture({ host: module.host, release, routes: routes(unresolvable),
     files: place({ kind: "text", text: "Before\n{{SLOT:cursor_doctor_guidance}}\nAfter\n" }, "native"),
   })).toEqual(accepted([{ path: path(".cursor/rules/aidlc.mdc"),
     content: { kind: "text", text: "Before\nrun `aidlc doctor`,\nAfter\n" }, mode: "regular", origin }]));
@@ -145,7 +145,7 @@ test("admitted target text retains exact masking before route validation", () =>
 
 test("an unrelated route refusal is preserved after the admitted passage is masked", () => {
   const unresolvable = mock<NativeCommandRoutes["unresolvable"]>().mockReturnValue(["unresolved fixture route"]);
-  expect(nativeLayoutFiles({ host: module.host, release, routes: routes(unresolvable),
+  expect(nativeLayoutFromAuthoredFixture({ host: module.host, release, routes: routes(unresolvable),
     files: place({ kind: "text", text: "{{SLOT:cursor_doctor_guidance}}\nOther command\n" }, "native"),
   })).toEqual(refused([{ kind: "native-leftover", path: path(".cursor/rules/aidlc.mdc"),
     reason: "unresolved fixture route" }]));

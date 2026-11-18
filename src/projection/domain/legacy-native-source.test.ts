@@ -91,10 +91,11 @@ test("source snapshot invalidation never grants semantic authority to changed ou
 
 test("mandatory replacement admission precedes consuming a source-compiled variant", () => {
   const body = "copy block";
-  const compiled = declareLegacyOnboardingFile({ dialect, file: file(body),
-    fragments: [{ kind: "authored-onboarding", text: body }] });
   const release = { copyOnly: [], replacements: [{ from: body, to: "bun .fixture/tools/aidlc.ts stage status" }],
     permissions: { kind: "authored" as const } };
+  const bound = captureLegacyOnboardingDialect({ ...dialect, replacements: release.replacements });
+  const compiled = declareLegacyOnboardingFile({ dialect: bound, file: file(body),
+    fragments: [{ kind: "authored-onboarding", text: body }] });
   expect(nativeLayoutFiles({ host: identity, routes: commands, release, files: [compiled] }))
     .toEqual(accepted([file("native-owner stage status")]));
   expect(nativeLayoutFiles({ host: identity, routes: commands,

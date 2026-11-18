@@ -1,5 +1,6 @@
 import { createScriptedToolBundler } from "../fixtures/tool-bundler.fake.ts";
 import { expect, mock, test } from "bun:test";
+import { declareLegacyProducedFile } from "../../projection/domain/legacy-native-source.ts";
 import { accepted, refused } from "../../kernel/result.ts";
 import { hash, path, source } from "../../kernel/fixtures/values.fixture.ts";
 import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
@@ -205,8 +206,11 @@ test("native layout runs before hashing and removes copy-only root declarations"
   });
   expect(await native.package({ version: fixture.version, channel: "native", runtime: [], projection: {
     host: fixture.descriptor.host, findings: [], files: [versionModule("version"),
-      { path: path(".claude/tools/example.ts"), mode: "executable", content: { kind: "text", text:
+      declareLegacyProducedFile({ context: { host: fixture.descriptor.host, commands: nativeRoutes,
+        permissions: { kind: "authored" }, replacements: [] }, file: {
+        path: path(".claude/tools/example.ts"), mode: "executable", content: { kind: "text", text:
         "bun .claude/tools/aidlc.ts stage status" }, origin: { kind: "rendered", concept: "settings", name: "fixture" } },
+      }),
       { path: path(".vscode/settings.json"), mode: "regular", content: { kind: "text", text: "copy only" },
         origin: { kind: "rendered", concept: "settings", name: "fixture" } },
     ],

@@ -197,7 +197,7 @@ test.each([
 test.each([...PERMISSION_ORACLES])("$host copy keeps the complete original fills before real serialization", async (row) => {
   const flow = await permissionProseFlow({ host: row.host, channel: "copy", ending: "\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.copy);
-  expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
+  expect(flow.sourceOwned).toEqual(accepted(accept(flow.before).files));
   expect(flow.after).toEqual(accepted(deliveredSourceFiles(accept(flow.before).files)));
 });
 
@@ -205,21 +205,21 @@ test.each([...PERMISSION_ORACLES])("$host native authors the complete policy bef
   const flow = await permissionProseFlow({ host: row.host, channel: "native", ending: "\n", prefix: row.prefix });
   expect(flow.policy.kind).toBe(row.policy);
   expect(flow.fills).toEqual<OnboardingFills>(row.native);
-  expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
+  expect(flow.sourceOwned).toEqual(accepted(accept(flow.before).files));
   expect(flow.after).toEqual(accepted(deliveredSourceFiles(accept(flow.before).files)));
 });
 
 test.each([...PERMISSION_ORACLES])("$host native CRLF composition needs no permission-prose repair", async (row) => {
   const flow = await permissionProseFlow({ host: row.host, channel: "native", ending: "\r\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.native);
-  expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
+  expect(flow.sourceOwned).toEqual(accepted(accept(flow.before).files));
   expect(flow.after).toEqual(accepted(deliveredSourceFiles(accept(flow.before).files)));
 });
 
 test.each([...PERMISSION_ORACLES])("$host copy CRLF composition keeps its full authoring", async (row) => {
   const flow = await permissionProseFlow({ host: row.host, channel: "copy", ending: "\r\n", prefix: row.prefix });
   expect(flow.fills).toEqual<OnboardingFills>(row.copy);
-  expect(flow.onboardingOnly).toEqual(accepted(accept(flow.before).files));
+  expect(flow.sourceOwned).toEqual(accepted(accept(flow.before).files));
   expect(flow.after).toEqual(accepted(deliveredSourceFiles(accept(flow.before).files)));
 });
 

@@ -22,7 +22,7 @@ import { createKiroIdeHarnessRecord } from "../hosts/kiro-ide/projection/harness
 import { kiroIdeDistribution } from "../hosts/kiro-ide/distribution.ts";
 import { kiroNativePermissionsLine } from "../hosts/kiro/distribution.ts";
 import { createHostSurfaceMembers } from "../projection/application/host-surface-members.ts";
-import { nativeLayoutFiles } from "../packaging/application/native-layout.ts";
+import { nativeLayoutFromAuthoredFixture } from "../projection/fixtures/legacy-authoring.fixture.ts";
 
 const identity = host({ name: "kiro-ide", directory: ".kiro" });
 const files = createInMemoryFileSystem({ files: {} });
@@ -75,7 +75,7 @@ const cases = [
 test.each(cases)("real persona serialization discharges both native policy classes with $ending source", ({ surfaced, text }) => {
   const flow = composed(surfaced);
   expect(flow.release.replacements).toHaveLength(2);
-  expect(nativeLayoutFiles({ host: identity, routes, release: flow.release, files: flow.personaFiles })).toEqual(accepted([
+  expect(nativeLayoutFromAuthoredFixture({ host: identity, routes, release: flow.release, files: flow.personaFiles })).toEqual(accepted([
     { path: path(".kiro/agents/aidlc-developer-agent.md"), content: { kind: "text", text }, mode: "regular",
       origin: { kind: "method-source", path: methodSource({ kind: "agent", within: "aidlc-developer-agent.md" }) } },
     { path: path(".kiro/agents/aidlc-pipeline-deploy-agent.md"), content: { kind: "text", text }, mode: "regular",
@@ -86,7 +86,7 @@ test.each(cases)("real persona serialization discharges both native policy class
 test.each(cases)("real plugin serialization supplies its own policy class alongside $ending pipeline source", ({ surfaced, text }) => {
   const flow = composed(surfaced);
   expect(flow.release.replacements).toHaveLength(2);
-  expect(nativeLayoutFiles({ host: identity, routes, release: flow.release, files: flow.pluginFiles })).toEqual(accepted([
+  expect(nativeLayoutFromAuthoredFixture({ host: identity, routes, release: flow.release, files: flow.pluginFiles })).toEqual(accepted([
     { path: path(".kiro/tools/data/harness.json"), content: { kind: "text", text: EXPECTED_DESCRIPTOR }, mode: "regular",
       origin: { kind: "rendered", concept: "host-data", name: "kiro-ide" } },
     { path: path(".kiro/tools/data/plugin-agent.md"), content: { kind: "text", text: EXPECTED_PLUGIN }, mode: "regular",
