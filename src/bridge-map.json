@@ -193,6 +193,12 @@
       "retiresWhen": "Phase 2: its owner moves into src and ships in the runtime bundle."
     },
     {
+      "module": "core/tools/aidlc-includes.ts",
+      "readBy": "src/hosts/kiro-ide/projection/steering-deriver.ts",
+      "reads": "runtime",
+      "retiresWhen": "Phase 2: the single steering formatter moves into src with its runtime callers."
+    },
+    {
       "module": "core/tools/aidlc-inline-context.ts",
       "readBy": "src/projection/adapters/legacy-format-docs.ts",
       "reads": "runtime",

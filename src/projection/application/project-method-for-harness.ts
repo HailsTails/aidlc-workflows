@@ -19,7 +19,7 @@ const placeDerived = (request: {
 ];
 
 export const createProjectMethodForHarness = (registry: HarnessRegistry): ProjectMethodForHarness => ({
-  project: (request) => {
+  project: async (request) => {
     const selected = registry.find(request.harness);
     if (!selected.ok) return refused([selected.refusal]);
     const { host, harness } = selected.value;
@@ -42,7 +42,7 @@ export const createProjectMethodForHarness = (registry: HarnessRegistry): Projec
     if (failures.length > 0) return refused(failures);
     const collected = collectCommandRenderings(rendered);
     if (!collected.ok) return refused([collected.refusal]);
-    const derived = collectCommandRenderings([harness.deriveFiles({ files: collected.value })]);
+    const derived = collectCommandRenderings([await harness.deriveFiles({ files: collected.value })]);
     return derived.ok
       ? accepted({ host, files: placeDerived({ files: collected.value, derived: derived.value }), findings: [] })
       : refused([derived.refusal]);

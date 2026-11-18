@@ -4,7 +4,6 @@ import { distribution, path, source } from "../../kernel/fixtures/values.fixture
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { accepted } from "../../kernel/result.ts";
 import { DELEGATE_SHELL_FACTS } from "../../projection/fixtures/delegate-shell-facts.fixture.ts";
-import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
 import { KIRO_IDE_AUTHORED_PLACEMENTS, KIRO_IDE_BINDING_HEADING, KIRO_IDE_TIER_FLAVOR, KIRO_IDE_TOKENS } from "./host-data.ts";
 import { kiroIdeHost } from "./host.ts";
 import { KIRO_IDE_ONBOARDING_FILLS, kiroIdeOnboardingFills } from "./onboarding-fills.ts";
@@ -42,18 +41,6 @@ test("kiroIde module gathers the identity, distribution and every projection par
   }));
 });
 
-const record = (text: string): ProjectedFile => ({ path: path(".kiro/tools/data/harness.json"),
-  content: { kind: "text", text }, mode: "regular",
-  origin: { kind: "rendered", concept: "host-data", name: "kiro-ide" } });
-
-test("kiroIde derives only steering after its complete record was already constructed", () => {
-  const derived = accept(accept(kiroIdeHost(kiroCli)).projection.derive?.({
-    files: [record('{\n  "newChatStep": 1\n}\n')] }) ?? accepted([]));
-  expect(derived).toEqual([
-    expect.objectContaining({ path: path(".kiro/steering/aidlc-active-memory.md") }),
-
-  ]);
-});
 
 test("kiroIde says Kiro CLI's native permissions line, handed in by the root", () => {
   const module = accept(kiroIdeHost(kiroCli));

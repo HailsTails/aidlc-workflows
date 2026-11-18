@@ -52,7 +52,7 @@ const fixture = (members: readonly HostProjectionMember[] = [member, other]) => 
   const compile = mock<CapturedMethodCompiler>().mockReturnValue(accepted(compiled));
   const capture = mock<CapturedHostProjectionPorts["capture"]>().mockResolvedValue(accepted(captured));
   const assemble = mock<CapturedHostProjectionPorts["assemble"]>().mockResolvedValue(accepted(harness));
-  const project = mock<ProjectMethodForHarness["project"]>().mockReturnValue(completion);
+  const project = mock<ProjectMethodForHarness["project"]>().mockResolvedValue(completion);
   const hosted = mock<CapturedHostProjectionPorts["hosted"]>().mockReturnValue({ project });
   const request: CapturedHostProjectionRequest = { host: SCRATCH_HOST,
     core: { method: methodSliceFixture, sources: [] }, compile, files: [requiredFile, unusedFile], prepare: accepted,
@@ -180,7 +180,7 @@ test("hosted projection refusal retains its exact domain result", async () => {
   const current = fixture();
   const failure = refused([{ kind: "render-failed" as const, concept: "settings" as const,
     name: "settings.json", reason: "exact projection failure" }]);
-  current.project.mockReturnValue(failure);
+  current.project.mockResolvedValue(failure);
   expect(await current.projectHost(current.request)).toBe(failure);
 });
 
@@ -206,7 +206,7 @@ test("assembly receives Projection-owned renderer mapping and every host heading
 });
 
 test("an optional host deriver remains the exact assembly capability", async () => {
-  const derive = mock<Harness["deriveFiles"]>().mockReturnValue(accepted([]));
+  const derive = mock<HostFileDeriver>().mockResolvedValue(accepted([]));
   const current = fixture([{ ...member, projection: { ...member.projection, derive } }]);
   expect(await current.projectHost(current.request)).toBe(completion);
   expect(current.assemble).toHaveBeenCalledWith(expect.objectContaining({ renderers: expect.objectContaining({ derive }) }));

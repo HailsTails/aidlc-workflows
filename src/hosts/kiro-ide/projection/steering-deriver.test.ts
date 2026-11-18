@@ -1,87 +1,42 @@
 import { expect, test } from "bun:test";
+import { refused } from "../../../kernel/result.ts";
 import { path } from "../../../kernel/fixtures/values.fixture.ts";
-import { accepted } from "../../../kernel/result.ts";
 import type { ProjectedFile } from "../../../projection/domain/projected-file.ts";
+import type { CapturedFileFrame } from "../../../projection/application/ports/captured-file-frame.ts";
 import { deriveKiroIdeSteering } from "./steering-deriver.ts";
 
-const REFERENCE_FORM = `---
-inclusion: always
----
-
-# AI-DLC Active Memory
-
-The following live workspace files are the active AI-DLC method and policy
-layers. They apply to the conductor and delegated agents.
-
-#[[file:aidlc/spaces/default/memory/org.md]]
-#[[file:aidlc/spaces/default/memory/team.md]]
-#[[file:aidlc/spaces/default/memory/project.md]]
-#[[file:aidlc/spaces/default/memory/phases/ideation.md]]
-#[[file:aidlc/spaces/default/memory/phases/inception.md]]
-#[[file:aidlc/spaces/default/memory/phases/construction.md]]
-#[[file:aidlc/spaces/default/memory/phases/operation.md]]
-`;
-const INLINE_FORM = `---
-inclusion: always
----
-
-# AI-DLC Active Memory
-
-<!-- AI-DLC writes this file from aidlc/spaces/default/memory/ for every chat. Do not edit it: edit those files instead. -->
-
-The text of each file below is the active AI-DLC method and policy layers. They apply to the
-conductor and delegated agents.
-
-<memory-file path="aidlc/spaces/default/memory/org.md">
-O
-</memory-file>
-
-<memory-file path="aidlc/spaces/default/memory/team.md">
-T
-</memory-file>
-
-<memory-file path="aidlc/spaces/default/memory/phases/operation.md">
-OP
-</memory-file>
-
-<memory-file path="aidlc/spaces/default/memory/alpha.md">
-A
-</memory-file>
-
-<memory-file path="aidlc/spaces/default/memory/zeta.md">
-Z
-</memory-file>
-
-<memory-file path="aidlc/spaces/default/memory/phases/extra.md">
-X
-</memory-file>
-`;
-
-const memory = (name: string, text: string): ProjectedFile => ({
-  path: path(`aidlc/spaces/default/memory/${name}`), content: { kind: "text", text }, mode: "regular",
-  origin: { kind: "active-space" } });
-const steeringFile = (text: string): ProjectedFile => ({
-  path: path(".kiro/steering/aidlc-active-memory.md"), mode: "regular",
-  content: { kind: "text", text },
-  origin: { kind: "rendered", concept: "onboarding", name: ".kiro/steering/aidlc-active-memory.md" } });
-
-test("the memory layers are inlined in layer order, extras after them sorted, other files ignored", () => {
-  const files = [memory("zeta.md", "Z"), memory("phases/operation.md", "OP\n"), memory("team.md", "T"),
-    memory("alpha.md", "A"), memory("org.md", "O"), memory("phases/extra.md", "X"), memory("notes.txt", "ignored"),
-    memory("deep/nested.md", "ignored")];
-  expect(deriveKiroIdeSteering({ files })).toEqual(accepted([steeringFile(INLINE_FORM)]));
+const failure = { kind: "render-failed" as const, concept: "onboarding" as const,
+  name: "captured-file-frame", reason: "No formatter execution in this adapter unit test." };
+const memory = (content: ProjectedFile["content"]): ProjectedFile => ({
+  path: path("aidlc/spaces/default/memory/org.md"), content, mode: "regular", origin: { kind: "active-space" },
 });
 
-test("no memory file leaves the reference form", () => {
-  expect(deriveKiroIdeSteering({ files: [] })).toEqual(accepted([steeringFile(REFERENCE_FORM)]));
-});
+test.each(["", "a", "\uFEFFa", "\uFEFF\uFEFFa", "é", `\uFEFF${"a".repeat(65534)}`])(
+  "decoded memory text retains its payload through signed UTF-8 transport: %#", async text => {
+    const captured = memory({ kind: "text", text });
+    const staged: ProjectedFile[] = [];
+    const frame: CapturedFileFrame = { render: async request => {
+      staged.push(...request.files);
+      return refused(failure);
+    } };
+    expect(await deriveKiroIdeSteering({ files: [captured], frame })).toEqual(refused(failure));
+    expect(staged).toHaveLength(1);
+    const content = staged[0]?.content;
+    if (content?.kind !== "bytes") throw new Error("The frame requires a byte representation.");
+    expect(new TextDecoder("utf-8", { fatal: true }).decode(content.bytes)).toBe(text);
+    expect(content.bytes.byteLength).toBe(new TextEncoder().encode(text).length + 3);
+    expect(captured.content).toEqual({ kind: "text", text });
+  },
+);
 
-test("a memory file that is not UTF-8 leaves the reference form", () => {
-  const bytes: ProjectedFile = { ...memory("org.md", ""), content: { kind: "bytes", bytes: new Uint8Array([0xff, 0xfe]) } };
-  expect(deriveKiroIdeSteering({ files: [bytes] })).toEqual(accepted([steeringFile(REFERENCE_FORM)]));
-});
-
-test("a memory larger than the inline limit leaves the reference form", () => {
-  const oversized: ProjectedFile = { ...memory("org.md", ""), content: { kind: "bytes", bytes: new Uint8Array(65537) } };
-  expect(deriveKiroIdeSteering({ files: [oversized] })).toEqual(accepted([steeringFile(REFERENCE_FORM)]));
+test("captured bytes remain raw and unrelated projected files never enter the memory frame", async () => {
+  const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 97]);
+  const captured = memory({ kind: "bytes", bytes });
+  const frame: CapturedFileFrame = { render: async request => {
+    expect(request.files).toEqual([captured]);
+    expect(request.files[0]?.content).toBe(captured.content);
+    return refused(failure);
+  } };
+  expect(await deriveKiroIdeSteering({ files: [captured, { ...captured, path: path("unrelated.md") }], frame }))
+    .toEqual(refused(failure));
 });

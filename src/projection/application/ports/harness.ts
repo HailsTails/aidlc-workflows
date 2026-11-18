@@ -11,6 +11,7 @@ import type { ScopeColumn, StageNode } from "../../../workflow-definition/domain
 import type { AuthoredHostFile } from "../../domain/host-surface.ts";
 import type { NeutralDocument, OnboardingTemplates, SessionSkill } from "../../domain/neutral-surface.ts";
 import type { ProjectedFile } from "../../domain/projected-file.ts";
+import type { CapturedFileFrame } from "./captured-file-frame.ts";
 import type { ProjectionRefusal } from "../../domain/projection.ts";
 import type { HostTokenBindings } from "../../domain/template-token.ts";
 
@@ -36,10 +37,13 @@ export interface Harness {
   renderHostData(): Rendering;
   placeNeutralDocument(request: { readonly document: NeutralDocument }): Rendering;
   placeAuthoredFile(request: { readonly file: AuthoredHostFile }): Rendering;
-  deriveFiles(request: { readonly files: readonly ProjectedFile[] }): Rendering;
+    deriveFiles(request: { readonly files: readonly ProjectedFile[] }): Rendering | Promise<Rendering>;
 }
 
-export type HostFileDeriver = Harness["deriveFiles"];
+export type HostFileDeriver = (request: {
+  readonly files: readonly ProjectedFile[];
+  readonly frame: CapturedFileFrame;
+}) => Promise<Rendering>;
 
 export type HostedHarness = {
   readonly host: HostIdentity;

@@ -18,5 +18,5 @@ export type ProjectMethodRequest = {
 };
 
 export interface ProjectMethodForHarness {
-  project(request: ProjectMethodRequest): Result<Projection, readonly ProjectionRefusal[]>;
+  project(request: ProjectMethodRequest): Promise<Result<Projection, readonly ProjectionRefusal[]>>;
 }

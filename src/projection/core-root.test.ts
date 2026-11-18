@@ -15,6 +15,9 @@ import type { HostSettingsRenderer } from "./application/ports/settings.ts";
 import { createBuildProjection as createProjection } from "./core-root.ts";
 import { createRecordingPluginProjector } from "./fixtures/plugin-projector.fake.ts";
 import { extendedSubprocessTimeoutMs } from "./adapters/legacy-runtime-budget.ts";
+import { accept } from "../kernel/fixtures/accept.ts";
+import { SCRATCH_HOST, SCRATCH_HOST_DATA, scratchAgentRenderer, scratchCommandPlacement,
+  scratchSkillRenderer, scratchSettingsRenderer, scratchDocumentRenderer } from "./fixtures/scratch-host.fixture.ts";
 
 
 const identity = host({ name: "claude", directory: ".claude" });
@@ -27,6 +30,41 @@ const documentAgent: CoreAgent = {
   model: { kind: "tier", tier: "balanced" }, tools: { disallowed: [] }, maxTurns: null,
   persona: { text: "No fallback", headings: [] }, additions: { afterPreflight: [], endOfBody: [] },
 };
+
+test("the production root binds a private captured frame and drains it before returning a derivation refusal", async () => {
+  const scratch = createInMemoryFileSystem({ files: {} });
+  const writeFile = mock(scratch.writeFile);
+  const projection = createBuildProjection({ hostFiles: scratch, sessionFiles: scratch,
+    runnerScratch: { ...scratch, writeFile },
+    runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "No child" }) }),
+    runnerFrames: new URL("file:///C:/q179-root/frames/"), runnerChild: new URL("file:///C:/q179-root/child.ts") });
+  const failure = refused({ kind: "render-failed" as const, concept: "onboarding" as const,
+    name: "derived", reason: "Exact causal refusal" });
+  const render = mock(() => failure);
+  const harness = accept(await projection.assembleHarness({ host: SCRATCH_HOST,
+    method: { ...methodSliceFixture, stages: [], scopes: [], agents: [] }, sources: [], files: [],
+    prepare: accepted, channel: "copy", modelCap: null, tierFlavor: "claude", entrypoints: [],
+    tokens: tokenBindingsFixture({ harnessDir: ".scratch" }), fills: { invoke: "/aidlc", slots: {} },
+    bindingHeadings: [], projectRoot: new URL("file:///project/"), reviewerAgents: new Set(),
+    runtime: { files: [], version: { kind: "text", text: "Version" }, agentTiers: { kind: "text", text: "{}" },
+      settingsSchema: { kind: "text", text: "{}" } }, compiled: { graph: "[]", grid: "{}" },
+    renderers: { agents: scratchAgentRenderer, skills: scratchSkillRenderer, settings: scratchSettingsRenderer,
+      documents: scratchDocumentRenderer, data: () => SCRATCH_HOST_DATA, record: commonHarnessRecord,
+      placements: [], commandPlacement: scratchCommandPlacement,
+      derive: ({ frame, files }) => frame.render({ files, render }),
+    },
+  }));
+  const file = { path: path("aidlc/spaces/default/memory/org.md"), content: {
+    kind: "text" as const, text: "Captured memory" }, mode: "regular" as const, origin: { kind: "active-space" as const } };
+  writeFile.mockClear();
+  expect(await harness.deriveFiles({ files: [file] })).toBe(failure);
+  expect(writeFile).toHaveBeenCalledTimes(1);
+  expect(writeFile.mock.calls[0]?.[0].file.href)
+    .toMatch(/^file:\/\/\/C:\/q179-root\/frames\/scratch-\d+\/aidlc\/spaces\/default\/memory\/org.md$/);
+  expect(writeFile.mock.calls[0]?.[0].content).toEqual(file.content);
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(scratch.snapshot()).toEqual({});
+});
 
 test("root preparation sends captured facts to the host renderer and preserves its exact refusal", () => {
   const fileSystem = createInMemoryFileSystem({ files: {} });

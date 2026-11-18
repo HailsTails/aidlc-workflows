@@ -82,11 +82,11 @@ const registry = (hosted: HostedHarness): HarnessRegistry => ({
   find: () => accepted(hosted), all: () => [hosted],
 });
 
-test("a full fixture Harness reproduces every Claude projection byte and provenance plus shared runtime", () => {
+test("a full fixture Harness reproduces every Claude projection byte and provenance plus shared runtime", async () => {
   const harness = { ...claudeHarness(), placeNeutralDocument: mock((): Rendering => accepted([]))
     .mockReturnValueOnce(accepted([rawStage])).mockReturnValueOnce(accepted([rawKnowledge])) };
   const project = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness }));
-  const projection = project.project({ ...request, sources: [
+  const projection = await project.project({ ...request, sources: [
     { owner: { kind: "core" }, path: methodSource({ kind: "agent", within: "aidlc-developer-agent.md" }),
       content: rawAgent.content },
     { owner: { kind: "core" }, path: methodSource({ kind: "stage", within: "construction/code-generation.md" }),
@@ -110,10 +110,10 @@ test("a full fixture Harness reproduces every Claude projection byte and provena
   expect(harness.renderHostData).toHaveBeenCalledTimes(1);
 });
 
-test("a full fixture Harness reproduces Codex's split native paths and every fixture file", () => {
+test("a full fixture Harness reproduces Codex's split native paths and every fixture file", async () => {
   const harness = codexHarness();
   const project = createProjectMethodForHarness(registry({ host: codexProjectionFixture.host, harness }));
-  const projection = project.project({ ...request, harness: codexProjectionFixture.host.distribution,
+  const projection = await project.project({ ...request, harness: codexProjectionFixture.host.distribution,
     hostFiles: [{ source: source("harness/codex/rules-aidlc.md"), content: codexAuthored.content }] });
   expect(projection).toEqual(accepted({ ...codexProjectionFixture, files: expect.arrayContaining([
       ...codexProjectionFixture.files, ...codexRuntime,
@@ -124,13 +124,13 @@ test("a full fixture Harness reproduces Codex's split native paths and every fix
     method: methodSliceFixture });
 });
 
-test("unknown harness selection is a refusal before any rendering", () => {
-  expect(createProjectMethodForHarness({ find: () => refused({ kind: "unknown-harness", harness: "missing" }),
+test("unknown harness selection is a refusal before any rendering", async () => {
+  expect(await createProjectMethodForHarness({ find: () => refused({ kind: "unknown-harness", harness: "missing" }),
     all: () => [] }).project(request)).toEqual(refused([{ kind: "unknown-harness", harness: "missing" }]));
 });
 
-test("expected renderer failures are all retained in rendered-concept order", () => {
-  expect(createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
+test("expected renderer failures are all retained in rendered-concept order", async () => {
+  expect(await createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
     ...claudeHarness(), renderSettings: () => refused({ kind: "render-failed", concept: "settings",
       name: "settings.json", reason: "Missing settings" }),
     renderHookRegistrations: () => refused({ kind: "render-failed", concept: "hook-registration",
@@ -141,8 +141,8 @@ test("expected renderer failures are all retained in rendered-concept order", ()
   ]));
 });
 
-test("all concepts use the existing final-path collision owner", () => {
-  expect(createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
+test("all concepts use the existing final-path collision owner", async () => {
+  expect(await createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
     ...claudeHarness(), renderSettings: () => accepted([{
       path: path(".claude/tools/aidlc-version.ts"), content: { kind: "text", text: "other" },
       mode: "regular", origin: { kind: "rendered", concept: "settings", name: "settings" },
@@ -158,27 +158,27 @@ test("all concepts use the existing final-path collision owner", () => {
 const derivedOnboarding: ProjectedFile = { ...claudeOnboarding, content: { kind: "text", text: "derived" } };
 const derivedExtra: ProjectedFile = { ...claudeOnboarding, path: path(".claude/derived.md") };
 
-test("a derived file at a projected path replaces that file, and one at a new path is added", () => {
+test("a derived file at a projected path replaces that file, and one at a new path is added", async () => {
   const project = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
     ...claudeHarness(), deriveFiles: () => accepted([derivedOnboarding, derivedExtra]) } }));
-  const files = accept(project.project(request)).files;
+  const files = accept(await project.project(request)).files;
   expect(files).toContainEqual(derivedOnboarding);
   expect(files).toContainEqual(derivedExtra);
   expect(files).not.toContainEqual(claudeOnboarding);
-  const withoutDerive = accept(createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
+  const withoutDerive = accept(await createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
     harness: claudeHarness() })).project(request)).files;
   expect(files).toHaveLength(withoutDerive.length + 1);
 });
 
-test("two derived files at one path are a collision", () => {
+test("two derived files at one path are a collision", async () => {
   const project = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host, harness: {
     ...claudeHarness(), deriveFiles: () => accepted([derivedOnboarding, derivedOnboarding]) } }));
-  expect(project.project(request)).toEqual(refused([{ kind: "path-collision", path: derivedOnboarding.path,
+  expect(await project.project(request)).toEqual(refused([{ kind: "path-collision", path: derivedOnboarding.path,
     origins: [derivedOnboarding.origin, derivedOnboarding.origin] }]));
 });
 
-test("runtime owns a copied path that is also represented in the semantic source snapshot", () => {
-  expect(createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
+test("runtime owns a copied path that is also represented in the semantic source snapshot", async () => {
+  expect(await createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
     harness: claudeHarness() })).project({ ...request, sources: [{ owner: { kind: "core" },
       path: methodSource({ kind: "scope", within: "feature.md" }),
       content: { kind: "text", text: "semantic snapshot" } }], runtime: { ...request.runtime,
@@ -189,12 +189,12 @@ test("runtime owns a copied path that is also represented in the semantic source
     }]));
 });
 
-test("neutral documents reach the native owner raw and final bytes receive no second pass", () => {
+test("neutral documents reach the native owner raw and final bytes receive no second pass", async () => {
   const placeNeutralDocument = mock((): Rendering => accepted([{
     path: path(".claude/protocol.md"), content: { kind: "text", text: "literal {{INVOKE}}" },
     mode: "regular", origin: { kind: "neutral", source: source("protocol.md") },
   }]));
-  const projection = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
+  const projection = await createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
     harness: { ...claudeHarness(), placeNeutralDocument } })).project({ ...request, surface: {
       ...request.surface, documents: [{ source: source("protocol.md"), role: "protocol",
         content: { kind: "text", text: "{{HARNESS_DIR}}|{{INVOKE}}" } }],
@@ -210,8 +210,8 @@ test("neutral documents reach the native owner raw and final bytes receive no se
   }]));
 });
 
-test("session skills precede the orchestrator and settings in rendered-concept order", () => {
-  const projection = createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
+test("session skills precede the orchestrator and settings in rendered-concept order", async () => {
+  const projection = await createProjectMethodForHarness(registry({ host: claudeProjectionFixture.host,
     harness: { ...claudeHarness(), renderSessionSkill: () => accepted([{
       path: path(".claude/session.md"), content: { kind: "text", text: "session" },
       mode: "regular", origin: { kind: "rendered", concept: "session-skill", name: "session" },
@@ -251,7 +251,7 @@ const ownershipRequest = (): ProjectMethodRequest => ({ ...request,
   ] },
 });
 
-test("every source kind has one placement owner, except the intentional rule twins and folded overlay", () => {
+test("every source kind has one placement owner, except the intentional rule twins and folded overlay", async () => {
   const harness: Harness = { ...claudeHarness(),
     renderAgent: mock((): Rendering => accepted([])).mockReturnValueOnce(accepted([{
       ...claudeAgent, origin: { kind: "method-source",
@@ -261,7 +261,7 @@ test("every source kind has one placement owner, except the intentional rule twi
     placeNeutralDocument: mock((): Rendering => accepted([]))
       .mockReturnValueOnce(accepted([rawStage])).mockReturnValueOnce(accepted([rawKnowledge])),
   };
-  const projection = accept(createProjectMethodForHarness(registry({
+  const projection = accept(await createProjectMethodForHarness(registry({
     host: claudeProjectionFixture.host, harness,
   })).project(ownershipRequest()));
   expect(projection.files).toEqual(ownershipFiles());

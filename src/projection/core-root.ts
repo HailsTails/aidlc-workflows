@@ -40,6 +40,8 @@ import type { HostedHarness, Harness } from "./application/ports/harness.ts";
 import type { SkillTableRenderer } from "./domain/neutral-surface.ts";
 import type { CommandSource } from "./application/ports/commands.ts";
 import type { NativeCommandRoutes } from "./domain/native-command.ts";
+import type { CapturedFileFrame } from "./application/ports/captured-file-frame.ts";
+import { createCapturedFileFrame, CAPTURED_FRAME_NATIVE_PATH } from "./adapters/captured-file-frame.ts";
 
 export { captureBuildSources } from "./application/capture-build-sources.ts";
 export { createPluginAuthoringEnrichment } from "./application/enrich-plugin-authoring.ts";
@@ -78,13 +80,14 @@ const settingsInputs = ({ settings, allows, capabilities, nativeCommands }: {
   });
 
 const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, allows, facts, capabilities, tables,
-  nativeCommands }: {
+  nativeCommands, frame }: {
   readonly assembly: HarnessAssemblyRequest;
   readonly surface: Pick<Harness, "renderHostData" | "placeAuthoredFile">;
   readonly rulesFolder: string | null; readonly commands: CommandSource;
   readonly allows: CopyChannelAllows; readonly facts: DelegateShellFacts; readonly capabilities: SettingsCapabilities;
   readonly tables: SkillTableRenderer;
   readonly nativeCommands: NativeCommandRoutes;
+  readonly frame: CapturedFileFrame;
 }): Harness => {
   const commands = createCommandRenderers({ source, place: assembly.renderers.commandPlacement });
   const skills = assembly.renderers.skills({ files: assembly.files, prepare: assembly.prepare,
@@ -97,7 +100,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
     ...assembly.renderers.documents({ fills: assembly.fills, tokens: assembly.tokens,
       bindingHeadings: assembly.bindingHeadings }),
     ...surface,
-    deriveFiles: assembly.renderers.derive ?? (() => accepted([])),
+    deriveFiles: (request) => assembly.renderers.derive?.({ ...request, frame }) ?? accepted([]),
     renderStageCommand: commands.renderStageCommand, renderScopeCommand: commands.renderScopeCommand,
     renderSessionSkill: skills.renderSessionSkill,
     renderOrchestratorSkill: (entry) => collectCommandRenderings([
@@ -107,6 +110,7 @@ const assembledMembers = ({ assembly, surface, rulesFolder, commands: source, al
 };
 
 const harnessAssembler = (ports: {
+  readonly frame: CapturedFileFrame;
   readonly nativeCommands: NativeCommandRoutes;
   readonly allows: CopyChannelAllowSource; readonly facts: DelegateShellFacts; readonly capabilities: SettingsCapabilities;
   readonly scratch: LegacyRunnerScratch; readonly processRunner: LegacyRunnerProcess;
@@ -128,7 +132,7 @@ const harnessAssembler = (ports: {
     files: [...runtime.value, ...descriptor.value] }, ports);
   return formatting.ok ? accepted(assembledMembers({ assembly, surface, rulesFolder: hostData.rulesFolder,
     allows: reading.value, facts: ports.facts, capabilities: ports.capabilities,
-    nativeCommands: ports.nativeCommands, ...formatting.value })) : refused([formatting.refusal]);
+    nativeCommands: ports.nativeCommands, frame: ports.frame, ...formatting.value })) : refused([formatting.refusal]);
 };
 
 export const createHostedMethodProjection = (hosted: HostedHarness) => createProjectMethodForHarness({
@@ -152,6 +156,8 @@ export const createBuildProjection = (request: {
     plugins: request.plugins,
     delegateShellFacts: facts, settingsCapabilities, nativeCommands,
     assembleHarness: harnessAssembler({ allows, facts, nativeCommands,
+      frame: createCapturedFileFrame({ scratch: request.runnerScratch, frames: request.runnerFrames,
+        nativePath: CAPTURED_FRAME_NATIVE_PATH }),
       capabilities: settingsCapabilities, scratch: request.runnerScratch,
       processRunner: request.runnerProcess, frames: request.runnerFrames, child: request.runnerChild }),
     projectWorkspace,
