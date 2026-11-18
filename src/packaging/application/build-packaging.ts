@@ -7,7 +7,7 @@ import type { NativeCommandRoutes } from "../../projection/domain/native-command
 import type { PackagingRefusal } from "../domain/artifact.ts";
 import type { VersionStamp } from "./boundary-ports.ts";
 import type { BuildPackaging, HostPayloadRequest, PayloadMetadataFactory, ReleaseHistorySource } from "./ports.ts";
-import { createPackagePayload } from "./package-payload.ts";
+import type { createPackagePayload } from "./package-payload.ts";
 
 export const selectOnboardingPath = ({ host, files }: {
   readonly host: Projection["host"];
@@ -35,6 +35,7 @@ export const createBuildPackagingUseCase = (ports: {
   readonly routes: NativeCommandRoutes;
   readonly history: ReleaseHistorySource;
   readonly metadata: PayloadMetadataFactory;
+  readonly payload: typeof createPackagePayload;
 }): BuildPackaging => {
   const version = ports.version.ok ? frameworkVersion(ports.version.value) : ports.version;
   return { version, stamp: ports.stamp,
@@ -43,7 +44,7 @@ export const createBuildPackagingUseCase = (ports: {
       const invalidCopy = copyRefusal(request, version.value);
       if (invalidCopy) return refused([invalidCopy]);
       const onboarding = selectOnboardingPath(request.projection);
-      return createPackagePayload({ hasher: request.hasher, stamp: ports.stamp, routes: ports.routes,
+      return ports.payload({ hasher: request.hasher, stamp: ports.stamp, routes: ports.routes,
         releases: { release: () => accepted(request.distribution.native) },
         layouts: { layout: () => accepted(request.distribution.layout) },
         history: { history: async (distribution) => {

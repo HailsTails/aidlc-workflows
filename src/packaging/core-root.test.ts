@@ -58,3 +58,11 @@ test("the projection descriptor's bytes do not change when plugin authoring file
   expect(withAuthoring.files).toEqual(expect.arrayContaining(bare.files));
   expect(withAuthoring.files).toHaveLength(bare.files.length + 1);
 });
+
+test("the production root binds the real payload use case and preserves its missing-version refusal", async () => {
+  const packaging = createBuildPackaging(bindings(), () => accepted("2.11.4"));
+  expect(await packaging.packageHost({ copy: null, hasher: { hash: () => accepted(ZERO_HASH) },
+    distribution: scratchHostDistributionFixture, hostData: SCRATCH_HOST_DATA,
+    projection: { host: SCRATCH_HOST, files: [], findings: [] }, channel: "copy" }))
+    .toEqual(refused([{ kind: "version-module-count", found: 0 }]));
+});

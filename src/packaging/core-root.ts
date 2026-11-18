@@ -3,6 +3,7 @@ import { createLegacyPayloadMetadata } from "./adapters/legacy-payload-metadata.
 import { createVersionStamp } from "./adapters/legacy-version.ts";
 import { createCopyEraHistory } from "./adapters/copy-era-history.ts";
 import { createBuildPackagingUseCase, selectOnboardingPath } from "./application/build-packaging.ts";
+import { createPackagePayload } from "./application/package-payload.ts";
 import type { FileSystem } from "../kernel/file-system-port.ts";
 import type { NativeCommandRoutes } from "../projection/domain/native-command.ts";
 import { accepted } from "../kernel/result.ts";
@@ -41,5 +42,6 @@ export const createBuildPackaging = (binding: {
   const history = createCopyEraHistory({ reader: binding.historyReader, source: binding.copyEraSource,
     prior: { history: async () => accepted({ retiredFiles: [], priorIntegrations: [] }) } });
   return createBuildPackagingUseCase({ version: captured, stamp: createVersionStamp(captured),
-    routes: binding.routes, history, metadata: { forHost: createLegacyPayloadMetadata } });
+    routes: binding.routes, history, metadata: { forHost: createLegacyPayloadMetadata },
+    payload: createPackagePayload });
 };
