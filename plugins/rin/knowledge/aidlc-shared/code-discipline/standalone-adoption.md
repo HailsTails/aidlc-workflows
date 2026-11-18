@@ -403,8 +403,8 @@ and a true rules-only install/update/removal selection remain backlog gaps.
 Hone, formerly discipline core, now lives in its own repository,
 https://github.com/HailsTails/hone, and installs as the npm package `@hailstails/hone`
 (not `hone`, an unrelated npm package), pinned to an exact version. A
-repository that adopts Hone (`disciplines.json`, `discipline-exceptions.json`,
-the `@hailstails/hone` package) replaces this route. Follow
+repository that adopts Hone (`disciplines.json`, `discipline-exceptions.json` or
+the `discipline-exceptions/` folder in Hone's split layout, the `@hailstails/hone` package) replaces this route. Follow
 `node_modules/@hailstails/hone/MIGRATING.md`; a repository still on the old
 `discipline-core` package or command names follows its section 10, and one still on `honed` follows its section 11. If the repository also runs the
 Rin AIDLC plugin, it keeps `harness.config.json` and must flip the engine in the
@@ -425,7 +425,7 @@ using the walker and the records described above, and they disagree with CI:
   and means the same thing, so existing configs stay valid.
   Any other value fails the stage gate rather than silently choosing one.
 - `baseRevision` is passed to core as `--base-revision`. Set it whenever
-  `discipline-exceptions.json` holds a file carve-out, an entry imported with
+  the exception records (`discipline-exceptions.json`, or the `discipline-exceptions/` folder in Hone's split layout) hold a file carve-out, an entry imported with
   `provenance`, or a why-chain written before core's causal chain contract
   (no `rootCheck` or `readback`); otherwise core reports `forfeiture-unmeasured`,
   `import-unmeasured` or `legacy-chain-unmeasured` and fails. Set it before
@@ -433,11 +433,11 @@ using the walker and the records described above, and they disagree with CI:
   section 8). Use a ref every worktree can resolve, such as
   `origin/main`, not a local `main` that may lag.
 - Each `.constitution-carve-outs/cd-<id>.json` entry moves to
-  `discipline-exceptions.json` as a `file-carve-out` with
+  `discipline-exceptions.json` (or the `discipline-exceptions/` folder in Hone's split layout) as a `file-carve-out` with
   `{ "kind": "inherited-debt", "source", "decision" }` provenance, and each
   `.constitution-authorised-locations/cd-<id>.json` entry moves as an
   `authorised-location` with `{ "kind": "existing-authorisation", "source" }`.
-  MIGRATING step 3 gives the exact shapes.
+  MIGRATING step 3 gives the exact shapes, and its section 16 moves the records to the split layout.
 - `constitution.include`, `exclude`, `scriptGlobs` and `uiGlobs` no longer set
   the scope under hone: `disciplines.json` and its `exclude` do.
 

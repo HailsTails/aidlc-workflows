@@ -34,7 +34,8 @@ This engine value names Hone (https://github.com/HailsTails/hone), installed as 
 4. The page's text, including its `## Rule` section and what it says no check
    flags, is authoritative: the lens reviews the whole rule, not only what the
    mechanical clauses catch. Its exceptions are the records in
-   `discipline-exceptions.json` for that discipline's clauses. A finding
+   `discipline-exceptions.json`, or in that discipline's files under
+   `discipline-exceptions/` in Hone's split layout, for that discipline's clauses. A finding
    covered by a record there is not a finding. A record whose file the change
    touches is forfeited and is a finding (CD-46).
 5. Cite a finding by discipline id and, where one applies, clause address
