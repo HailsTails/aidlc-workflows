@@ -1,0 +1,645 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/block-inline-exec-launchers.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/block-inline-exec.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-destructive-git.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-github-writes.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-manifest.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-navigation.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-primary-commit.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-shell-syntax.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-trial-relaxation.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-trial-scope.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-trial.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-unbounded-scan.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/guard-vault-write.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/inline-exec-hook-layout.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/mutant-detection.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/packaged-hook-imports.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/plugin-hook-coverage.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/provision-worktree-identity.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/provision-worktree.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/prune-worktree-husks.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-constitution-engine-gate-decision.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-constitution-engine-gate.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-constitution-gate-measured-time.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-constitution-gate-root-resolution.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-constitution-gate.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-core-bare-sensor.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gate-invocation.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-audit-guard.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-autonomy-gate.binding.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-engine-receipt.live-path.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-engine-receipt.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-findings-gate.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-lens-defence.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-lens-verdict.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-review-scribe.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-runtime-compile.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-verdict-guard.overblock.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-gates-verdict-guard.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-operator-steer-detect.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-operator-steer.live-path.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/rin-operator-steer.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/run-hook-process.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/settings-parse.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/settings-registration.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/shared-review-roster.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/hooks/stamp-preview-target.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/constitution-audit/walk-source-files.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/application/authorise-user.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/application/mint-user-token.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/application/read-authored-body.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/application/read-body-file.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/application/run-gh-as-bot.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/domain/gh-invocation.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/domain/grant-write.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/domain/publishable-text.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/domain/secret.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/file-credential-store.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/file-user-grant-store.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/git-cli-worktree.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/github-app-api.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/github-cli.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/github-user-authorisation.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/identity-configuration.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/local-file-system.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/process-runner.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/infrastructure/rs256-signer.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/interface/cli/command-flags.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/github-apps/interface/cli/git-credential-query.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/hermetic-git/hermetic-git-environment.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/hermetic-git/hermetic-git-repository.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/hone-fork-wiring.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-checkout-root.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-disciplines-check.hone.integration.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-disciplines-check.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-disciplines-report.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-disciplines-sensor.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/review-process-port.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gate-namespace.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-board-bridge-cli.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-board-bridge.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-finding-disposition.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-importance-binding.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-merge-drivers.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-neglect-clock.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-promote-birth.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-promote.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-record-store.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-registry-merge.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-resolve-addadd.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-retire.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-review-verdict.landed.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-review-verdict.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-review-worktree.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-selection-config.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-selection-order.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-sensor-file-reader.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-shard-merge.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-status.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-tier-claim.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-tier-migration-cli.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-tier-migration.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-tier-rebind.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-gates/rin-gates-workflow-selection.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-audit-debt-inventory.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-carve-out-decay.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-cd-authorised-locations.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-cd-carve-outs.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-cd-enforcement.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-cd19-import-scope.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-config-constitution-engine.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-config.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-constitution-audit.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-dd-enforcement.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-doc-discipline.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-engine-bound-cd-sensor.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-exception-baseline.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-hermetic-git-guard.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-legacy-exception-pass.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-path-operations.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-registry-r7-door.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-review-attempt-floor.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-sensor-format.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-sidecar-file-reader.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-harness-why-chain.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-ordinary-use-board.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-owned-personas.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/tools/rin-shell-simple-commands.test.ts"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-27#test-body-logic",
+      "file": "plugins/rin/vitest.config.test.ts"
+    }
+  ]
+}

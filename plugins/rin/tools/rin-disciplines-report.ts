@@ -45,7 +45,7 @@ const REPLACED_PACKAGES: readonly ReplacedPackage[] = [
 
 const VENDORED_CORE_INSTALL = "tools/discipline-core";
 
-const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/v1.2.0/MIGRATING.md";
+const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/v1.3.0/MIGRATING.md";
 
 const CHECK_COMMAND_TEXT = "npm run --silent hone:check";
 

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-3#exact-optional-property-types",
+      "file": "tsconfig.json"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-3#no-fallthrough-cases-in-switch",
+      "file": "tsconfig.json"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-3#no-implicit-override",
+      "file": "tsconfig.json"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-3#no-property-access-from-index-signature",
+      "file": "tsconfig.json"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-3#no-unchecked-indexed-access",
+      "file": "tsconfig.json"
+    },
+    {
+      "kind": "file-carve-out",
+      "clause": "CD-3#strict",
+      "file": "tsconfig.json"
+    }
+  ]
+}
