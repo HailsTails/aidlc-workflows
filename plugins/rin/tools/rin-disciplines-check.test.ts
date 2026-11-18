@@ -11,7 +11,7 @@ const DISCIPLINE_CORE_CHECK = "/repo/node_modules/discipline-core/core/check/che
 
 const HONED_CHECK = "/repo/node_modules/honed/core/check/tool-command.js";
 
-const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/v1.0.0/MIGRATING.md";
+const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/v1.2.0/MIGRATING.md";
 
 const VENDORED_CHECK = "/repo/tools/discipline-core/core/check/check-command.ts";
 

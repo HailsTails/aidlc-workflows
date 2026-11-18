@@ -31,7 +31,8 @@ that adopted it. The earlier engine spelling `discipline-core` is still accepted
   adding `--base-revision` when `constitution.baseRevision` is set. It runs in
   that checkout with its own packages. It reports the `findings` lines whose
   file is the edited file. Selection, scope and exceptions come from
-  `disciplines.json` and `discipline-exceptions.json`, exactly as in CI. The
+  `disciplines.json` and the exception records (`discipline-exceptions.json`, or
+  the `discipline-exceptions/` folder in Hone's split layout), exactly as in CI. The
   per-CD `cd-*` sensors and `carve-out-decay` report themselves not evaluated.
 - **`rin-walker`** (the default). The sensor passes with a not-evaluated note,
   and the `cd-*` sensors run rin's built-in walker.

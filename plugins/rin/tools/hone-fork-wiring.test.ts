@@ -14,9 +14,9 @@ const trackedText = (request: { readonly path: string }): string =>
 
 const HONE_PACKAGE_NAME = "@hailstails/hone";
 
-const HONE_PACKAGE_VERSION = "1.0.0";
+const HONE_PACKAGE_VERSION = "1.2.0";
 
-const HONE_PACKAGE_INTEGRITY = "sha512-+RYeVvsEpBVFx4SK3wAycebc/IC64HSgRHDilvJ5MQ4YWa2PhvAO3ii0Xupz0BnlONLFEzc+Y0XUvhBJcQOHDQ==";
+const HONE_PACKAGE_INTEGRITY = "sha512-pfVsYHImPDTjRwAJpoCbMSywCZA8Ha8qT1nZsfi870LysWHTO0kP523IHvuSm2HkGOg6VRHfQD6DnFXWtgcnfw==";
 
 const CONDITIONAL_KEY_LINE = /^\s*(?:-\s+)?["']?if["']?\s*:/m;
 
@@ -114,6 +114,19 @@ describe("the fork as a consumer of the pinned @hailstails/hone release (CD-47: 
       engine: "hone",
       baseRevision: "origin/main",
     });
+  });
+
+  it("keeps no discipline-exceptions.json beside the split layout, which Hone would refuse", () => {
+    expect(() => trackedText({ path: "discipline-exceptions.json" })).toThrow();
+  });
+
+  it.each([
+    "discipline-exceptions/authorised-locations/cd-5.json",
+    "discipline-exceptions/authorised-locations/cd-19.json",
+    "discipline-exceptions/file-carve-outs/cd-5.json",
+    "discipline-exceptions/file-carve-outs/cd-19.json",
+  ])("keeps its exception records in Hone's split layout: %s", (path) => {
+    expect(JSON.parse(trackedText({ path }))).toMatchObject({ version: 1, exceptions: expect.any(Array) });
   });
 
   it("leaves the core's source out of the constitution audit's scope, since the fork no longer carries it", () => {

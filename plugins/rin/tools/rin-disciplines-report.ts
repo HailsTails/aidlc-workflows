@@ -45,7 +45,7 @@ const REPLACED_PACKAGES: readonly ReplacedPackage[] = [
 
 const VENDORED_CORE_INSTALL = "tools/discipline-core";
 
-const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/v1.0.0/MIGRATING.md";
+const HONE_MIGRATING_URL = "https://github.com/HailsTails/hone/blob/v1.2.0/MIGRATING.md";
 
 const CHECK_COMMAND_TEXT = "npm run --silent hone:check";
 
@@ -59,17 +59,17 @@ const FINDING_LINE = /^(\S+) (\S+) (.+?):(\d+):(\d+)(?: (.*))?$/;
 
 const SECTION_REMEDIES: Readonly<Record<FailingSectionName, string>> = {
   findings:
-    `change the code, or record an exception in discipline-exceptions.json with a whyChain written to ${PACKAGED_HONE_INSTALL}/docs/why-chain-contract.md: five whys chained cause to cause, a rootCause, its rootCheck, a readback and an owner.`,
+    `change the code, or record an exception in discipline-exceptions.json, or in the discipline's file under discipline-exceptions/ in Hone's split layout, with a whyChain written to ${PACKAGED_HONE_INSTALL}/docs/why-chain-contract.md: five whys chained cause to cause, a rootCause, its rootCheck, a readback and an owner.`,
   uncovered:
     "select every mechanical clause of each adopted discipline in disciplines.json.",
   stale:
-    "delete those records from discipline-exceptions.json, since they exempt nothing.",
+    "delete those records from discipline-exceptions.json, or from their discipline's file under discipline-exceptions/, since they exempt nothing.",
   forfeited:
     "the carved-out file was touched, so make the whole file comply and delete its carve-out (CD-46).",
   unrecorded:
     "remove the ignore, suppression, inline disable, config override or command-line option that weakens a selected rule, or record it as an exception.",
   doublyHeld: "keep one exception record per clause and file.",
-  invalidRecords: "correct the named entries in discipline-exceptions.json.",
+  invalidRecords: "correct the named entries in discipline-exceptions.json, or in the discipline-exceptions/ file each line names.",
   unmeasured:
     "set constitution.baseRevision in harness.config.json, or project the mechanism it names with the project command and commit the projection.",
   projectionProblems: `run \`${PROJECT_COMMAND_TEXT}\` and commit disciplines.eslint.mjs.`,
