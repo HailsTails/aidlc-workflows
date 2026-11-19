@@ -369,11 +369,6 @@
     {
       "kind": "file-carve-out",
       "clause": "CD-27#test-body-logic",
-      "file": "plugins/rin/tools/rin-disciplines-check.test.ts"
-    },
-    {
-      "kind": "file-carve-out",
-      "clause": "CD-27#test-body-logic",
       "file": "plugins/rin/tools/rin-disciplines-report.test.ts"
     },
     {

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { type DisciplinesCheckPorts, disciplinesCheckOutcomeOf, runDisciplinesCheck } from "./rin-disciplines-check.ts";
 import type { CommandOutput, SyncCommandInput } from "./rin-gates/review-process-port.ts";
+import { inMemoryFileKindPort } from "./rin-harness-in-memory-file-kind.ts";
 import { pathOperationsFor } from "./rin-harness-path-operations.ts";
 
 const TIMEOUT_MILLISECONDS = 1000;
@@ -26,7 +27,7 @@ const portsReturning = ({
 }): DisciplinesCheckPorts => ({
   runSync: vi.fn<(input: SyncCommandInput) => CommandOutput>().mockReturnValue(output),
   pathOperations: pathOperationsFor({ flavour: "posix" }),
-  fileKind: { isFile: (path) => installedFiles.includes(path), isDirectory: () => false },
+  fileKind: inMemoryFileKindPort({ files: installedFiles, directories: [] }),
   timeoutMilliseconds: TIMEOUT_MILLISECONDS,
 });
 

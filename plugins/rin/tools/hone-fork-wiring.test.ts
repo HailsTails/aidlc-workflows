@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import authorisedLocationsCd5 from "../../../discipline-exceptions/authorised-locations/cd-5.json" with { type: "json" };
+import authorisedLocationsCd19 from "../../../discipline-exceptions/authorised-locations/cd-19.json" with { type: "json" };
+import fileCarveOutsCd5 from "../../../discipline-exceptions/file-carve-outs/cd-5.json" with { type: "json" };
+import fileCarveOutsCd19 from "../../../discipline-exceptions/file-carve-outs/cd-19.json" with { type: "json" };
+import harnessConfig from "../../../harness.config.json" with { type: "json" };
+import developmentManifest from "../../../package.json" with { type: "json" };
 import { defaultPathOperations } from "./rin-harness-path-operations.ts";
 import { defaultFileTextPort } from "./rin-harness-sidecar-file-reader.ts";
 
@@ -9,8 +15,8 @@ const fileText = defaultFileTextPort();
 
 const forkRoot = pathOperations.resolve({ segments: [import.meta.dirname, "..", "..", ".."] });
 
-const trackedText = (request: { readonly path: string }): string =>
-  fileText.read(pathOperations.join({ segments: [forkRoot, ...request.path.split("/")] }), "utf8");
+const trackedText = (request: { readonly segments: readonly string[] }): string =>
+  fileText.read(pathOperations.join({ segments: [forkRoot, ...request.segments] }), "utf8");
 
 const HONE_PACKAGE_NAME = "@hailstails/hone";
 
@@ -71,65 +77,65 @@ const FORK_HONE_CHECK_STEP = `      - name: Check the fork against its selected 
 
 describe("the fork as a consumer of the pinned @hailstails/hone release (CD-47: what this repository's own CI workflow, manifest, lock and harness config say is the assertion's subject, and no fake can stand in for it, so the test reads those tracked files read-only)", () => {
   it("installs the fork, with the pinned @hailstails/hone release, then proves rin's Hone check resolution against it, in the Windows job", () => {
-    expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(WINDOWS_JOB_STEPS);
+    expect(trackedText({ segments: [".github", "workflows", "rin-ci.yml"] })).toContain(WINDOWS_JOB_STEPS);
   });
 
   it("goes straight from installing the fork to its source checks, with no core source to build, in the source-checks job", () => {
-    expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(SOURCE_CHECKS_JOB_START);
+    expect(trackedText({ segments: [".github", "workflows", "rin-ci.yml"] })).toContain(SOURCE_CHECKS_JOB_START);
   });
 
   it("never conditionally skips a required job or any of its steps, because a skipped job counts as a passing required check", () => {
-    expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).not.toMatch(CONDITIONAL_KEY_LINE);
+    expect(trackedText({ segments: [".github", "workflows", "rin-ci.yml"] })).not.toMatch(CONDITIONAL_KEY_LINE);
   });
 
   it("runs the hone resolution tests by name", () => {
-    expect(developmentManifestSchema.parse(JSON.parse(trackedText({ path: "package.json" }))).scripts["test:rin:hone"]).toBe(
+    expect(developmentManifestSchema.parse(developmentManifest).scripts["test:rin:hone"]).toBe(
       "vitest run --config vitest.rin.config.ts plugins/rin/tools/rin-disciplines plugins/rin/hooks/rin-constitution-engine-gate-decision plugins/rin/tools/hone-fork-wiring plugins/rin/tools/rin-harness-config-constitution-engine",
     );
   });
 
   it("depends on the Hone package only as its exact registry version", () => {
-    const manifest = developmentManifestSchema.parse(JSON.parse(trackedText({ path: "package.json" })));
+    const manifest = developmentManifestSchema.parse(developmentManifest);
     expect(manifest.devDependencies[HONE_PACKAGE_NAME]).toBe(HONE_PACKAGE_VERSION);
     expect(manifest.devDependencies["honed"]).toBeUndefined();
   });
 
   it("locks the registry release to its integrity", () => {
-    expect(trackedText({ path: "bun.lock" })).toContain(`"${HONE_PACKAGE_NAME}": ["${HONE_PACKAGE_NAME}@${HONE_PACKAGE_VERSION}", `);
-    expect(trackedText({ path: "bun.lock" })).toContain(`"bin": { "hone": "core/check/tool-command.js" } }, "${HONE_PACKAGE_INTEGRITY}"],`);
+    expect(trackedText({ segments: ["bun.lock"] })).toContain(`"${HONE_PACKAGE_NAME}": ["${HONE_PACKAGE_NAME}@${HONE_PACKAGE_VERSION}", `);
+    expect(trackedText({ segments: ["bun.lock"] })).toContain(`"bin": { "hone": "core/check/tool-command.js" } }, "${HONE_PACKAGE_INTEGRITY}"],`);
   });
 
   it("checks the fork itself with the pinned release, measured from the pull request's base, in the source-checks job", () => {
-    expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(FORK_HONE_CHECK_STEP);
+    expect(trackedText({ segments: [".github", "workflows", "rin-ci.yml"] })).toContain(FORK_HONE_CHECK_STEP);
   });
 
   it("runs the Hone check and projection by name", () => {
-    const manifest = developmentManifestSchema.parse(JSON.parse(trackedText({ path: "package.json" })));
+    const manifest = developmentManifestSchema.parse(developmentManifest);
     expect(manifest.scripts["hone:check"]).toBe("hone check --repo .");
     expect(manifest.scripts["hone:project"]).toBe("hone project --repo .");
   });
 
   it("names Hone as the fork's constitution engine, measured from the main branch", () => {
-    expect(constitutionEngineSchema.parse(JSON.parse(trackedText({ path: "harness.config.json" }))).constitution).toMatchObject({
+    expect(constitutionEngineSchema.parse(harnessConfig).constitution).toMatchObject({
       engine: "hone",
       baseRevision: "origin/main",
     });
   });
 
   it("keeps no discipline-exceptions.json beside the split layout, which Hone would refuse", () => {
-    expect(() => trackedText({ path: "discipline-exceptions.json" })).toThrow();
+    expect(() => trackedText({ segments: ["discipline-exceptions.json"] })).toThrow();
   });
 
   it.each([
-    "discipline-exceptions/authorised-locations/cd-5.json",
-    "discipline-exceptions/authorised-locations/cd-19.json",
-    "discipline-exceptions/file-carve-outs/cd-5.json",
-    "discipline-exceptions/file-carve-outs/cd-19.json",
-  ])("keeps its exception records in Hone's split layout: %s", (path) => {
-    expect(JSON.parse(trackedText({ path }))).toMatchObject({ version: 1, exceptions: expect.any(Array) });
+    { path: "discipline-exceptions/authorised-locations/cd-5.json", records: authorisedLocationsCd5 },
+    { path: "discipline-exceptions/authorised-locations/cd-19.json", records: authorisedLocationsCd19 },
+    { path: "discipline-exceptions/file-carve-outs/cd-5.json", records: fileCarveOutsCd5 },
+    { path: "discipline-exceptions/file-carve-outs/cd-19.json", records: fileCarveOutsCd19 },
+  ])("keeps its exception records in Hone's split layout: $path", ({ records }) => {
+    expect(records).toMatchObject({ version: 1, exceptions: expect.any(Array) });
   });
 
   it("leaves the core's source out of the constitution audit's scope, since the fork no longer carries it", () => {
-    expect(constitutionScopeSchema.parse(JSON.parse(trackedText({ path: "harness.config.json" }))).constitution.include).toEqual(["plugins/rin/**"]);
+    expect(constitutionScopeSchema.parse(harnessConfig).constitution.include).toEqual(["plugins/rin/**"]);
   });
 });
