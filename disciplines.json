@@ -2,6 +2,13 @@
   "version": 1,
   "ruleSets": {},
   "clauses": {
+    "CD-3#strict": "audit",
+    "CD-3#no-unchecked-indexed-access": "audit",
+    "CD-3#exact-optional-property-types": "audit",
+    "CD-3#no-implicit-override": "audit",
+    "CD-3#no-fallthrough-cases-in-switch": "audit",
+    "CD-3#no-property-access-from-index-signature": "audit",
+    "CD-3#use-unknown-in-catch-variables": "audit",
     "CD-5#comments-directives": "audit",
     "CD-7#categorical-paths": "audit",
     "CD-7#filename-case": "not-run",
@@ -10,9 +17,19 @@
     "CD-14#class-syntax": "audit",
     "CD-14#static-only-class": "not-run",
     "CD-15#loops": "audit",
-    "CD-19#import-boundaries": "audit"
+    "CD-19#import-boundaries": "audit",
+    "CD-27#test-body-logic": "audit",
+    "CD-27#focused-tests": "not-run",
+    "CD-27#skipped-tests": "not-run"
   },
   "clauseSettings": {
+    "CD-3#strict": { "edition": "2" },
+    "CD-3#no-unchecked-indexed-access": { "edition": "2" },
+    "CD-3#exact-optional-property-types": { "edition": "2" },
+    "CD-3#no-implicit-override": { "edition": "2" },
+    "CD-3#no-fallthrough-cases-in-switch": { "edition": "2" },
+    "CD-3#no-property-access-from-index-signature": { "edition": "2" },
+    "CD-3#use-unknown-in-catch-variables": { "edition": "2" },
     "CD-5#comments-directives": { "trackerPatterns": ["^\\(spec-\\d+\\)$"] },
     "CD-19#import-boundaries": {
       "confinedPackages": [
@@ -28,7 +45,8 @@
         "zod-to-json-schema",
         "uuid"
       ]
-    }
+    },
+    "CD-27#test-body-logic": { "edition": "2" }
   },
   "exclude": [
     ".github",

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { type DisciplinesCheckPorts, disciplinesCheckOutcomeOf, runDisciplinesCheck } from "./rin-disciplines-check.ts";
 import type { CommandOutput, SyncCommandInput } from "./rin-gates/review-process-port.ts";
+import { inMemoryFileKindPort } from "./rin-harness-in-memory-file-kind.ts";
 import { pathOperationsFor } from "./rin-harness-path-operations.ts";
 
 const TIMEOUT_MILLISECONDS = 1000;
@@ -11,7 +12,7 @@ const DISCIPLINE_CORE_CHECK = "/repo/node_modules/discipline-core/core/check/che
 
 const HONED_CHECK = "/repo/node_modules/honed/core/check/tool-command.js";
 
-const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/v1.2.0/MIGRATING.md";
+const HONE_MIGRATING = "https://github.com/HailsTails/hone/blob/v1.3.0/MIGRATING.md";
 
 const VENDORED_CHECK = "/repo/tools/discipline-core/core/check/check-command.ts";
 
@@ -26,7 +27,7 @@ const portsReturning = ({
 }): DisciplinesCheckPorts => ({
   runSync: vi.fn<(input: SyncCommandInput) => CommandOutput>().mockReturnValue(output),
   pathOperations: pathOperationsFor({ flavour: "posix" }),
-  fileKind: { isFile: (path) => installedFiles.includes(path), isDirectory: () => false },
+  fileKind: inMemoryFileKindPort({ files: installedFiles, directories: [] }),
   timeoutMilliseconds: TIMEOUT_MILLISECONDS,
 });
 
