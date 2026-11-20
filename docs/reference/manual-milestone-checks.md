@@ -76,8 +76,30 @@ the rebuild PR #129 to either commit.
    outcome, counts and exclusions. A job cancelled during setup/cleanup has
    incomplete evidence even if part of the suite ran.
 
-The sanitized summary and the final 256 KiB of runner output are printed in the
-Actions diagnostics step. No artifact is uploaded, so large per-file fixture
+The suite streams the candidate runner's output through its existing secret
+redactor into the Actions log, including file START/DONE markers as emitted.
+GitHub workflow-command interpretation is disabled while these lines stream.
+Every 60 seconds a compact observation reports the current tier, observed DONE
+count (including FAIL/SKIP), active START-without-DONE filenames and their ages,
+and time since the last file START/DONE. Duplicate basenames are tracked as
+separate starts. After five minutes without a file marker it flags a stale
+observation, not a proven hang: a long file may still be working normally.
+Ordinary log chatter and the timer itself do not reset this age.
+
+The default runner does not publish an upfront inventory, so total remains
+unknown. The display makes no overall percentage or ETA claim: file counts do
+not measure work fraction. These are observations of console markers, which
+may include nested test output, not authoritative coverage or qualification
+results. The original runner summary and exit status remain authoritative. Runner, local-log and live-stream failures
+all fail the step. The runner command and its selection are unchanged.
+
+Console lines already received by Actions remain available if the runner
+machine crashes. The last buffered bytes, raw runner-local log and per-file
+logs can still be lost; a crash or incomplete summary is never a pass. This
+change does not retrofit an already running workflow.
+
+The sanitized summary and the final 256 KiB of runner output are also printed
+in the Actions diagnostics step when cleanup can run. No artifact is uploaded, so large per-file fixture
 logs are not retained. The run log follows the repository's existing retention
 policy. A separate artifact-based diagnostic run would need its storage/public
 log-sharing implications considered before changing this lane.
