@@ -1,7 +1,8 @@
+import { constructionPolicyRecovery } from "./aidlc-guard-operation.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
 import { CHECKPOINT_GLOSS } from "./aidlc-guard-fences.ts";
-import { git, isGitRepo } from "./aidlc-git.ts";
+import { git, inProject, isGitRepo, projectInRepo } from "./aidlc-git.ts";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -28,6 +29,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { appendAuditEntry, appendAuditEntryUnlocked } from "./aidlc-audit.ts";
 import { putBackBeforePick, sayWritesDuringWork } from "./aidlc-before-pick.ts";
+import { buildStartListing, unitSourceManifests } from "./aidlc-brought-files.ts";
 import {
   approvalDispositionField,
   rejectedFindingDispositionField,
@@ -55,7 +57,6 @@ import {
   VERIFICATION_COMMAND_CHECKPOINT,
   verificationCommandRecovery,
   constructionPolicyReceipt,
-  CONSTRUCTION_POLICY_RECOVERY,
   swarmNeedsStageMajor,
   leftOutLine,
   isPersonAskedSkipReason,
@@ -63,6 +64,7 @@ import {
   appendSlug,
   appendUnderHeading,
   artifactFilename,
+  ensureHeading,
   BLOCKING_SENSOR_OVERRIDE_CHOICE,
   blockingSensorPicks,
   optionsList,
@@ -127,6 +129,8 @@ import {
   messageRetryStep,
   personCommandedSinceGateShown,
   personRepliedSinceGateShown,
+  personRepliedSincePresentation,
+  ownShardRows,
   unshownGateReplyStands,
   personsGateReply,
   windowMessageIds,
@@ -262,6 +266,9 @@ import {
   worktreeStateFilePath,
   sameWorkspaceSource,
   recordedSourceListingUnderCurrentBoundary,
+  isLinkTargetListingKey,
+  sourceListingChangedKeys,
+  splitSourcePathKey,
   workspaceSourceState,
   withWorkspaceSourceStateCache,
   writeStateFile,
@@ -304,6 +311,7 @@ import { generateFireId, recordUnfinishedFire, sensorMatchesPath, unfinishedFire
 import { inspectRequiredArtifactInstances } from "./aidlc-artifact-resolution.ts";
 import { aidlcDispatcherInvocation, aidlcToolInvocation, compiledExecutable, entrySkillInvocation, syncFolderClause } from "./aidlc-runtime-paths.ts";
 import { markdownBlocks, projectVisibleMarkdownLines } from "./aidlc-markdown.ts";
+import { type EngineUnitDirective, readEngineUnitDirective, reviewHasUnseenFinding, routesUnitStep, routesWave } from "./aidlc-log.ts";
 import {
   stageLabel,
   stageValidationAuditFields,
@@ -318,13 +326,13 @@ import { codeGenerationCompletionPlanWaits, deriveTeamUnitProgressModel, SWITCH_
 import {
   askedQuestionFields,
   commandChat,
-  latestAskedQuestion,
+  gateQuestion,
   QUESTION_ID_FIELD,
   questionShows,
   shownAgainFields,
 } from "./aidlc-questions.ts";
 import { codeGenerationPlanWaitsStep, promotableTestingPosture } from "./aidlc-testing-posture.ts";
-import { recordIntegrationBranch } from "./aidlc-unit.ts";
+import { recordIntegrationBranch, unitSkippedFields } from "./aidlc-unit.ts";
 import {
   approvedOverUnfinishedReview,
   approvedUnitChanges,
@@ -1015,10 +1023,10 @@ export function main(argv: string[]): void {
     } else {
       exitWithError(
         `Stage status cannot be changed with aidlc-state.ts ${subcommand} because that bypasses ` +
-          "the workflow's completion and approval checks. Use aidlc-orchestrate.ts report " +
+          `the workflow's completion and approval checks. Use ${aidlcToolInvocation("orchestrate")} report ` +
           "--stage <slug> --result " +
           "<awaiting-approval|approved|rejected|revised|completed|skipped>; use " +
-          "aidlc-orchestrate.ts park to pause, and next/jump to move through the workflow. " +
+          `${aidlcToolInvocation("orchestrate")} park to pause, and next/jump to move through the workflow. ` +
           // The way out is named here, so the human is not told to go and find it.
           fenceSwitchSentence(pd, "state-transition"),
       );
@@ -1286,7 +1294,7 @@ function handleSet(args: string[]): void {
         setter = 'set-construction-verification-command --command-file verification-command.txt';
         break;
     }
-    if (setter) error(`${field} cannot be changed with aidlc-state.ts set. Use aidlc-state.ts ${setter}.`);
+    if (setter) error(`${field} cannot be changed with aidlc-state.ts set. Use ${aidlcToolInvocation("state")} ${setter}.`);
   }
   const pd = resolveProjectDir(projectDir);
   // C2b lost-update safety: hold the audit lock across read→decide→write so
@@ -1511,7 +1519,7 @@ function requireHumanConstructionPolicyChange(
   // An unattended run never changes it on its own, whatever presence bypass is
   // in force: only a choice the person recorded earlier counts there.
   if (process.env.AIDLC_UNATTENDED === "1" && receipt === null) {
-    error(`An unattended run does not change ${field}: it changes when the person asks for it. ` + CONSTRUCTION_POLICY_RECOVERY);
+    error(`An unattended run does not change ${field}: it changes when the person asks for it. ` + constructionPolicyRecovery());
   }
   if (humanPresenceGuardDisabled()) return null;
   if (receipt !== null) {
@@ -1521,7 +1529,7 @@ function requireHumanConstructionPolicyChange(
   if (message === undefined) {
     error(
       requestMessageStep(pd, `No message of the person's that asks to change ${field} is named. Change it only ` +
-        "when they ask for it, never to clear a refusal or on your own.", "setting") + ` ${CONSTRUCTION_POLICY_RECOVERY}`,
+        "when they ask for it, never to clear a refusal or on your own.", "setting") + ` ${constructionPolicyRecovery()}`,
     );
   }
   const proof = proveMessage(pd, message, "setting", { request: true, lowers: field === "Construction Checkpoints" && value === "disabled" });
@@ -1681,11 +1689,13 @@ function hasCurrentTeamUnitActivity(
     if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
     return a.pos - b.pos;
   });
+  // A jump that kept each Unit's work with its team (aidlc-jump.ts records
+  // `Unit Work: kept`) starts no new attempt: the teams' claims carry on.
   let floor = -1;
   for (let i = 0; i < rows.length; i++) {
     if (
       rows[i].event === "WORKFLOW_STARTED" ||
-      rows[i].event === "STAGE_JUMPED"
+      (rows[i].event === "STAGE_JUMPED" && auditBlockField(rows[i].block, "Unit Work") !== "kept")
     ) {
       floor = i;
       if (
@@ -1751,7 +1761,8 @@ function handleSetUnitOwnership(given: string[]): void {
     const current = getField(content, "Unit Ownership")?.trim() || "solo";
     if (value !== current && hasCurrentTeamUnitActivity(pd, content)) {
       error(
-        `Unit ownership is frozen after team Unit activity in the current workflow attempt (current: ${current}).`,
+        "The teams are already building their Units, so they keep them for this work. " +
+          `Carry on with \`${entrySkillInvocation()}\`.`,
       );
     }
     if (value === "team") {
@@ -1845,7 +1856,7 @@ function handleSetUnitGateRhythm(args: string[]): void {
     if (!isTeamUnitOwnership(content)) {
       error(
         "Unit gate rhythm requires Unit Ownership: team. " +
-          "Run aidlc-state.ts set-unit-ownership team first.",
+          `Run ${aidlcToolInvocation("state")} set-unit-ownership team first.`,
       );
     }
     const current = readUnitGateRhythm(content);
@@ -2625,7 +2636,10 @@ export function parkWorkflow(pd: string, opts: { attended?: boolean } = {}): Par
         "each Bolt), then park.",
     );
   }
-  const scopeStamp = validateLiveUnitScope(pd);
+  // A checkout that holds a Unit claim parks that Unit there; any other parks
+  // the work, a lead's whose teams hold the Units included. Not
+  // validateLiveUnitScope: it refuses Unit work, and a park is never Unit work.
+  const scopeStamp = readApplicableTeamUnitScopeStamp(pd, initialContent);
   if (scopeStamp) {
     writeFileSync(
       unitParkedPath(pd),
@@ -2837,13 +2851,9 @@ function handleUnit(args: string[]): void {
     // The route check is read-only and shares this lock's ledger snapshot.
     const routed = action === "complete"
       ? {}
-      : readEngineUnitDirective(pd, slug, unit, action);
+      : readEngineUnitDirective(pd, slug, unit, action, stateSessionOverride, error);
     // A Unit's questions before the wave are the wave's own step.
-    if (
-      routed.kind === "run-stage" &&
-      routed.stage === slug &&
-      (routed.wave || routed.questions_only === true)
-    ) {
+    if (routesWave(routed, slug)) {
       if (!routed.wave) {
         throw new UnitWaveRouteRefusalError(
           `Refusing unit ${action} for "${unit}" of "${slug}": this step asks ` +
@@ -2856,7 +2866,7 @@ function handleUnit(args: string[]): void {
         `Refusing unit ${action} for "${unit}" of "${slug}": a wave is active for this stage ` +
           "(the orchestration engine currently routes it as a batch). " +
           "A wave has no single active unit - every entry settles through " +
-          `\`aidlc-state.ts unit complete --wave --stage ${slug} --unit <name>\`. A bare ` +
+          `\`${aidlcToolInvocation("state")} unit complete --wave --stage ${slug} --unit <name>\`. A bare ` +
           `\`${action}\` would append a serial receipt and ` +
           "drop the deterministic batch path for every remaining unit of the stage. " +
           "Use `unit complete --wave` instead.",
@@ -2880,7 +2890,7 @@ function handleUnit(args: string[]): void {
         error(
           `Refusing to start unit "${unit}" for "${slug}": unit "${blocking.unit}" is ${blocking.state}` +
             `${blocking.reason ? ` (reason: ${blocking.reason})` : ""}. ` +
-            `${blocking.state === "paused" ? `Resume it (aidlc-state.ts unit resume --stage ${slug} --unit ${blocking.unit}) or complete it first.` : "Complete it first."} ` +
+            `${blocking.state === "paused" ? `Resume it (${aidlcToolInvocation("state")} unit resume --stage ${slug} --unit ${blocking.unit}) or complete it first.` : "Complete it first."} ` +
             "One active unit at a time.",
         );
       }
@@ -2934,7 +2944,7 @@ function handleUnit(args: string[]): void {
         error(
           `Refusing to complete unit "${unit}" for "${slug}": it is paused` +
             `${checkpoint.reason ? ` (reason: ${checkpoint.reason})` : ""}. Resume it first ` +
-            `(aidlc-state.ts unit resume --stage ${slug} --unit ${unit}); a paused unit's work is not done.`,
+            `(${aidlcToolInvocation("state")} unit resume --stage ${slug} --unit ${unit}); a paused unit's work is not done.`,
         );
       }
     } else if (action === "resume") {
@@ -3115,85 +3125,12 @@ function validateStateLineValue(label: string, value: string | undefined): void 
   }
 }
 
-interface EngineUnitDirective {
-  kind?: unknown;
-  stage?: unknown;
-  unit?: unknown;
-  wave?: unknown;
-  questions_only?: unknown;
-}
-
-function readEngineUnitDirective(
-  pd: string,
-  stage: string,
-  unit: string,
-  action: string,
-): EngineUnitDirective {
-  const executable = compiledExecutable();
-  let subargs = ["next", "--project-dir", pd];
-  let directive: unknown = null;
-  for (let attempts = 0; attempts < 1_000; attempts++) {
-    const command = executable
-      ? [executable, "engine", "orchestrate", ...subargs]
-      : [
-          process.execPath,
-          fileURLToPath(new URL("./aidlc-orchestrate.ts", import.meta.url)),
-          ...subargs,
-        ];
-    const result = spawnSync(command[0], command.slice(1), {
-      cwd: pd,
-      encoding: "utf-8",
-        env: hookChildEnv(pd, stateSessionOverride, {
-          AIDLC_PROJECT_DIR: pd,
-          [ROUTE_CHECK_ENV]: "1",
-        }),
-      timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS,
-    });
-    if (result.status !== 0) {
-      error(
-        `Refusing to ${action} unit "${unit}" for "${stage}": the orchestration engine could not resolve ` +
-          `the current routed unit (${(result.stderr ?? "").trim() || "no diagnostic"}).`,
-      );
-    }
-    try {
-      directive = JSON.parse((result.stdout ?? "").trim());
-    } catch {
-      error(
-        `Refusing to ${action} unit "${unit}" for "${stage}": the orchestration engine returned an ` +
-          "unparseable directive.",
-      );
-    }
-    const transport =
-      directive !== null && typeof directive === "object"
-        ? directive as { kind?: unknown; receipt?: unknown }
-        : {};
-    if (transport.kind !== "load-steering") break;
-    if (
-      typeof transport.receipt !== "string" ||
-      transport.receipt.length === 0
-    ) {
-      error(
-        `Refusing to ${action} unit "${unit}" for "${stage}": the engine's rules part ` +
-          "did not include its receipt.",
-      );
-    }
-    subargs = ["continue", transport.receipt, "--project-dir", pd];
-  }
-  return directive !== null && typeof directive === "object"
-    ? directive as EngineUnitDirective
-    : {};
-}
-
 function requireEngineRoutedUnit(
   routed: EngineUnitDirective,
   stage: string,
   unit: string,
 ): void {
-  if (
-    routed.kind !== "run-stage" ||
-    routed.stage !== stage ||
-    routed.unit !== unit
-  ) {
+  if (!routesUnitStep(routed, stage, unit)) {
     const expected =
       routed.kind === "run-stage" &&
       typeof routed.stage === "string" &&
@@ -3202,7 +3139,7 @@ function requireEngineRoutedUnit(
         : `a ${String(routed.kind ?? "non-run-stage")} directive`;
     error(
       `Refusing to start unit "${unit}" for "${stage}": the engine currently routes ${expected}. ` +
-        "Run the exact directive.stage/directive.unit pair returned by aidlc-orchestrate.ts next.",
+        `Run the exact directive.stage/directive.unit pair returned by ${aidlcToolInvocation("orchestrate")} next.`,
     );
   }
 }
@@ -3653,7 +3590,7 @@ function verifySettledSwarmSourceBinding(
   // (aidlc-swarm-source.ts).
   const changed = current === null || sameWorkspaceSource(chain.fingerprint, current.fingerprint)
     ? []
-    : swarmSourceChangedSince(pd, stage.slug, chain.listing, current);
+    : swarmSourceChangedSince(pd, stage.slug, chain, current);
   const moved = changed?.length !== 0;
   if (moved && current !== null && guardPolicyAcceptsChanges(pd)) {
     // Kept under relaxed or off: edits made after the last merge stay, once recorded.
@@ -4394,7 +4331,7 @@ function enforceBlockingGateSensors(
       refuse(
         `Refusing blocking sensor override for ${where}: no fresh authorization receipt ` +
           `proves that "${BLOCKING_SENSOR_OVERRIDE_CHOICE}" was offered and selected after ` +
-          "a HUMAN_TURN. Record the decision and exact answer through aidlc-log.ts, then retry.",
+          `a HUMAN_TURN. Record the decision and exact answer through ${aidlcToolInvocation("log")}, then retry.`,
       );
     }
     return;
@@ -4777,17 +4714,14 @@ function linkedWorktrees(dir: string, outside: boolean): string[] {
 function nestedCheckouts(root: string): string[] {
   const starts: string[] = [];
   const listed = git(root, ["status", "--porcelain", "-z", "--ignored", "--untracked-files=normal", "--", "."]);
-  const prefix = listed === null ? null : git(root, ["rev-parse", "--show-prefix"]);
-  if (listed !== null && prefix !== null) {
+  const at = listed === null ? null : projectInRepo(root);
+  if (listed !== null && at !== null) {
     // Porcelain paths are relative to the repository's top, which is above the
     // project when it is a folder of a larger repo.
-    const under = prefix.trim();
     for (const entry of listed.split("\0")) {
       if (!entry.startsWith("?? ") && !entry.startsWith("!! ")) continue;
-      const path = entry.slice(3);
-      if (path.endsWith("/") && path.startsWith(under) && path.length > under.length) {
-        starts.push(path.slice(under.length, -1));
-      }
+      const path = inProject(at.prefix, entry.slice(3));
+      if (path?.endsWith("/")) starts.push(path.slice(0, -1));
     }
   } else {
     try {
@@ -5333,6 +5267,119 @@ function noteVerdictNotFinished(
   }
 }
 
+// Of the changed source paths, sorted, the ones a Unit's manifest could claim
+// (`paths`): the stage's completion and `lookup source-changes` leave out the
+// same ones. `claimed` takes out the paths the caller's Unit claims already
+// cover. `ignored` holds the ones left out as ignored by git, which the lookup
+// reads for the checkouts it cannot see into.
+function unitClaimableSourceChanges(
+  pd: string,
+  stageSlug: string,
+  changed: Iterable<string>,
+  current: ReadonlyMap<string, string>,
+  claimed: (pathKey: string) => boolean = () => false,
+): { paths: string[]; ignored: Set<string> } {
+  // AI-DLC's own files (its .gitignore block, AGENTS.md, a second tool's
+  // install, the source registry) are no Unit's to claim, and neither is a
+  // path Git ignores that a source manifest refuses to claim (build output, a
+  // test run's record), nor one the registry's exclude list now leaves out of
+  // the walk (a cache excluded after the stage started: its baseline entries
+  // are nobody's change).
+  const aidlcOwned = aidlcOwnedSourceKey(pd);
+  // A file the agent changed before the person picked this work's plan, put
+  // back since (the undo the pick's line named), holds what it held before
+  // the agent's write: nobody's change.
+  const putBack = putBackBeforePick(pd);
+  let outsideClaims = [...changed].filter((pathKey) =>
+    !aidlcOwned(pathKey) && !claimed(pathKey) && !putBack(pathKey, current.get(pathKey))
+  );
+  // Nor is a file another open piece of work in this folder claims: a second
+  // chat building its own work here made it, so it is that work's change.
+  if (outsideClaims.length > 0) {
+    const otherWork = otherOpenWorkClaims(pd, stageSlug);
+    outsideClaims = outsideClaims.filter((pathKey) => !otherWork.some((work) => sourceClaimCovers(pathKey, work.claims)));
+  }
+  const ignored = unclaimableIgnoredSourceKeys(pd, outsideClaims);
+  const unclaimable = new Set(ignored);
+  for (const key of registryExcludedSourceKeys(pd, outsideClaims)) unclaimable.add(key);
+  const paths = outsideClaims
+    .filter((pathKey) => !unclaimable.has(pathKey))
+    .sort();
+  return { paths, ignored };
+}
+
+// `lookup source-changes [<unit>]`: the source paths that changed since a
+// Unit's Code Generation began, for the agent to check its account of the
+// build against when it writes the Unit's `source-manifest.json`, so it need
+// not run git for that (Kiro asks the person about a git command they have not
+// allowed). Read-only. It sees AI-DLC's source walk, not who wrote a change:
+// `listed_by` names the other Units whose manifest lists a path, and
+// `not_listed` the places it leaves out because it cannot list them as a
+// manifest claims them: a checkout recorded with `intent add-checkout` (one
+// recorded after the build began reads as all created), a folder a link leads
+// to outside the project, and a checkout of its own the project's git ignores.
+function sourceChangesSinceBuildStart(pd: string, unit: string | null): Record<string, unknown> {
+  const named = unit === null ? {} : { unit };
+  const unavailable = {
+    ...named,
+    available: false,
+    note: "AI-DLC cannot compare the files here with where this build began: take the paths from the build's own account.",
+  };
+  try {
+    const start = buildStartListing(pd, unit);
+    const current = workspaceSourceState(pd);
+    if (start === null || current === null) return unavailable;
+    const recorded = recordedSourceListingUnderCurrentBoundary(start.listing, current.listing);
+    const { paths, ignored } = unitClaimableSourceChanges(
+      pd,
+      "code-generation",
+      sourceListingChangedKeys(recorded, current.listing),
+      current.listing,
+    );
+    const listings = [recorded, current.listing];
+    const keysOf = (mode: string): string[] => listings.flatMap((listing) =>
+      [...listing].filter(([, entry]) => entry.startsWith(`${mode} `)).map(([key]) => key));
+    // isLinkTargetListingKey decides whether a key is a link's target; the
+    // link it goes through is the one its name starts with.
+    const links = keysOf("120000");
+    const linkOf = (key: string): string | null =>
+      !listings.some((listing) => isLinkTargetListingKey(listing, key)) ? null
+        : links.find((link) => key === `${link}@target` || key.startsWith(`${link}@target/`)) ?? null;
+    // Listing keys of the links and the git-ignored checkouts the list leaves out.
+    const leftOut = new Set<string>();
+    const keys = paths.filter((key) => {
+      const link = linkOf(key);
+      if (link === null) return true;
+      leftOut.add(link);
+      return false;
+    });
+    const nestedCheckouts = ignored.size === 0 ? [] : keysOf("160000");
+    for (const key of ignored) {
+      const place = linkOf(key) ?? nestedCheckouts.find((checkout) => key === checkout || key.startsWith(`${checkout}/`));
+      if (place !== undefined) leftOut.add(place);
+    }
+    const notListed = [...new Set([
+      ...readRecordedSourceCheckouts(pd).map((entry) => entry.path.replace(/[\\/]+$/, "")),
+      ...renderSourcePathKeys(leftOut),
+    ])].sort();
+    const others = unitSourceManifests(pd).filter((entry) => entry.unit !== unit);
+    const changed = keys.flatMap((key) => {
+      const parsed = splitSourcePathKey(key);
+      if (parsed === null) return [];
+      const listedBy = others.filter(({ manifest }) => sourceClaimCovers(key, manifest)).map((entry) => entry.unit);
+      return [{
+        ...(parsed.repo === "" ? {} : { repo: parsed.repo }),
+        path: parsed.path,
+        change: !current.listing.has(key) ? "deleted" : recorded.has(key) ? "modified" : "created",
+        ...(listedBy.length === 0 ? {} : { listed_by: listedBy }),
+      }];
+    });
+    return { ...named, since: start.since, changed, ...(notListed.length === 0 ? {} : { not_listed: notListed }) };
+  } catch {
+    return unavailable;
+  }
+}
+
 function verifyReviewerPrecondition(
   pd: string,
   content: string,
@@ -5422,7 +5469,7 @@ function verifyReviewerPrecondition(
     const message =
       `${reviewerPreconditionPrefix(stage.slug, action)} because the recorded review${scope} ` +
       "could not be verified and the review must be run again. Retry the pending " +
-      `request with \`aidlc-log.ts review --stage ${stage.slug}${unitFlag} --reviewer ` +
+      `request with \`${aidlcToolInvocation("log")} review --stage ${stage.slug}${unitFlag} --reviewer ` +
       `${reviewer} --iteration ${iteration} --retry-pending\`, then record the verdict ` +
       "with the same command plus `--verdict <READY|NOT-READY>`.";
     refuseStateGuard(pd, content, stage, {
@@ -5509,32 +5556,13 @@ function verifyReviewerPrecondition(
       if (!baseline.has(pathKey)) baselineChanged.add(pathKey);
     }
     const claimModels = [...receipts.freshUnitClaims.values()];
-    // AI-DLC's own files (its .gitignore block, AGENTS.md, a second tool's
-    // install, the source registry) are no Unit's to claim, and neither is a
-    // path Git ignores that a source manifest refuses to claim (build output, a
-    // test run's record), nor one the registry's exclude list now leaves out of
-    // the walk (a cache excluded after the stage started: its baseline entries
-    // are nobody's change).
-    const aidlcOwned = aidlcOwnedSourceKey(pd);
-    // A file the agent changed before the person picked this work's plan, put
-    // back since (the undo the pick's line named), holds what it held before
-    // the agent's write: nobody's change.
-    const putBack = putBackBeforePick(pd);
-    let outsideClaims = [...baselineChanged].filter((pathKey) =>
-      !aidlcOwned(pathKey) && !claimModels.some((claims) => sourceClaimCovers(pathKey, claims)) &&
-      !putBack(pathKey, receipts.currentSourceListing?.get(pathKey))
-    );
-    // Nor is a file another open piece of work in this folder claims: a second
-    // chat building its own work here made it, so it is that work's change.
-    if (outsideClaims.length > 0) {
-      const otherWork = otherOpenWorkClaims(pd, stage.slug);
-      outsideClaims = outsideClaims.filter((pathKey) => !otherWork.some((work) => sourceClaimCovers(pathKey, work.claims)));
-    }
-    const unclaimable = unclaimableIgnoredSourceKeys(pd, outsideClaims);
-    for (const key of registryExcludedSourceKeys(pd, outsideClaims)) unclaimable.add(key);
-    baselineUnclaimed = outsideClaims
-      .filter((pathKey) => !unclaimable.has(pathKey))
-      .sort();
+    baselineUnclaimed = unitClaimableSourceChanges(
+      pd,
+      stage.slug,
+      baselineChanged,
+      receipts.currentSourceListing,
+      (pathKey) => claimModels.some((claims) => sourceClaimCovers(pathKey, claims)),
+    ).paths;
   }
   const resolutionForReconciliation = perUnit ? resolveBoltDag(pd) : null;
   const applicableReconciliationUnits =
@@ -5702,7 +5730,7 @@ function verifyReviewerPrecondition(
         const retry =
           pending?.state === "retry-required" ? " --retry-pending" : "";
         return [
-          `\`aidlc-log.ts review --stage ${stage.slug} --unit ${unit} ` +
+          `\`${aidlcToolInvocation("log")} review --stage ${stage.slug} --unit ${unit} ` +
             `--reviewer ${reviewer} --iteration ${iteration}${retry}\``,
         ];
       });
@@ -5744,7 +5772,7 @@ function verifyReviewerPrecondition(
     if (recoveryAvailable.length > 0) {
       guidance.push(
         `For invalidated units with recovery available (${recoveryAvailable.join(", ")}), ` +
-          `run \`aidlc-log.ts review --stage ${stage.slug} --unit <unit> --reviewer ` +
+          `run \`${aidlcToolInvocation("log")} review --stage ${stage.slug} --unit <unit> --reviewer ` +
           `${reviewer} --iteration <next ordinal>\`, then record the verdict with ` +
           `the same command plus \`--verdict <READY|NOT-READY>\` and stop editing ` +
           `this stage's output documents, that unit's source-manifest.json, and `
@@ -5771,7 +5799,7 @@ function verifyReviewerPrecondition(
     if (neverReviewed.length > 0) {
       guidance.push(
         `For never-reviewed units (${neverReviewed.join(", ")}), run the normal ` +
-          `\`aidlc-log.ts review --stage ${stage.slug} --unit <unit> --reviewer ` +
+          `\`${aidlcToolInvocation("log")} review --stage ${stage.slug} --unit <unit> --reviewer ` +
           `${reviewer} --iteration <next ordinal>\` request and record its verdict.`,
       );
     }
@@ -6069,7 +6097,7 @@ function staleReviewPreconditionError(
   const message =
     `${reviewerPreconditionPrefix(slug, action)} because an output document changed after ` +
       `${reviewer} reviewed it.${written} ${syncFolderClause(pd)}Run ` +
-      `one recovery review pass with \`aidlc-log.ts review --stage ${slug} ` +
+      `one recovery review pass with \`${aidlcToolInvocation("log")} review --stage ${slug} ` +
       `--reviewer ${reviewer} --iteration <next ordinal>\`, then record the verdict ` +
       `with the same command plus \`--verdict <READY|NOT-READY>\`. After that ` +
       `review, stop editing this stage's output documents. If the recovery pass was already ` +
@@ -6111,7 +6139,7 @@ function reviewerPreconditionError(
     const message =
       `${reviewerPreconditionPrefix(slug, action)} because the review request is still ` +
       "waiting for a verifiable recorded result. Run " +
-      `\`aidlc-log.ts review --stage ${slug} --reviewer ${reviewer} --iteration ` +
+      `\`${aidlcToolInvocation("log")} review --stage ${slug} --reviewer ${reviewer} --iteration ` +
       `${pending.iteration} --retry-pending\`, then record the verdict with the same ` +
       "command plus `--verdict <READY|NOT-READY>`.";
     refuseStateGuard(pd, content, stage, {
@@ -6128,7 +6156,7 @@ function reviewerPreconditionError(
     const message =
       `Cannot present "${slug}" for approval because ${reviewer} has not reviewed the ` +
         `current output. Apply any fixes first, then request the review with ` +
-        `\`aidlc-log.ts review --stage ${slug} --reviewer ${reviewer} --iteration ` +
+        `\`${aidlcToolInvocation("log")} review --stage ${slug} --reviewer ${reviewer} --iteration ` +
         `${ordinal}\` and record its verdict with the same command plus ` +
         `\`--verdict <READY|NOT-READY>\`. After recording the verdict, do not edit ` +
         `this stage's output documents; include suggestions from a READY review in the ` +
@@ -6143,7 +6171,7 @@ function reviewerPreconditionError(
   }
   const message =
     `Cannot complete "${slug}" because ${reviewer} has not reviewed the current output. ` +
-      `Apply any fixes first, then request the review with \`aidlc-log.ts review --stage ` +
+      `Apply any fixes first, then request the review with \`${aidlcToolInvocation("log")} review --stage ` +
       `${slug} --reviewer ${reviewer} --iteration ${ordinal}\` and record its verdict ` +
       `with the same command plus \`--verdict <READY|NOT-READY>\`. After recording the ` +
       `verdict, do not edit this stage's output documents; include suggestions from a ` +
@@ -7106,12 +7134,12 @@ function gateAskFields(
     fields["Brief Digest"] = "none";
   }
   try {
-    fields["Sensor State"] = sensorStateAtGate(pd, stage);
+    fields["Sensor State"] = sensorStateAtGate(pd, stage, unit ?? null);
   } catch {
     fields["Sensor State"] = "none";
   }
   try {
-    Object.assign(fields, openDecisionsFields(pd, stage));
+    Object.assign(fields, openDecisionsFields(pd, stage, unit ?? null));
   } catch {
     fields["Open Decisions"] = "0";
   }
@@ -7135,7 +7163,7 @@ function gateAskFields(
 // QUESTION_SHOWN row when this chat had not seen it. Record-only.
 function openGateQuestionId(pd: string, slug: string, unit: string | null): string | null {
   try {
-    const open = latestAskedQuestion(pd, { event: "STAGE_AWAITING_APPROVAL", type: "gate", stage: slug, unit });
+    const open = gateQuestion(pd, slug, unit);
     if (open === null) return null;
     const shown = shownAgainFields(pd, open.id, commandChat(pd));
     if (shown !== null) emitAudit(pd, "QUESTION_SHOWN", shown);
@@ -7204,7 +7232,8 @@ function latestCheckResults(pd: string, stage: GateStage, unit: string | null = 
 }
 
 // The declared outputs a gate speaks for: every unit's at a stage gate, and one
-// Unit's at that Unit's own gate, so a team's Unit is not told about a sibling's.
+// Unit's at that Unit's own gate, so a team's Unit is neither told about a
+// sibling's nor recorded, at its gate or its approval, as deciding on them.
 function declaredOutputsForGate(pd: string, stage: GateStage, unit: string | null): string[] {
   const paths = existingDeclaredArtifactPaths(pd, stage);
   if (unit === null || stage.for_each !== "unit-of-work") return paths;
@@ -7223,11 +7252,11 @@ function declaredOutputsForGate(pd: string, stage: GateStage, unit: string | nul
 
 // The gate-open row's field: `id@path=passed|failed(<n>) [detail: <path>]|could-not-run|not-run`
 // for the declared outputs, failures first, at most 20 entries spelled out.
-function sensorStateAtGate(pd: string, stage: GateStage): string {
+function sensorStateAtGate(pd: string, stage: GateStage, unit: string | null): string {
   // Spelled out here, not at module level: this file runs its command before
   // later module-level declarations are initialized.
   const SENSOR_STATE_MAX_ENTRIES = 20;
-  const { failed, rest } = latestCheckResults(pd, stage);
+  const { failed, rest } = latestCheckResults(pd, stage, unit);
   const entries = [
     ...failed.map((f) => `${f.id}@${f.rel}=failed(${f.findings})${f.detail ? ` [detail: ${f.detail}]` : ""}`),
     ...rest,
@@ -7257,16 +7286,22 @@ function failedCheckWhere(stage: GateStage, rel: string, failedOutputs: string |
 
 // What the person hears when a gate opens, or is shown again, while a check
 // still fails on a declared output (#2201): one line per failing check, in
-// plain words (the agent corrects from the detail file the sensors protocol
-// module names), at most three lines and then a count; then one line, however
+// plain words, at most three lines and then a count; then one line, however
 // many, for the checks that could not run (their script crashed or did not
 // start, so they checked nothing). The orchestrator carries them in the gate
 // reply's `narration`, beside what the stage produced, which every harness's
-// agent says to the person with the approval question. Nothing is re-fired; a
-// check that passed later, or never ran, says nothing, and an unreadable record
-// says nothing about the checks. A team's Unit gate speaks for that Unit's
-// outputs and writes only.
-export function failedCheckNotices(pd: string, stage: GateStage, unit: string | null = null): string[] {
+// agent says to the person with the approval question. `details` are the
+// detail files of every failing check, for the agent alone: the sensors protocol has
+// it correct from them when the person asks, and without their names it listed
+// the sensors folder for the newest, a shell line that can stop for the
+// person. Nothing is re-fired; a check that passed later, or never ran, says
+// nothing, and an unreadable record says nothing about the checks. A team's
+// Unit gate speaks for that Unit's outputs and writes only.
+export function failedCheckReport(
+  pd: string,
+  stage: GateStage,
+  unit: string | null = null,
+): { lines: string[]; details: string[] } {
   let failed: LatestCheckResults["failed"];
   let couldNotRun: LatestCheckResults["couldNotRun"];
   try {
@@ -7276,12 +7311,15 @@ export function failedCheckNotices(pd: string, stage: GateStage, unit: string | 
     // empty environment, as plan approval reads its own switch): it stops
     // checks from running in that process, not the record from being read.
     const stateContent = readStateFile(pd);
-    if (resolveCeremony("sensors", getField(stateContent, "Scope"), stateContent, {}, pd).value === "off") return [];
+    if (resolveCeremony("sensors", getField(stateContent, "Scope"), stateContent, {}, pd).value === "off") {
+      return { lines: [], details: [] };
+    }
     ({ failed, couldNotRun } = latestCheckResults(pd, stage, unit));
   } catch {
-    return [];
+    return { lines: [], details: [] };
   }
   const lines = failedCheckLines(stage, failed);
+  const details = [...new Set(failed.flatMap((f) => f.detail === null ? [] : [f.detail]))];
   if (couldNotRun.length > 0) {
     const checks = [...new Set(couldNotRun.map(({ id }) => checkName(id)))];
     const files = [...new Set(couldNotRun.map(({ rel }) => rel))];
@@ -7294,7 +7332,16 @@ export function failedCheckNotices(pd: string, stage: GateStage, unit: string | 
     const where = `${failedCheckWhere(stage, files[0], null)}${others > 0 ? ` and ${others} other file${others === 1 ? "" : "s"}` : ""}`;
     lines.push(`${who} could not run on ${where}.`);
   }
-  return lines;
+  return { lines, details };
+}
+
+export function failedCheckNotices(pd: string, stage: GateStage, unit: string | null = null): string[] {
+  return failedCheckReport(pd, stage, unit).lines;
+}
+
+/** Where the findings of the failing checks are, for the agent: the review hand-off's words and the gate's. */
+export function findingsInSentence(files: readonly string[]): string {
+  return `The findings are in ${files.join(", ")}.`;
 }
 
 function checkName(id: string): string {
@@ -7415,7 +7462,7 @@ export function completionChecksStep(
     ? "it records the review request without checking again, and the gate checks again and says what is left."
     : "it opens the gate, which checks again and says what is left.";
   return `Before the ${handOff}, this stage's checks ran on its documents. ${failedCheckLines(stage, failed).join(" ")} ` +
-    `The findings are in ${details.join(", ")}. Fix what is yours in those documents, then run \`${again}\` again: ${next}`;
+    `${findingsInSentence(details)} Fix what is yours in those documents, then run \`${again}\` again: ${next}`;
 }
 
 // Whether every required output of the scope (the stage's, or one Unit's) is
@@ -7484,11 +7531,11 @@ export function unitsWithoutInputsNotice(pd: string, stage: GateStage, unit: str
 // `decision:`, `owner:` and `blocking:` beside each). The gate records the ids;
 // Approve records them as accepted open. A block the engine cannot read is
 // recorded as such and stops nothing: the block is optional.
-function openDecisionsFields(pd: string, stage: GateStage): Record<string, string> {
+function openDecisionsFields(pd: string, stage: GateStage, unit: string | null): Record<string, string> {
   const DECISIONS_FENCE = /```aidlc-decisions[^\n]*\n([\s\S]*?)```/g;
   const ids: string[] = [];
   const unreadable: string[] = [];
-  for (const path of existingDeclaredArtifactPaths(pd, stage)) {
+  for (const path of declaredOutputsForGate(pd, stage, unit)) {
     const text = readFileSync(path, "utf-8");
     for (const match of text.matchAll(DECISIONS_FENCE)) {
       const parsed = parseDecisionsBlock(match[1]);
@@ -8127,14 +8174,15 @@ function verifyApprovalDecision(
       const proof = proveMessage(pd, message, "approval");
       if ("refusal" in proof) refuseForAgent(proof.refusal);
       // Sent before the stage's output was last written, it did not see what
-      // the gate shows, so it approves nothing there (the summary's rule).
+      // the gate shows, so it approves nothing there (the summary's rule);
+      // gateShownToNamedReply says which writes count.
       const { step, named, before } = answeredBeforeShownStep(pd, stage.slug, {
         refused: `Cannot approve "${stage.slug}"`,
         question: `the "${stage.slug}" gate`,
         shown: "the gate",
         command: "report",
         why: "",
-        shownWriting: gateOutputWriting(pd, stage.slug),
+        shownWriting: gateShownToNamedReply(pd, stage.slug, proof.message.id, unit),
       }, proof.message);
       if (before) refuseForAgent(step, { personDecided: named });
     } else if (!humanRepliedSinceGate(pd)) {
@@ -8191,6 +8239,34 @@ function refuseGateShownAfterReply(
   });
   const command = personCommandedSinceGateShown(pd, gate) === true ? ` ${COMMAND_TURN_SENTENCE}` : "";
   refuseForAgent(`${step}${command}`, { personDecided: named });
+}
+
+// What the gate showed the reply an approval names: its outputs as written
+// before that reply, when it is the person's latest turn here and a reply of
+// theirs came after the gate's latest showing (so this one did). What the
+// agent writes after it, before their next message, does not move it, as their
+// approval's own edits after it stand (inspectStageValidity). A review that
+// finished after it and is not READY, or lists a finding as New or still open,
+// goes to them at the gate (reviewVerdictStep): every write counts then, as at
+// a team Unit's gate and when the record cannot be read.
+function gateShownToNamedReply(pd: string, slug: string, message: string, unit?: string): ShownWriting | undefined {
+  const shown = gateOutputWriting(pd, slug);
+  if (shown === undefined || unit !== undefined) return shown;
+  try {
+    const { mine } = ownShardRows(pd);
+    const at = mine.findLastIndex((row) => row.event === "HUMAN_TURN");
+    const turn = mine[at];
+    if (turn === undefined || auditBlockField(turn.block, "Message Id") !== message) return shown;
+    if (personRepliedSincePresentation(pd, { stage: slug }) !== true) return shown;
+    const review = mine.slice(at + 1)
+      .findLast((row) => row.event === "REVIEW_COMPLETED" && auditBlockField(row.block, "Stage") === slug);
+    if (review !== undefined && (auditBlockField(review.block, "Verdict") !== "READY" || reviewHasUnseenFinding(pd, slug))) {
+      return shown;
+    }
+    return { ...shown, until: (row) => row.shard === turn.shard && row.pos === turn.pos };
+  } catch {
+    return shown;
+  }
 }
 
 // An approval of a stage gate the record never shows, with no reply of theirs
@@ -9223,21 +9299,8 @@ function handleSkip(args: string[]): void {
     // UNIT_STARTED and UNIT_COMPLETED rows are.
     const checkpoints = unitScopedLifecycleFloors(content);
     try {
-      emitAudit(pd, "UNIT_SKIPPED", {
-        Stage: slug,
-        Unit: unit,
-        Reason: reason,
-        "Run floor": unitLifecycleRunFloorForProject(
-          pd,
-          slug,
-          true,
-          unit,
-          undefined,
-          checkpoints,
-        ),
-        ...claimAttemptFields(pd, unit),
-        ...(isPersonAskedSkipReason(reason) ? personGitNameField(pd) : {}),
-      });
+      const name = isPersonAskedSkipReason(reason) ? personGitNameField(pd) : {};
+      emitAudit(pd, "UNIT_SKIPPED", unitSkippedFields(pd, slug, unit, reason, checkpoints, claimAttemptFields(pd, unit), name));
     } catch (e) {
       error(`Audit emission failed: ${errorMessage(e)}`);
     }
@@ -9808,6 +9871,9 @@ function handlePracticesBranch(args: string[]): void {
 //                              Forbidden), each rule stamped
 //                              with `(affirmed YYYY-MM-DD)`
 //
+// A heading either file lacks is added at its end before the write
+// (ensureHeading): a space made by `space create` starts both as one line.
+//
 // Atomicity:
 //   1. Validate every declared support contribution (fail before any write).
 //   2. Read both drafts (fail closed before any write).
@@ -9970,7 +10036,7 @@ function handlePracticesPromote(args: string[]): void {
       draftSection = promotable.section;
     }
     try {
-      newTeamMd = replaceSection(newTeamMd, heading, draftSection);
+      newTeamMd = replaceSection(ensureHeading(newTeamMd, heading), heading, draftSection);
       sectionsWritten.push(heading.slice(3));
     } catch (e) {
       fail(
@@ -9978,6 +10044,12 @@ function handlePracticesPromote(args: string[]): void {
       );
       return;
     }
+  }
+  // A section written here that ends the file ends it with one newline, so an
+  // added section leaves no blank line at the end of the file.
+  const lastHeading = [...newTeamMd.matchAll(/^## ([^\n]*)$/gm)].at(-1)?.[1];
+  if (lastHeading !== undefined && sectionsWritten.includes(lastHeading)) {
+    newTeamMd = newTeamMd.replace(/\n+$/, "\n");
   }
 
   // Step 4b: Build new project-guardrails.md by appending, under the matching
@@ -9987,7 +10059,7 @@ function handlePracticesPromote(args: string[]): void {
   for (const [heading, kind] of [["## Mandated", "mandated"], ["## Forbidden", "forbidden"]] as const) {
     for (const rule of rulesToAdd[kind]) {
       try {
-        newGuardrailsMd = appendUnderHeading(newGuardrailsMd, heading, `- ${rule} (affirmed ${today})\n`);
+        newGuardrailsMd = appendUnderHeading(ensureHeading(newGuardrailsMd, heading), heading, `- ${rule} (affirmed ${today})\n`);
         rulesAppended[kind]++;
       } catch (e) {
         fail(`appendUnderHeading failed on ${heading.slice(3)}: ${errorMessage(e)}`);
@@ -10290,9 +10362,25 @@ function handleLookup(args: string[]): void {
       }
       break;
     }
+    case "source-changes": {
+      if (subArgs.length > 1) error("Usage: lookup source-changes [<unit>]");
+      const unit = subArgs[0] ?? null;
+      const pd = resolveProjectDir(projectDir);
+      if (unit !== null) {
+        const unitNameError = validateUnitName(unit);
+        if (unitNameError) error(unitNameError);
+        // A name that is no Unit of this work would be answered from the stage's start.
+        const dag = resolveBoltDag(pd);
+        if (dag.state === "ok" && !dag.units.includes(unit)) {
+          error(`No Unit named ${unit} in this work. Its Units: ${dag.units.join(", ")}.`);
+        }
+      }
+      console.log(JSON.stringify(sourceChangesSinceBuildStart(pd, unit)));
+      break;
+    }
     default:
       error(
-        `Unknown lookup subcommand: ${sub}. Valid: phase-of, next-stage, agent-for, number-of, stages-in-scope, first-in-phase, validate-stage, validate-phase`
+        `Unknown lookup subcommand: ${sub}. Valid: phase-of, next-stage, agent-for, number-of, stages-in-scope, first-in-phase, validate-stage, validate-phase, source-changes`
       );
   }
 }
@@ -10422,13 +10510,12 @@ function handleFork(args: string[]): void {
     const sha = sha256(mainContent);
 
     // Dedup BEFORE emit: if the slug is already in Bolt Refs, fail without
-    // emitting a phantom audit row. Recovery from a stale ref entry is the
-    // caller's responsibility (see SKILL.md Step 0.6 recovery seam — discard
-    // + re-fork is supported because the next fork sees the slug already
-    // present and exits without poisoning audit).
+    // emitting a phantom audit row. Neither merge nor worktree discard clears
+    // a stale entry (merge needs the slug's worktree), so the line names the
+    // hand edit only.
     const currentRefs = getField(mainContent, "Bolt Refs") ?? "";
     if (parseRefsList(currentRefs).includes(slug)) {
-      errorWithSlug(slug, `slug already in Bolt Refs (current: ${currentRefs.trim()}). If a prior fork failed mid-operation, run 'aidlc-worktree discard --slug ${slug}' and 'aidlc-state.ts merge --slug ${slug}' (which will exit "already merged" cleanly) or remove the stale entry from main state, then retry.`);
+      errorWithSlug(slug, `slug already in Bolt Refs (current: ${currentRefs.trim()}). If a prior fork failed mid-operation, remove the stale entry from main state, then retry.`);
     }
 
     // Append slug to main's Bolt Refs first (the side effect that "registers"

@@ -8,7 +8,8 @@
 // swarm referee consume the same contract.
 
 import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
-import { gitSubmoduleNames } from "./aidlc-git.ts";
+import { gitCommonDirOf, gitSubmoduleNames } from "./aidlc-git.ts";
+import { markdownBlocks, withoutCommentBlocks } from "./aidlc-markdown.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -20,6 +21,7 @@ import {
   activeIntentUuid,
   delegatedWorktreeIntent,
   decideFence,
+  fenceCheckName,
   aidlcOwnedSourceKey,
   isLinkTargetListingKey,
   attemptEventDefinitelyBefore,
@@ -130,9 +132,11 @@ import {
   UNBINDABLE_FINGERPRINT,
   PLAN_APPROVAL_ASK_TYPE,
   validateUnitName,
+  sourceChangedOutsideAidlc,
   visibleMarkdownLines,
   withActiveDirectiveLock,
   withAuditLock,
+  withRepoBaselineAdditions,
   workspaceSourceChangedPaths,
   workspaceSourceFailureSuffix,
   workspaceSourceFingerprint,
@@ -436,7 +440,9 @@ export function planSourceMovedNotice(paths: string[] | null, unit: string | nul
  * the resolver's validation error under both. After a real approval, a verified
  * lowered plan-approval fence also permits drift under a strict policy; this
  * changes execution provenance, never the recorded human approval. After
- * approval the paths leave AI-DLC's own files out (an update the person took).
+ * approval (`approved`, the receipt) the paths come from the source the person
+ * approved (approvedSourceListing) and leave AI-DLC's own files out (an update
+ * the person took).
  */
 function judgePlanSourceDrift(
   projectDir: string,
@@ -445,9 +451,13 @@ function judgePlanSourceDrift(
   current: WorkspaceSourceState | null,
   trace: boolean,
   loweredFence = false,
-  afterApproval = false,
+  approved: PlanApprovalRuntimeReceipt | null = null,
 ): { accepted: AcceptedChange } | { refusal: PlanApprovalSourceDriftError } {
-  const paths = workspaceSourceChangedPaths(projectDir, CODE_GENERATION_STAGE, recorded, current, afterApproval);
+  const afterApproval = approved !== null;
+  const start = approved !== null && current !== null ? approvedSourceListing(projectDir, approved, current) : null;
+  const paths = !afterApproval
+    ? workspaceSourceChangedPaths(projectDir, CODE_GENERATION_STAGE, recorded, current)
+    : start === null || current === null ? null : sourceChangedOutsideAidlc(projectDir, start, current.listing);
   const unbound = current === null;
   const resolution = trace ? governedChangeControl(projectDir) : resolveChangeControl(projectDir);
   // Once the human approved the plan, source that moved elsewhere is never a
@@ -479,17 +489,40 @@ function judgePlanSourceDrift(
   };
 }
 
-// Files moved since the approval, and every one of them is AI-DLC's own (an
-// update the person took): nothing of theirs changed, so the start records no
-// change and says nothing. Read from the listing kept for the approved source.
+// Files moved since the approval, and none of them is the person's: AI-DLC's
+// own (an update they took) or a repo's that joined the work since, as it was
+// when it joined. Nothing of theirs changed, so the start records no change and
+// says nothing. Read from the listing kept for the approved source.
 function onlyAidlcFilesMovedSinceApproval(
   projectDir: string,
-  certified: string,
+  receipt: PlanApprovalRuntimeReceipt,
   current: WorkspaceSourceState,
 ): boolean {
-  const moved = workspaceSourceChangedPaths(projectDir, CODE_GENERATION_STAGE, certified, current);
-  return moved !== null && moved.length > 0 &&
-    workspaceSourceChangedPaths(projectDir, CODE_GENERATION_STAGE, certified, current, true)?.length === 0;
+  const moved = workspaceSourceChangedPaths(projectDir, CODE_GENERATION_STAGE, receipt.certifiedSourceSha256, current);
+  const start = moved !== null && moved.length > 0 ? approvedSourceListing(projectDir, receipt, current) : null;
+  return start !== null && sourceChangedOutsideAidlc(projectDir, start, current.listing).length === 0;
+}
+
+// The listing kept for the source the person approved, under the current
+// boundary, with each repo that joined the work since that approval as it was
+// when it joined (withRepoBaselineAdditions, from the approval's row); as kept
+// when a joined repo's snapshot is not on this machine. Null when none was kept.
+function approvedSourceListing(
+  projectDir: string,
+  receipt: PlanApprovalRuntimeReceipt,
+  current: WorkspaceSourceState,
+): WorkspaceSourceListing | null {
+  const recorded = readWorkspaceSourceSnapshot(projectDir, CODE_GENERATION_STAGE, receipt.certifiedSourceSha256);
+  if (recorded === null) return null;
+  const rows = readAuditShardEvents(projectDir);
+  const approval = sortAttemptEvents(rows.filter((row) =>
+    (row.event === "PLAN_APPROVAL_RECORDED" || row.event === "PLAN_APPROVAL_SKIPPED") &&
+    auditBlockField(row.block, "Plan Target") === receipt.targetId &&
+    auditBlockField(row.block, "Approval Fingerprint") === receipt.fingerprint)).at(-1);
+  const joined = withRepoBaselineAdditions(
+    projectDir, CODE_GENERATION_STAGE, { state: "ready", listing: recorded }, rows, approval ?? null,
+  );
+  return recordedSourceListingUnderCurrentBoundary(joined.state === "ready" ? joined.listing : recorded, current.listing);
 }
 
 /** Keep the listing behind the current fingerprint so a later drift can name paths. */
@@ -562,6 +595,7 @@ const TESTABLE_LAYERS = [
   "Frontend behavior",
 ];
 const CONTRACT_HEADING = "## Testing Contract";
+const CONTRACT_BLOCK_RE = /```json[ \t]*\r?\n([\s\S]*?)\r?\n```/i;
 export const PLAN_APPROVAL_CHECKPOINT = "Code Generation Plan Approval";
 const CONTRACT_MARKER_RE =
   /^[ \t]*AIDLC-TESTING-CONTRACT[ \t]*:[ \t]*(sha256:[0-9a-f]{64})[ \t]*$/;
@@ -916,6 +950,45 @@ function visiblePostureText(section: string): string {
   return markdownWithoutHtmlComments(section).trim();
 }
 
+// What an approved plan's contract binds of a Testing Posture section: the
+// text as the agent is handed it (the stage's rules drop comment blocks the
+// same way, readRuleBundle), its spacing aside: no blank line at either end or
+// after another, and no trailing whitespace outside code and HTML blocks,
+// whose bytes stay as written. A comment inside a line is handed to the agent,
+// so it is bound; `shown` cuts it, for the notes a person reads.
+function postureAsHanded(section: string): { handed: string; shown: string } {
+  const text = withoutCommentBlocks(section.replace(/\r\n?/g, "\n"));
+  const blocks = markdownBlocks(text).lines;
+  const handed: string[] = [];
+  const shown: string[] = [];
+  text.split("\n").forEach((line, index) => {
+    const block = blocks[index];
+    if (block.kind === "blank") {
+      if (handed.length > 0 && handed.at(-1) !== "") {
+        handed.push("");
+        shown.push("");
+      }
+      return;
+    }
+    const asWritten = block.kind === "codeFenced" || block.kind === "codeIndented" || block.kind === "htmlFlow";
+    let visible = "";
+    let cursor = 0;
+    for (const span of block.invisible) {
+      if (span.kind !== "htmlComment") continue;
+      visible += line.slice(cursor, span.start);
+      cursor = span.end;
+    }
+    visible += line.slice(cursor);
+    handed.push(asWritten ? line : line.trimEnd());
+    shown.push(asWritten ? visible : visible.trimEnd());
+  });
+  while (handed.at(-1) === "") {
+    handed.pop();
+    shown.pop();
+  }
+  return { handed: handed.join("\n"), shown: shown.join("\n") };
+}
+
 function classifiablePostureText(section: string): string {
   const lines = markdownWithoutHtmlComments(section).split("\n");
   const structuralLines = structuralMarkdownLines(section);
@@ -939,9 +1012,9 @@ function classifiablePostureText(section: string): string {
 }
 
 // Find the real Testing Posture section while ignoring headings hidden inside
-// HTML comments or fenced examples. Return the original raw lines so comments
-// and fences remain part of input_sha256 even though classification uses the
-// visible projection above.
+// HTML comments or fenced examples. Return the original raw lines: the earlier
+// contract reading hashes them as they are, and postureAsHanded reads its own
+// form from them.
 function extractTestingPostureSection(content: string): string {
   const rawLines = content.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").split("\n");
   const visibleLines = structuralMarkdownLines(content);
@@ -1185,6 +1258,12 @@ export function buildPlanProfile(
   };
 }
 
+/**
+ * The Testing Contract for these sections. `read` "raw" is the reading a plan
+ * approved on v2.11.4 or a preview since carries (the raw section text hashed,
+ * the notes cut by visiblePostureText), kept byte for byte so that approval is
+ * checked the way it was given (testingContractCurrent).
+ */
 export function resolveTestingPostureFromSections(
   sections: TestingPostureSections,
   options: {
@@ -1192,6 +1271,7 @@ export function resolveTestingPostureFromSections(
     testStrategy: TestStrategy;
     projectType: ProjectType;
   },
+  read: "as-handed" | "raw" = "as-handed",
 ): TestingPostureContract {
   const classified = {
     org: classifyPosture(sections.org ?? ""),
@@ -1226,17 +1306,21 @@ export function resolveTestingPostureFromSections(
                 components: ["test-after" as const],
               },
             };
-  const applicableNotes = (["org", "team", "project"] as const)
-    .map((layer) => ({
-      layer,
-      text: visiblePostureText(sections[layer] ?? ""),
-    }))
+  const layers = (["org", "team", "project"] as const).map((layer) => {
+    const section = sections[layer] ?? "";
+    if (read === "raw") return { layer, bound: section, shown: visiblePostureText(section) };
+    const { handed, shown } = postureAsHanded(section);
+    return { layer, bound: handed, shown };
+  });
+  const applicableNotes = layers
+    .map(({ layer, shown }) => ({ layer, text: shown }))
     .filter((entry) => entry.text.length > 0);
+  const bound = Object.fromEntries(layers.map(({ layer, bound }) => [layer, bound]));
   const input = {
     sections: {
-      org: sections.org ?? "",
-      team: sections.team ?? "",
-      project: sections.project ?? "",
+      org: bound.org,
+      team: bound.team,
+      project: bound.project,
     },
     scope: options.scope,
     test_strategy: options.testStrategy,
@@ -1276,6 +1360,7 @@ export function setTestingPostureRoute(isolatedTestStrategy: string | null): voi
 
 export function resolveTestingPosture(
   projectDir: string,
+  read: "as-handed" | "raw" = "as-handed",
 ): TestingPostureContract {
   const space = resolveWorkflowSelection(projectDir).space;
   const memoryDir = join(projectDir, "aidlc", "spaces", space, "memory");
@@ -1302,7 +1387,7 @@ export function resolveTestingPosture(
         getField(state, "Test Strategy") ?? "standard",
     ),
     projectType: normalizeProjectType(getField(state, "Project Type") ?? "greenfield"),
-  });
+  }, read);
 }
 
 export function renderTestingContract(contract: TestingPostureContract): string {
@@ -1323,6 +1408,7 @@ export function renderTestingContract(contract: TestingPostureContract): string 
 export function replaceTestingContractSection(
   plan: string,
   contract: TestingPostureContract,
+  keep = false,
 ): string | null {
   const crlf = plan.includes("\r\n");
   const lines = plan.replace(/\r\n/g, "\n").split("\n");
@@ -1348,9 +1434,36 @@ export function replaceTestingContractSection(
   if (start < 0) return null;
   const before = lines.slice(0, start).join("\n").replace(/\n+$/, "");
   const after = lines.slice(end).join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
-  const rendered = renderTestingContract(contract).replace(/\n+$/, "");
+  // `keep`, after the person's own edit: the words they wrote in the section
+  // stay, after the block; only the block is the engine's.
+  const kept = keep
+    ? lines.slice(start + 1, end).join("\n").replace(CONTRACT_BLOCK_RE, "").replace(/\n{3,}/g, "\n\n").trim()
+    : "";
+  const rendered = `${renderTestingContract(contract).replace(/\n+$/, "")}${kept ? `\n\n${kept}` : ""}`;
   const text = `${before}${before ? "\n\n" : ""}${rendered}\n${after ? `\n${after}\n` : ""}`;
   return crlf ? text.replace(/\n/g, "\r\n") : text;
+}
+
+// A heading or a plan step: lines the plan owns, never written over.
+const PLAN_OWN_LINE_RE = /^[ \t]*(?:#{1,6}[ \t]|(?:[-*+]|\d+[.)])[ \t]+\[[ xX-]\])/m;
+
+/**
+ * The plan with this contract's block as its `## Testing Contract` section, the
+ * section added at the end of a plan that has none; null when the result would
+ * not read back as this contract. The section is the block's, so what an agent
+ * wrote there instead (a summary of the contract) is written over; a heading or
+ * a plan step in it is not (a block whose closing fence is gone runs the
+ * section on over the plan's own lines), nor a plan that did not read as UTF-8
+ * text (a UTF-16 or ANSI file), which writing back would garble.
+ */
+export function planWithTestingContract(plan: string, contract: TestingPostureContract, keep = false): string | null {
+  if (plan.includes("\uFFFD") || plan.includes("\u0000") || PLAN_OWN_LINE_RE.test(rawMarkdownSection(plan, CONTRACT_HEADING))) {
+    return null;
+  }
+  const written = replaceTestingContractSection(plan, contract, keep) ??
+    replaceTestingContractSection(`${plan}\n\n${CONTRACT_HEADING}\n`, contract);
+  const read = written === null ? null : readTestingContract(written);
+  return read !== null && "contract" in read && read.contract.contract_sha256 === contract.contract_sha256 ? written : null;
 }
 
 function rawMarkdownSection(content: string, heading: string): string {
@@ -1385,7 +1498,7 @@ export function readTestingContract(
   plan: string,
 ): { contract: TestingPostureContract } | { defect: TestingContractDefect; detail?: string } {
   const section = rawMarkdownSection(plan, CONTRACT_HEADING);
-  const match = section.match(/```json[ \t]*\r?\n([\s\S]*?)\r?\n```/i);
+  const match = section.match(CONTRACT_BLOCK_RE);
   if (!match) return { defect: "missing" };
   let parsed: TestingPostureContract;
   try {
@@ -1444,6 +1557,22 @@ export function testingContractDefectMessage(
 function testingContractDefectReason(plan: string): string | null {
   const read = readTestingContract(plan);
   return "defect" in read ? testingContractDefectMessage(read.defect) : null;
+}
+
+/**
+ * Whether a plan's Testing Contract is the one in force: the one owner of that
+ * rule, every reader calls it. A plan approved before the contract was read as
+ * handed carries the raw reading's hash; it is in force while that reading of
+ * the memory is the same now, byte for byte, and only then.
+ */
+export function testingContractCurrent(
+  projectDir: string,
+  embedded: TestingPostureContract | null,
+  current: TestingPostureContract = resolveTestingPosture(projectDir),
+): boolean {
+  if (embedded === null) return false;
+  if (embedded.contract_sha256 === current.contract_sha256) return true;
+  return embedded.contract_sha256 === resolveTestingPosture(projectDir, "raw").contract_sha256;
 }
 
 /** Hash validity alone does not make a contract executable. */
@@ -1913,6 +2042,27 @@ function changedSteps(before: string[], after: string[]): string {
   return others > 0 ? `${what}, and ${others} more ${others === 1 ? "step" : "steps"} changed` : what;
 }
 
+const lf = (text: string) => text.replace(/\r\n/g, "\n");
+
+/**
+ * What changed since the approval, in the change line's words, or null when
+ * nothing did: the plan's steps (with the test instructions when they changed
+ * too), or the test instructions alone. The person's line and the reviewer's
+ * both say it from here.
+ */
+function approvedPlanChange(
+  copy: ApprovedPlanCopy,
+  plan: string,
+  instructions: string,
+): { plan: boolean; what: string } | null {
+  const planChanged = projectPlanApprovalContent(plan) !== projectPlanApprovalContent(copy.plan);
+  const instructionsChanged = lf(instructions) !== lf(copy.instructions);
+  if (!planChanged && !instructionsChanged) return null;
+  if (!planChanged) return { plan: false, what: "the test instructions changed" };
+  const steps = changedSteps(planSteps(copy.plan).map((step) => step.text), planSteps(plan).map((step) => step.text));
+  return { plan: true, what: `${steps}${instructionsChanged ? ", and the test instructions changed too" : ""}` };
+}
+
 export function approvedPlanChangeText(
   copy: ApprovedPlanCopy,
   plan: string,
@@ -1920,18 +2070,14 @@ export function approvedPlanChangeText(
   planAsked = false,
   built = false,
 ): string | null {
-  const planChanged = projectPlanApprovalContent(plan) !== projectPlanApprovalContent(copy.plan);
-  const lf = (text: string) => text.replace(/\r\n/g, "\n");
-  const instructionsChanged = lf(instructions) !== lf(copy.instructions);
-  if (!planChanged && !instructionsChanged) return null;
+  const change = approvedPlanChange(copy, plan, instructions);
+  if (change === null) return null;
   const wayBack = built
     ? planAsked ? APPROVED_PLAN_REBUILD_OFFER : APPROVED_PLAN_REBUILD_QUESTION
     : planAsked ? APPROVED_PLAN_UNDO_OFFER : APPROVED_PLAN_UNDO_QUESTION;
   const when = built ? "after the build started" : "before the build";
-  if (!planChanged) return `Your approved test instructions changed ${when}. ${wayBack}`;
-  const what = changedSteps(planSteps(copy.plan).map((step) => step.text), planSteps(plan).map((step) => step.text));
-  return `Your approved plan changed ${when}: ${what}${instructionsChanged ? ", and the test instructions changed too" : ""}. ` +
-    wayBack;
+  if (!change.plan) return `Your approved test instructions changed ${when}. ${wayBack}`;
+  return `Your approved plan changed ${when}: ${change.what}. ${wayBack}`;
 }
 
 /**
@@ -2003,6 +2149,42 @@ export function approvedPlanChangeLine(
       planAsked,
       approved.built,
     );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The line a Code Generation review's brief carries when the plan the person
+ * approved changed after that approval and was built without asking them again,
+ * or null. A reviewer handed the plan-approval record beside a plan that says
+ * more read the difference as a missing approval and asked the person for one
+ * their setting does not ask for (a live run under Guard Policy off). Whether
+ * the changed plan was asked about again is the plan re-approval check's own
+ * decision (codeGenerationPlanApprovalFence), not the policy word: a check the
+ * person switched on asks again under off, and one switched off does not under
+ * strict. The record file is named only while it is still that approval's
+ * (the copy is replaced at every approval, so it is never "the first").
+ */
+export function approvedPlanChangeReviewLine(projectDir: string, target: CodeGenerationTarget): string | null {
+  try {
+    const authority = resolveCodeGenerationAuthority(projectDir, target);
+    const approved = approvedCopyForAttempt(projectDir, authority);
+    if (approved === null) return null;
+    const change = approvedPlanChange(
+      approved.copy,
+      readFileSync(join(authority.stageDir, "code-generation-plan.md"), "utf-8"),
+      readFileSync(join(authority.stageDir, "unit-test-instructions.md"), "utf-8"),
+    );
+    if (change === null || codeGenerationPlanApprovalFence(projectDir, target).decision !== "stand-aside") return null;
+    const questionsPath = join(authority.stageDir, "code-generation-questions.md");
+    const record = existsSync(questionsPath) && lf(readFileSync(questionsPath, "utf-8")) === lf(approved.copy.questions)
+      ? `: \`${toPosix(relative(projectDir, questionsPath))}\` is the record of that approval, with the summary of the ` +
+        "plan as they approved it."
+      : ".";
+    return `The person approved this code plan, and what they approved changed after that: ${change.what}. ` +
+      `The ${fenceCheckName("plan-approval")} check is off for this piece of work, so they were not asked again, ` +
+      `and their earlier approval stays the record${record}`;
   } catch {
     return null;
   }
@@ -2528,7 +2710,11 @@ function latestPlanApproval(body: string): {
   answer: string | null;
   answerLine: number | null;
   fingerprint: string | null;
+  fingerprintLine: number | null;
   plannedSource: string | null;
+  plannedSourceLine: number | null;
+  malformedFingerprintLine: number | null;
+  malformedPlannedSourceLine: number | null;
 } {
   let inPlanApproval = false;
   let awaitingNumberedQuestionText = false;
@@ -2536,7 +2722,13 @@ function latestPlanApproval(body: string): {
   let latestAnswer: string | null = null;
   let latestAnswerLine: number | null = null;
   let latestFingerprint: string | null = null;
+  let latestFingerprintLine: number | null = null;
   let latestPlannedSource: string | null = null;
+  let latestPlannedSourceLine: number | null = null;
+  // A tag line in the section whose value is not one the tag takes (a pasted
+  // placeholder): never read, only where a writer puts the real value.
+  let malformedFingerprintLine: number | null = null;
+  let malformedPlannedSourceLine: number | null = null;
   // The heading depth that opened the section. A section runs until a heading
   // at the same depth or shallower, which is how a Markdown section ends;
   // a deeper heading is a subsection of it. Closing on ANY heading let a
@@ -2560,7 +2752,11 @@ function latestPlanApproval(body: string): {
     latestAnswer = null;
     latestAnswerLine = null;
     latestFingerprint = null;
+    latestFingerprintLine = null;
     latestPlannedSource = null;
+    latestPlannedSourceLine = null;
+    malformedFingerprintLine = null;
+    malformedPlannedSourceLine = null;
   };
 
   const visible = visibleMarkdownLines(body);
@@ -2608,10 +2804,16 @@ function latestPlanApproval(body: string): {
     const fingerprint = line.match(FINGERPRINT_TAG_RE);
     if (fingerprint && !(inSubsection && latestFingerprint !== null)) {
       latestFingerprint = fingerprint[1] ?? null;
+      latestFingerprintLine = index;
+    } else if (!fingerprint && malformedFingerprintLine === null && /^\[Approval Fingerprint\]:/.test(line)) {
+      malformedFingerprintLine = index;
     }
     const plannedSource = line.match(PLANNED_SOURCE_TAG_RE);
     if (plannedSource && !(inSubsection && latestPlannedSource !== null)) {
       latestPlannedSource = plannedSource[1] ?? null;
+      latestPlannedSourceLine = index;
+    } else if (!plannedSource && malformedPlannedSourceLine === null && /^\[Planned Source\]:/.test(line)) {
+      malformedPlannedSourceLine = index;
     }
   }
   return {
@@ -2619,7 +2821,11 @@ function latestPlanApproval(body: string): {
     answer: latestAnswer,
     answerLine: latestAnswerLine,
     fingerprint: latestFingerprint,
+    fingerprintLine: latestFingerprintLine,
     plannedSource: latestPlannedSource,
+    plannedSourceLine: latestPlannedSourceLine,
+    malformedFingerprintLine,
+    malformedPlannedSourceLine,
   };
 }
 
@@ -2638,6 +2844,48 @@ export function questionsFileApprovalFingerprint(body: string): string | null {
 
 export function questionsFilePlannedSource(body: string): string | null {
   return latestPlanApproval(body).plannedSource;
+}
+
+/** The latest Plan Approval section's `[Answer]:` value as the readers above take it, or null when it has none. */
+export function questionsFilePlanApprovalAnswer(body: string): string | null {
+  return latestPlanApproval(body).answer;
+}
+
+/**
+ * The questions file with the latest Plan Approval section's two tags set to
+ * these values, for a writer that cannot run the fingerprint command: each on
+ * the line the readers above take it from, else on the section's tag line whose
+ * value they do not take (a pasted placeholder), else on a line of its own
+ * before that section's `[Answer]:`. Throws when the section has no `[Answer]:`
+ * or the result does not read back as these values.
+ */
+export function withPlanApprovalTags(body: string, fingerprint: string, plannedSource: string): string {
+  const latest = latestPlanApproval(body);
+  if (!latest.found || latest.answerLine === null) {
+    throw new Error("code-generation-questions.md has no Plan Approval section with an [Answer]: line to tag");
+  }
+  // The lines as the reader counts them (a lone CR ends a line too), each
+  // kept with its own line end; an added tag takes the answer line's.
+  const lines = body.split(/\r\n|\r|\n/);
+  const ends = body.match(/\r\n|\r|\n/g) ?? [];
+  const eol = ends[latest.answerLine] ?? ends[latest.answerLine - 1] ?? "\n";
+  const missing: string[] = [];
+  const fingerprintTag = `[Approval Fingerprint]: ${fingerprint}`;
+  const plannedSourceTag = `[Planned Source]: ${plannedSource}`;
+  const fingerprintLine = latest.fingerprintLine ?? latest.malformedFingerprintLine;
+  const plannedSourceLine = latest.plannedSourceLine ?? latest.malformedPlannedSourceLine;
+  if (fingerprintLine === null) missing.push(fingerprintTag);
+  else lines[fingerprintLine] = fingerprintTag;
+  if (plannedSourceLine === null) missing.push(plannedSourceTag);
+  else lines[plannedSourceLine] = plannedSourceTag;
+  lines.splice(latest.answerLine, 0, ...missing);
+  ends.splice(latest.answerLine, 0, ...missing.map(() => eol));
+  const written = lines.map((line, index) => line + (ends[index] ?? "")).join("");
+  const read = latestPlanApproval(written);
+  if (read.fingerprint !== fingerprint || read.plannedSource !== plannedSource) {
+    throw new Error("the Plan Approval tags written to code-generation-questions.md do not read back");
+  }
+  return written;
 }
 
 /**
@@ -3126,7 +3374,43 @@ function planApprovalReceiptFor(
   authority: CodeGenerationAuthority,
   key: PlanApprovalReceiptKey,
 ): PlanApprovalRuntimeReceipt | null {
-  return readPlanApprovalReceipt(projectDir, key) ?? committedPlanApproval(projectDir, authority, key);
+  const receipt = readPlanApprovalReceipt(projectDir, key);
+  if (skipNoLongerStands(projectDir, authority, receipt)) return null;
+  return receipt ?? committedPlanApproval(projectDir, authority, key);
+}
+
+// The plan-approval setting, from its one owner (resolvePlanApprovalSetting in
+// aidlc-guard-switch.ts). This file may not import it: a tool the agent runs that
+// names that module is refused by the runtime-integrity guard (HOOK_MODULE). The
+// router module (aidlc-plan-approval-ask.ts) hands it in as it loads, so `next`,
+// the hooks and every tool that loads the router judge by it. Unset (this CLI
+// on its own, usually), a plan built without asking stands on its record alone.
+let planApprovalOffFor: ((projectDir: string) => boolean) | null = null;
+
+export function readPlanApprovalSettingWith(planApprovalOff: (projectDir: string) => boolean): void {
+  planApprovalOffFor = planApprovalOff;
+}
+
+// The engine's record that plan approval off built a plan without asking stands,
+// until that plan's build starts, only while plan approval is still off and the
+// questions file is still the record it wrote. Turned on, nobody approved the
+// plan, so `next` asks; once the plan question is shown (plan approval turned on,
+// or the person asked to review it), their answer decides, and plan approval
+// turned off again records the skip afresh. A setting or file that cannot be
+// read keeps the plan stop, as the router does.
+function skipNoLongerStands(
+  projectDir: string,
+  authority: CodeGenerationAuthority,
+  receipt: PlanApprovalRuntimeReceipt | null,
+): boolean {
+  if (receipt?.skipped === undefined || receipt.status === "generation") return false;
+  try {
+    if (planApprovalOffFor !== null && !planApprovalOffFor(projectDir)) return true;
+    const path = join(authority.stageDir, "code-generation-questions.md");
+    return !existsSync(path) || planApprovalPromptSha256(readFileSync(path, "utf-8")) !== receipt.promptSha256;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -3141,12 +3425,19 @@ export const REVIEW_TESTING_CONTRACT_FIELD = "Testing Contract";
 
 /**
  * The Testing Contract in force for a Code Generation review being recorded:
- * the boundary that says the build it reviews was finished under it. Null when
- * the posture cannot be read, so the row carries no boundary.
+ * the boundary that says the build it reviews was finished under it. The
+ * plan's own contract while it is in force, so a plan approved before the
+ * update names the contract reviewedUnderContract compares; null when the
+ * posture cannot be read, so the row carries no boundary.
  */
-export function reviewedTestingContract(projectDir: string): string | null {
+export function reviewedTestingContract(projectDir: string, unit: string | null = null): string | null {
   try {
-    return resolveTestingPosture(projectDir).contract_sha256;
+    const current = resolveTestingPosture(projectDir);
+    const planPath = join(codeGenerationRecordDir(projectDir, unit), "code-generation-plan.md");
+    const embedded = existsSync(planPath) ? parseTestingContract(readFileSync(planPath, "utf-8")) : null;
+    return embedded !== null && testingContractCurrent(projectDir, embedded, current)
+      ? embedded.contract_sha256
+      : current.contract_sha256;
   } catch {
     return null;
   }
@@ -3276,16 +3567,14 @@ function codeGenerationApprovalArtifacts(
   // approval whose receipt went missing or whose attempt moved on still reads
   // as approved and is checked as one. The label on the file's `[Answer]:`
   // line, the person's own words included, decides nothing.
-  const approvedAnswer = recordedFingerprint !== null && (readPlanApprovalReceipt(projectDir, {
+  const receipt = recordedFingerprint === null ? null : readPlanApprovalReceipt(projectDir, {
     targetId: authority.targetId, runFloor: authority.runFloor, fingerprint: recordedFingerprint,
-  })?.choice === "Approve Plan" || planApprovedOnRecord(projectDir, authority.targetId, recordedFingerprint));
+  });
+  const approvedAnswer = recordedFingerprint !== null && !skipNoLongerStands(projectDir, authority, receipt) &&
+    (receipt?.choice === "Approve Plan" || planApprovedOnRecord(projectDir, authority.targetId, recordedFingerprint));
   const embedded = planExists ? parseTestingContract(plan) : null;
-  const current = planExists ? resolveTestingPosture(contractProjectDir) : null;
   const contractHash = embedded?.contract_sha256 ?? null;
-  const contractValid =
-    embedded !== null &&
-    current !== null &&
-    embedded.contract_sha256 === current.contract_sha256;
+  const contractValid = planExists && testingContractCurrent(contractProjectDir, embedded);
   // A delegated approval (validateWorktreeDelegation) reads the parent's
   // contract while the review rows here are the worker checkout's, so the
   // exception is not read for it; handleReview records none in a swarm worker.
@@ -3469,10 +3758,10 @@ function continuationMaterial(
     if (current === null) return { artifacts };
     if (
       !sameWorkspaceSource(receipt.certifiedSourceSha256, current.fingerprint) &&
-      !onlyAidlcFilesMovedSinceApproval(projectDir, receipt.certifiedSourceSha256, current)
+      !onlyAidlcFilesMovedSinceApproval(projectDir, receipt, current)
     ) {
       const judged = judgePlanSourceDrift(
-        projectDir, authority.unit, receipt.certifiedSourceSha256, current, false, true, true,
+        projectDir, authority.unit, receipt.certifiedSourceSha256, current, false, true, receipt,
       );
       if ("refusal" in judged) return null;
       sourceChange = judged.accepted;
@@ -5036,6 +5325,12 @@ function worktreeApprovalGit(cwd: string, args: string[]): string {
   return result.stdout.trim();
 }
 
+function worktreeApprovalCommonDir(cwd: string): string {
+  const dirs = gitCommonDirOf(cwd);
+  if (!dirs.ok) throw new Error(`Worktree approval Git operation refused: ${dirs.stderr || "rev-parse --git-common-dir"}`);
+  return dirs.common;
+}
+
 function approvalPathKey(path: string): string {
   const canonical = realpathSync(path).replaceAll("\\", "/");
   return process.platform === "win32" ? canonical.toLowerCase() : canonical;
@@ -5073,8 +5368,8 @@ function approvalWorktreeProvenance(parentDir: string, childDir: string, unit: s
   ));
   const creation = creations.length === 1 ? creations[0] : null;
   if (unreadable.length || !creation) throw new Error("Worktree creation authority is unavailable or ambiguous.");
-  const common = approvalPathKey(resolve(repo.cwd, worktreeApprovalGit(repo.cwd, ["rev-parse", "--git-common-dir"])));
-  const childCommon = approvalPathKey(resolve(child, worktreeApprovalGit(child, ["rev-parse", "--git-common-dir"])));
+  const common = approvalPathKey(worktreeApprovalCommonDir(repo.cwd));
+  const childCommon = approvalPathKey(worktreeApprovalCommonDir(child));
   const commonHash = createHash("sha256").update(common).digest("hex");
   const recordedPath = auditBlockField(creation.block, "Worktree path");
   const floor = latestMainWorkflowStageRunFloorForProject(parent, CODE_GENERATION_STAGE);
@@ -5360,10 +5655,8 @@ function approvedWorktreeSource(
     approved.receipt.skipped === undefined &&
     !sameWorkspaceSource(certified, parentSource.fingerprint) &&
     !guardPolicyAcceptsChanges(parent);
-  const recorded = held ? readWorkspaceSourceSnapshot(parent, CODE_GENERATION_STAGE, certified) : null;
-  const changed = recorded === null ? null : swarmSourceChanged(
-    parent, recordedSourceListingUnderCurrentBoundary(recorded, parentSource.listing), parentSource.listing,
-  );
+  const recorded = held ? approvedSourceListing(parent, approved.receipt, parentSource) : null;
+  const changed = recorded === null ? null : swarmSourceChanged(parent, recorded, parentSource.listing);
   if (
     held &&
     changed?.length !== 0 &&
@@ -6010,10 +6303,11 @@ function publishCodeGenerationStart(
   const moved = !sameWorkspaceSource(receipt.certifiedSourceSha256, sourceBefore);
   if (
     moved && stateBefore !== null &&
-    onlyAidlcFilesMovedSinceApproval(projectDir, receipt.certifiedSourceSha256, stateBefore)
+    onlyAidlcFilesMovedSinceApproval(projectDir, receipt, stateBefore)
   ) {
-    // An AI-DLC update the person took moved only AI-DLC's own files: no change
-    // to record or say. The source certified below keeps its listing.
+    // Nothing of the person's moved (an AI-DLC update they took, or a repo that
+    // joined or left the work since): no change to record or say. The source
+    // certified below keeps its listing.
     keepWorkspaceSourceSnapshot(projectDir, stateBefore);
   } else if (moved) {
     // A raised strict fence refuses and KEEPS the receipt: deleting the human's recorded
@@ -6029,7 +6323,7 @@ function publishCodeGenerationStart(
       stateBefore,
       true,
       continuation !== null,
-      true,
+      receipt,
     );
     if ("refusal" in judged) throw judged.refusal;
     const recordedNotices = recordAcceptedChanges(projectDir, [judged.accepted]);
@@ -6266,11 +6560,7 @@ export function main(argv: string[]): void {
         // Regenerating changes nothing approved: the same plan in the same
         // attempt prints the fingerprint its approval already binds.
         const embedded = parseTestingContract(plan);
-        const current = resolveTestingPosture(projectDir);
-        if (
-          !embedded ||
-          embedded.contract_sha256 !== current.contract_sha256
-        ) {
+        if (embedded === null || !testingContractCurrent(projectDir, embedded)) {
           throw new Error(
             approval.reason ||
               "plan Testing Contract does not match the current effective posture",
@@ -6288,7 +6578,7 @@ export function main(argv: string[]): void {
         const fingerprint = approvalFingerprint(
           plan,
           instructions,
-          current.contract_sha256,
+          embedded.contract_sha256,
           authority,
         );
         console.log(`[Approval Fingerprint]: ${fingerprint}`);

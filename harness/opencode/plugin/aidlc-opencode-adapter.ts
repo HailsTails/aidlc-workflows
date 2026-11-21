@@ -57,10 +57,14 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 // emit.ts points this at the projected .aidlc/tools/ copy.
 import { windowsScriptLaunch } from "../../../core/tools/aidlc-executable-path.ts";
+import { patchTargets } from "../../../core/hooks/review-freeze-command.ts";
+// The plugin sync's own reading of its record and of a file's fingerprint.
+import { PLUGIN_OWNERSHIP_FILE, parseOwnership } from "../../../core/tools/aidlc-plugin-rules.ts";
+import { recordedDigestMatches } from "../../../core/tools/aidlc-review-manifest.ts";
 
 const PROJECTED_INVOKE = "{{INVOKE}}";
 const TRUSTED_NAMESPACE = "{{TRUSTED_NAMESPACE}}";
@@ -150,6 +154,23 @@ function showTypedCommand(parts: ChatPart[], args: string): string {
   return typed;
 }
 
+// The human-turn hook's first-step note for a long /aidlc line AI-DLC kept
+// whole (its firstStepNote key, printed only because this adapter asked), at
+// the end of the command's own template: the part showTypedCommand marked for
+// the model, so the person's view of their message is unchanged and the agent
+// runs `next` with nothing after it instead of writing the words to a file.
+function addFirstStepNote(parts: ChatPart[], hookStdout: string): void {
+  let note: unknown;
+  try {
+    note = (JSON.parse(hookStdout) as { firstStepNote?: unknown }).firstStepNote;
+  } catch {
+    return;
+  }
+  const template = parts.findLast((part) => part.type === "text" && part.synthetic === true);
+  if (typeof note !== "string" || note === "" || template === undefined) return;
+  template.text = `${template.text ?? ""}\n\n${note}`;
+}
+
 export type PluginInput = {
   client: {
     session: {
@@ -191,6 +212,42 @@ const shippedAidlcEntrypoints: ReadonlySet<string> = new Set<string>(
 const PROJECTED_BUN_TOOLS = DEFAULT_AIDLC_COMMAND[0] === "bun"
   ? (DEFAULT_AIDLC_COMMAND[1] ?? "").replace(/aidlc\.ts$/, "")
   : null;
+
+const PROJECTED_HARNESS_DIR = PROJECTED_BUN_TOOLS?.split("/")[0] ?? null;
+
+// "changed" carries the plugin whose record lists the file.
+type PluginSyncEntry = "written" | "unrecorded" | { changed: string };
+
+// Whether an entrypoint is a file a plugin sync installed and nobody changed
+// since, decided as the sync decides it: any record that lists the path with a
+// digest naming the file admits it; a listed file that cannot be read is not
+// installed.
+function pluginSyncEntry(
+  projectDir: string,
+  entrypoint: string,
+): PluginSyncEntry {
+  if (PROJECTED_HARNESS_DIR === null) return "unrecorded";
+  const recordedPath = `${PROJECTED_HARNESS_DIR}/${entrypoint}`;
+  const dataDir = join(projectDir, PROJECTED_HARNESS_DIR, "tools", "data");
+  const listed: Array<{ plugin: string; sha256: string }> = [];
+  try {
+    for (const name of readdirSync(dataDir)) {
+      const key = name.match(PLUGIN_OWNERSHIP_FILE)?.[1];
+      const record = key === undefined ? null : parseOwnership(join(dataDir, name));
+      if (record === null || record.name !== key) continue;
+      for (const file of record.files) {
+        if (file.path === recordedPath) listed.push({ plugin: record.name, sha256: file.sha256 });
+      }
+    }
+    if (listed.length === 0) return "unrecorded";
+    const target = join(projectDir, PROJECTED_HARNESS_DIR, entrypoint);
+    return listed.some((entry) => recordedDigestMatches(target, entry.sha256))
+      ? "written"
+      : { changed: listed[0].plugin };
+  } catch {
+    return "unrecorded";
+  }
+}
 
 // opencode runs bash-tool commands with its `shell` setting, else /bin/sh on
 // POSIX and COMSPEC (cmd.exe) on Windows. The boundary reads a command the way
@@ -426,6 +483,7 @@ function aidlcBashBoundaryViolation(
   command: string,
   allowedEntrypoints: ReadonlySet<string> = shippedAidlcEntrypoints,
   dialect: ShellDialect = "posix",
+  projectDir: string | null = null,
 ): string | null {
   if (/^aidlc(?:[ \t]|$)/.test(command)) {
     if (dialect === "strict") return UNKNOWN_SHELL;
@@ -449,18 +507,29 @@ function aidlcBashBoundaryViolation(
   if (dialect === "strict") return UNKNOWN_SHELL;
   const words = directShellWords(command, dialect);
   const target = words?.[1]?.match(AIDLC_ENTRYPOINT);
-  if (
-    words?.[0] === "bun" &&
-    target &&
-    allowedEntrypoints.has(`${target[1]}/${target[2]}`)
-  ) {
-    return null;
+  if (words?.[0] === "bun" && target) {
+    const entrypoint = `${target[1]}/${target[2]}`;
+    if (allowedEntrypoints.has(entrypoint)) return null;
+    if (projectDir !== null) {
+      const synced = pluginSyncEntry(projectDir, entrypoint);
+      if (synced === "written") return null;
+      // opencode keeps no list of plugins, so the sync is told the plugin's
+      // folder, in the placeholder syncCommand prints when it has none.
+      const sync = (plugin: string) =>
+        `\`${DEFAULT_AIDLC_COMMAND.join(" ")} plugin sync --plugin-root <${plugin}'s folder>\``;
+      return synced === "unrecorded"
+        ? `.aidlc/${entrypoint} is not an installed AI-DLC or plugin file, so it was not run. ` +
+            `Run a shipped tool, or run ${sync("plugin")} to install the plugin's tools.`
+        : `.aidlc/${entrypoint} has changed since the plugin sync installed it, so it was not run. ` +
+            `To keep the change, move the file somewhere else, then run ${sync(synced.changed)} again; ` +
+            "it puts the plugin's own version back.";
+    }
   }
   if (words === null && dialect === "cmd" && NEXT_COMMAND.test(command) && cmdCannotCarry(command)) {
     return CMD_REQUEST_REFUSAL;
   }
   return (
-    "AIDLC bash permission allows one direct invocation of a shipped tool or hook only. " +
+    "AIDLC bash permission allows one direct invocation of an .aidlc tool or hook only. " +
     "Use an unchanged .aidlc entrypoint without chaining, redirection, expansion, or command substitution."
   );
 }
@@ -472,14 +541,7 @@ function applyPatchPaths(args: Record<string, unknown>): string[] {
     (args.patch as string) ??
     (args.command as string) ??
     "";
-  const paths: string[] = [];
-  for (const match of patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) {
-    paths.push(match[1].trim());
-  }
-  for (const match of patch.matchAll(/^\*\*\* Move to: (.+)$/gm)) {
-    paths.push(match[1].trim());
-  }
-  return Array.from(new Set(paths.filter((p) => p.length > 0)));
+  return Array.from(new Set(patchTargets(patch).map((target) => target.path).filter((p) => p.length > 0)));
 }
 
 type ReviewerCall = {
@@ -749,15 +811,18 @@ async function createV1Adapter({
         // Retry on later human turns until an active workflow is available.
         if (sessionStartHandled(result.stdout)) started.add(input.sessionID);
       }
-      await runCore(
+      const recorded = await runCore(
         "aidlc-record-human-turn.ts",
         {
           hook_event_name: "UserPromptSubmit",
           session_id: input.sessionID,
           prompt: typed ?? said ?? "",
+          // The one line of this hook's that reaches opencode's agent, and only for a typed /aidlc.
+          ...(typed !== null ? { wants_first_step_note: true } : {}),
         },
         directory,
       );
+      if (typed !== null) addFirstStepNote(output.parts, recorded.stdout);
     },
 
     "command.execute.before": async (
@@ -834,7 +899,12 @@ async function createV1Adapter({
           : null;
       if (input.tool === "bash") {
         const command = (args.command as string) ?? "";
-        const violation = aidlcBashBoundaryViolation(command, aidlcEntrypoints, await currentShellDialect());
+        const violation = aidlcBashBoundaryViolation(
+          command,
+          aidlcEntrypoints,
+          await currentShellDialect(),
+          directory,
+        );
         if (violation) throw new Error(violation);
         // State-transition guard, parallel to the Claude/Kiro/Codex PreToolUse
         // wiring: runtime integrity, and a named worker's lifecycle and routing

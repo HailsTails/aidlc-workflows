@@ -118,6 +118,12 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
    says). The request remains unmatched while the reviewer runs, so the
    approval gate and completion stay blocked.
 
+   Every dispatch starts a new reviewer subagent, re-dispatches included.
+   Never continue a reviewer from an earlier dispatch (of this stage, another
+   stage, or another Unit) by sending it a message: it still holds its earlier
+   reviews, which undoes the independent judgment below and grows its context
+   with every stage.
+
    Pass:
    - The stage definition file path (`directive.stage_file`)
    - The Q&A file path (e.g., `<record>/<phase>/<stage>/<stage>-questions.md`)
@@ -407,6 +413,8 @@ Use only the subsection that matches the active harness.
 ### Claude Code
 
 If `directive.reviewer` is present, invoke the reviewer as a sub-agent (via `Task` targeting the reviewer agent).
+
+**Waiting for a reviewer in the background:** when Claude Code answers that it launched the reviewer in the background, run step 3's `--for review` wait at once. While it answers `waiting`, keep running it in the same turn rather than ending the turn for Claude Code's notice, unless that notice says the reviewer finished or stopped: a chat left idle past its prompt cache's lifetime (five minutes by default with API or cloud billing) loses that cache, and the next step then writes the whole conversation to it again. When the person writes meanwhile, stop waiting and re-run `next` first, as step 1 says.
 
 ---
 
