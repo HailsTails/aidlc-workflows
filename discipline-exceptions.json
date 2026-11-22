@@ -4,45 +4,6 @@
     {
       "kind": "authorised-location",
       "clause": "CD-19#import-boundaries",
-      "file": "lint/eslint-port.ts",
-      "reason": "The single port through which the lint layer reaches the eslint package.",
-      "whyChain": {
-        "whys": [
-          {
-            "why": "Why does lint/eslint-port.ts import the eslint package?",
-            "because": "The flat config modules and custom rules need ESLint's Linter and Rule types, and this file is the one place they take them from.",
-            "evidence": "lint/standards.ts, lint/no-comments.ts and eslint.config.ts import from lint/eslint-port.ts"
-          },
-          {
-            "why": "Why do the flat config modules and custom rules need ESLint's types?",
-            "because": "ESLint itself loads eslint.config.ts and calls each custom rule's create function, so their shapes are fixed by ESLint's plugin interface.",
-            "evidence": "Rule.RuleModule and Linter.Config in node_modules/eslint/lib/types/index.d.ts"
-          },
-          {
-            "why": "Why does ESLint's plugin interface fix those shapes rather than a type the repository owns?",
-            "because": "The repository chose ESLint as its lint gate when Biome was retired, and a gate's configuration is written in the host tool's own format.",
-            "evidence": "package.json devDependencies pin eslint 10.11.0 and no longer list @biomejs/biome"
-          },
-          {
-            "why": "Why was ESLint chosen as the lint gate when Biome was retired?",
-            "because": "The boundary rules need no-restricted-imports patterns and AST selectors per context, which ESLint's flat config expresses and Biome's configuration cannot.",
-            "evidence": "lint/restrictions.ts builds no-restricted-imports patterns and no-restricted-syntax selectors"
-          },
-          {
-            "why": "Why do the boundary rules need import patterns and AST selectors per context?",
-            "because": "The clean-architecture rebuild enforces the context map's dependency arrows mechanically, so every arrow becomes an import restriction checked on every file.",
-            "evidence": "lint/context-map.ts CONTEXT_MAP declares dependsOn for each context"
-          }
-        ],
-        "rootCause": "The rebuild enforces the context map's dependency arrows mechanically through ESLint, so ESLint is a dependency the lint layer wraps at one port.",
-        "rootCheck": "Read lint/context-map.ts and lint/restrictions.ts on 2026-11-08: CONTEXT_MAP still declares dependsOn arrows and srcImportRestrictions still turns them into no-restricted-imports patterns.",
-        "readback": "The rebuild enforces the context map's arrows mechanically through ESLint, therefore the boundary rules are ESLint patterns and selectors, therefore ESLint is the lint gate, therefore the config modules and rules need ESLint's types, therefore lint/eslint-port.ts imports the eslint package as their one port.",
-        "owner": "Lane G (Guardrails) in lanes.json"
-      }
-    },
-    {
-      "kind": "authorised-location",
-      "clause": "CD-19#import-boundaries",
       "file": "lint/node-builtins.ts",
       "reason": "The single port through which the lint layer reads the runtime's built-in module list.",
       "whyChain": {

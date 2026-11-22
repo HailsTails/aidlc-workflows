@@ -43,6 +43,7 @@
     "CD-1#explicit-any": "eslint",
     "CD-1#implicit-any-let": "eslint",
     "CD-2#cast-expressions": "audit",
+    "CD-2#non-null-assertions": "eslint",
     "CD-3#strict": "audit",
     "CD-3#no-unchecked-indexed-access": "audit",
     "CD-3#exact-optional-property-types": "audit",
