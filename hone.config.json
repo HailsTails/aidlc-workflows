@@ -1,0 +1,49 @@
+{
+  "version": 2,
+  "ruleSets": {},
+  "checks": {
+    "authored-class-or-this#class-keyword": "walker",
+    "authored-class-or-this#static-members-only": "not-run",
+    "default-on-a-closed-union#default-arm": "walker",
+    "drawer-path#drawer-names": "walker",
+    "loop-keyword#loop-statement": "walker",
+    "name-off-its-casing#filename-case": "not-run",
+    "outside-import-past-a-boundary#import-or-require": "walker",
+    "type-derived-from-code#factory-return-types": "walker",
+    "untracked-escape#directive-pointers": "walker"
+  },
+  "checkSettings": {
+    "outside-import-past-a-boundary#import-or-require": {
+      "confinedOutsideDependencies": [
+        "eslint",
+        "winston",
+        "winston-transport",
+        "better-sqlite3",
+        "pino",
+        "hono",
+        "@hono/node-server",
+        "jose",
+        "@modelcontextprotocol/sdk",
+        "zod-to-json-schema",
+        "uuid"
+      ]
+    },
+    "untracked-escape#directive-pointers": {
+      "trackerPatterns": [
+        "^\\(spec-\\d+\\)$"
+      ]
+    }
+  },
+  "exclude": [
+    ".github",
+    "assets",
+    "core",
+    "docs",
+    "harness",
+    "plugins/test-pro",
+    "scripts",
+    "tests",
+    "vitest.rin.config.ts",
+    "plugins/rin/tools/test-fixtures"
+  ]
+}
