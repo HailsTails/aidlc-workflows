@@ -1,0 +1,220 @@
+{
+  "version": 2,
+  "records": [
+    {
+      "answers": "outside-import-past-a-boundary#import-or-require",
+      "file": "lint/node-builtins.ts",
+      "carried": {
+        "kind": "authorised-location",
+        "clause": "CD-19#import-boundaries",
+        "file": "lint/node-builtins.ts",
+        "reason": "The single port through which the lint layer reads the runtime's built-in module list.",
+        "whyChain": {
+          "whys": [
+            {
+              "why": "Why does lint/node-builtins.ts import node:module?",
+              "because": "The node-import-protocol rule needs the runtime's list of built-in names to tell a bare built-in such as fs from a package.",
+              "evidence": "lint/node-import-protocol.ts builds BARE_BUILTINS from NODE_BUILTINS"
+            },
+            {
+              "why": "Why does the protocol rule need to tell a bare built-in from a package?",
+              "because": "A bare specifier like fs can be shadowed by an installed package of that name, while node:fs always resolves to the runtime, so the rule reports the unprefixed form.",
+              "evidence": "https://nodejs.org/api/esm.html#node-imports"
+            },
+            {
+              "why": "Why does the repository report the unprefixed form instead of allowing it?",
+              "because": "Biome's useNodejsImportProtocol enforced the prefix before ESLint replaced Biome, and the gate keeps a successor for every rule Biome enforced.",
+              "evidence": "lint/standards.ts registers aidlc/node-import-protocol beside lint/biome-successor.ts"
+            },
+            {
+              "why": "Why does the gate keep a successor for every rule Biome enforced?",
+              "because": "Retiring a rule without a successor would let debt-zone code regress silently while the ratchet still reads green.",
+              "evidence": "lint/boundary-baseline.json records counts per rule category for 1609 debt files"
+            },
+            {
+              "why": "Why would the ratchet read green while debt-zone code regresses?",
+              "because": "The baseline counts only findings of rules that run, so a rule that stops running drops its category to zero instead of failing.",
+              "evidence": "lint/gate/domain/violation-ratchet.ts increasesOver compares measured counts with recorded counts"
+            }
+          ],
+          "rootCause": "The baseline counts only rules that run, so the protocol rule must keep running, and it needs the built-in list that node:module holds.",
+          "rootCheck": "Read lint/gate/domain/violation-ratchet.ts on 2026-11-08: increasesOver reports only measured counts above recorded ones, so a category that stops running never fails.",
+          "readback": "The baseline counts only rules that run, therefore every Biome rule keeps a successor, therefore the protocol rule tells bare built-ins from packages, therefore it needs the runtime's built-in list, therefore lint/node-builtins.ts imports node:module.",
+          "owner": "Lane G (Guardrails) in lanes.json"
+        }
+      }
+    },
+    {
+      "answers": "outside-import-past-a-boundary#import-or-require",
+      "file": "lint/harness-folders.ts",
+      "carried": {
+        "kind": "authorised-location",
+        "clause": "CD-19#import-boundaries",
+        "file": "lint/harness-folders.ts",
+        "reason": "The single place the lint layer reads which harnesses exist, from the harness folders on disk.",
+        "whyChain": {
+          "whys": [
+            {
+              "why": "Why does lint/harness-folders.ts import node:fs and node:url?",
+              "because": "It lists the folders under harness/ and src/hosts/ when the lint config loads, and those folder names are the harness names the boundary rules refuse outside a host bundle.",
+              "evidence": "lint/restrictions.ts builds harnessName and harnessPath from HARNESS_FOLDER_NAMES"
+            },
+            {
+              "why": "Why are the harness names read from folder names rather than written in a list?",
+              "because": "A written list is a second copy of the harness set that drifts when a harness is added, so an eighth harness would need a lint edit to be guarded.",
+              "evidence": "lint/context-map.ts HARNESS_NAMES held 12 hand-written entries beside the 7 folders under harness/"
+            },
+            {
+              "why": "Why does a drifting copy of the harness set matter to the boundary rules?",
+              "because": "The rules refuse harness names in production code outside src/hosts, so a harness missing from the copy could be named anywhere without a finding.",
+              "evidence": "lint/boundaries.ts productionSyntax adds harnessNames to every non-fixture src layer"
+            },
+            {
+              "why": "Why must production code outside src/hosts never name a harness?",
+              "because": "Each harness difference belongs in a host bundle behind a port, so the contexts stay one implementation for every harness the method ships to.",
+              "evidence": "lint/context-map.ts HOST_BUNDLE_ROOT is src/hosts, and hostBundleImportRestrictions limits what a host imports"
+            },
+            {
+              "why": "Why do the contexts stay one implementation for every harness?",
+              "because": "The rebuild ships one hand-authored core to 7 harnesses, and per-harness branches in the core were the coupling the rebuild removes.",
+              "evidence": "AGENTS.md section AI-DLC: one core, many harnesses"
+            }
+          ],
+          "rootCause": "The rebuild keeps every harness difference in src/hosts, so the lint layer must know the real harness set, and the folders on disk are its only source.",
+          "rootCheck": "Listed harness/ on 2026-11-08: 7 folders (claude, codex, copilot, cursor, kiro, kiro-ide, opencode); src/hosts does not exist yet, and the reader returns no names for a missing folder.",
+          "readback": "The rebuild keeps harness differences in host bundles, therefore production code outside src/hosts names no harness, therefore the rules need the full harness set, therefore a written copy would drift, therefore lint/harness-folders.ts reads the harness folders through node:fs and node:url.",
+          "owner": "Lane G (Guardrails) in lanes.json"
+        }
+      }
+    },
+    {
+      "answers": "outside-import-past-a-boundary#import-or-require",
+      "file": "src/kernel/file-system.ts",
+      "carried": {
+        "kind": "authorised-location",
+        "clause": "CD-19#import-boundaries",
+        "file": "src/kernel/file-system.ts",
+        "reason": "The one implementer of the kernel FileSystem port: the single place the rebuild reaches the disk through node:fs/promises and node:url.",
+        "whyChain": {
+          "whys": [
+            {
+              "why": "Why does src/kernel/file-system.ts import node:fs/promises and node:url?",
+              "because": "createNodeFileSystem renders each URL natively and performs the reads and scratch writes that the FileSystem port declares.",
+              "evidence": "createNodeFileSystem and NodeFileLib in src/kernel/file-system.ts"
+            },
+            {
+              "why": "Why does createNodeFileSystem render each URL natively and perform the reads and scratch writes the FileSystem port declares?",
+              "because": "The port speaks only URLs and byte arrays, so the implementer maps them onto the runtime and no consumer needs a node: type.",
+              "evidence": "src/kernel/file-system-port.ts imports no node: module"
+            },
+            {
+              "why": "Why does the port speak only URLs and byte arrays so that no consumer needs a node: type?",
+              "because": "Consumers in domain and application stay pure, and a fake can stand in for the port.",
+              "evidence": "src/kernel/fixtures/file-system.fake.ts createInMemoryFileSystem"
+            },
+            {
+              "why": "Why must a fake stand in for the port so that consumers stay pure in domain and application?",
+              "because": "Their tests must not touch the real disk, and a second file importing node:fs would be a second way to reach it.",
+              "evidence": "src/kernel/file-system.test.ts imports no node: module"
+            },
+            {
+              "why": "Why must tests not touch the real disk when a second file importing node:fs would be a second way to reach it?",
+              "because": "The disk is one registered capability: one implementer, proven once against the real runtime by its hermetic test.",
+              "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+            }
+          ],
+          "rootCause": "The rebuild registers each real IO reach as one named implementer behind a port, so the disk is reached in file-system.ts alone.",
+          "rootCheck": "Read lint/implementers.json and the exception entries on 2026-11-09: file-system.ts is the only registered implementer of the file-system capability.",
+          "readback": "Every real IO reach is one named implementer, therefore the disk is reached through the FileSystem port, therefore file-system.ts alone imports node:fs/promises and node:url.",
+          "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+        }
+      }
+    },
+    {
+      "answers": "outside-import-past-a-boundary#import-or-require",
+      "file": "src/kernel/file-system.hermetic.test.ts",
+      "carried": {
+        "kind": "authorised-location",
+        "clause": "CD-19#import-boundaries",
+        "file": "src/kernel/file-system.hermetic.test.ts",
+        "reason": "The hermetic test of the file-system implementer: the only test that exercises the real runtime, in a scratch folder it creates and removes.",
+        "whyChain": {
+          "whys": [
+            {
+              "why": "Why does src/kernel/file-system.hermetic.test.ts import node:fs/promises, node:os, node:path and node:url?",
+              "because": "It creates and removes a scratch folder and checks createNodeFileSystem against the real runtime there.",
+              "evidence": "createNodeFileSystem in src/kernel/file-system.ts"
+            },
+            {
+              "why": "Why does it check createNodeFileSystem against the real runtime in a scratch folder it creates and removes?",
+              "because": "The seam tests use the fake, so only this test can show that the implementer behaves as its port says on the real runtime.",
+              "evidence": "src/kernel/file-system.test.ts imports no node: module"
+            },
+            {
+              "why": "Why can only this test show that the implementer behaves as its port says, when the seam tests use the fake?",
+              "because": "The fake is written from the port and not from the runtime, so it cannot reveal where the runtime differs.",
+              "evidence": "src/kernel/fixtures/file-system.fake.ts"
+            },
+            {
+              "why": "Why must the fake be written from the port and not from the runtime, if the runtime can differ?",
+              "because": "Consumers depend on the port alone, so the port is the contract and the implementer is held to it by one real-runtime proof.",
+              "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+            },
+            {
+              "why": "Why is the implementer held to the port by one real-runtime proof instead of many?",
+              "because": "One registered implementer per capability has one hermeticTest, so no other test imports a node: module.",
+              "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+            }
+          ],
+          "rootCause": "The registered file-system implementer is proven once against the real runtime, so its hermetic test alone may import node: modules.",
+          "rootCheck": "Read lint/implementers.json on 2026-11-09: the hermeticTest field names this file for the capability.",
+          "readback": "The implementer needs one real-runtime proof, therefore its hermetic test uses a scratch folder, therefore file-system.hermetic.test.ts imports the node: modules and no other test does.",
+          "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+        }
+      }
+    },
+    {
+      "answers": "outside-import-past-a-boundary#import-or-require",
+      "file": "src/kernel/process-runner.hermetic.test.ts",
+      "carried": {
+        "kind": "authorised-location",
+        "clause": "CD-19#import-boundaries",
+        "file": "src/kernel/process-runner.hermetic.test.ts",
+        "reason": "The hermetic test of the process-runner implementer: the only test that exercises the real runtime, in a scratch folder it creates and removes.",
+        "whyChain": {
+          "whys": [
+            {
+              "why": "Why does src/kernel/process-runner.hermetic.test.ts import node:fs/promises, node:os, node:path and node:url?",
+              "because": "It creates and removes a scratch folder and checks createNodeProcessRunner against the real runtime there.",
+              "evidence": "createNodeProcessRunner in src/kernel/process-runner.ts"
+            },
+            {
+              "why": "Why does it check createNodeProcessRunner against the real runtime in a scratch folder it creates and removes?",
+              "because": "The seam tests use the fake, so only this test can show that the implementer behaves as its port says on the real runtime.",
+              "evidence": "src/kernel/process-runner.test.ts imports no node: module"
+            },
+            {
+              "why": "Why can only this test show that the implementer behaves as its port says, when the seam tests use the fake?",
+              "because": "The fake is written from the port and not from the runtime, so it cannot reveal where the runtime differs.",
+              "evidence": "src/kernel/fixtures/process-runner.fake.ts"
+            },
+            {
+              "why": "Why must the fake be written from the port and not from the runtime, if the runtime can differ?",
+              "because": "Consumers depend on the port alone, so the port is the contract and the implementer is held to it by one real-runtime proof.",
+              "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+            },
+            {
+              "why": "Why is the implementer held to the port by one real-runtime proof instead of many?",
+              "because": "One registered implementer per capability has one hermeticTest, so no other test imports a node: module.",
+              "evidence": "lint/implementers.json lists capability, file, factory, fakeSeam and hermeticTest for each registered implementer"
+            }
+          ],
+          "rootCause": "The registered process-runner implementer is proven once against the real runtime, so its hermetic test alone may import node: modules.",
+          "rootCheck": "Read lint/implementers.json on 2026-11-09: the hermeticTest field names this file for the capability.",
+          "readback": "The implementer needs one real-runtime proof, therefore its hermetic test uses a scratch folder, therefore process-runner.hermetic.test.ts imports the node: modules and no other test does.",
+          "owner": "Lane G (Guardrails) in lanes.json records the entry; Lane 0 owns the implementer, its port and its hermetic test under src/kernel"
+        }
+      }
+    }
+  ]
+}

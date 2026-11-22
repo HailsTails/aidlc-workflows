@@ -1,5 +1,5 @@
 import type { Linter } from "./lint/eslint-port.ts";
-import disciplines from "./disciplines.eslint.mjs";
+import disciplines from "./hone.eslint.mjs";
 import { boundaryConfig } from "./lint/boundaries.ts";
 import {
   cleanZoneCommentsConfig,
