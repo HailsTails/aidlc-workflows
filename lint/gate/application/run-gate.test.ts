@@ -11,8 +11,8 @@ import { runGateRequest, type GateServices } from "./run-gate.ts";
 
 const MISSING_LINK: Loaded<string> = {
   ok: false,
-  problem: "no discipline-core install at H:/missing",
-  fix: "Check out Helen's fork main beside the main checkout.",
+  problem: "no @hailstails/hone install at H:/missing",
+  fix: "Run bun install.",
 };
 
 const ranChecks: CheckId[] = [];
@@ -62,20 +62,20 @@ const scopeRequest = (only: ScopeRequest["only"]): ScopeRequest => ({
 });
 
 describe("runGateRequest toolchain", () => {
-  test("stops before lint when the discipline-core link cannot be made", async () => {
+  test("stops before lint when the Hone install is missing", async () => {
     ranChecks.length = 0;
 
     const report = await runGateRequest(services(MISSING_LINK), scopeRequest(["lint"]));
 
     expect(report.verdict).toBe("error");
     expect(report.problem).toEqual({
-      problem: "no discipline-core install at H:/missing",
-      fix: "Check out Helen's fork main beside the main checkout.",
+      problem: "no @hailstails/hone install at H:/missing",
+      fix: "Run bun install.",
     });
     expect(ranChecks).toEqual([]);
   });
 
-  test("runs checks that never load the ESLint config without the link", async () => {
+  test("runs checks that never load the ESLint config without the install", async () => {
     ranChecks.length = 0;
 
     const report = await runGateRequest(services(MISSING_LINK), scopeRequest(["ownership"]));

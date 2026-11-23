@@ -243,7 +243,7 @@ test("uncovered changed legacy files use the repository runner and their levels"
 
 
 const Q15_CHANGES = [
-  "discipline-exceptions.json",
+  "hone.config.json",
   "docs/reference/15-stage-definition.md",
   "harness/kiro-ide/manifest.ts",
   "lint/context-map.test.ts",

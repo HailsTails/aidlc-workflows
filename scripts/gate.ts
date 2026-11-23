@@ -17,8 +17,8 @@ import {
   directoryLock,
   lockDirectoryBesideMainCheckout,
 } from "../lint/gate/adapters/directory-lock.ts";
-import { disciplineCore } from "../lint/gate/adapters/discipline-core.ts";
-import { disciplinesFiles } from "../lint/gate/adapters/disciplines-files.ts";
+import { honeFiles } from "../lint/gate/adapters/hone-files.ts";
+import { honePackage } from "../lint/gate/adapters/hone-package.ts";
 import { eslintLinter } from "../lint/gate/adapters/eslint-linter.ts";
 import { fileWorkspace } from "../lint/gate/adapters/file-workspace.ts";
 import { gitRepository, sweepTree } from "../lint/gate/adapters/git-repository.ts";
@@ -82,10 +82,8 @@ const RULE_INPUTS = [
   "lint/*.ts",
   "src/glossary.json",
   "bun.lock",
-  "disciplines.eslint.mjs",
+  "hone.eslint.mjs",
 ];
-const DEFAULT_DISCIPLINE_CORE = "aidlc-discipline-core-main/plugins/discipline-core";
-const DISCIPLINE_CORE_PIN = "lint/discipline-core-pin.txt";
 const LINT_ROOTS = ["core", "harness", "scripts", "plugins", "src", "lint", "tests"];
 const LOOSE_TESTS = [
   "tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts",
@@ -99,14 +97,8 @@ process.on("exit", temp.dispose);
 
 const runner = processRunner(ROOT, temp.path);
 const records = ratchetRecords({ repository, workspace, locations: RECORD_LOCATIONS });
-const selection = disciplinesFiles(workspace);
-const audit = disciplineCore({
-  root: ROOT,
-  install:
-    process.env["AIDLC_DISCIPLINE_CORE"] ?? besideMainCheckout(ROOT, DEFAULT_DISCIPLINE_CORE),
-  pin: workspace.read(DISCIPLINE_CORE_PIN)?.trim(),
-  runner,
-});
+const selection = honeFiles(workspace);
+const audit = honePackage({ root: ROOT, runner });
 const CLEAN_TRIGGERS = [...CLEAN_ZONE.folders.map((folder) => `${folder}/**`), ...CLEAN_ZONE.files];
 
 const harnesses = (): readonly string[] => discoveredHarnesses(workspace);
@@ -211,7 +203,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     ruleInputs: RULE_INPUTS,
     ownerInputs: OWNER_REGISTRY_FILES,
   }),
-  disciplinesCheck({ audit, triggers: CLEAN_TRIGGERS }),
+  disciplinesCheck({ audit, triggers: CLEAN_TRIGGERS, fallbackBase: DEFAULT_BASE }),
   typecheckCheck({ runner, projects: TYPECHECK_PROJECTS }),
   monolithCheck({ records, workspace, modules: typescriptModuleReader, memberTypes: MEMBER_TYPES }),
   kernelCheck({

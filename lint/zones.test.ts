@@ -22,7 +22,7 @@ describe("zoneOf", () => {
 describe("moduleKindOf", () => {
   test("tells TypeScript modules from other files", () => {
     expect(moduleKindOf("lint/zones.ts")).toBe("typescript");
-    expect(moduleKindOf("disciplines.eslint.d.mts")).toBe("typescript");
+    expect(moduleKindOf("hone.eslint.d.mts")).toBe("typescript");
     expect(moduleKindOf("lanes.json")).toBe("other");
   });
 });

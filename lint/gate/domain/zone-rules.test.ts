@@ -62,10 +62,10 @@ describe("carveOuts", () => {
 
     expect(findings).toEqual([
       expect.objectContaining({
-        subject: "discipline-exceptions.json · CD-15#loops · src/kernel/values.ts",
+        subject: "hone-records · CD-15#loops · src/kernel/values.ts",
       }),
       expect.objectContaining({
-        subject: "discipline-exceptions.json · CD-43#boolean-signatures · *",
+        subject: "hone-records · CD-43#boolean-signatures · *",
       }),
     ]);
   });

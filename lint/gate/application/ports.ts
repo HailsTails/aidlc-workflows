@@ -183,7 +183,7 @@ export type Toolchain = {
 
 export type DisciplineAudit = {
   readonly project: () => Loaded<string>;
-  readonly run: () => AuditReport;
+  readonly run: (base: string) => AuditReport;
 };
 
 export type Clock = {
