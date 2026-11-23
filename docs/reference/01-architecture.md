@@ -255,7 +255,7 @@ The framework is **authored once and generated per harness** — today Claude
 Code, Kiro CLI, Kiro IDE, Codex CLI, Cursor, opencode, and GitHub Copilot, and
 any capable CLI you port it to. The
 hand-authored source is a harness-neutral `core/` plus a thin `harness/<name>/`
-surface per CLI; `bun scripts/package.ts` materializes ignored local
+surface per CLI; `bun packaging/build-distributions.ts` materializes ignored local
 `dist/<harness>/` trees:
 
 ```
@@ -264,7 +264,7 @@ core/                  # hand-authored, harness-neutral (tools, aidlc-common,
                        #   5 skills); prose uses the {{HARNESS_DIR}} token
 harness/<name>/        # per-CLI surface: manifest.ts + orchestrator skill +
                        #   harness files (+ emit.ts for codex)
-scripts/package.ts     # the build: copy core (token→.claude/.kiro/.codex) +
+packaging/build-distributions.ts     # the build: copy core (token→.claude/.kiro/.codex) +
                        #   harness, compile the graph, generate runners, emit;
                        #   writes both channels; `--check` builds twice and compares
 src/packaging/adapters/packaged-sources-file.ts # PackagedSources owner: input

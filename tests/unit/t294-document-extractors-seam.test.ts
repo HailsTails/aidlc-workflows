@@ -3,8 +3,8 @@
 // t294 - the `documentExtractors` configuration seam: a team commits its text
 // extractor choice so it travels to every clone.
 //
-// Mechanism: real filesystem + real `bun scripts/package.ts` runs (the seam IS
-// the packager; a mocked writer would prove nothing about what ships).
+// Mechanism: real filesystem + real `bun packaging/build-distributions.ts` runs (the
+// seam IS the packager; a mocked writer would prove nothing about what ships).
 //
 // WHY THIS IS PACKAGER-OWNED, which is the whole reason the story exists.
 // `harness.json` is generated locally by `package.ts`. Its writer builds a
@@ -45,7 +45,7 @@ setDefaultTimeout(NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
 
 const REPO = join(import.meta.dir, "..", "..");
 
-// This suite runs `bun scripts/package.ts` in WRITE mode repeatedly, including
+// This suite runs `bun packaging/build-distributions.ts` in WRITE mode repeatedly, including
 // hand-corrupting a generated harness.json to prove it is non-authoritative. Running
 // that against the real checkout is a shared-mutable-state hazard: siblings
 // run the SAME packager concurrently, and there is no way to make an in-place
@@ -54,7 +54,7 @@ const REPO = join(import.meta.dir, "..", "..");
 // only things read from REPO are `dist/claude/.claude/tools/aidlc-lib.ts`
 // (import, read-only) and the fixture-copy source list below (read-only cp).
 // No path under REPO is ever opened for writing by this file.
-const SCRATCH_SOURCES = ["core", "harness", "scripts", "plugins", "src"] as const;
+const SCRATCH_SOURCES = ["core", "harness", "scripts", "packaging", "plugins", "src"] as const;
 const SCRATCH_FILES = ["package.json", "bun.lock", "tsconfig.json"] as const;
 
 let scratch = "";
@@ -190,7 +190,7 @@ const BASE_KEYS = [
 ] as const;
 
 // Fields the packager emits CONDITIONALLY, so they are present for some
-// harnesses and absent for others (`scripts/package.ts` guards each on a
+// harnesses and absent for others (`packaging/build-distributions.ts` guards each on a
 // manifest value being set). `documentExtractors` is ours; upstream's
 // `runnerFrontmatterAdditions` arrived with the cursor harness, and claude and
 // copilot carry it too. A per-harness key set must therefore be BASE_KEYS plus
@@ -228,13 +228,14 @@ function expectedKeys(actual: string[], extra: readonly string[] = []): string[]
 }
 
 // Every invocation runs INSIDE `scratch`, never REPO: cwd is scratch, and
-// `bun <scratch>/scripts/package.ts` resolves REPO_ROOT from the script's own
+// `bun <scratch>/packaging/build-distributions.ts` resolves REPO_ROOT from the script's own
 // path (import.meta.url), so the packager under test believes ITS repo root
 // is the scratch copy. Nothing this function does can touch the real checkout.
 function pkg(args: string[] = []): { status: number; out: string } {
   preparePackage();
   packageInvoked = true;
-  const r = spawnSync(process.execPath, [join(scratch, "scripts", "package.ts"), ...args], {
+  const entry = join(scratch, "packaging", "build-distributions.ts");
+  const r = spawnSync(process.execPath, [entry, ...args], {
     timeout: remainingOperationTimeoutMs(NATIVE_FIXTURE_SETUP_TIMEOUT_MS),
     cwd: scratch,
     encoding: "utf-8",

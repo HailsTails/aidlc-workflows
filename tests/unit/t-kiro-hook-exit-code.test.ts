@@ -1,4 +1,4 @@
-// covers: file:scripts/package.ts
+// covers: file:packaging/build-distributions.ts
 //
 // Kiro CLI starts every hook through a shell: `/bin/bash -c "<command>"` on
 // Linux and `"powershell" -Command "<command>"` on Windows (both measured on

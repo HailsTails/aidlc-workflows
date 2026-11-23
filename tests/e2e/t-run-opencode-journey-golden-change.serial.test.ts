@@ -70,7 +70,7 @@ function skipReason(): string | null {
   if (process.env.AIDLC_OPENCODE_RUN_LIVE !== "1") return "set AIDLC_OPENCODE_RUN_LIVE=1 to run the live opencode golden journey (uses your provider)";
   if (!PRODUCTION_GUARDS) return "run with --production-guards: the journey is the person's own guard profile";
   if (!opencodeVersionOk()) return `opencode >= 1.17 not found (AIDLC_OPENCODE_BIN=${OPENCODE_BIN})`;
-  if (!existsSync(join(REPO_ROOT, "dist", "opencode"))) return "dist/opencode is missing: run bun scripts/package.ts";
+  if (!existsSync(join(REPO_ROOT, "dist", "opencode"))) return "dist/opencode is missing: run bun packaging/build-distributions.ts";
   // opencode's Bedrock provider needs static credentials (it does not walk the instance-role chain), as t-run-opencode-status says.
   if (MODEL.startsWith("amazon-bedrock/") && !process.env.AWS_ACCESS_KEY_ID && !process.env.AWS_PROFILE &&
     !existsSync(join(homedir(), ".aws", "credentials"))) {

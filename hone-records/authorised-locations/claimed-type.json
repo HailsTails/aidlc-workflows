@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "records": [
+    {
+      "answers": "claimed-type#unlisted-cast-site",
+      "file": "src/kernel/brand.ts",
+      "carried": {
+        "kind": "authorised-location",
+        "clause": "CD-2#cast-expressions",
+        "file": "src/kernel/brand.ts",
+        "reason": "The one place a validated value becomes its branded type; every constructor validates first and then calls it.",
+        "whyChain": {
+          "whys": [
+            {
+              "why": "Why does src/kernel/brand.ts cast its input to the branded type?",
+              "because": "A branded type carries a phantom marker that no runtime value has, so the compiler can only produce one through a type assertion.",
+              "evidence": "src/kernel/brand.ts declares brandName as a unique symbol with no runtime value"
+            },
+            {
+              "why": "Why do identity values carry a phantom marker the runtime never has?",
+              "because": "The contracts brand identity values such as ProjectPath and ContentHash so a validated value cannot be swapped for a raw string at compile time.",
+              "evidence": "src/kernel/values.ts constructors return ProjectPath, SourcePath and ContentHash"
+            },
+            {
+              "why": "Why must a validated identity value be kept apart from a raw string at compile time?",
+              "because": "Each constructor checks portability or format once, and the type is the only proof downstream code holds that the check ran.",
+              "evidence": "src/kernel/values.ts projectPath validates the segments before it brands"
+            },
+            {
+              "why": "Why is the type the only proof downstream code holds that the check ran?",
+              "because": "Domain modules carry no parsing of their own; they trust values that were validated where they entered.",
+              "evidence": "git grep on 2026-11-08 finds no zod import under src/workflow-definition/domain or src/kernel/values.ts"
+            },
+            {
+              "why": "Why do domain modules carry no parsing of their own?",
+              "because": "The clean architecture keeps domain and application pure and puts parsing in adapters and constructors, so each value is validated in exactly one constructor.",
+              "evidence": "lint/restrictions.ts purityRestriction forbids package imports in domain and application"
+            }
+          ],
+          "rootCause": "The clean architecture validates each value in exactly one constructor, so the assertion that brands it exists once, in the kernel helper every constructor calls.",
+          "rootCheck": "Ran the discipline-core audit on 2026-11-08: its only CD-2 finding in src is src/kernel/brand.ts line 11.",
+          "readback": "The clean architecture validates each value in exactly one constructor, therefore the branded type is the downstream proof, therefore identity values carry a phantom marker, therefore src/kernel/brand.ts casts its input to the branded type.",
+          "owner": "Lane 0 (Contracts) in lanes.json"
+        }
+      }
+    }
+  ]
+}

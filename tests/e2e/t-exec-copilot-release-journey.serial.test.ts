@@ -95,7 +95,7 @@ function skipReason(): string | null {
   if (process.env.AIDLC_COPILOT_EXEC_LIVE !== "1") return "set AIDLC_COPILOT_EXEC_LIVE=1 to run the live Copilot release journey (uses your provider)";
   if (!PRODUCTION_GUARDS) return "run with --production-guards: the journey is the person's own guard profile";
   if (!copilotVersion()) return `copilot >= 1.0.95 not found (AIDLC_COPILOT_BIN=${COPILOT_BIN})`;
-  if (!existsSync(join(REPO_ROOT, "dist", "copilot"))) return "dist/copilot is missing: run bun scripts/package.ts";
+  if (!existsSync(join(REPO_ROOT, "dist", "copilot"))) return "dist/copilot is missing: run bun packaging/build-distributions.ts";
   if (
     !process.env.COPILOT_PROVIDER_BASE_URL && !process.env.COPILOT_GITHUB_TOKEN && !process.env.GH_TOKEN &&
     !process.env.GITHUB_TOKEN && process.env.AIDLC_COPILOT_ASSUME_AUTH !== "1"

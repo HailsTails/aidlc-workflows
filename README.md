@@ -167,14 +167,14 @@ Install dependencies and generate every harness:
 
 ```bash
 bun install --frozen-lockfile
-bun scripts/package.ts
+bun packaging/build-distributions.ts
 ```
 
 Useful commands:
 
 ```bash
-bun scripts/package.ts <name>     # generate one harness
-bun scripts/package.ts --check    # determinism guard
+bun packaging/build-distributions.ts <name>     # generate one harness
+bun packaging/build-distributions.ts --check    # determinism guard
 bun tests/run-tests.ts --ci       # smoke, unit, and integration
 bun tests/run-tests.ts --release  # full release acceptance
 ```

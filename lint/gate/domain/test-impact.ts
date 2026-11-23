@@ -13,7 +13,7 @@ export const EVERY_TEST_MOVES_WITH: readonly string[] = [
   "bun.lock",
   "tsconfig*.json",
   "bunfig.toml",
-  "scripts/package.ts",
+  "packaging/build-distributions.ts",
 ];
 
 export type ImpactRequest = {

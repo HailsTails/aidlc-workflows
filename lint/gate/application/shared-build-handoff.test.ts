@@ -14,7 +14,7 @@ const SCOPE: GateScope = {
   build: false, record: false, allTests: false,
   heavy: { ensure: async () => ({ acquired: true }) },
 };
-const BUILD: Command = { label: "package", argv: ["bun", "scripts/package.ts"] };
+const BUILD: Command = { label: "package", argv: ["bun", "packaging/build-distributions.ts"] };
 
 const fixture = (exitCode = 0, startup = false, startupExit = 0) => {
   const calls: Command[] = [];

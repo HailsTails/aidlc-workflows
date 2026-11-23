@@ -79,7 +79,7 @@ When you author or move a stage, these three lists are what wire it into the wor
 
 In a source build, the generated Claude projection runs the graph from
 `dist/claude/.claude/tools/data/stage-graph.json`. `dist/` is an ignored local
-output materialized by `bun scripts/package.ts`; the installed runtime carries
+output materialized by `bun packaging/build-distributions.ts`; the installed runtime carries
 the same relative file under `.claude/tools/data/`. The JSON is a **build
 artifact**, not a source file. The YAML frontmatter across the stage files is
 authoritative; the JSON is what you get when you compile it.
@@ -90,7 +90,7 @@ The flow is:
 edit stage .md YAML  →  compile  →  stage-graph.json  →  runtime reads it
 ```
 
-After editing a stage's frontmatter in `core/`, run `bun scripts/package.ts`, which compiles the graph into every generated tree, and commit only the `core/` edit: the generated trees are ignored and CI builds them again from source (`bun scripts/package.ts --check` builds twice and byte-compares). In an installed project tree, `aidlc engine graph compile` regenerates that tree's `stage-graph.json`, and `aidlc engine graph compile --check` says when it is out of date:
+After editing a stage's frontmatter in `core/`, run `bun packaging/build-distributions.ts`, which compiles the graph into every generated tree, and commit only the `core/` edit: the generated trees are ignored and CI builds them again from source (`bun packaging/build-distributions.ts --check` builds twice and byte-compares). In an installed project tree, `aidlc engine graph compile` regenerates that tree's `stage-graph.json`, and `aidlc engine graph compile --check` says when it is out of date:
 
 ```text
 $ aidlc engine graph compile --check

@@ -119,7 +119,8 @@ describe("t-ci-windows-lanes", () => {
   test("the hooks lane removes Git Bash, proves sh is gone, and selects real hook contracts through the native runner", () => {
     const job = ci.jobs.test_hooks_without_git_bash;
     expect(job.defaults?.run?.shell).toBe("powershell");
-    const build = steps(job).findIndex((item) => item.run === "bun scripts/package.ts");
+    const buildCommand = "bun packaging/build-distributions.ts";
+  const build = steps(job).findIndex((item) => item.run === buildCommand);
     const contracts = step(job, "Prove sh is unresolvable, then run hook contracts");
     expect(build).toBeGreaterThanOrEqual(0);
     expect(build).toBeLessThan(steps(job).indexOf(contracts));
@@ -186,7 +187,7 @@ describe("t-ci-windows-lanes", () => {
     expect(run).not.toContain("GITHUB_");
     expect(run).toContain('git clone --quiet "$workspace" "$HOME/aidlc"');
     expect(run).toContain("bun install --frozen-lockfile --ignore-scripts");
-    expect(run).toContain("bun scripts/package.ts");
+    expect(run).toContain("bun packaging/build-distributions.ts");
     // Only t05 is excluded: it starts the TUI preflight, whose Linux supervisor
     // needs memfd_create/pidfd that WSL 1's kernel emulation lacks.
     expect(run).toContain("bun tests/run-tests.ts --debug -P 4 --smoke --no-llm --file-timeout 7200 --run-timeout 14400 --filter '^(?!(smoke-)?t05-run-tests-parallel)'");

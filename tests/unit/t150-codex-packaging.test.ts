@@ -3,7 +3,7 @@
 // covers: file:tools/aidlc-lib.ts
 //
 // WHAT. Three contracts land here:
-//   (1) `bun scripts/package.ts codex --check` produces byte-identical clean
+//   (1) `bun packaging/build-distributions.ts codex --check` produces byte-identical clean
 //       builds, including the single sanctioned prefix-transform class.
 //   (2) Core parity: every .ts under dist/codex/.codex/tools/ and the core
 //       hook bodies are BYTE-IDENTICAL to their dist/claude sources, except
@@ -50,7 +50,7 @@ import {
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-const PACKAGE_SCRIPT = join(REPO_ROOT, "scripts", "package.ts");
+const PACKAGE_SCRIPT = join(REPO_ROOT, "packaging", "build-distributions.ts");
 const CLAUDE_SRC = join(REPO_ROOT, "dist", "claude", ".claude");
 const CODEX_DST = join(REPO_ROOT, "dist", "codex", ".codex");
 const TRUST_SUFFIXES = [

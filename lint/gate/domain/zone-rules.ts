@@ -66,7 +66,7 @@ export const carveOuts = (exceptions: readonly DisciplineException[]): readonly 
   exceptions
     .filter((exception) => exception.kind !== AUTHORISED_LOCATION)
     .map((exception) => ({
-      subject: `discipline-exceptions.json · ${exception.clause} · ${exception.file ?? "*"}`,
+      subject: `hone-records · ${exception.clause} · ${exception.file ?? "*"}`,
       violation: `is a ${exception.kind}, and the clean zone takes no carve-outs`,
       fix:
         "Fix the finding in the code. Only an authorised-location, the one file that wraps " +

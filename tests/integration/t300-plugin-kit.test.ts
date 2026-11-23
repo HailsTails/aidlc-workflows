@@ -1,4 +1,4 @@
-// covers: file:scripts/package.ts (plugin build), file:tests/harness/plugin-kit.ts
+// covers: file:packaging/build-distributions.ts (plugin build), file:tests/harness/plugin-kit.ts
 
 import {
   NATIVE_FIXTURE_SETUP_TIMEOUT_MS,

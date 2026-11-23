@@ -4,7 +4,7 @@
 // version a release shipped there. Those releases (2.1.1 to 2.7.0) were
 // installed by copying their trees and wrote no install record, so without
 // this `aidlc config` cannot tell their unchanged files from the person's own.
-// scripts/package.ts adds them to each harness's legacy managed-file hashes.
+// packaging/build-distributions.ts adds them to each harness's legacy managed-file hashes.
 //
 // Usage: bun scripts/copy-era-files.ts [--check]
 // Reads the repository's history. The copy channel was the v2 branch: a person
@@ -12,7 +12,7 @@
 // to the native distribution (NATIVE_DISTRIBUTION, which dropped dist/ from the
 // tree) is a version a project may hold, tagged or not. 2.7.0 committed no
 // dist/ and published no assets, so its tree is packaged from the tag in a new
-// temporary folder (bun install, then its own scripts/package.ts), left in
+// temporary folder (bun install, then its own packaging/build-distributions.ts), left in
 // place for the caller. --check compares with the committed file instead of
 // writing it.
 import { spawnSync } from "node:child_process";
@@ -80,7 +80,7 @@ for (const tag of PACKAGED_FROM_TAG) {
   const tree = mkdtempSync(join(tmpdir(), `copy-era-${tag}-`));
   run("tar", ["-x", "-C", tree], REPO_ROOT, run("git", ["archive", "--format=tar", tag], REPO_ROOT));
   run("bun", ["install", "--frozen-lockfile"], tree);
-  run("bun", ["scripts/package.ts"], tree);
+  run("bun", ["packaging/build-distributions.ts"], tree);
   const dist = join(tree, "dist");
   for (const harness of readdirSync(dist)) {
     if (harness === "plugins" || !statSync(join(dist, harness)).isDirectory()) continue;

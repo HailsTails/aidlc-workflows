@@ -215,7 +215,8 @@ describe("smoke impact uses the existing conservative selector", () => {
 
 
 describe("Phase 1 candidates rely on the enforced foundation sweep", () => {
-  test.each(["src/projection/render.ts", "scripts/package.ts", "lint/gate/domain/x.ts",
+  test.each(["src/projection/render.ts", "packaging/build-distributions.ts",
+    "lint/gate/domain/x.ts",
     "docs/reference/15-stage-definition.md"])(
     "%s defers legacy suites", async (path) => {
       expect(await selectedLegacy([path])).toEqual([]);
@@ -243,13 +244,13 @@ test("uncovered changed legacy files use the repository runner and their levels"
 
 
 const Q15_CHANGES = [
-  "discipline-exceptions.json",
+  "hone.config.json",
   "docs/reference/15-stage-definition.md",
   "harness/kiro-ide/manifest.ts",
   "lint/context-map.test.ts",
   "lint/context-map.ts",
   "lint/isolation-offenders.txt",
-  "scripts/package.ts",
+  "packaging/build-distributions.ts",
   "src/cli/core-build-root.test.ts",
   "src/cli/core-build-root.ts",
   "src/cli/main.test.ts",
@@ -299,7 +300,7 @@ test("runtime plus a changed covered test still runs that test only once", async
 const C1_CHANGES = [
   "harness/claude/manifest.ts",
   "scripts/earlier-release-regions.ts",
-  "scripts/package.ts",
+  "packaging/build-distributions.ts",
   "src/cli/host-table.ts",
   "src/cli/main.test.ts",
   "src/cli/package-build-root.test.ts",

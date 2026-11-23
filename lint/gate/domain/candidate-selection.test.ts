@@ -13,7 +13,7 @@ const KIRO_IDE_HOST_DATA_CHANGE = [
 ];
 
 const SETTINGS_WIRING_CHANGE = [
-  "scripts/package.ts",
+  "packaging/build-distributions.ts",
   "src/projection/core-root.ts",
   "src/glossary.json",
   "tests/harness/harness-matrix.ts",

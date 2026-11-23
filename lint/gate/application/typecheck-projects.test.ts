@@ -11,7 +11,7 @@ const HARNESS_FILE = "harness/kiro/manifest.ts";
 const ROOT_PROJECT = "tsc -p tsconfig.json";
 
 const MISSING_DIST: Finding = {
-  subject: "bun scripts/package.ts",
+  subject: "bun packaging/build-distributions.ts",
   violation: "failed: no dist",
   fix: "Make the build pass first.",
 };
@@ -57,7 +57,7 @@ describe("typecheck project selection", () => {
     "harness/kiro/manifest.ts",
     "harness/codex/skills/aidlc/SKILL.md",
     "core/tools/aidlc-lib.ts",
-    "scripts/package.ts",
+    "packaging/build-distributions.ts",
     "plugins/test-pro/tools/probe.ts",
     "tsconfig.json",
   ])("a change to %s selects the root project", async (path) => {

@@ -1669,7 +1669,7 @@ files and the harness installation, whose shipped tools legitimately import
 hook helpers.
 The written-content check also exempts the harness installation and this
 repository's `core/`, `harness/`, `tests/`, and `docs/` trees when
-`scripts/package.ts` exists at the project root; protected runtime record paths
+`packaging/build-distributions.ts` exists at the project root; protected runtime record paths
 remain refused even there.
 Conductor writes to `<record>/.aidlc-engine/reviewer-dispatch.json` and
 ordinary workflow documents remain available.

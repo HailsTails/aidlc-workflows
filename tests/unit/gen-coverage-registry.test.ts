@@ -464,7 +464,7 @@ describe("ratchet anti-regression (a covered unit cannot silently lose its claim
       const victim = buildRegistry().rows.find((r) => r.status === "UNCOVERED")!;
       mkdirSync(join(repo, "scripts"));
       mkdirSync(join(repo, "tests"));
-      writeFileSync(join(repo, "scripts", "package.ts"), [
+      writeFileSync(join(repo, "packaging", "build-distributions.ts"), [
         'import { writeFileSync } from "node:fs";',
         'if (process.argv[2] !== "claude") process.exit(2);',
         'writeFileSync("packaged-here", "");',

@@ -23,9 +23,10 @@ const fixture = (install = true) => {
 };
 
 describe("scoped Phase 1 goldens", () => {
-  test.each(["src/projection/render.ts", "scripts/package.ts", "scripts/earlier-release-regions.ts",
+  test.each(["src/projection/render.ts", "packaging/build-distributions.ts",
+    "scripts/earlier-release-regions.ts",
     "docs/reference/15-stage-definition.md", "harness/kiro-ide/manifest.ts",
-    "discipline-exceptions.json"])(
+    "hone.config.json"])(
     "%s builds and judges both output and install goldens", async (path) => {
       const f = fixture();
       expect((await f.check.run(scope(path))).status).toBe("green");

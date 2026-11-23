@@ -17,7 +17,7 @@ type SourcesBinding = {
 };
 
 const INPUT_DIRS = ["core", "harness", "plugins", "src", "scripts/plugin-hooks-template"];
-const INPUT_FILES = ["scripts/package.ts", "scripts/package-sources.ts", "scripts/agent-knowledge.ts",
+const INPUT_FILES = ["packaging/build-distributions.ts", "scripts/package-sources.ts", "scripts/agent-knowledge.ts",
   "scripts/copy-era-files.json"];
 const IGNORED_INPUT_PATHS = [/(?:^|\/)node_modules(?:\/|$)/, /^plugins\/[^/]+\/tests(?:\/|$)/,
   /^src\/.*\/(?:fixtures|tests)(?:\/|$)/, /^src\/.*\.(test|spec)\.ts$/];
@@ -120,8 +120,8 @@ const staleness = async (binding: SourcesBinding, host: DistributionId)
   if (!current.ok) return current;
   const recorded = prior.hosts[host];
   return accepted(recorded === current.value ? null : recorded === undefined
-    ? `dist/${host} has no record of the sources it was packaged from: run \`bun scripts/package.ts\` first.`
-    : `dist/${host} was packaged from other sources than this checkout: run \`bun scripts/package.ts\` first.`);
+    ? `dist/${host} has no record of the sources it was packaged from: run \`bun packaging/build-distributions.ts\` first.`
+    : `dist/${host} was packaged from other sources than this checkout: run \`bun packaging/build-distributions.ts\` first.`);
 };
 
 export const createPackagedSourcesFile = (binding: SourcesBinding): PackagedSources => ({

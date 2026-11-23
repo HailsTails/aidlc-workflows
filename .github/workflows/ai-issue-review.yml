@@ -486,7 +486,7 @@ jobs:
                   'ulimit -f 20480; cd "$1"; shift; exec "$@"' \
                   bash "$test_repo" \
                   timeout --signal=TERM --kill-after=30s 5m \
-                  "$bun_bin" scripts/package.ts \
+                  "$bun_bin" packaging/build-distributions.ts \
                   >>"$verification_log" 2>&1
               package_status=$?
               set -e

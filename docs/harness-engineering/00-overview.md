@@ -128,10 +128,10 @@ outputs, never committed or hand-edited. The loop is always:
 $EDITOR core/aidlc-common/stages/inception/my-stage.md
 
 # 2. regenerate both channels for every harness from core/ + harness/
-bun scripts/package.ts
+bun packaging/build-distributions.ts
 
 # 3. prove deterministic generation (the CI guard)
-bun scripts/package.ts --check
+bun packaging/build-distributions.ts --check
 ```
 
 Commit the authored `core/` or `harness/` edit, not the generated roots.

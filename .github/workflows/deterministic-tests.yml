@@ -193,7 +193,7 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build the harness projections
         if: steps.select.outputs.mode != 'none'
-        run: bun scripts/package.ts
+        run: bun packaging/build-distributions.ts
       - name: Prepare unit test substrates
         if: inputs.tier == 'unit' && runner.os != 'Windows' && steps.select.outputs.mode != 'none'
         run: |

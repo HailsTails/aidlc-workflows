@@ -50,7 +50,7 @@ jobs:
         with:
           bun-version: "${{ env.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
-      - run: bun scripts/package.ts
+      - run: bun packaging/build-distributions.ts
       - name: Install relocatable pinned CLIs
         if: "runner.os != 'Windows'"
         run: npm install -g --prefix "$RUNNER_TEMP/aidlc-cli" "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" "@openai/codex@$CODEX_VERSION" "opencode-ai@$OPENCODE_VERSION" "@github/copilot@$COPILOT_VERSION"

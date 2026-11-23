@@ -57,7 +57,7 @@ which artifacts a stage produces while editing its prose.
 Edit stage YAML
       |
       v
-bun scripts/package.ts
+bun packaging/build-distributions.ts
       |
       +--> ignored dist/<harness>/<harness-dir>/tools/data/stage-graph.json
       |
@@ -73,8 +73,8 @@ after plugin composition.
 
 `aidlc-graph compile` and `compile --check` remain runtime and diagnostic
 subcommands, but repository contributors do not preserve a compiled JSON copy
-in source control. Edit the YAML and run `bun scripts/package.ts`; packaging
-creates fresh ignored projections, and `bun scripts/package.ts --check`
+in source control. Edit the YAML and run `bun packaging/build-distributions.ts`; packaging
+creates fresh ignored projections, and `bun packaging/build-distributions.ts --check`
 rebuilds twice in temporary roots to check generator determinism.
 
 ---
@@ -734,7 +734,7 @@ stage but has no test of its own.
 
 ## Parser and emitter
 
-`bun scripts/package.ts` opens its build root through `src/cli/main.ts`.
+`bun packaging/build-distributions.ts` opens its build root through `src/cli/main.ts`.
 The main module constructs the build process's platform implementers once.
 `src/cli/package-build-root.ts` composes Definition and Projection through
 their context factories. Each context wires its own adapters from narrow ports.

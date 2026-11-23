@@ -22,7 +22,7 @@ const exceptionFindings = (selection: DisciplineSelection): readonly Finding[] =
     return carveOuts(exceptions.value);
   }
   const { problem, fix } = exceptions;
-  return [{ subject: "discipline-exceptions.json", violation: problem, fix }];
+  return [{ subject: "hone-records", violation: problem, fix }];
 };
 
 export const zonesCheck = (dependencies: ZonesDependencies): GateCheck => ({

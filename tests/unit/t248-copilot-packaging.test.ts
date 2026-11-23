@@ -3,7 +3,7 @@
 // covers: file:tools/aidlc-lib.ts
 //
 // WHAT. Four contracts land here:
-//   (1) `bun scripts/package.ts copilot --check` produces byte-identical clean
+//   (1) `bun packaging/build-distributions.ts copilot --check` produces byte-identical clean
 //       builds (same UX as codex's t150 / opencode's t240 test 1).
 //   (2) Core parity: every .ts under dist/copilot/.aidlc/{tools,hooks}/
 //       except the authored adapter is BYTE-IDENTICAL to its dist/claude
@@ -49,7 +49,7 @@ import { REPO_ROOT } from "../harness/fixtures.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-const PACKAGE_SCRIPT = join(REPO_ROOT, "scripts", "package.ts");
+const PACKAGE_SCRIPT = join(REPO_ROOT, "packaging", "build-distributions.ts");
 const CLAUDE_SRC = join(REPO_ROOT, "dist", "claude", ".claude");
 const COPILOT_ROOT = join(REPO_ROOT, "dist", "copilot");
 const ENGINE = join(COPILOT_ROOT, ".aidlc");

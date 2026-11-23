@@ -1,7 +1,7 @@
 // t188-plugin-compose: the AIDLC plugin system end-to-end guard.
 //
-// covers: file:scripts/package.ts (emitPlugins), file:scripts/plugin-hooks-template/compose.ts
-//
+// covers: file:packaging/build-distributions.ts (emitPlugins),
+//   file:scripts/plugin-hooks-template/compose.ts
 // Serial by design: lock-wait cases observe actual acquisitions and use a short
 // explicit refusal baseline. They keep the real queued callers' extended wait
 // budgets, then release the holder and require successful completion.
@@ -58,7 +58,7 @@ import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "../../core/tools/aidlc-runtime-bu
 import { readPluginTargets } from "../../core/tools/aidlc-plugin-emit.ts";
 import { typedHarnessName } from "../../core/tools/aidlc-runtime-paths.ts";
 
-const PACKAGE_TS = join(REPO_ROOT, "scripts", "package.ts");
+const PACKAGE_TS = join(REPO_ROOT, "packaging", "build-distributions.ts");
 const BUN = process.execPath; // the bun running this test — robust for hooks
 const TIMEOUT_MS = NATIVE_FIXTURE_SETUP_TIMEOUT_MS;
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);

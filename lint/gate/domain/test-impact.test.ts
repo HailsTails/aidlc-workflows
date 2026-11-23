@@ -55,7 +55,7 @@ describe("conservative impact fallback", () => {
   });
 
   test("global build and compiler inputs select every test", () => {
-    expect(impacted(["scripts/package.ts"])).toEqual(TESTS);
+    expect(impacted(["packaging/build-distributions.ts"])).toEqual(TESTS);
     expect(impacted(["tsconfig.tests.json"])).toEqual(TESTS);
     expect(impacted(["bunfig.toml"])).toEqual(TESTS);
   });

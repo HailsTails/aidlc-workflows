@@ -56,7 +56,7 @@ test("copied coverage refuses stale sources without changing its registry", asyn
     expect(run.stdout).toBe("");
     expect(run.stderr.trim().split("\n")).toEqual([
       "coverage registry: dist/claude was packaged from other sources than this checkout: " +
-        "run `bun scripts/package.ts` first.",
+        "run `bun packaging/build-distributions.ts` first.",
     ]);
     expect(readFileSync(registry, "utf8")).toBe("committed\n");
   }
@@ -67,7 +67,7 @@ test("copied coverage prints a source refusal before changing its registry", () 
   cpSync(join(SOURCE, "node_modules", "zod"), join(root, "node_modules", "zod"),
     { recursive: true });
   mkdirSync(join(root, "core"));
-  mkdirSync(join(root, "scripts", "package.ts"), { recursive: true });
+  mkdirSync(join(root, "packaging", "build-distributions.ts"), { recursive: true });
   const registry = join(root, "registry.json");
   writeFileSync(registry, "committed\n");
   const run = spawnSync(process.execPath,
@@ -80,7 +80,7 @@ test("copied coverage prints a source refusal before changing its registry", () 
   expect(run.stdout).toBe("");
   expect(run.stderr.trim().split("\n")).toEqual([
     'coverage registry: {"kind":"packaged-sources-failed","operation":"read-inputs",' +
-      '"path":"scripts/package.ts","reason":"not-a-file"}',
+      '"path":"packaging/build-distributions.ts","reason":"not-a-file"}',
   ]);
   expect(readFileSync(registry, "utf8")).toBe("committed\n");
 });

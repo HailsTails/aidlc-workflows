@@ -1584,7 +1584,8 @@ describe("t332 preview publication pipeline", () => {
     expect(preview.jobs.build.env?.AIDLC_BUILD_VERSION).toBe(stamp);
     expect(preview.jobs["stage-release"].env?.AIDLC_BUILD_VERSION).toBe(stamp);
     const smoke = preview.jobs["native-smoke"].steps ?? [];
-    expect(smoke.find((step) => step.run === "bun scripts/package.ts")?.env?.AIDLC_BUILD_VERSION)
+    const buildCommand = "bun packaging/build-distributions.ts";
+    expect(smoke.find((step) => step.run === buildCommand)?.env?.AIDLC_BUILD_VERSION)
       .toBe(stamp);
     expect(smoke.find((step) => step.run?.includes("t238-build-binaries"))?.env?.AIDLC_BUILD_VERSION)
       .toBe(stamp);

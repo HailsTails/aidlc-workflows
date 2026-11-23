@@ -392,7 +392,7 @@ function prepareGeneratedTrees(): void {
       process.stderr.write(`${RUNNER_PROGRESS_PREFIX}setup: building generated projections; ` +
         "file total unknown; synchronous stage, no intermediate progress available\n");
     });
-    const generated = spawnSync(BUN, [join(REPO_ROOT, "scripts", "package.ts")], {
+    const generated = spawnSync(BUN, [join(REPO_ROOT, "packaging", "build-distributions.ts")], {
       cwd: REPO_ROOT,
       env: process.env,
       encoding: "utf8",

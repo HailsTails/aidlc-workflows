@@ -9,7 +9,7 @@ both read. One deterministic core, many harnesses: the engine, state machine,
 audit log, graph, swarm referee, and learnings gate are byte-identical across
 every distribution — only the shell differs. The source/development tree is
 **generated** into ignored local `dist/copilot/` from `core/` +
-`harness/copilot/` by `bun scripts/package.ts copilot`; never hand-edit it.
+`harness/copilot/` by `bun packaging/build-distributions.ts copilot`; never hand-edit it.
 
 The full onboarding remains in the root `AGENTS.md`: Copilot-specific setup
 and the live `@`-import block for method files, followed by neutral project
@@ -128,7 +128,7 @@ then set `RUNTIME_ROOT` to the extracted `runtime/` directory.
    in either surface.
 
 Framework developers who need the Bun-shaped projection can clone the
-repository, run `bun install --frozen-lockfile` and `bun scripts/package.ts`,
+repository, run `bun install --frozen-lockfile` and `bun packaging/build-distributions.ts`,
 then use the ignored local `dist/copilot/` output.
 
 ## What's different on this harness

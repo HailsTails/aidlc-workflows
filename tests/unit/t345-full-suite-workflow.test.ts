@@ -269,7 +269,8 @@ describe("t345 complete nightly coverage", () => {
     const checkout = setup.findIndex((step) => step.uses?.startsWith("actions/checkout@"));
     const bind = setup.findIndex((step) => step.name === "Bind checkout to requested commit");
     const install = setup.findIndex((step) => step.run === "bun install --frozen-lockfile");
-    const packageIndex = setup.findIndex((step) => step.run === "bun scripts/package.ts");
+    const buildCommand = "bun packaging/build-distributions.ts";
+    const packageIndex = setup.findIndex((step) => step.run === buildCommand);
     expect(setup[checkout].with).toEqual({
       ref: `\${{ inputs.ref }}`, "persist-credentials": false,
       "fetch-depth": `\${{ inputs.macos-merge-selection == true && 2 || 1 }}`,
@@ -290,7 +291,7 @@ describe("t345 complete nightly coverage", () => {
     expect(setup.indexOf(substrate)).toBeLessThan(setup.findIndex((step) => step.name === "Run deterministic tier"));
     const execution = setup.find((step) => step.name === "Run deterministic tier")!;
     const generated = setup.find((step) => step.name === "Build the harness projections")!;
-    expect(generated.run).toBe("bun scripts/package.ts");
+    expect(generated.run).toBe("bun packaging/build-distributions.ts");
     expect(generated.if).toBe(execution.if);
     expect(setup.indexOf(generated)).toBeLessThan(setup.indexOf(execution));
     expect(execution.env?.AIDLC_TEST_PACKAGE_READY).toBe("1");
@@ -883,7 +884,7 @@ describe("t345 complete nightly coverage", () => {
       expect(steps(job)[download].with?.["digest-mismatch"], name).toBe("warn");
       for (const step of steps(job)) {
         expect(step.run ?? "").not.toMatch(/\b(bun|npm|npx|pnpm|yarn|pip|pip3|cargo)\s+(install|i|ci|add)\b/);
-        expect(step.run ?? "").not.toContain("scripts/package.ts");
+        expect(step.run ?? "").not.toContain("packaging/build-distributions.ts");
       }
     }
   });
@@ -1241,7 +1242,7 @@ describe("t345 complete nightly coverage", () => {
     for (const step of all.filter((step) => commands.slice(0, -2).includes(step.name))) {
       expect(step.run, step.name).toStartWith("bash scripts/ci-check-budget.sh ");
     }
-    expect(all.find((step) => step.name === "Prepare test and coverage projections")?.run).toBe("bash scripts/ci-check-budget.sh bun scripts/package.ts");
+    expect(all.find((step) => step.name === "Prepare test and coverage projections")?.run).toBe("bash scripts/ci-check-budget.sh bun packaging/build-distributions.ts");
     expect(all.find((step) => step.name === "Run Linux smoke")?.env).toMatchObject({
       AIDLC_TEST_PACKAGE_READY: "1", RETRY_ONCE: `\${{ github.event_name == 'merge_group' }}`,
     });

@@ -1,7 +1,7 @@
 # Sensor System
 
 Concrete `dist/claude/` paths in this chapter refer to the ignored local
-projection materialized by `bun scripts/package.ts`; installed projects use the
+projection materialized by `bun packaging/build-distributions.ts`; installed projects use the
 same relative paths under `.claude/`.
 
 > Audience: Tier 2/3 (team adopter, framework contributor).

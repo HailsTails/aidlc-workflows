@@ -17,7 +17,7 @@ export const candidateBuildTests = (paths: readonly string[]): readonly string[]
   paths.flatMap((path) => BUILD_TESTS[path] ?? []);
 
 const PHASE_ONE = [
-  "src/**", "lint/**", "scripts/package.ts", ...Object.keys(BUILD_TESTS),
+  "src/**", "lint/**", "packaging/build-distributions.ts", ...Object.keys(BUILD_TESTS),
   ...CLEAN_ZONE.files, ...SCAFFOLDING_ZONE.files,
   "docs/**/*.md", "harness/**", "tests/harness/harness-matrix.ts", "tests/ratchets/**",
   "tests/{unit,smoke,integration,e2e}/**/*.test.ts",

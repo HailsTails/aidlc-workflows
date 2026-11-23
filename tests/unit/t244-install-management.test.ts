@@ -3976,13 +3976,13 @@ describe("t244 Windows and completion release surfaces", () => {
     // never from checkout residue: every dist-consuming job regenerates
     // before its consuming step, and the build job keeps --check after the
     // regen as a generator-determinism guard.
-    const regen = "run: bun scripts/package.ts\n";
+    const regen = "run: bun packaging/build-distributions.ts\n";
     const verifyJob = workflow.slice(
       workflow.indexOf("  verify:"),
       workflow.indexOf("  native-smoke:"),
     );
     expect(verifyJob).toContain(regen);
-    expect(verifyJob.indexOf(regen)).toBeLessThan(verifyJob.indexOf("- run: bun scripts/package.ts --check"));
+    expect(verifyJob.indexOf(regen)).toBeLessThan(verifyJob.indexOf("- run: bun packaging/build-distributions.ts --check"));
     for (const name of ["test_smoke", "test_unit", "test_deep", "test"]) {
       expect(parsed.jobs[name], `stable release must not rerun source tier: ${name}`).toBeUndefined();
     }
@@ -4008,8 +4008,8 @@ describe("t244 Windows and completion release surfaces", () => {
     expect(buildJob).toContain("needs: [validate, native-smoke]");
     expect(buildJob).toContain(`ref: \${{ needs.validate.outputs.sha }}`);
     expect(buildJob.indexOf(regen))
-      .toBeLessThan(buildJob.indexOf("bun scripts/package.ts --check"));
-    expect(buildJob.indexOf("bun scripts/package.ts --check"))
+      .toBeLessThan(buildJob.indexOf("bun packaging/build-distributions.ts --check"));
+    expect(buildJob.indexOf("bun packaging/build-distributions.ts --check"))
       .toBeLessThan(buildJob.indexOf("bun scripts/build-binaries.ts"));
     const stageRelease = workflowJob(workflow, "stage-release");
     expect(stageRelease).toContain("needs: [validate, build]");
@@ -4405,14 +4405,15 @@ describe("t244 Windows and completion release surfaces", () => {
     for (const name of ["deterministic", "test_native_terminal"]) {
       const job = ci.jobs[name];
       const steps = job.uses ? shared.jobs.test.steps! : job.steps!;
-      const build = steps.findIndex((step) => step.run?.trim().startsWith("bun scripts/package.ts"));
+      const build = steps.findIndex((step) => step.run?.trim().startsWith("bun packaging/build-distributions.ts"));
       const run = steps.findIndex((step) => /tests\/run-tests\.(sh|ts)/.test(step.run ?? ""));
       expect(build, `${name} must regenerate its projections`).toBeGreaterThanOrEqual(0);
       expect(run, `${name} must invoke the test runner`).toBeGreaterThanOrEqual(0);
       expect(build, `${name} must build before running its tier`).toBeLessThan(run);
     }
     const isolation = ci.jobs.test_live_isolation.steps!;
-    const build = isolation.findIndex((step) => step.run === "bun scripts/package.ts");
+    const buildCommand = "bun packaging/build-distributions.ts";
+    const build = isolation.findIndex((step) => step.run === buildCommand);
     expect(build).toBeGreaterThanOrEqual(0);
     for (const [index, step] of isolation.entries()) {
       if (step.run?.includes("prepare-live-runtime")) expect(build).toBeLessThan(index);

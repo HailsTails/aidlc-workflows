@@ -1,9 +1,9 @@
 // t145-packaging-parity: the package determinism and clean-build guard.
 //
-// covers: file:scripts/package.ts, file:src/hosts/codex/projection/settings-renderer.ts
-//
+// covers: file:packaging/build-distributions.ts,
+//   file:src/hosts/codex/projection/settings-renderer.ts
 // WHAT. The one-core-N-harnesses layout makes dist/ a GENERATED artifact: `bun
-// scripts/package.ts` projects the harness-neutral core/ tree + harness/<name>/
+// packaging/build-distributions.ts` projects the harness-neutral core/ tree + harness/<name>/
 // surfaces into ignored local dist/ and dist-release/ roots. `package.ts --check`
 // builds all selected projections twice in independent temp roots and
 // byte-compares those builds.
@@ -40,7 +40,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const PACKAGE_TS = join(REPO_ROOT, "scripts", "package.ts");
+const PACKAGE_TS = join(REPO_ROOT, "packaging", "build-distributions.ts");
 const CHECK_TIMEOUT_MS = NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS;
 
 type Run = ReturnType<typeof spawnSync>;
@@ -53,6 +53,7 @@ function makeFixture(): string {
   const root = mkdtempSync(join(tmpdir(), "aidlc-package-contract-"));
   copyDir(join(REPO_ROOT, "core"), join(root, "core"));
   copyDir(join(REPO_ROOT, "scripts"), join(root, "scripts"));
+  copyDir(join(REPO_ROOT, "packaging"), join(root, "packaging"));
   copyDir(join(REPO_ROOT, "src"), join(root, "src"));
   cpSync(join(REPO_ROOT, "package.json"), join(root, "package.json"));
   cpSync(join(REPO_ROOT, "bun.lock"), join(root, "bun.lock"));
@@ -91,7 +92,7 @@ function makeFixture(): string {
 }
 
 function runPackage(root: string, ...args: string[]): Run {
-  return spawnSync("bun", [join(root, "scripts", "package.ts"), ...args], {
+  return spawnSync("bun", [join(root, "packaging", "build-distributions.ts"), ...args], {
     cwd: root,
     encoding: "utf-8",
     timeout: remainingOperationTimeoutMs(NATIVE_FIXTURE_SETUP_TIMEOUT_MS),
@@ -103,7 +104,7 @@ function output(run: Run): string {
 }
 
 describe("t145 package determinism — two source-only builds match", () => {
-  test("scripts/package.ts exists (the build entry)", () => {
+  test("packaging/build-distributions.ts exists (the build entry)", () => {
     expect(existsSync(PACKAGE_TS)).toBe(true);
   });
 

@@ -6,7 +6,7 @@
 //     question-rendering annex binds to its own tool, and names no one
 //     harness's tool (it said AskUserQuestion, Claude Code's, on all seven);
 //   - the native onboarding's Permissions line written for Kiro's `aidlc` agent
-//     (rewriteNativeOnboarding in scripts/package.ts) stays on the trees that
+//     (rewriteNativeOnboarding in packaging/build-distributions.ts) stays on the trees that
 //     ship that agent; Cursor and opencode keep their own bullet, the one their
 //     copy install shows, and Codex gets its own bullet without the
 //     copy-channel scripts.

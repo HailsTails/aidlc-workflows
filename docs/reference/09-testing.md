@@ -767,7 +767,7 @@ bun tests/gen-coverage-registry.ts --check --base origin/main  # and fail if a u
 The generator reads the units from the packaged `dist/claude` tree. If that
 tree was packaged from other sources (`core/`, `harness/`, `plugins/` or the
 packager's own scripts) than the checkout, both commands refuse with one line:
-run `bun scripts/package.ts` first. `package.ts` records a content fingerprint of its inputs per harness in
+run `bun packaging/build-distributions.ts` first. `package.ts` records a content fingerprint of its inputs per harness in
 `dist/.package-sources.json` (`src/packaging/adapters/packaged-sources-file.ts`), so undoing an edit
 needs no rebuild. A build during which an input changed is not recorded and
 fails, saying to run it again. Temp trees from the generator's `AIDLC_COVERAGE_*` seams have
@@ -2090,7 +2090,7 @@ Copilot lane's, in the interactive `kiro-cli chat` terminal, once per tree) on
 the preview's source commit, on a machine with a signed-in Kiro CLI:
 
 ```bash
-bun scripts/package.ts
+bun packaging/build-distributions.ts
 AIDLC_KIRO_TUI_LIVE=1 AIDLC_TUI_LIVE=1 bun tests/run-tests.ts --e2e --production-guards \
   --require-coverage --filter t-tui-kiro-release-journey
 ```

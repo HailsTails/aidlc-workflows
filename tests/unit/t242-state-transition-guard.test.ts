@@ -1066,7 +1066,7 @@ describe("t242 state-transition ownership guard", () => {
     const shellCwd = join(project, "src");
     const hookImport = 'import "./aidlc-guard-switch.ts";\n';
     for (const dir of ["src", "scripts", ".kiro/tools"]) mkdirSync(join(project, dir), { recursive: true });
-    writeFileSync(join(project, "scripts", "package.ts"), "export {};\n");
+    writeFileSync(join(project, "packaging", "build-distributions.ts"), "export {};\n");
     writeFileSync(join(project, ".kiro", "tools", "aidlc-lib.ts"), hookImport);
     writeFileSync(join(project, ".kiro", "tools", "helper.ts"), hookImport);
     const env: NodeJS.ProcessEnv = { ...unownedEnv(), AIDLC_PROJECT_DIR: project, CLAUDE_PROJECT_DIR: project };
@@ -1870,7 +1870,7 @@ describe("t242 state-transition ownership guard", () => {
     projects.push(project);
     mkdirSync(join(project, "scripts"), { recursive: true });
     mkdirSync(join(project, ".claude", "tools"), { recursive: true });
-    writeFileSync(join(project, "scripts", "package.ts"), "export {};\n");
+    writeFileSync(join(project, "packaging", "build-distributions.ts"), "export {};\n");
     writeFileSync(join(project, "scripts", "build.ts"), 'console.log("build");\n');
     for (const tool of ["aidlc.ts", "aidlc-utility.ts"]) {
       writeFileSync(join(project, ".claude", "tools", tool), 'import "./aidlc-guard-switch.ts";\n');

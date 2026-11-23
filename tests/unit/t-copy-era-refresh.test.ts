@@ -1,9 +1,9 @@
-// covers: tool:aidlc-init, file:scripts/package.ts, file:core/tools/aidlc-distribution.ts, file:scripts/copy-era-files.ts
+// covers: tool:aidlc-init, file:packaging/build-distributions.ts, file:core/tools/aidlc-distribution.ts, file:scripts/copy-era-files.ts
 //
 // A project AI-DLC 2.1.1 to 2.7.0 set up by copying its tree carries no install
 // record, so `aidlc config` tells AI-DLC's own unchanged files from the
 // person's by the bytes those releases shipped (scripts/copy-era-files.json,
-// merged into each harness's projection by scripts/package.ts). The fixtures
+// merged into each harness's projection by packaging/build-distributions.ts). The fixtures
 // are the files as 2.6.18, 2.6.20 and 2.3.0 shipped them: an agent this release still
 // ships, the Application Design stage it no longer ships, and 2.3.0's own
 // settings with a hook this release retired, and 2.6.18's own settings with

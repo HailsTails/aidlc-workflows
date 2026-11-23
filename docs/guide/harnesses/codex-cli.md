@@ -5,7 +5,7 @@ OpenAI **Codex CLI** harness. One deterministic core, many harnesses: the
 engine, state machine, audit log, graph, swarm referee, and learnings gate are
 byte-identical across every distribution — only the shell differs. The
 source/development tree is **generated** into ignored local `dist/codex/` from
-`core/` + `harness/codex/` by `bun scripts/package.ts codex`; never hand-edit it.
+`core/` + `harness/codex/` by `bun packaging/build-distributions.ts codex`; never hand-edit it.
 
 The project's `.codex/config.toml` sets `developer_instructions` to the Codex
 onboarding, as documented in the
@@ -192,7 +192,7 @@ then set `RUNTIME_ROOT` to the extracted `runtime/` directory.
 
    ```bash
    bun install --frozen-lockfile
-   bun scripts/package.ts codex trust --project "/abs/path/to/your project"
+   bun packaging/build-distributions.ts codex trust --project "/abs/path/to/your project"
    ```
 
    The command prints ready-to-paste `[hooks.state]` entries for
@@ -205,7 +205,7 @@ then set `RUNTIME_ROOT` to the extracted `runtime/` directory.
    pass its exact path explicitly:
 
    ```bash
-   bun scripts/package.ts codex trust \
+   bun packaging/build-distributions.ts codex trust \
      --project "/abs/path/to/your project" \
      --hooks-json "/abs/custom path/hooks.json"
    ```
@@ -234,7 +234,7 @@ then set `RUNTIME_ROOT` to the extracted `runtime/` directory.
 
 Framework developers who
 need the Bun-shaped projection can clone the repository, run
-`bun install --frozen-lockfile` and `bun scripts/package.ts`, then use the
+`bun install --frozen-lockfile` and `bun packaging/build-distributions.ts`, then use the
 ignored local `dist/codex/` output. The source-checkout trust generator is
 specific to those Bun-shaped hook commands and is not used by the native
 runtime.
@@ -339,8 +339,8 @@ implicit skill matching so 37 runner descriptions don't pollute the index).
 ## Regenerating
 
 ```bash
-bun scripts/package.ts codex          # regenerate dist/codex from core/ + harness/codex/
-bun scripts/package.ts --check        # build twice and byte-compare (every harness)
+bun packaging/build-distributions.ts codex          # regenerate dist/codex from core/ + harness/codex/
+bun packaging/build-distributions.ts --check        # build twice and byte-compare (every harness)
 ```
 
 Core `.ts` files are byte-identical to their `core/tools/` and `core/hooks/`

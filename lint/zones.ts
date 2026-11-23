@@ -10,11 +10,10 @@ export const CLEAN_ZONE: ZoneRoots = {
   files: [
     "eslint.config.ts",
     "eslint.config.test.ts",
-    "disciplines.json",
-    "discipline-exceptions.json",
-    "disciplines.eslint.mjs",
-    "disciplines.eslint.d.mts",
-    "scripts/package.ts",
+    "hone.config.json",
+    "hone.eslint.mjs",
+    "hone.eslint.d.mts",
+    "packaging/build-distributions.ts",
   ],
 };
 

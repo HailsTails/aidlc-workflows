@@ -4870,7 +4870,7 @@ export async function collectDoctorReport(
       pass: true,
       label: compiled
         ? "hook trust: merge the shipped native trust-seed.toml entries into $CODEX_HOME/config.toml or run one TUI trust pass"
-        : "hook trust: pre-seed [hooks.state] with `bun scripts/package.ts codex trust --project <dir>` or run one TUI trust pass",
+        : "hook trust: pre-seed [hooks.state] with `bun packaging/build-distributions.ts codex trust --project <dir>` or run one TUI trust pass",
     });
   } else if (harness === ".aidlc" && isCopilot) {
     // Copilot (CLI + VS Code, one install): the wiring config is
