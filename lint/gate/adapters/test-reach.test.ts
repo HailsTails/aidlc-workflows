@@ -16,7 +16,7 @@ const FILES: Readonly<Record<string, string>> = {
   "core/tools/init.ts": "export const i = 1;",
   "core/tools/deep.ts": "export const d = 1;",
   "hooks/aidlc-guard.ts": "export const g = 1;",
-  "scripts/package.ts": "export const p = 1;",
+  "packaging/build-distributions.ts": "export const p = 1;",
 };
 
 const ABSOLUTE_LITERALS = [

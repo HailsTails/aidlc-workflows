@@ -1,4 +1,4 @@
-// covers: file:scripts/package.ts, file:scripts/earlier-release-regions.ts
+// covers: file:packaging/build-distributions.ts, file:scripts/earlier-release-regions.ts
 //
 // A project set up on 2.8.0 to 2.11.0 refreshes to this release with its own
 // tool: `bun <dir>/tools/aidlc.ts config --from <runtime>` on a copy, and

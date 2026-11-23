@@ -1,4 +1,4 @@
-// covers: file:scripts/package.ts, tool:aidlc-init
+// covers: file:packaging/build-distributions.ts, tool:aidlc-init
 //
 // A native release ships each root file AI-DLC merges into (AGENTS.md, the
 // .gitignore part) twice: at the project root, and as the part config and the

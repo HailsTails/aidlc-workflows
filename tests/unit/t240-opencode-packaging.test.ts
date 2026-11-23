@@ -3,7 +3,7 @@
 // covers: file:tools/aidlc-lib.ts
 //
 // WHAT. Four contracts land here:
-//   (1) `bun scripts/package.ts opencode --check` produces byte-identical
+//   (1) `bun packaging/build-distributions.ts opencode --check` produces byte-identical
 //       clean builds (same UX as codex's t150 test 1).
 //   (2) Core parity: every .ts under dist/opencode/.aidlc/{tools,hooks}/ is
 //       BYTE-IDENTICAL to its dist/claude source (the architecture-B
@@ -50,7 +50,7 @@ const createAdapter = adapterPlugin.server;
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-const PACKAGE_SCRIPT = join(REPO_ROOT, "scripts", "package.ts");
+const PACKAGE_SCRIPT = join(REPO_ROOT, "packaging", "build-distributions.ts");
 const CLAUDE_SRC = join(REPO_ROOT, "dist", "claude", ".claude");
 const OPENCODE_ROOT = join(REPO_ROOT, "dist", "opencode");
 const ENGINE = join(OPENCODE_ROOT, ".aidlc");

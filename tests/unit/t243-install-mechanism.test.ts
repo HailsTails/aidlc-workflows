@@ -1,5 +1,5 @@
 // covers: tool:aidlc-init, tool:aidlc-lifecycle, file:core/tools/aidlc-archive.ts
-// covers: file:core/tools/aidlc-transaction.ts, file:scripts/package.ts, file:core/tools/aidlc-distribution.ts
+// covers: file:core/tools/aidlc-transaction.ts, file:packaging/build-distributions.ts, file:core/tools/aidlc-distribution.ts
 
 import {
   NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
@@ -1067,7 +1067,7 @@ describe("t243 project initialization", () => {
     expect(initialized.status, initialized.stdout + initialized.stderr).toBe(0);
     // Dropped as the plugin docs say: one copy of its Kiro IDE projection's .kiro folder.
     const projection = join(temp("aidlc-t243-plugin-"), "kiro-ide");
-    const built = run(join(REPO_ROOT, "scripts", "package.ts"), ["plugin", "build", "test-pro", "kiro-ide", projection], REPO_ROOT);
+    const built = run(join(REPO_ROOT, "packaging", "build-distributions.ts"), ["plugin", "build", "test-pro", "kiro-ide", projection], REPO_ROOT);
     expect(built.status, built.stdout + built.stderr).toBe(0);
     cpSync(join(projection, ".kiro"), join(project, ".kiro"), { recursive: true });
     const registration = join(project, ".kiro", "hooks", "aidlc-test-pro-compose.json");
@@ -1115,7 +1115,7 @@ describe("t243 project initialization", () => {
 
   test("a Kiro switch recognises a dropped plugin's registration again while it runs, and lets it be removed", () => {
     const projection = join(temp("aidlc-t243-plugin-change-"), "kiro-ide");
-    const built = run(join(REPO_ROOT, "scripts", "package.ts"), ["plugin", "build", "test-pro", "kiro-ide", projection], REPO_ROOT);
+    const built = run(join(REPO_ROOT, "packaging", "build-distributions.ts"), ["plugin", "build", "test-pro", "kiro-ide", projection], REPO_ROOT);
     expect(built.status, built.stdout + built.stderr).toBe(0);
     const dropped = () => {
       const project = temp("aidlc-t243-kiro-switch-plugin-change-");
@@ -1230,7 +1230,7 @@ describe("t243 project initialization", () => {
     ], project);
     expect(initialized.status, initialized.stdout + initialized.stderr).toBe(0);
     const projection = join(temp("aidlc-t243-plugin-folder-"), "kiro-ide");
-    const built = run(join(REPO_ROOT, "scripts", "package.ts"), ["plugin", "build", "test-pro", "kiro-ide", projection], REPO_ROOT);
+    const built = run(join(REPO_ROOT, "packaging", "build-distributions.ts"), ["plugin", "build", "test-pro", "kiro-ide", projection], REPO_ROOT);
     expect(built.status, built.stdout + built.stderr).toBe(0);
     cpSync(join(projection, ".kiro"), join(project, ".kiro"), { recursive: true });
     const registration = join(project, ".kiro", "hooks", "aidlc-test-pro-compose.json");
@@ -1276,7 +1276,7 @@ describe("t243 project initialization", () => {
     ], project);
     expect(initialized.status, initialized.stdout + initialized.stderr).toBe(0);
     const projection = join(temp("aidlc-t243-plugin-entry-"), "kiro-ide");
-    const built = run(join(REPO_ROOT, "scripts", "package.ts"), ["plugin", "build", "test-pro", "kiro-ide", projection], REPO_ROOT);
+    const built = run(join(REPO_ROOT, "packaging", "build-distributions.ts"), ["plugin", "build", "test-pro", "kiro-ide", projection], REPO_ROOT);
     expect(built.status, built.stdout + built.stderr).toBe(0);
     cpSync(join(projection, ".kiro"), join(project, ".kiro"), { recursive: true });
     const registration = join(project, ".kiro", "hooks", "aidlc-test-pro-compose.json");
@@ -9507,7 +9507,7 @@ describe("t243 projection channel", () => {
     expect(hooks).toContain(trustedCommand("adapter codex"));
     expect(trust).toContain(`projected \`${trustedCommand("adapter codex")} ...\``);
     expect(trust).not.toContain("bun .codex/tools/aidlc.ts");
-    expect(trust).not.toContain("bun scripts/package.ts codex trust");
+    expect(trust).not.toContain("bun packaging/build-distributions.ts codex trust");
     const cursorCli = JSON.parse(
       readFileSync(join(CURSOR_RELEASE, ".cursor", "cli.json"), "utf-8"),
     ) as { permissions: { allow: string[] } };

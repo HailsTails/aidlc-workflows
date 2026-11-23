@@ -15,6 +15,7 @@
     "core/**/*.ts",
     "harness/**/*.ts",
     "scripts/**/*.ts",
+    "packaging/**/*.ts",
     "plugins/*/tools/**/*.ts"
   ],
   "exclude": [

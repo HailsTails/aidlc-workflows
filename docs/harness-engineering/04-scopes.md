@@ -189,7 +189,7 @@ Suppose your team wants a `hotfix` scope — leaner than `bugfix`, for the urgen
 
 2. **Tag the stages that should run under `hotfix`.** In each stage you want `EXECUTE` (under `core/aidlc-common/stages/<phase>/`), add `hotfix` to its frontmatter `scopes:` list. A stage you don't tag is `SKIP` for the scope. The 3 initialization stages must include it (they always run).
 
-3. **Regenerate.** Run `bun scripts/package.ts` to rebuild the ignored harness projections, including `scope-grid.json` and the compiled scope table. Run `bun scripts/package.ts --check` to confirm two independent source-only builds are byte-identical.
+3. **Regenerate.** Run `bun packaging/build-distributions.ts` to rebuild the ignored harness projections, including `scope-grid.json` and the compiled scope table. Run `bun packaging/build-distributions.ts --check` to confirm two independent source-only builds are byte-identical.
 
 4. **Verify the scope resolves and is accepted.** Run `/aidlc --doctor`. Then confirm an init under the new scope produces a state file with the right `Scope:` line, and that it's accepted as an env default and as a mid-workflow `--scope` change.
 
@@ -221,7 +221,7 @@ This implementation derives the valid-scope list from `.claude/scopes/*.md` pres
 
 Tuning is a smaller edit, but it lands on the stage, not the scope. Two changes come up often:
 
-- **Flip a stage in or out.** Add or remove the scope name from a stage's `scopes:` list. This is how you'd, say, add `mvp` to `observability-setup`'s `scopes:` because your team always wires monitoring even for a first cut. One tag, then regenerate with `bun scripts/package.ts` and run `--doctor`.
+- **Flip a stage in or out.** Add or remove the scope name from a stage's `scopes:` list. This is how you'd, say, add `mvp` to `observability-setup`'s `scopes:` because your team always wires monitoring even for a first cut. One tag, then regenerate with `bun packaging/build-distributions.ts` and run `--doctor`.
 - **Change a default depth, test strategy, or review ceiling.** Adjust `depth`, add/remove `testStrategy`, or add/remove `review_cap` in the scope's `core/scopes/aidlc-<name>.md` frontmatter. The first two recalibrate artifact and test volume; `review_cap` lowers stage review classes to `adversarial`, `advisory`, or `none` without ever raising them. Because each scope carries its own defaults, the change applies to every workflow that selects the scope. Per-run `--depth`, `--test-strategy`, and `--review` can lower the corresponding behavior further.
 - **Change a ceremony default.** Set `sensors`, `learnings`, `summary_confirmation`, `plan_approval`, or `collaborators` to `on` or `off` in the scope file. Existing intent lines retain their choice; a scope change refreshes scope-sourced lines but preserves per-intent overrides. Apart from `plan_approval: off`, which builds each code plan without asking, and `collaborators: off`, which runs every stage lead-only, no ceremony switch removes stage approval, human-turn authority, audit, team write protection, or the reviewer.
 

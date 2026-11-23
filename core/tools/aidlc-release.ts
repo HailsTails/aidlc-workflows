@@ -548,7 +548,7 @@ type TransportOptions = {
 };
 
 const NO_RELEASE_PUBLISHED =
-  "No published native release is available yet. Pass --from <release-directory>, or run bun scripts/package.ts in an aidlc-workflows source checkout to materialize the development copy channel.";
+  "No published native release is available yet. Pass --from <release-directory>, or run bun packaging/build-distributions.ts in an aidlc-workflows source checkout to materialize the development copy channel.";
 
 async function fetchBytes(
   url: string,

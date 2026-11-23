@@ -81,6 +81,6 @@ test("a completed build with changed inputs keeps the sources warning and failur
   expect(current.build).toHaveBeenCalledWith({ hosts: [codex], refusals: [], sweep: "named" });
   expect(current.terminal.errors()).toEqual([
     "[sources] a packaging input changed while packaging, so the generated trees may mix " +
-      "old and new files: run `bun scripts/package.ts` again.\n",
+      "old and new files: run `bun packaging/build-distributions.ts` again.\n",
   ]);
 });

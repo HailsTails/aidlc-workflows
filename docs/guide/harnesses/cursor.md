@@ -7,7 +7,7 @@ deterministic core, many harnesses: the engine, state machine, audit log,
 graph, swarm referee, and learnings gate are byte-identical across every
 distribution - only the shell differs. The source/development tree is
 **generated** into ignored local `dist/cursor/` from `core/` +
-`harness/cursor/` by `bun scripts/package.ts cursor`; never hand-edit it.
+`harness/cursor/` by `bun packaging/build-distributions.ts cursor`; never hand-edit it.
 
 Harness-specific onboarding lives in `.cursor/rules/aidlc-onboarding.mdc`,
 loaded automatically through `alwaysApply: true`. The root `AGENTS.md` block

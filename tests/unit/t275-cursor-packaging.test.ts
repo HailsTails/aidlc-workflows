@@ -3,7 +3,7 @@
 // covers: file:tools/aidlc-lib.ts, function:runnerFrontmatterAdditions
 //
 // WHAT. Six contracts land here:
-//   (1) `bun scripts/package.ts cursor --check` produces byte-identical clean
+//   (1) `bun packaging/build-distributions.ts cursor --check` produces byte-identical clean
 //       builds (same UX as opencode's t240 test 1).
 //   (2) Core parity: every .ts under dist/cursor/.cursor/{tools,hooks}/ is
 //       BYTE-IDENTICAL to its dist/claude source (the architecture-B
@@ -84,7 +84,7 @@ const SEEN_READ_FORMS = [
 ];
 
 
-const PACKAGE_SCRIPT = join(REPO_ROOT, "scripts", "package.ts");
+const PACKAGE_SCRIPT = join(REPO_ROOT, "packaging", "build-distributions.ts");
 const CLAUDE_SRC = join(REPO_ROOT, "dist", "claude", ".claude");
 const CURSOR_ROOT = join(REPO_ROOT, "dist", "cursor");
 const CURSOR_RELEASE_ROOT = join(REPO_ROOT, "dist-release", "cursor");

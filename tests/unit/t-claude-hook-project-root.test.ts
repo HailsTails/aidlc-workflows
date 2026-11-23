@@ -1,4 +1,4 @@
-// covers: file:harness/claude/settings.json, file:scripts/package.ts, hook:aidlc-plan-approval-guard
+// covers: file:harness/claude/settings.json, file:packaging/build-distributions.ts, hook:aidlc-plan-approval-guard
 // Execute the shipped command through Claude's shell syntax, not a direct
 // absolute-path spawn that would hide a relative hook entry-point regression.
 

@@ -43,7 +43,8 @@ test("fingerprints repeat and return to the original after a source edit is undo
   expect(await sources.fingerprint()).toEqual(accepted(LEGACY_HEX));
 });
 
-test.each(["harness/claude/manifest.ts", "plugins/demo/stages/s.md", "scripts/package.ts",
+test.each(["harness/claude/manifest.ts", "plugins/demo/stages/s.md",
+  "packaging/build-distributions.ts",
   "scripts/package-sources.ts", "src/workflow-definition/domain/example.ts", "scripts/plugin-hooks-template/compose.ts"])(
   "retains the old input-edit assertion for %s when present", async (path) => {
     const fileSystem = sourceTree();
@@ -57,7 +58,8 @@ test.each(["harness/claude/manifest.ts", "plugins/demo/stages/s.md", "scripts/pa
   });
 
 test.each([
-  "plugins/demo/stages/s.md", "src/workflow-definition/domain/example.ts", "scripts/package.ts",
+  "plugins/demo/stages/s.md", "src/workflow-definition/domain/example.ts",
+  "packaging/build-distributions.ts",
   "scripts/package-sources.ts", "scripts/agent-knowledge.ts", "scripts/copy-era-files.json",
   "scripts/plugin-hooks-template/compose.ts",
 ])("includes the packaged input %s", async (path) => {
@@ -95,7 +97,7 @@ test("a source change gives the unchanged stale-host message", async () => {
   await sources.record({ hosts: [distribution("claude")], builtFrom: LEGACY_HEX });
   await fileSystem.writeFile({ file: new URL("file:///repo/core/a.bin"), content: { kind: "bytes", bytes: new Uint8Array([1]) } });
   expect(await sources.staleness(distribution("claude"))).toEqual(accepted(
-    "dist/claude was packaged from other sources than this checkout: run `bun scripts/package.ts` first."));
+    "dist/claude was packaged from other sources than this checkout: run `bun packaging/build-distributions.ts` first."));
 });
 
 test("a one-host build updates its own entry and preserves another host's old record", async () => {
@@ -107,7 +109,7 @@ test("a one-host build updates its own entry and preserves another host's old re
   expect(await sources.record({ hosts: [distribution("kiro")], builtFrom: LEGACY_HEX })).toEqual(accepted("recorded"));
   expect(await sources.staleness(distribution("kiro"))).toEqual(accepted(null));
   expect(await sources.staleness(distribution("claude"))).toEqual(accepted(
-    "dist/claude was packaged from other sources than this checkout: run `bun scripts/package.ts` first."));
+    "dist/claude was packaged from other sources than this checkout: run `bun packaging/build-distributions.ts` first."));
   expect(await fileSystem.readFile({ file: recordFile })).toEqual(accepted({ kind: "text", text:
     '{\n  "schemaVersion": 1,\n  "harnesses": {\n    "claude": "old",\n    "kiro": "8039344a52f1f7057d99dd83bf0e73640fe73269924ac3dc7e5d69fe05cf3b22"\n  }\n}\n' }));
 });
@@ -120,7 +122,7 @@ test("a mid-build edit leaves the forgotten host unrecorded without rewriting th
   await fileSystem.writeFile({ file: new URL("file:///repo/harness/z.md"), content: { kind: "text", text: "edited" } });
   expect(await sources.record({ hosts: [distribution("claude")], builtFrom: LEGACY_HEX })).toEqual(accepted("inputs-changed"));
   expect(await sources.staleness(distribution("claude"))).toEqual(accepted(
-    "dist/claude has no record of the sources it was packaged from: run `bun scripts/package.ts` first."));
+    "dist/claude has no record of the sources it was packaged from: run `bun packaging/build-distributions.ts` first."));
   expect(await fileSystem.readFile({ file: recordFile })).toEqual(accepted({ kind: "text", text:
     '{\n  "schemaVersion": 1,\n  "harnesses": {\n    "kiro": "8039344a52f1f7057d99dd83bf0e73640fe73269924ac3dc7e5d69fe05cf3b22"\n  }\n}\n' }));
 });
@@ -131,7 +133,7 @@ test("an interrupted build forgets only its host", async () => {
   await sources.record({ hosts: [distribution("claude"), distribution("kiro")], builtFrom: LEGACY_HEX });
   await sources.forget([distribution("claude")]);
   expect(await sources.staleness(distribution("claude"))).toEqual(accepted(
-    "dist/claude has no record of the sources it was packaged from: run `bun scripts/package.ts` first."));
+    "dist/claude has no record of the sources it was packaged from: run `bun packaging/build-distributions.ts` first."));
   expect(await sources.staleness(distribution("kiro"))).toEqual(accepted(null));
 });
 
@@ -145,7 +147,7 @@ test.each(["{", "null", "[]", "{}", "\uFEFF{}", '{"harnesses":[]}', '{"harnesses
 ("malformed record %s gives the legacy missing-record message", async (text) => {
   const fileSystem = createInMemoryFileSystem({ files: { "file:///repo/dist/.package-sources.json": text } });
   expect(await sourcesFor(fileSystem).staleness(distribution("claude"))).toEqual(accepted(
-    "dist/claude has no record of the sources it was packaged from: run `bun scripts/package.ts` first."));
+    "dist/claude has no record of the sources it was packaged from: run `bun packaging/build-distributions.ts` first."));
 });
 
 test("a malformed record is replaced and non-string entries are dropped on recording", async () => {
@@ -164,7 +166,7 @@ test("an unreadable record retains the legacy empty-record outcome", async () =>
     "file:///repo/dist/.package-sources.json": "permission-denied",
   } });
   expect(await sourcesFor(fileSystem).staleness(distribution("claude"))).toEqual(accepted(
-    "dist/claude has no record of the sources it was packaged from: run `bun scripts/package.ts` first."));
+    "dist/claude has no record of the sources it was packaged from: run `bun packaging/build-distributions.ts` first."));
 });
 
 test("input tree failures name the actual source and are refusal data", async () => {
@@ -180,9 +182,9 @@ test("nested input failures are not silently omitted", async () => {
 });
 
 test("an explicit input file failure keeps its actual path", async () => {
-  const fileSystem = createInMemoryFileSystem({ files: {}, faults: { "file:///repo/scripts/package.ts": "not-a-file" } });
+  const fileSystem = createInMemoryFileSystem({ files: {}, faults: { "file:///repo/packaging/build-distributions.ts": "not-a-file" } });
   expect(await sourcesFor(fileSystem).fingerprint()).toEqual(refused({ kind: "packaged-sources-failed",
-    operation: "read-inputs", path: "scripts/package.ts", reason: "not-a-file" }));
+    operation: "read-inputs", path: "packaging/build-distributions.ts", reason: "not-a-file" }));
 });
 
 test("hasher refusals cannot be accepted as a fingerprint", async () => {

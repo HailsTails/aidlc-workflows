@@ -9,7 +9,7 @@ node_modules/
 # Bun transient compilation artifacts
 *.bun-build
 
-# Generated AI-DLC projections (materialized locally by scripts/package.ts)
+# Generated AI-DLC projections (materialized locally by packaging/build-distributions.ts)
 /dist/
 /dist-release/
 build/

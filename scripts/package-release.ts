@@ -265,14 +265,15 @@ async function build(argv: string[]): Promise<void> {
   const output = valueAfter(argv, "--output") || join(REPO_ROOT, "build", "release");
   const binaries = valueAfter(argv, "--binaries") || join(REPO_ROOT, "build", "binaries");
   const requireReleaseMatrix = argv.includes("--require-release-matrix");
-  const regenerate = spawnSync("bun", [join(REPO_ROOT, "scripts", "package.ts")], {
+  const regenerate = spawnSync("bun", [join(REPO_ROOT, "packaging", "build-distributions.ts")], {
     cwd: REPO_ROOT,
     encoding: "utf-8",
   });
   if (regenerate.status !== 0) {
     throw new Error(`package regeneration failed\n${regenerate.stderr}`);
   }
-  const check = spawnSync("bun", [join(REPO_ROOT, "scripts", "package.ts"), "--check"], {
+  const packageEntry = join(REPO_ROOT, "packaging", "build-distributions.ts");
+  const check = spawnSync("bun", [packageEntry, "--check"], {
     cwd: REPO_ROOT,
     encoding: "utf-8",
   });

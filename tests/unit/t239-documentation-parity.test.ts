@@ -1234,7 +1234,7 @@ describe("documentation parity derives current behavior from authored implementa
         ["docs", "reference", "14-claude-features.md"],
         ["docs", "reference", "agents", "README.md"],
         ["src", "hosts", "codex", "projection", "agent-renderer.ts"],
-        ["scripts", "package.ts"],
+        ["packaging", "build-distributions.ts"],
         ["tests", "unit", "t216-agent-tier-projection.test.ts"],
       ];
       for (const path of narrativePaths) {

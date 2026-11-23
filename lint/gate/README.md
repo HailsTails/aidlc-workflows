@@ -28,7 +28,7 @@ all seven hosts, generated plugin trees and marketplace metadata. Install
 fixtures exercise fresh install, refresh, local-edit protection, force and
 upgrade through the existing real CLI runner.
 
-Only src/**, lint/**, scripts/gate.ts and scripts/package.ts changes defer
+Only src/**, lint/**, scripts/gate.ts and packaging/build-distributions.ts changes defer
 legacy smoke/matrix execution to the enforced exact-foundation sweep. Runtime,
 runner, fixture, dependency and unknown paths retain conservative legacy
 selection. Changed legacy tests still run, and selected suite files are not run

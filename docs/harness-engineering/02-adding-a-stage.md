@@ -190,8 +190,8 @@ packager to materialize the ignored local `dist/<harness>/` (Bun copy) and
 file into both channels and recompiles each graph:
 
 ```bash
-bun scripts/package.ts            # materialize both channels for every harness
-bun scripts/package.ts --check    # build twice and byte-compare
+bun packaging/build-distributions.ts            # materialize both channels for every harness
+bun packaging/build-distributions.ts --check    # build twice and byte-compare
 ```
 
 The runtime reads a compiled artifact, `<harness-dir>/tools/data/stage-graph.json`
@@ -359,7 +359,7 @@ the Developer Reference.
   exempt — it has no agent file. Pipeline stages also reject duplicate chain
   identities across `lead_agent` and `support_agents`.
 - **Drift checks.** In the source checkout, CI builds every tree from `core/`
-  and `bun scripts/package.ts --check` builds twice and byte-compares, so no
+  and `bun packaging/build-distributions.ts --check` builds twice and byte-compares, so no
   generated file is an input and there is nothing to forget to commit. In an
   installed tree, `aidlc engine graph compile --check` exits `0` when the graph
   matches the stage files, and `1` when a stage was edited without

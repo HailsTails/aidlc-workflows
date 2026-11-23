@@ -141,7 +141,7 @@ function sharedSkipReason(): string | null {
 const SHARED_SKIP_REASON = sharedSkipReason();
 function skipReason(tree: KiroTree): string | null {
   if (SHARED_SKIP_REASON) return SHARED_SKIP_REASON;
-  return existsSync(join(REPO_ROOT, "dist", tree)) ? null : `dist/${tree} is missing: run bun scripts/package.ts`;
+  return existsSync(join(REPO_ROOT, "dist", tree)) ? null : `dist/${tree} is missing: run bun packaging/build-distributions.ts`;
 }
 
 describe("t-tui-kiro-release-journey: a person's first day on Kiro CLI, before each release", () => {

@@ -1,5 +1,5 @@
-// covers: function:shippedInlineContextEntries, function:personaTwinRels, file:scripts/package.ts
-//
+// covers: function:shippedInlineContextEntries, function:personaTwinRels,
+//   file:packaging/build-distributions.ts
 // On Kiro IDE a persona's agent file opens with about 32 KB of tool permissions
 // (the manifest's frontmatterAdditions): Kiro needs them to dispatch the agent,
 // the lead reading the persona in its own chat does not. A measured Kiro run

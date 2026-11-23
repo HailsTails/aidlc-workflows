@@ -7,7 +7,7 @@
     "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.tests.json && NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit -p tsconfig.adapters.json",
     "lint": "bun scripts/gate.ts --full --only records,lint,monolith",
     "gate": "bun scripts/gate.ts",
-    "check": "bun scripts/package.ts && bun scripts/package.ts --check && bun run typecheck && bun run lint"
+    "check": "bun packaging/build-distributions.ts && bun packaging/build-distributions.ts --check && bun run typecheck && bun run lint"
   },
   "description": "Dev-only tooling for the multi-harness AI-DLC framework. Generated distributions live under dist/<harness>/ and run via bun without requiring this private package.",
   "author": "Amazon.com, Inc. or its affiliates",

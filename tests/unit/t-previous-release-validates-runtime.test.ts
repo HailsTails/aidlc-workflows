@@ -1,4 +1,4 @@
-// covers: function:writtenRootIntegration, function:readRootIntegrations, file:core/tools/aidlc-distribution.ts, file:scripts/package.ts
+// covers: function:writtenRootIntegration, function:readRootIntegrations, file:core/tools/aidlc-distribution.ts, file:packaging/build-distributions.ts
 //
 // `aidlc update`, `aidlc use` and a rollback-then-forward from 2.10.0 run the
 // 2.10.0 binary, which checks every runtime tree of the release it installs

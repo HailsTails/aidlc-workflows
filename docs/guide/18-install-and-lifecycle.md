@@ -2056,7 +2056,7 @@ materialize ignored local outputs:
 
 ```bash
 bun install --frozen-lockfile
-bun scripts/package.ts
+bun packaging/build-distributions.ts
 ```
 
 That creates the Bun-invoking `dist/<harness>/`, native `dist-release/<harness>/`,

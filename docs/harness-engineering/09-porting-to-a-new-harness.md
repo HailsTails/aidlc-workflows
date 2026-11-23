@@ -32,7 +32,7 @@ src/cli/
   main.ts                     # constructs platform implementers and opens the root
   package-build-root.ts       # captures inputs and assembles host renderers
   roots.ts                    # HostModule and package-root contracts
-scripts/package.ts            # current build entry
+packaging/build-distributions.ts            # current build entry
 
 dist/<name>/                  # generated copy/Bun channel
 dist-release/<name>/          # generated native-aidlc channel
@@ -222,8 +222,8 @@ channel differences and refusals, using captured inputs and capability fakes.
 For a registered production host, the current package commands are:
 
 ```sh
-bun scripts/package.ts <name>
-bun scripts/package.ts <name> --check
+bun packaging/build-distributions.ts <name>
+bun packaging/build-distributions.ts <name> --check
 ```
 
 The first materializes its copy and native trees. `--check` builds two

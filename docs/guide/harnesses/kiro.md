@@ -209,7 +209,7 @@ you.
 
 Framework developers who
 need the Bun-shaped source projection can clone the repository, run
-`bun install --frozen-lockfile` and `bun scripts/package.ts`, then use the
+`bun install --frozen-lockfile` and `bun packaging/build-distributions.ts`, then use the
 ignored local `dist/kiro-ide/` output instead.
 
 The shipped `.gitignore` carries the workspace's commit/ignore split: the
@@ -878,9 +878,9 @@ resume "from Kiro IDE" while you are already in it:
 ## For framework developers
 
 `dist/kiro-ide` is **generated** from `core/` + `harness/kiro-ide/` by
-`bun scripts/package.ts kiro-ide` (core copy with the `{{HARNESS_DIR}}` token
+`bun packaging/build-distributions.ts kiro-ide` (core copy with the `{{HARNESS_DIR}}` token
 substituted to `.kiro` and the `rules/` → `steering/` rename). The output is
-ignored and local. `bun scripts/package.ts --check` builds twice in independent
+ignored and local. `bun packaging/build-distributions.ts --check` builds twice in independent
 temporary roots and byte-compares the results as the CI determinism guard. The
 authored
 Kiro IDE surfaces live in `harness/kiro-ide/`: the orchestrator skill
@@ -1067,7 +1067,7 @@ of `.kiro/`, so copy it separately.
 
 Framework developers who
 need the Bun-shaped source projection can clone the repository, run
-`bun install --frozen-lockfile` and `bun scripts/package.ts`, then use the
+`bun install --frozen-lockfile` and `bun packaging/build-distributions.ts`, then use the
 ignored local `dist/kiro/` output instead.
 
 The shipped `.gitignore` carries the workspace's commit/ignore split: the
@@ -1374,9 +1374,9 @@ harnesses (or running both side by side) is supported-but-untested; `/aidlc
 ### Kiro CLI (V2) for framework developers
 
 `dist/kiro` is **generated** from `core/` + `harness/kiro/` by
-`bun scripts/package.ts kiro` (core copy with the `{{HARNESS_DIR}}` token
+`bun packaging/build-distributions.ts kiro` (core copy with the `{{HARNESS_DIR}}` token
 substituted to `.kiro` and the `rules/` → `steering/` rename). The output is
-ignored and local. `bun scripts/package.ts --check` builds twice in independent
+ignored and local. `bun packaging/build-distributions.ts --check` builds twice in independent
 temporary roots and byte-compares the results as the CI determinism guard. The
 authored Kiro surfaces live in `harness/kiro/`: the orchestrator skill
 (`skills/aidlc/`), the agent JSONs (`agents/`), the hook adapter

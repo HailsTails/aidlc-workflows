@@ -118,7 +118,7 @@ export function setupCodexProject(opts: { workspaceWrite?: boolean } = {}): Code
   const trust = spawnSync(
     "bun",
     [
-      join(REPO_ROOT, "scripts", "package.ts"),
+      join(REPO_ROOT, "packaging", "build-distributions.ts"),
       "codex",
       "trust",
       "--project",

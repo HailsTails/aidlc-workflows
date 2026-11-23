@@ -73,7 +73,7 @@ describe("honePackage report", () => {
       "answered (2)",
       "a#b walker x.ts:1:1 fine",
       "findings (1)",
-      "drawer-path#drawer-names walker scripts/package.ts:1:0 forbidden categorical folder",
+      "drawer-path#drawer-names walker packaging/build-distributions.ts:1:0 forbidden folder",
       "unrecorded (1)",
       "long-function#function-length eslint ignore hone.eslint.d.mts",
       "verdict: fail",
@@ -88,7 +88,7 @@ describe("honePackage report", () => {
       findings: [
         {
           clause: "drawer-path#drawer-names",
-          location: "scripts/package.ts:1:0",
+          location: "packaging/build-distributions.ts:1:0",
           snippet: "forbidden categorical folder",
         },
       ],

@@ -57,8 +57,8 @@ jobs:
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
-      - run: bun scripts/package.ts
-      - run: bun scripts/package.ts --check
+      - run: bun packaging/build-distributions.ts
+      - run: bun packaging/build-distributions.ts --check
       - name: ShellCheck installer
         run: shellcheck scripts/install.sh
 
@@ -79,7 +79,7 @@ jobs:
       - run: bun install --frozen-lockfile
       # t238 builds the native binary from dist-release/; regenerate first so
       # the smoke proves CI-built bytes on every OS in the matrix.
-      - run: bun scripts/package.ts
+      - run: bun packaging/build-distributions.ts
       - run: bun test tests/unit/t238-build-binaries.test.ts
       - name: PSScriptAnalyzer installer
         if: runner.os == 'Windows'
@@ -130,8 +130,8 @@ jobs:
       # Build from projections regenerated on this runner, never from the
       # committed trees; the --check that follows is the generator-determinism
       # guard (regen twice, byte-compare), not a staleness check.
-      - run: bun scripts/package.ts
-      - run: bun scripts/package.ts --check
+      - run: bun packaging/build-distributions.ts
+      - run: bun packaging/build-distributions.ts --check
       - run: bun scripts/build-binaries.ts --target ${{ matrix.target }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -183,7 +183,7 @@ jobs:
           pattern: binary-*
           path: build/binaries
           merge-multiple: true
-      - run: bun scripts/package.ts
+      - run: bun packaging/build-distributions.ts
       - run: bun scripts/package-release.ts --require-release-matrix
         env:
           AIDLC_RELEASE_SOURCE_DIGEST: ${{ needs.validate.outputs.sha }}
@@ -542,7 +542,7 @@ jobs:
           test -n "$previous"
           echo "tag=$previous" >>"$GITHUB_OUTPUT"
       # The work each person leaves open is driven by the scripted stand-in, which reads the generated trees.
-      - run: bun scripts/package.ts
+      - run: bun packaging/build-distributions.ts
       - name: Update from the last release
         shell: bash
         env:

@@ -207,7 +207,7 @@ jobs:
         with:
           bun-version: "${{ env.BUN_VERSION }}"
       - run: "bun install --frozen-lockfile"
-      - run: "bun scripts/package.ts"
+      - run: "bun packaging/build-distributions.ts"
       - name: "Install compatibility tmux"
         if: "matrix.backend == 'tmux'"
         run: "sudo apt-get update -qq && sudo apt-get install -y -qq tmux"
@@ -412,7 +412,7 @@ jobs:
         with:
           bun-version: "${{ env.BUN_VERSION }}"
       - run: "bun install --frozen-lockfile"
-      - run: "bun scripts/package.ts"
+      - run: "bun packaging/build-distributions.ts"
       - name: "Require production guard coverage"
         timeout-minutes: 270
         run: |
@@ -951,7 +951,7 @@ jobs:
         with:
           bun-version: "${{ env.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
-      - run: bun scripts/package.ts
+      - run: bun packaging/build-distributions.ts
       - name: "Run release-contract"
         timeout-minutes: 70
         env:

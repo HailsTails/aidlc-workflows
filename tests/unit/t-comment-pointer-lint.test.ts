@@ -18,7 +18,7 @@ import { runTestSourceGit } from "../lib/test-source.ts";
 // Parsing every source file takes longer than bun's default case timeout.
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-const FOLDERS = ["core", "harness", "scripts", "plugins", "tests"];
+const FOLDERS = ["core", "harness", "scripts", "packaging", "plugins", "tests"];
 const SOURCE = /\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/;
 // Fixtures are inputs the tests read as data, not code anyone maintains.
 const FIXTURES = "tests/fixtures/";

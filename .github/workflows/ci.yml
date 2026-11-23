@@ -90,7 +90,7 @@ jobs:
       - name: Prepare test and coverage projections
         id: coverage_package
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: bash scripts/ci-check-budget.sh bun scripts/package.ts
+        run: bash scripts/ci-check-budget.sh bun packaging/build-distributions.ts
 
       - name: Fail if a unit lost coverage against the first parent
         if: ${{ !cancelled() && steps.coverage_package.outcome == 'success' }}
@@ -271,7 +271,7 @@ jobs:
         with:
           bun-version: '1.4.4'
       - run: bun install --frozen-lockfile
-      - run: bun scripts/package.ts
+      - run: bun packaging/build-distributions.ts
       # Explicit filters require executed cases in every selected file; select
       # real supervisor controls only on their owning platform.
       - name: Run native terminal contracts
@@ -342,7 +342,7 @@ jobs:
         with:
           bun-version: '1.4.4'
       - run: bun install --frozen-lockfile
-      - run: bun scripts/package.ts
+      - run: bun packaging/build-distributions.ts
       - name: Prepare POSIX isolated user
         if: runner.os != 'Windows'
         shell: bash
@@ -468,7 +468,7 @@ jobs:
         with:
           bun-version: '1.4.4'
       - run: bun install --frozen-lockfile
-      - run: bun scripts/package.ts
+      - run: bun packaging/build-distributions.ts
       # docs/reference/06-hooks-and-tools.md promises hook execution needs no
       # Git Bash or WSL. Drop every Git directory that carries bash.exe/sh.exe
       # (git.exe stays reachable through Git\cmd) and run the hook, adapter and
@@ -562,7 +562,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git -C "$workspace" rev-parse HEAD)"
           # No dependency lifecycle script is needed in this lane, so none runs.
           bun install --frozen-lockfile --ignore-scripts
-          bun scripts/package.ts
+          bun packaging/build-distributions.ts
           capture="$workspace/tmp/ci-wsl"
           mkdir -p "$capture"
           result=0

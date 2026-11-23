@@ -1,9 +1,0 @@
-{
-  "version": 2,
-  "records": [
-    {
-      "answers": "drawer-path#drawer-names",
-      "file": "scripts/package.ts"
-    }
-  ]
-}

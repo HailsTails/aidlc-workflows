@@ -1,5 +1,5 @@
 // covers: tool:aidlc-init, file:core/tools/aidlc-distribution.ts, file:core/tools/aidlc-includes.ts
-// covers: file:core/tools/aidlc-config-diagnostics.ts, file:scripts/package.ts
+// covers: file:core/tools/aidlc-config-diagnostics.ts, file:packaging/build-distributions.ts
 //
 // A team's own opencode.json (their model, provider, instructions and
 // permission rules) keeps everything it has when AI-DLC is set up or

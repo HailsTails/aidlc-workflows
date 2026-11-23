@@ -287,7 +287,7 @@ first intent exists, and you add free-form files to it from there.
 
 The native config command is the preferred project installation and refresh
 path. Framework developers may generate the ignored Bun-shaped `dist/`
-projection locally with `bun scripts/package.ts`; release users should not copy
+projection locally with `bun packaging/build-distributions.ts`; release users should not copy
 from a checkout.
 
 For native machine installs, run `aidlc config` once before opening the harness.

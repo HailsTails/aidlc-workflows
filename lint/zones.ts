@@ -13,7 +13,7 @@ export const CLEAN_ZONE: ZoneRoots = {
     "hone.config.json",
     "hone.eslint.mjs",
     "hone.eslint.d.mts",
-    "scripts/package.ts",
+    "packaging/build-distributions.ts",
   ],
 };
 

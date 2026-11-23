@@ -84,7 +84,7 @@ const RULE_INPUTS = [
   "bun.lock",
   "hone.eslint.mjs",
 ];
-const LINT_ROOTS = ["core", "harness", "scripts", "plugins", "src", "lint", "tests"];
+const LINT_ROOTS = ["core", "harness", "scripts", "packaging", "plugins", "src", "lint", "tests"];
 const LOOSE_TESTS = [
   "tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts",
   "tests/integration/**/*.test.ts", "tests/e2e/**/*.test.ts",
@@ -112,7 +112,10 @@ const goldenLayout: GoldenLayout = {
 
 const bun = (label: string, args: readonly string[]): Command => ({ label, argv: [BUN, ...args] });
 
-const packageBuild = sharedBuild(runner, bun("bun scripts/package.ts", ["scripts/package.ts"]));
+const packageBuild = sharedBuild(
+  runner,
+  bun("bun packaging/build-distributions.ts", ["packaging/build-distributions.ts"]),
+);
 
 const goldens: GoldensDependencies = {
   runner,

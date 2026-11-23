@@ -1235,7 +1235,10 @@ function canonicalExistingPath(path: string): string {
 }
 
 function authoredRuntimeRoot(root: string): boolean {
-  return basename(root) === "core" && existsSync(resolve(root, "../scripts/package.ts"));
+  return (
+    basename(root) === "core" &&
+    existsSync(resolve(root, "../packaging/build-distributions.ts"))
+  );
 }
 
 // The payload's cwd is where the tool call runs, and relative targets resolve
@@ -1302,7 +1305,7 @@ function trustedInstalledScript(path: string, cwd: string): boolean {
 function authoredDevelopmentRoot(path: string, cwd: string): string | null {
   const absolute = resolve(cwd, path);
   return integrityProjectRoots(cwd).find((root) =>
-    existsSync(resolve(root, "scripts/package.ts")) &&
+    existsSync(resolve(root, "packaging/build-distributions.ts")) &&
     ["core", "harness", "tests", "docs"].some((tree) => pathWithin(absolute, resolve(root, tree)))
   ) ?? null;
 }

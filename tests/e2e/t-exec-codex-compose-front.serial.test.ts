@@ -137,7 +137,7 @@ function setupCodexProject(): { proj: string; home: string; root: string } {
   }
   const trust = spawnSync(
     "bun",
-    [join(REPO_ROOT, "scripts", "package.ts"), "codex", "trust", "--project", proj],
+    [join(REPO_ROOT, "packaging", "build-distributions.ts"), "codex", "trust", "--project", proj],
     { timeout: remainingOperationTimeoutMs(NATIVE_FIXTURE_SETUP_TIMEOUT_MS), encoding: "utf-8", cwd: REPO_ROOT },
   );
   if (trust.status !== 0) throw new Error(`trust emit failed: ${trust.stderr}`);

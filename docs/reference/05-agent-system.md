@@ -92,7 +92,7 @@ On Claude Code, every agent *can* reach Bash and WebSearch by inheritance; the t
 
 ### Agent Tiers
 
-The authored dial on every agent is `tier:` -- it names the KIND of work the persona does, and the packager (`bun scripts/package.ts`) projects it into each harness's native model/effort form.
+The authored dial on every agent is `tier:` -- it names the KIND of work the persona does, and the packager (`bun packaging/build-distributions.ts`) projects it into each harness's native model/effort form.
 
 | Tier | Agents | Meaning |
 |------|--------|---------|
@@ -121,7 +121,7 @@ Key facts behind the table:
 A project can select a lower tier projection at pack time, without editing any agent file. This is a taxonomy ceiling, not a guaranteed cost ceiling now that the templated baseline inherits:
 
 - **Persistent knob:** a `tier_cap:` key in the YAML frontmatter of the space memory layer files (`core/memory/org.md` -> `team.md` -> `project.md`, last writer wins -- a project may lower OR raise the org ceiling). Example: `tier_cap: balanced` maps `judgment` to the measured reviewer baseline in every harness's projection. A `templated` ceiling maps higher tiers to the inheriting Writing up projection; use `aidlc config models` when the goal is an explicit lower-cost policy.
-- **Per-invocation override:** the `AIDLC_TIER_CAP` env var beats the memory layers for one packager run (`AIDLC_TIER_CAP=templated bun scripts/package.ts`). To build UNCAPPED once while a memory cap is in force, set it to the top tier -- `AIDLC_TIER_CAP=judgment` -- which beats the memory layer and clamps nothing (an empty value means unset, not uncapped).
+- **Per-invocation override:** the `AIDLC_TIER_CAP` env var beats the memory layers for one packager run (`AIDLC_TIER_CAP=templated bun packaging/build-distributions.ts`). To build UNCAPPED once while a memory cap is in force, set it to the top tier -- `AIDLC_TIER_CAP=judgment` -- which beats the memory layer and clamps nothing (an empty value means unset, not uncapped).
 
 The two knobs differ in scope: the memory cap travels with the repo, so it
 applies in both write and `--check` modes and both temporary check builds use
@@ -193,8 +193,8 @@ Agent display names and example knowledge files are authoritative in each agent'
 1. Create `core/agents/{name}-agent.md` with the required frontmatter: `name`, `display_name`, `description`, `disallowedTools` (including `Task`), `tier`, plus `examples` if the agent has suggested knowledge files. Never author raw `model:`/`effort:` in core frontmatter -- they are projection outputs (see Agent Tiers above). An optional `tools:` allowlist narrows the inherited toolset; omit it to inherit the full session toolset. `loadAgents()` in `core/tools/aidlc-lib.ts` discovers the file on next invocation.
    The installed agents directory (`.claude/agents/`, `.kiro/agents/`, `.cursor/agents/` and the rest) is shared with the host, which reads its own subagents from it. `loadAgents()` treats a file as an AI-DLC persona when its name starts with `aidlc-` or its frontmatter carries any of `display_name`, `examples`, `tier`, or `plugin`, and requires such a file to carry `name` and `display_name`. Any other file is the host's: AI-DLC does not load it, cannot name it as a stage's `lead_agent`, and does not attach stage rules when it is dispatched. `aidlc doctor --verbose` lists those files as an advisory.
 2. Add knowledge files to `core/knowledge/{name}-agent/`
-3. Add the agent to the stage files (`core/aidlc-common/stages/`) where it participates — set `lead_agent` / `support_agents` in each stage's frontmatter. The compiled `tools/data/stage-graph.json` is GENERATED from that frontmatter by `bun scripts/package.ts`; never hand-edit generated output.
-4. Materialize the ignored local distributions with `bun scripts/package.ts`, then run `--check` to build twice and verify deterministic output.
+3. Add the agent to the stage files (`core/aidlc-common/stages/`) where it participates — set `lead_agent` / `support_agents` in each stage's frontmatter. The compiled `tools/data/stage-graph.json` is GENERATED from that frontmatter by `bun packaging/build-distributions.ts`; never hand-edit generated output.
+4. Materialize the ignored local distributions with `bun packaging/build-distributions.ts`, then run `--check` to build twice and verify deterministic output.
 5. Add the agent-to-examples row to the hand-maintained knowledge tables (the agent's team-knowledge folder is `aidlc/spaces/<space>/knowledge/{name}-agent/`, created by the team when it has content; the engine does not scaffold it)
 6. Update tests: smoke tests for file existence, feature tests for stage-agent cross-references
 7. Update documentation in this file and [reference/agents/](agents/)
@@ -202,9 +202,9 @@ Agent display names and example knowledge files are authoritative in each agent'
 ## How to Modify an Agent
 
 - **Change tools**: Add or edit a `tools:` allowlist in frontmatter to narrow the agent; omit it to inherit the full session toolset. A `tools:` list drops inherited MCP tools unless the `mcp__<server>__<tool>` ids are also listed.
-- **Change tier**: Edit `tier:` to `judgment`, `balanced`, or `templated` and regenerate (`bun scripts/package.ts`). To force a specific model on ONE agent in an installed project instead, run `aidlc config models --agent <name> --model <id> --project --yes` (Claude Code accepts aliases, full ids, and `inherit`); a hand edit to the projected agent file is put back by the next `aidlc config`.
+- **Change tier**: Edit `tier:` to `judgment`, `balanced`, or `templated` and regenerate (`bun packaging/build-distributions.ts`). To force a specific model on ONE agent in an installed project instead, run `aidlc config models --agent <name> --model <id> --project --yes` (Claude Code accepts aliases, full ids, and `inherit`); a hand edit to the projected agent file is put back by the next `aidlc config`.
 - **Change behavior**: Edit the markdown body sections (responsibilities, principles).
-- **Change stage assignments**: Edit `lead_agent` / `support_agents` in the relevant stage files (`core/aidlc-common/stages/`), then regenerate with `bun scripts/package.ts` — the compiled stage graph is derived from stage frontmatter, never hand-edited.
+- **Change stage assignments**: Edit `lead_agent` / `support_agents` in the relevant stage files (`core/aidlc-common/stages/`), then regenerate with `bun packaging/build-distributions.ts` — the compiled stage graph is derived from stage frontmatter, never hand-edited.
 
 ---
 

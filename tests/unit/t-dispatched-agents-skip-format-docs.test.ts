@@ -1,4 +1,4 @@
-// covers: file:scripts/agent-knowledge.ts, file:core/tools/aidlc-plugin-emit.ts, file:core/tools/aidlc-inline-context.ts, file:scripts/package.ts
+// covers: file:scripts/agent-knowledge.ts, file:core/tools/aidlc-plugin-emit.ts, file:core/tools/aidlc-inline-context.ts, file:packaging/build-distributions.ts
 //
 // A dispatched agent reads the shared methodology, not the format docs the
 // engine writes (SHIPPED_FORMAT_DOCS). The conductor's own roster already

@@ -68,7 +68,7 @@ function skipReason(): string | null {
   if (process.env.AIDLC_CODEX_EXEC_LIVE !== "1") return "set AIDLC_CODEX_EXEC_LIVE=1 to run the live Codex golden journey (uses Bedrock)";
   if (!PRODUCTION_GUARDS) return "run with --production-guards: the journey is the person's own guard profile";
   if (!codexVersionOk()) return `codex >= 0.145.0 not found (AIDLC_CODEX_BIN=${CODEX_BIN})`;
-  if (!existsSync(join(REPO_ROOT, "dist", "codex"))) return "dist/codex is missing: run bun scripts/package.ts";
+  if (!existsSync(join(REPO_ROOT, "dist", "codex"))) return "dist/codex is missing: run bun packaging/build-distributions.ts";
   return null;
 }
 const SKIP_REASON = skipReason();

@@ -1,4 +1,4 @@
-// covers: file:scripts/package.ts
+// covers: file:packaging/build-distributions.ts
 //
 // The packager refreshes generated table regions in the assembled orchestrator
 // skill. The location is an open harness contract, not a hardcoded shortlist.

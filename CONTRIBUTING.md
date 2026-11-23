@@ -22,14 +22,14 @@ AI-DLC ships to many CLI harnesses (today Claude Code, Kiro CLI, Kiro IDE, Codex
 - **`dist-release/<harness>/`** — ignored local native-`aidlc` release projection. **Never hand-edit or commit.**
 
 Both generated trees are materialized from `core/` + `harness/`.
-`bun scripts/package.ts --check` builds both channels twice in independent
+`bun packaging/build-distributions.ts --check` builds both channels twice in independent
 temporary roots and fails if their bytes differ.
 
 After editing `core/` or `harness/<name>/`, regenerate the distributions:
 
 ```bash
-bun scripts/package.ts            # regenerate dist/ + dist-release/ for every harness
-bun scripts/package.ts --check    # two-build determinism guard (run in CI)
+bun packaging/build-distributions.ts            # regenerate dist/ + dist-release/ for every harness
+bun packaging/build-distributions.ts --check    # two-build determinism guard (run in CI)
 ```
 
 Adding a whole new harness? See [Porting to a New Harness](docs/harness-engineering/09-porting-to-a-new-harness.md).
@@ -54,8 +54,8 @@ AI-DLC separates stages, agents, skills, templates, and artifacts. Each concept 
 Before submitting a PR, verify:
 
 - You edited the hand-authored source in `core/` or `harness/<name>/`, **not** `dist/` or `dist-release/`.
-- You ran `bun scripts/package.ts` to materialize the ignored local projections.
-- `bun scripts/package.ts --check` reports deterministic output.
+- You ran `bun packaging/build-distributions.ts` to materialize the ignored local projections.
+- `bun packaging/build-distributions.ts --check` reports deterministic output.
 - `bun tests/run-tests.ts` passes (see [Testing](docs/reference/09-testing.md)).
 - Ordinary feature, fix, documentation, refactor, and test PRs leave `core/tools/aidlc-version.ts`, the README version badge, and `CHANGELOG.md` release entries unchanged. Preview promotion and its metadata synchronization PR update those three surfaces together (see the Release Metadata Policy in [`AGENTS.md`](AGENTS.md)).
 - Stale stage names, paths, or flags do not remain in examples, docs, or generated output (grep `docs/` and `README.md` when renaming anything).

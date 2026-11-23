@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { Command, CommandResult } from "./ports.ts";
 import { sharedBuild } from "./shared-build.ts";
 
-const COMMAND: Command = { label: "bun scripts/package.ts", argv: ["bun", "scripts/package.ts"] };
+const COMMAND: Command = {
+  label: "bun packaging/build-distributions.ts",
+  argv: ["bun", "packaging/build-distributions.ts"],
+};
 const NEWLINE = String.fromCharCode(10);
 const FAILED: CommandResult = { exitCode: 1, output: ["a", "b", "c", "d"].join(NEWLINE) };
 

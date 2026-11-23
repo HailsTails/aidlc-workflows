@@ -23,6 +23,7 @@ export const typecheckProjects = (
       "core/**/*.ts",
       "harness/**",
       "scripts/**",
+      "packaging/**",
       "plugins/*/tools/**",
       "tsconfig.json",
     ],

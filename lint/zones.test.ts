@@ -5,7 +5,7 @@ describe("zoneOf", () => {
   test("src and lint are clean, and so is the package build entry", () => {
     expect(zoneOf("src/kernel/values.ts")).toBe("clean");
     expect(zoneOf("lint/zones.ts")).toBe("clean");
-    expect(zoneOf("scripts/package.ts")).toBe("clean");
+    expect(zoneOf("packaging/build-distributions.ts")).toBe("clean");
   });
 
   test("the gate is scaffolding inside the clean lint folder", () => {
@@ -35,7 +35,7 @@ describe("auditExcludes", () => {
       "lint/zones.ts",
       "lint/gate/domain/glob.ts",
       "scripts/gate.ts",
-      "scripts/package.ts",
+      "packaging/build-distributions.ts",
       "src/kernel/values.ts",
       "tsconfig.json",
       "README.md",
@@ -44,7 +44,7 @@ describe("auditExcludes", () => {
     expect(auditExcludes(tracked)).toEqual([
       "core",
       "lint/gate",
-      "scripts/gate.ts",
+      "scripts",
       "tsconfig.json",
     ]);
   });

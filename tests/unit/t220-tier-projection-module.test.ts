@@ -420,7 +420,7 @@ describe("t220 shipped projection bytes (codex TOML, kiro JSON + md)", () => {
     // (~10s: a real
     // single-harness check run - the pin is the exit code, not the notice.)
     const r = Bun.spawnSync(
-      ["bun", join(REPO_ROOT, "scripts", "package.ts"), "claude", "--check"],
+      ["bun", join(REPO_ROOT, "packaging", "build-distributions.ts"), "claude", "--check"],
       {
         timeout: remainingOperationTimeoutMs(NATIVE_FIXTURE_SETUP_TIMEOUT_MS),
         cwd: REPO_ROOT,

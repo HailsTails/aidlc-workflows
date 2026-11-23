@@ -120,7 +120,7 @@ const executeBuild = async (ports: BuildRoutePorts, argv: readonly string[]): Pr
       if (!built.ok) return failed({ terminal: ports.terminal, failures: built.refusal });
       if (built.value.record === "inputs-changed") {
         ports.terminal.writeError("[sources] a packaging input changed while packaging, so the generated trees may mix " +
-          "old and new files: run `bun scripts/package.ts` again.\n");
+          "old and new files: run `bun packaging/build-distributions.ts` again.\n");
         return 1;
       }
   return 0;

@@ -6,7 +6,7 @@ harnesses: the engine, state machine, audit log, graph, swarm referee, and
 learnings gate are byte-identical across every distribution — only the shell
 differs. The source/development tree is **generated** into ignored local
 `dist/opencode/` from `core/` + `harness/opencode/` by
-`bun scripts/package.ts opencode`; never hand-edit it.
+`bun packaging/build-distributions.ts opencode`; never hand-edit it.
 
 Harness-specific onboarding lives in `.aidlc/onboarding.md`, loaded by the
 `instructions` list in `opencode.json`. The root `AGENTS.md` block is
@@ -146,7 +146,7 @@ to redo, jump to a stage, or start fresh to do something else);
 
 Framework developers who
 need the Bun-shaped projection can clone the repository, run
-`bun install --frozen-lockfile` and `bun scripts/package.ts`, then use the
+`bun install --frozen-lockfile` and `bun packaging/build-distributions.ts`, then use the
 ignored local `dist/opencode/` output.
 
 ## Refresh and version skew

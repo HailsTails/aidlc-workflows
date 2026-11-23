@@ -1,6 +1,6 @@
 // covers: subcommand:aidlc-utility:config-get, subcommand:aidlc-utility:config-list, subcommand:aidlc-utility:config-change
 // covers: subcommand:aidlc-utility:plugin-list, subcommand:aidlc-utility:plugin-sync, subcommand:aidlc-utility:upgrade
-// covers: tool:aidlc, file:scripts/package.ts
+// covers: tool:aidlc, file:packaging/build-distributions.ts
 
 import {
   NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
@@ -29,7 +29,7 @@ const BUN = process.execPath;
 const CORE_TOOLS_DIR = join(REPO_ROOT, "core", "tools");
 const UTILITY = join(CORE_TOOLS_DIR, "aidlc-utility.ts");
 const DISPATCHER = join(CORE_TOOLS_DIR, "aidlc.ts");
-const PACKAGE_TS = join(REPO_ROOT, "scripts", "package.ts");
+const PACKAGE_TS = join(REPO_ROOT, "packaging", "build-distributions.ts");
 const POSIX_SH = process.platform === "win32"
   ? join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", "bin", "sh.exe")
   : "/bin/sh";

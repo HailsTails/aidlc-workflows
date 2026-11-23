@@ -70,7 +70,7 @@ For a manual copy, install Bun, download a specific release's
 executable is not required. A copy never replaces your `.gitignore` or
 `AGENTS.md`; AI-DLC adds its own lines to them.
 Do not copy generated trees from a repository checkout. Framework developers may instead run
-`bun scripts/package.ts` in a source checkout to materialize the ignored local
+`bun packaging/build-distributions.ts` in a source checkout to materialize the ignored local
 `dist/` and `dist-release/` outputs. Each harness chapter keeps the manual-copy
 instructions under a clearly labeled alternative.
 

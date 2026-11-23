@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 // scripts/build-binaries.ts - release artifact builder for the single AIDLC CLI.
 //
-// This stays separate from scripts/package.ts. package.ts is the deterministic
+// This stays separate from packaging/build-distributions.ts. package.ts is the deterministic
 // source projection and determinism guard for dist/<harness>/; this script is the
 // release-oriented executable build that compiles the generated Claude
 // dispatcher and then smoke-gates each artifact. The binary entry is the
 // dist-release/ Claude dispatcher on purpose: release artifacts must embed the
 // native-invocation projection, not the Bun copy channel or core/. This script
 // regenerates both projection roots and then enforces
-// `bun scripts/package.ts --check` before compiling.
+// `bun packaging/build-distributions.ts --check` before compiling.
 //
 // Never enable Bun bytecode. BYTECODE-1: Bun can exit 0, emit an artifact, and still
 // produce a binary that crashes before the dispatcher runs on this codebase.
@@ -2683,7 +2683,7 @@ function main(): void {
   try {
     const targets = selectedTargets(process.argv.slice(2));
 
-    const packageBuild = run(process.execPath, ["scripts/package.ts"], {
+    const packageBuild = run(process.execPath, ["packaging/build-distributions.ts"], {
       cwd: REPO_ROOT,
       timeoutMs: LONG_SUBPROCESS_TIMEOUT_MS,
     });
@@ -2694,7 +2694,7 @@ function main(): void {
       process.exitCode = 1;
       return;
     }
-    const packageCheck = run(process.execPath, ["scripts/package.ts", "--check"], {
+    const packageCheck = run(process.execPath, ["packaging/build-distributions.ts", "--check"], {
       cwd: REPO_ROOT,
       timeoutMs: LONG_SUBPROCESS_TIMEOUT_MS,
     });

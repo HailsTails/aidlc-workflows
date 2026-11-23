@@ -442,7 +442,7 @@ describe("t301 AI issue intent review", () => {
       expect(() => validateBugTriage(
         JSON.stringify({
           ...triage,
-          testFiles: ["scripts/package.ts"],
+          testFiles: ["packaging/build-distributions.ts"],
         }),
         ISSUE.number,
         CONTEXT_ID,

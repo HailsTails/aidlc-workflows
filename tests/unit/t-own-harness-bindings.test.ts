@@ -1,4 +1,4 @@
-// covers: file:scripts/package.ts
+// covers: file:packaging/build-distributions.ts
 // covers: file:aidlc-common/protocols/stage-protocol-construction.md
 // covers: file:aidlc-common/protocols/stage-protocol-ensemble.md
 // covers: file:aidlc-common/protocols/stage-protocol-reviewer.md

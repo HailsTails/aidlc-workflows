@@ -39,7 +39,7 @@ import {
   type ShippedHarnessName,
 } from "./harness-matrix.ts";
 
-const PACKAGE_TS = join(REPO_ROOT, "scripts", "package.ts");
+const PACKAGE_TS = join(REPO_ROOT, "packaging", "build-distributions.ts");
 const BUN = process.execPath;
 
 export function walkMarkdownFiles(dir: string): string[] {

@@ -185,7 +185,7 @@ export const LEGACY_TERRITORY: LegacyTerritory = {
     "plugin-validate",
   ),
   projection: [
-    "scripts/package.ts",
+    "packaging/build-distributions.ts",
     "scripts/package-sources.ts",
     ...tools("tiers", "runner-gen", "plugin-emit", "plugin-build"),
   ],
