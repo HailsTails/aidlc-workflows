@@ -27,6 +27,11 @@ export type HostData = {
   readonly rulesFolder: string | null;
   readonly runnerFrontmatterAdditions?: readonly string[];
   readonly documentExtractors?: Readonly<Record<string, DocumentExtractorSpec>>;
+  /**
+   * Hook recovery instructions also replace a summary-evidence save-again refusal
+   * when no question waits (#3971). Declare only for a host whose own command hook
+   * records a heartbeat before the engine runs, including when checks are off.
+   */
   readonly hookActivation?: HookActivation;
   readonly newChatStep?: NewChatStep;
   readonly directiveMaxBytes?: number;
