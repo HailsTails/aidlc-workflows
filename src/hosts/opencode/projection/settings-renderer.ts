@@ -27,7 +27,8 @@ const renderSettings = (inputs: SettingsRenderingInputs): Rendering => {
 
 const pluginSource = "plugin/aidlc-opencode-adapter.ts";
 const entrypointMarker = "/* @aidlc-shipped-entrypoints@ */ []";
-const ENGINE_LEAF_IMPORTS = ["tools/aidlc-executable-path.ts", "hooks/review-freeze-command.ts"] as const;
+const ENGINE_LEAF_IMPORTS = ["tools/aidlc-executable-path.ts", "hooks/review-freeze-command.ts",
+  "tools/aidlc-plugin-rules.ts", "tools/aidlc-review-manifest.ts"] as const;
 
 const authoredLeafImport = (leaf: string): string => `"../../../core/${leaf}"`;
 
