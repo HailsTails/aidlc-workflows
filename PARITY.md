@@ -1,6 +1,6 @@
 # Build-side rebuild and output parity
 
-This branch rebuilds the build side of AI-DLC by bounded context and proves that nothing it produces changes. It is measured against upstream `main` at `8c4f79b4b`.
+This branch rebuilds the build side of AI-DLC by bounded context and proves that nothing it produces changes. The adopted rebaseline is measured against exact upstream `d5a4aaecbda47283705314bf1ceb908271cef80b` (not a moving main).
 
 ## What changed
 
@@ -10,14 +10,14 @@ This branch rebuilds the build side of AI-DLC by bounded context and proves that
 - Tests that imported the moved modules import them from `src/`. `src/` has its own unit tests, which touch no real files or processes.
 - `zod` is a direct dev dependency, used at the file and JSON edges in `src/`. `bun run typecheck` also checks `src/tsconfig.json`.
 - The coverage check `bun tests/gen-coverage-registry.ts --check --base <commit>` runs `bun install --frozen-lockfile` in the base commit's `git archive` tree before building it, as CI does in the checkout and `scripts/copy-era-files.ts` does in its archived release. A base that already contains `src/` needs `zod` to build, so without it a change made on top of this one fails the check with 45 `Cannot find package 'zod'` refusals.
-- Nothing under `core/` or `plugins/` changes, and no shipped harness file changes: `hooks/`, `skills/`, `agents/`, `settings/`, `steering/`, `command/` and `plugin/` under `harness/<harness>/` are as they are on `8c4f79b4b`.
+- Phase 1 preserves every installed byte relative to the adopted upstream pin, including code. The rebaseline retains upstream changes under `core/`, `plugins/` and `harness/`; its build-side requirements are folded into the canonical owners in `src/`. It does not freeze those inputs at the earlier pin.
 
 ## How parity is proved
 
-Two sets of goldens, both recorded on an unmodified `8c4f79b4b` checkout with the code in `scripts/parity/`:
+Two independent sets of goldens now bind exact public upstream `d5a4aaecbda47283705314bf1ceb908271cef80b`, tree `bea698830819db0afb5fb5913406fab0dd19604d`. Its stock build ran on native Linux with official Bun 1.4.4; every public copy-runtime archive entry was rehashed after transport. The unchanged parity lab recorded the seven expected lifecycles from that public artifact on Windows, using independently verified v2.11.3 bytes for upgrades. Candidate observations were recorded separately and compared as complete records. No expected value was generated from the candidate:
 
 - `tests/golden/<group>.json` holds the sha256 of every file under `dist/` and `dist-release/`, grouped by harness, with the plugin marketplace files under `plugin-marketplaces`. That is 5,998 files in 8 groups.
-- `tests/golden/install/<harness>.json` holds an install lifecycle for each of the 7 harnesses, run through the copy-channel CLI in a throwaway project: a fresh install, a refresh, a local edit the installer refuses, a forced refresh, and an upgrade over the previous release (2.11.3). Each step records its exit code and the files it added, changed or removed.
+- `tests/golden/install/<harness>.json` holds an install lifecycle for each of the 7 harnesses, run through the copy-channel CLI in a throwaway project: a fresh install, a refresh, the host-specific response to a local edit, a forced refresh, and an upgrade over the previous release (2.11.3). Each step records its exit code and the files it added, changed or removed.
 
 Check this branch:
 
@@ -36,7 +36,7 @@ bun ../aidlc-previous-release/scripts/package.ts
 bun scripts/parity/install-lifecycle.ts --check --previous ../aidlc-previous-release/dist
 ```
 
-Each check prints a one-line summary and exits non-zero, naming every file that differs. `--record` writes the goldens instead. To reproduce them, copy `scripts/parity/` into a `8c4f79b4b` checkout, build it, run `--record`, and compare the files with the ones here: they are byte-identical.
+Each check prints a one-line summary and exits non-zero, naming every file that differs. `--record` writes the goldens instead; use it only on the independently built pinned public producer during a deliberate rebaseline, never to accept candidate drift. The 2026-11-24 receipt retains the exact reference and candidate maps, independent archive identities, all seven complete record pairs and raw terminal logs. The sole excluded raw output is non-installed `dist/.package-sources.json`, whose source fingerprint necessarily differs between implementations.
 
 `scripts/parity/` is self-contained: it imports only Node and Bun built-ins and `zod`. `bun test ./scripts/parity` runs its unit tests.
 
@@ -51,7 +51,9 @@ The goldens are generated hash maps, so `.gitleaks.toml` allowlists `tests/golde
 - The install goldens record 2.11.4 over 2.11.3. The next upstream release needs them re-recorded from that release's commit.
 - The rebuild has two phases. Phase 1 is this branch: the build side runs through `src/`, and every shipped byte stays as it is. Phase 2 moves the runtime owners out of `core/tools/` into `src/`, so they ship in the runtime bundle. That is runtime code, so it is a separate change, and it is what retires every bridge below.
 
-## Upstream test cases re-expressed for the new owners
+## Original-pin test cases re-expressed for the new owners
+
+The following inventory describes the earlier `8c4f79b4b` migration; it is retained as history, not a current whole-suite qualification. The 2026-11-24 requirement ledger maps all 67 commits through `d5a4aaec` and the separately attributable OpenCode, Kiro knowledge and hook-activation successor ports. A plausible partial OpenCode port returned success while leaving two repository-only imports; retained adverse tests and corrected installed-byte equality cover that missing requirement.
 
 Every test file `8c4f79b4b` has is on this branch, and none has fewer cases. The `upstream-shape-tooling` branch counts them with `bun src/test-case-counts.ts`. Where a case tested a file that moved into `src/`, it runs here in upstream's runner against the new owner. `src/`'s own unit tests do not count toward this, because upstream's runner does not run them.
 
@@ -80,7 +82,9 @@ Every test file `8c4f79b4b` has is on this branch, and none has fewer cases. The
 - `tests/unit/t-aidlc-lib-only-shrinks.test.ts`: "no monolith gains a top-level declaration or a line over its record", which used the lint layer's monolith records. The `8c4f79b4b` case "aidlc-lib.ts declares no name that is not on its list" runs instead.
 - `tests/integration/t-e2e-isolated-runner.test.ts`: "copied coverage refuses stale sources without changing its registry" and "copied coverage prints a source refusal before changing its registry" moved to `tests/unit/t-package-sources.test.ts` with the same assertions, on a fixture of their own. They test `tests/gen-coverage-registry.ts` against the moved `src/packaging/adapters/packaged-sources-file.ts`.
 
-## Branch history
+## Original branch history
+
+The following regeneration recipe is historical. Local `rebuild/base` and `rebuild/foundation` now identify the adopted pinned baseline and its received implementation; the dated successor Phase 1 tag preserves the earlier 2026-11-18 seal. No public branch or fork main is advanced by this local adoption, and the runtime gate remains closed.
 
 This branch is one commit on top of the rebuild's own history. The same tree as a single commit on `8c4f79b4b`, for a pull request against upstream, comes from the `upstream-shape-tooling` branch of this fork:
 
