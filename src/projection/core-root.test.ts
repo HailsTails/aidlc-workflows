@@ -115,7 +115,7 @@ test("Projection composition serves the shared delegate facts to a native data r
   const projection = createBuildProjection({ hostFiles: fileSystem, sessionFiles: fileSystem, runnerScratch: fileSystem,
     runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
-  expect(projection.projectHostSurface({ record: commonHarnessRecord, host: identity, files: [], placements: [], prepare: accepted,
+  expect(projection.projectHostSurface({ sharedKnowledge: { documents: [], formatDocuments: new Set() }, record: commonHarnessRecord, host: identity, files: [], placements: [], prepare: accepted,
     tokens: tokenBindingsFixture({ harnessDir: ".claude" }), channel: "copy",
     renderData: ({ delegateShellFacts }) => ({ productName: "Policy fixture", configNextStep: "Open", rulesFolder: null,
       pluginAgentFrontmatter: { copy: [delegateShellFacts.engineNamespace], native: [] } }),
@@ -224,7 +224,7 @@ test("Projection exposes the exact facts instance its native data route receives
     runnerProcess: createScriptedProcessRunner({ outcome: refused({ kind: "not-started", reason: "Unused" }) }),
     runnerFrames: new URL("file:///frames/"), runnerChild: new URL("file:///child.ts") });
   const renderData = mock<HostDataRenderer>(() => ({ productName: "Facts", configNextStep: "Open", rulesFolder: null }));
-  projection.projectHostSurface({ record: commonHarnessRecord, host: identity, files: [], placements: [], prepare: accepted,
+  projection.projectHostSurface({ sharedKnowledge: { documents: [], formatDocuments: new Set() }, record: commonHarnessRecord, host: identity, files: [], placements: [], prepare: accepted,
     tokens: tokenBindingsFixture({ harnessDir: ".claude" }), channel: "copy", renderData });
   expect(renderData).toHaveBeenCalledTimes(1);
   expect(renderData.mock.calls[0]?.[0]?.delegateShellFacts).toBe(projection.delegateShellFacts);

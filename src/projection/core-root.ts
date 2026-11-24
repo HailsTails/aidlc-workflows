@@ -1,3 +1,5 @@
+import type { Method } from "../workflow-definition/domain/method.ts";
+import type { HostDataRenderer } from "./application/ports/host-surface.ts";
 import { createAgentPersonaPreparer } from "./application/agent-persona.ts";
 import type { PluginProjector } from "./application/ports/plugins.ts";
 import { legacyAgentDocumentModel, legacyCliModelPolicy,
@@ -122,7 +124,7 @@ const harnessAssembler = (ports: {
   const runtime = projectRuntime({ host: assembly.host, runtime: assembly.runtime,
     compiled: assembly.compiled, tokens: assembly.tokens });
   if (!runtime.ok) return refused([runtime.refusal]);
-  const hostData = assembly.renderers.data({ delegateShellFacts: ports.facts });
+  const hostData = renderBuildHostData({ method: assembly.method, render: assembly.renderers.data, facts: ports.facts });
   const surface = createHostSurfaceMembers({ ...assembly, data: hostData,
     record: assembly.renderers.record,
     placements: assembly.renderers.placements });
@@ -135,6 +137,11 @@ const harnessAssembler = (ports: {
     allows: reading.value, facts: ports.facts, capabilities: ports.capabilities,
     nativeCommands: ports.nativeCommands, frame: ports.frame, ...formatting.value })) : refused([formatting.refusal]);
 };
+
+export const renderBuildHostData = (request: {
+  readonly method: Method; readonly render: HostDataRenderer; readonly facts: DelegateShellFacts;
+}) => request.render({ delegateShellFacts: request.facts,
+  sharedKnowledge: { documents: request.method.knowledge, formatDocuments: shippedFormatDocuments() } });
 
 export const createHostedMethodProjection = (hosted: HostedHarness) => createProjectMethodForHarness({
   find: (id) => id === hosted.host.distribution ? accepted(hosted) : refused({ kind: "unknown-harness", harness: id }),

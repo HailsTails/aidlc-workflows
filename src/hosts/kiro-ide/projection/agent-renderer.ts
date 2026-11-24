@@ -1,3 +1,4 @@
+import { sharedKnowledgeSources } from "../../../workflow-definition/domain/knowledge.ts";
 import { declareLegacyProducedFile } from "../../../projection/domain/legacy-native-source.ts";
 import type { LegacyNativeContext } from "../../../projection/domain/legacy-native-source.ts";
 import { kiroIdeShellPermissionLines, kiroIdeConductorPermissionSource } from "./native-permissions.ts";
@@ -34,7 +35,8 @@ const contentText = (content: FileContent): string => content.kind === "text" ? 
 const conductorContent = (content: FileContent, channel: DistributionChannel): FileContent =>
   channel === "copy" ? content : { kind: "text", text: contentText(content) };
 
-export const kiroIdePermissionLines = ({ policy, channel }: {
+export const kiroIdePermissionLines = ({ policy, channel, resources }: {
+  readonly resources: readonly string[];
   readonly policy: DelegateShellPolicy;
   readonly channel: DistributionChannel;
 }) => (agent: string): string[] => {
@@ -43,6 +45,8 @@ export const kiroIdePermissionLines = ({ policy, channel }: {
   return [
     `tools: ["read", "write", "shell"]`,
     "includeMcpJson: true",
+    "resources:",
+    ...resources.map((uri) => `  - "${uri}"`),
     "permissions:",
     "  rules:",
     ...shell.allow,
@@ -66,7 +70,7 @@ export const kiroIdePermissionLines = ({ policy, channel }: {
 };
 
 export const kiroIdePermissionPrompt = (request: {
-  readonly policy: DelegateShellPolicy; readonly channel: DistributionChannel; readonly agent: string;
+  readonly resources: readonly string[]; readonly policy: DelegateShellPolicy; readonly channel: DistributionChannel; readonly agent: string;
 }): PromptLines => {
   const lines = kiroIdePermissionLines(request)(request.agent);
   return request.channel === "copy" ? lines : brand<NativePolicyPrompt>(Object.freeze({ kind: "native-policy",
@@ -91,6 +95,8 @@ export const expandKiroIdeConductorAllows = (request: {
 
 export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePersonaRendering }): HostAgentRenderer => (inputs) => {
   const inlineAgents = inlineAgentSet(inputs.method);
+  const resources = sharedKnowledgeSources({ documents: inputs.method.knowledge,
+    formatDocuments: inputs.formatDocuments }).map((path) => `file://.kiro/${path}`);
   return {
     renderAgent: personas({ legacyNative: inputs.legacyNative,
       modelSurface: ({ agent }) => inputs.documents({
@@ -98,7 +104,7 @@ export const createKiroIdeAgents = ({ personas }: { readonly personas: KiroIdePe
         model: "projected", render: renderKiroIdeMarkdown,
       }),
       promptLines: (agent) => {
-        return kiroIdePermissionPrompt({ policy: kiroIdeDelegateShellPolicy({
+        return kiroIdePermissionPrompt({ resources, policy: kiroIdeDelegateShellPolicy({
           facts: inputs.delegateShellFacts, directory: inputs.host.directory,
         }), channel: inputs.channel, agent: agent.slug });
       },

@@ -8,7 +8,7 @@ import { createHostSurfaceMembers } from "./host-surface-members.ts";
 export const createHostSurfaceProjection = (
   delegateShellFacts: DelegateShellFacts,
 ): HostSurfaceProjection => (request) => {
-  const hostData = request.renderData({ delegateShellFacts });
+  const hostData = request.renderData({ delegateShellFacts, sharedKnowledge: request.sharedKnowledge });
   const members = createHostSurfaceMembers({ ...request, data: hostData });
   return collectCommandRenderings([
     members.renderHostData(),

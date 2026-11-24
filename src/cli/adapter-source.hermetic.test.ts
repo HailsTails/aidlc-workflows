@@ -50,7 +50,7 @@ test.each(cases)("$name declared adapter source owns its whole copy/native bytes
     const place = (prepare: AuthoredFilePreparer): Rendering => createHostSurfaceMembers({ host: member.host,
       legacyNative: channel === "copy" ? undefined : { host: member.host, commands,
         permissions: { kind: "authored" }, replacements: [] },
-      data: member.projection.renderData({ delegateShellFacts: projection.delegateShellFacts }),
+      data: member.projection.renderData({ sharedKnowledge: { documents: [], formatDocuments: new Set() }, delegateShellFacts: projection.delegateShellFacts }),
       record: member.projection.record, placements: member.projection.placements, tokens, channel, prepare,
     }).placeAuthoredFile({ file: captured });
     const previous = place(file => prepareHostSource({ host: member.host, file,

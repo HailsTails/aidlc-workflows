@@ -79,7 +79,7 @@ const policy = { shellDeny: () => ["    - capability: shell", "      effect: den
   }) };
 
 const expectedLines = [
-  'tools: ["read", "write", "shell"]', "includeMcpJson: true", "permissions:", "  rules:",
+  'tools: ["read", "write", "shell"]', "includeMcpJson: true", "resources:", "permissions:", "  rules:",
   "    - capability: shell", "      effect: allow", "      match:",
   '        - "bun .kiro/tools/aidlc-*"', '        - "bun .kiro/tools/aidlc.ts engine *"',
   '        - "bun --version"', "    - capability: shell", "      effect: ask", "      match:",
@@ -97,13 +97,13 @@ const expectedLines = [
 
 describe("Kiro IDE persona permissions", () => {
   test("preserves tools, asks, shell denials, workspace writes and engine protection in order", () => {
-    expect(kiroIdePermissionLines({ policy, channel: "copy" })("aidlc-architect-agent")).toEqual(expectedLines);
+    expect(kiroIdePermissionLines({ resources: [], policy, channel: "copy" })("aidlc-architect-agent")).toEqual(expectedLines);
   });
 
   test("limits the composer to its proposal while preserving every other permission", () => {
-    expect(kiroIdePermissionLines({ policy, channel: "copy" })("aidlc-composer-agent")).toEqual(
+    expect(kiroIdePermissionLines({ resources: [], policy, channel: "copy" })("aidlc-composer-agent")).toEqual(
       [
-        'tools: ["read", "write", "shell"]', "includeMcpJson: true", "permissions:", "  rules:",
+        'tools: ["read", "write", "shell"]', "includeMcpJson: true", "resources:", "permissions:", "  rules:",
         "    - capability: shell", "      effect: allow", "      match:",
         '        - "bun .kiro/tools/aidlc-*"', '        - "bun .kiro/tools/aidlc.ts engine *"',
         '        - "bun --version"', "    - capability: shell", "      effect: ask", "      match:",
@@ -122,14 +122,15 @@ describe("Kiro IDE persona permissions", () => {
 
   test("uses the same owner for plugin personas and asks its shell policy for their name", () => {
     const shellDeny = mock(policy.shellDeny);
-    expect(kiroIdePermissionLines({ policy: { ...policy, shellDeny }, channel: "copy" })("plugin-agent")).toEqual(expectedLines);
+    expect(kiroIdePermissionLines({ resources: [], policy: { ...policy, shellDeny }, channel: "copy" })("plugin-agent")).toEqual(expectedLines);
     expect(shellDeny).toHaveBeenCalledWith("plugin-agent", "copy");
   });
 });
 
 const expectedNativePromptLines = [
   "tools: [\"read\", \"write\", \"shell\"]",
-  "includeMcpJson: true",
+  "includeMcpJson: true", "resources:",
+  '  - "file://.kiro/knowledge/aidlc-shared/ai-dlc-principles.md"',
   "permissions:",
   "  rules:",
   "    - capability: shell",
@@ -188,4 +189,14 @@ test("the native persona factory emits channel-correct deny bytes with explicit 
   createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, channel: "native",
     host: host({ name: "kiro-ide", directory: ".kiro" }), delegateShellFacts: DELEGATE_SHELL_FACTS });
   expect(promptLines(personas.mock.calls[0]?.[0].promptLines(architect) ?? [])).toEqual(expectedNativePromptLines);
+});
+
+test("both helper channels receive explicit shared files instead of inheriting the conductor skill", () => {
+  for (const channel of ["copy", "native"] as const) {
+    const personas = mock<KiroIdePersonaRendering>(() => () => accepted([]));
+    createKiroIdeAgents({ personas })({ ...SCRATCH_AGENT_INPUTS, channel });
+    const lines = promptLines(personas.mock.calls[0]?.[0].promptLines(architect) ?? []);
+    expect(lines.slice(0, 5)).toEqual(['tools: ["read", "write", "shell"]', "includeMcpJson: true",
+      "resources:", '  - "file://.kiro/knowledge/aidlc-shared/ai-dlc-principles.md"', "permissions:"]);
+  }
 });

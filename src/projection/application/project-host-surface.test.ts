@@ -16,7 +16,7 @@ const projectHostSurface = createHostSurfaceProjection(facts);
 
 const identity = host({ name: "surface-host", directory: ".surface" });
 const request: HostSurfaceProjectionRequest = {
-  record: commonHarnessRecord, host: identity, renderData: () => ({ productName: "Surface", configNextStep: "Open", rulesFolder: null }),
+  sharedKnowledge: { documents: [], formatDocuments: new Set() }, record: commonHarnessRecord, host: identity, renderData: () => ({ productName: "Surface", configNextStep: "Open", rulesFolder: null }),
   placements: [{ source: "notice.md", destination: ".surface/notice.md" }],
   files: [{ source: source("notice.md"), content: { kind: "text", text: "Captured" } },
     { source: source("other.md"), content: { kind: "text", text: "Other concept" } }],
@@ -85,6 +85,6 @@ test("the native data renderer receives the supplied facts once before the exist
       origin: { kind: "rendered", concept: "host-data", name: "surface-host" } },
   ]));
   expect(renderData).toHaveBeenCalledTimes(1);
-  expect(renderData).toHaveBeenCalledWith({ delegateShellFacts: facts });
+  expect(renderData).toHaveBeenCalledWith({ delegateShellFacts: facts, sharedKnowledge: request.sharedKnowledge });
   expect(renderData.mock.calls[0]?.[0].delegateShellFacts).toBe(facts);
 });

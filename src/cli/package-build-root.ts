@@ -16,7 +16,7 @@ import type { AuthoredPluginBuild, MethodReading } from "../workflow-definition/
 import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
 import type { PluginBuildSession } from "../projection/application/ports/plugin-session.ts";
 import { captureBuildSources, createCapturedHostSourcePreparation, createCapturedMethodCompiler, createProjectCapturedHost, createPluginAuthoringEnrichment,
-  createPluginBuildSession, captureReleaseEntrypoints, createBuildProjection, createHostedMethodProjection }
+  createPluginBuildSession, captureReleaseEntrypoints, createBuildProjection, createHostedMethodProjection, renderBuildHostData }
   from "../projection/core-root.ts";
 import type { CoreBuild, CreatePackageBuildRoot,
   HostBuildTable, HostModule, ReadHostDistribution,
@@ -65,13 +65,14 @@ const payloadBuilder = (ports: {
   readonly readDistribution: ReadHostDistribution; readonly hasher: ContentHasher;
   readonly projection: Pick<BuildProjection, "delegateShellFacts" | "nativeCommands">;
   readonly enrich: EnrichPluginAuthoring;
-}): BuildPayload => {
+}): BuildPayload => (request) => {
   const build = createBuildHostPayload({
     members: ports.hosts.map((module) => ({ host: module.host,
-      data: () => module.projection.renderData({ delegateShellFacts: ports.projection.delegateShellFacts }) })),
+      data: () => renderBuildHostData({ method: request.core.method, render: module.projection.renderData,
+        facts: ports.projection.delegateShellFacts }) })),
     distribution: ports.readDistribution, hasher: ports.hasher, packaging: ports.packaging,
   });
-  return (request) => build({ host: request.host, project: () => ports.projectHost(request),
+  return build({ host: request.host, project: () => ports.projectHost(request),
     enrich: (projection, distribution) => ports.enrich({ projection, method: request.core.method, directory: request.host.directory,
       legacyNative: request.channel === "copy" ? undefined : { host: request.host,
         commands: ports.projection.nativeCommands, permissions: distribution.native.permissions,

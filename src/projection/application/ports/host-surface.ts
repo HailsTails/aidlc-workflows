@@ -1,3 +1,4 @@
+import type { SharedKnowledge } from "../../../workflow-definition/domain/knowledge.ts";
 import type { HostIdentity } from "../../../kernel/host.ts";
 import type { AuthoredHostFile, AuthoredPlacement, HostData } from "../../domain/host-surface.ts";
 import type { DistributionChannel } from "../../domain/projected-file.ts";
@@ -12,12 +13,14 @@ import type { ProjectionRefusal } from "../../domain/projection.ts";
 export type HarnessRecordConstructor = (facts: HarnessRecordFacts) => Result<HarnessRecord, ProjectionRefusal>;
 
 export type HostDataInputs = {
+  readonly sharedKnowledge: SharedKnowledge;
   readonly delegateShellFacts: DelegateShellFacts;
 };
 
 export type HostDataRenderer = (inputs: HostDataInputs) => HostData;
 
 export type HostSurfaceProjectionRequest = {
+  readonly sharedKnowledge: SharedKnowledge;
   readonly legacyNative?: import("../../domain/legacy-native-source.ts").LegacyNativeContext | undefined;
   readonly host: HostIdentity;
   readonly renderData: HostDataRenderer;

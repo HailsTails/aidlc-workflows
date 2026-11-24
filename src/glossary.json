@@ -578,5 +578,6 @@
 {"name":"ToolsGuidanceSource","context":"projection","kind":"concept","definition":"Author intent selecting legacy Tools prose or one explicitly declared framework Tools position."},
 {"name":"AuthoredOnboardingSource","context":"projection","kind":"concept","definition":"Onboarding template text accompanied by its explicit Hook and Tools authoring intent."},
 {"name":"AdmittedOnboardingTemplates","context":"projection","kind":"concept","definition":"Immutable onboarding text whose declared guidance positions were validated together in refusal order."},
-{"name":"ProjectionSourceOrigin","context":"projection","kind":"concept","definition":"Original projected-file provenance before serializer continuity or native-policy receipts wrap it."}
+{"name":"ProjectionSourceOrigin","context":"projection","kind":"concept","definition":"Original projected-file provenance before serializer continuity or native-policy receipts wrap it."},
+{"name":"HostDataInputs","context":"projection","kind":"concept","definition":"Delegate shell facts and captured shared knowledge supplied to a host data renderer. The build root binds Method knowledge and the existing shipped format-document exclusions for both harness assembly and Packaging metadata."}
 ]
