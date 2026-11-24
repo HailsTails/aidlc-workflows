@@ -15,6 +15,7 @@ import {
 
 const REPO_ROOT = join(import.meta.dir, "..");
 export const UNIT_WEIGHTS = "tests/unit-shard-weights.json";
+const PATH_NAMED_TEST_ROOTS = ["src", "scripts/parity"];
 export const INTEGRATION_WEIGHTS = "tests/integration-weights.json";
 /** A file over its weight by both margins is worth a refresh; single runs vary up to 2x. */
 export const DRIFT_SECONDS = 60;
@@ -108,6 +109,13 @@ export function integrationNames(repoRoot: string): string[] {
     if (!existsSync(tests)) continue;
     for (const file of readdirSync(tests).filter((entry) => entry.endsWith(".test.ts"))) {
       names.push(`plugin-${plugin}-${file.replace(/\.test\.ts$/, "")}`);
+    }
+  }
+  for (const root of PATH_NAMED_TEST_ROOTS) {
+    const rootDir = join(repoRoot, root);
+    for (const file of existsSync(rootDir) ? readdirSync(rootDir, { recursive: true, encoding: "utf8" }) : []) {
+      const path = `${root}/${file.replaceAll("\\", "/")}`;
+      if (path.endsWith(".test.ts")) names.push(path.replace(/\.test\.ts$/, "").replaceAll("/", "-"));
     }
   }
   return names.sort();

@@ -464,6 +464,7 @@ describe("ratchet anti-regression (a covered unit cannot silently lose its claim
       const victim = buildRegistry().rows.find((r) => r.status === "UNCOVERED")!;
       mkdirSync(join(repo, "scripts"));
       mkdirSync(join(repo, "tests"));
+      writeFileSync(join(repo, "package.json"), `${JSON.stringify({ name: "cov-base", private: true })}\n`);
       writeFileSync(join(repo, "scripts", "package.ts"), [
         'import { writeFileSync } from "node:fs";',
         'if (process.argv[2] !== "claude") process.exit(2);',
@@ -480,7 +481,7 @@ describe("ratchet anti-regression (a covered unit cannot silently lose its claim
       const git = (...args: string[]) =>
         spawnSync("git", args, { cwd: repo, encoding: "utf-8", timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS) });
       expect(git("init", "-q", "-b", "main").status).toBe(0);
-      expect(git("add", "scripts", "tests").status).toBe(0);
+      expect(git("add", "package.json", "scripts", "tests").status).toBe(0);
       expect(git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "base").status).toBe(0);
       const before = git("status", "--porcelain").stdout;
 

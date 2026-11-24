@@ -1158,11 +1158,8 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
         copyInstall: false,
       });
       expect(compose.composeStatus).toBe(0);
-      const skillsRoot = harness === "copilot"
-        ? join(project, ".github", "skills")
-        : harness === "codex"
-          ? join(project, ".agents", "skills")
-          : join(project, harnessByName(harness).manifest.harnessDir, "skills");
+      const skillsRoot = join(project,
+        dirname(dirname(harnessByName(harness).manifest.orchestratorSkillPath)));
       const tables = readFileSync(join(skillsRoot, "aidlc", "tables.md"), "utf-8");
       expect(tables).toContain("test-pro-validation");
       expect(existsSync(join(skillsRoot, "test-pro-validation", "SKILL.md"))).toBe(true);

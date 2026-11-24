@@ -5,7 +5,7 @@
 
 {{SLOT:prereq_bullets}}
 - **Locking**: Audit log file locking is handled portably using mkdir-based locking in the system temp directory (no external dependencies).
-- **Hook permissions**: All 17 hooks are TypeScript (`.ts`) and run via `bun`. No executable bits required — works identically on macOS, Linux, and native Windows PowerShell.
+{{SLOT:framework_hook_runtime}}
 {{SLOT:hook_permissions_note}}
 {{SLOT:prereq_bullets_tail}}
 
@@ -18,7 +18,7 @@
 - **Agents**: `{{HARNESS_DIR}}/agents/` — the base framework ships 14 agents: 11 domain-expert personas (product, design, delivery, architect, aws-platform, compliance, devsecops, developer, quality, pipeline-deploy, operations), 2 review-only agents (product-lead, architecture-reviewer), and the adaptive-workflows composer. A plugin install may add more; the enabled set is discovered from the files present under that directory. {{SLOT:agents_note}}
 - **Sensors**: `{{HARNESS_DIR}}/sensors/`: automatic checks that run on matching writes or once per existing deliverable at the approval gate. Gate-fired sensors may be advisory or blocking; blocking failures require an explicit audited override before the gate opens. Ships with framework defaults (`aidlc-claim-sources.md`, `aidlc-required-sections.md`, `aidlc-upstream-coverage.md`, `aidlc-traceability.md`, `aidlc-linter.md`, `aidlc-type-check.md`); forks may add custom `aidlc-<id>.md` manifests. Stages declare which sensors fire via the frontmatter `sensors: [<id>]` list — a pull import resolved at compile time.
 - **Knowledge**: `{{HARNESS_DIR}}/knowledge/` — Methodology reference. Per-agent under `aidlc-<agent>-agent/` subfolders; `aidlc-shared/` holds cross-agent material. Ships with framework.
-- **Tools**: `{{HARNESS_DIR}}/tools/`: small command-line programs (TypeScript, run via bun) that do the parts which must be exact rather than judged: tracking where the workflow is, writing the decision log, deciding what runs next (`aidlc-orchestrate.ts`, with exactly six subcommands: `next`, `continue`, `report`, `park`, `team-board`, and `wait`; `continue` is internal steering transport and `team-board` is the read-only Team Construction query, and `wait` is the bounded read-only wait for dispatched work), running the automatic checks, recording what the team learned (`aidlc-learnings.ts`), and refereeing parallel Construction work (`aidlc-swarm.ts`). All framework files prefixed `aidlc-*.ts`.
+- **Tools**: `{{HARNESS_DIR}}/tools/`: small command-line programs ({{SLOT:framework_tools_runtime}}) that do the parts which must be exact rather than judged: tracking where the workflow is, writing the decision log, deciding what runs next (`aidlc-orchestrate.ts`, with exactly six subcommands: `next`, `continue`, `report`, `park`, `team-board`, and `wait`; `continue` is internal steering transport and `team-board` is the read-only Team Construction query, and `wait` is the bounded read-only wait for dispatched work), running the automatic checks, recording what the team learned (`aidlc-learnings.ts`), and refereeing parallel Construction work (`aidlc-swarm.ts`). All framework files prefixed `aidlc-*.ts`.
 - **Hooks**: `{{HARNESS_DIR}}/hooks/`: scripts your CLI runs automatically at set moments, so the decision log, saved progress, and status display stay correct without anyone remembering to update them. All framework files prefixed `aidlc-*.ts`.
 
 ## Plugins

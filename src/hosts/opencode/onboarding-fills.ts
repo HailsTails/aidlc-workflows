@@ -1,0 +1,48 @@
+import { nativePermissionsLine, type PreparedOnboardingContext } from "../../projection/domain/onboarding-context.ts";
+import type { DistributionChannel } from "../../projection/domain/projected-file.ts";
+import type { OnboardingFills } from "../../projection/domain/neutral-surface.ts";
+
+const runtimePrerequisite = (channel: DistributionChannel): string => channel === "native"
+  ? "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available. If `aidlc` is not found in this tool, give the person both fixes in one line, then end your turn without installing anything or working around it: if AI-DLC was installed while this tool was open, quit the tool fully and reopen it (a new tab or reloaded window is not enough); otherwise the installer's bin folder is not on PATH (an install with `-NoModifyPath`, or a Unix install whose PATH line was not applied), so add the folder the installer printed to PATH, or rerun the installer without `-NoModifyPath`, then reopen the tool."
+  : `- **bun**: Required for the CLI tools and hook scripts (tracking progress, writing the decision log, deciding what runs next). Install via \`curl -fsSL https://bun.sh/install | bash\`. \`bun\` must be on your PATH for the shells opencode spawns; the AIDLC adapter plugin also probes \`~/.bun/bin/bun\` directly.`;
+
+export const openCodeOnboardingFills = (context: PreparedOnboardingContext): OnboardingFills => ({
+  invoke: "/aidlc",
+  slots: {
+    ["title_block"]: `# AI-DLC on opencode
+
+This project uses AI-DLC (AI-Driven Development Life Cycle) for structured development, running on the **opencode harness**. The workspace shell ships in \`.aidlc/\` (no setup command); describe what you want to build and it sets up the workflow for you. Run \`/aidlc\` followed by a scope or project description to begin. Run \`/aidlc --doctor\` to validate your setup, \`/aidlc --version\` to print the framework version, \`/aidlc --stage <slug>\` to jump to a specific stage, \`/aidlc --phase <name>\` to jump to a phase, \`/aidlc --depth <level>\` to override depth, \`/aidlc --test-strategy <level>\` to override test volume, \`/aidlc --review <class>\` to cap stage reviews (adversarial, advisory, none). Run \`/aidlc compose "<task>"\` to get a plan tailored to that task (works up front, from a scan report via \`--report <path>\`, and mid-workflow to re-shape the pending stages - every proposal stops at an approve/edit/reject gate).`,
+
+    ["prereq_bullets"]: `- **opencode 1.18.29 or newer, or OpenCode 2**: the adapter plugin carries one entry point for each line (opencode 1 calls \`server()\`, OpenCode 2 calls \`setup()\`), and project-local \`.aidlc/skills/\` + \`.opencode/agents/\` discovery works on both. On OpenCode 2 the todo-driven statusline sync does not run (there is no todo tool); use \`/aidlc --status\`. Check with \`opencode --version\`.
+${runtimePrerequisite(context.channel)}
+- **Model/provider**: the shipped \`opencode.json\` and agent definitions pin no model. Your global opencode configuration (\`~/.config/opencode/opencode.json\`) supplies the provider and default model; balanced reviewers retain only their medium reasoning variant.
+${context.channel === "native" && context.permissionSource.kind === "line-slots" ? nativePermissionsLine({ ...context.permissions, authored: "- **Permissions**: the shipped project `opencode.json` lets AI-DLC's own direct framework tool invocations run without a prompt; the adapter rejects chaining, redirection, expansion, and command substitution. Edits under `.aidlc/tools/` and `.aidlc/hooks/` prompt, and so do `rm -r...` and `git push`, once each. Every other command follows your own opencode settings (opencode's default is allow; to be asked, set `\"permission\": {\"bash\": \"ask\"}` in this project's `opencode.json`, or `\"bash\": {\"*\": \"ask\"}` in your global config: opencode replaces a global short form with any project map). In `opencode run` non-interactive sessions, pass `--auto` only if you accept auto-approval of the remaining prompts; prefer interactive sessions for gated workflows." }) : "- **Permissions**: the shipped project `opencode.json` lets AI-DLC's own direct framework tool invocations run without a prompt; the adapter rejects chaining, redirection, expansion, and command substitution. Edits under `.aidlc/tools/` and `.aidlc/hooks/` prompt, and so do `rm -r...` and `git push`, once each. Every other command follows your own opencode settings (opencode's default is allow; to be asked, set `\"permission\": {\"bash\": \"ask\"}` in this project's `opencode.json`, or `\"bash\": {\"*\": \"ask\"}` in your global config: opencode replaces a global short form with any project map). In `opencode run` non-interactive sessions, pass `--auto` only if you accept auto-approval of the remaining prompts; prefer interactive sessions for gated workflows."}`,
+
+    ["prereq_bullets_tail"]: "",
+
+    ["agents_note"]: `On opencode each expert role is a native subagent (\`mode: subagent\` in each \`.opencode/agents/aidlc-<role>-agent.md\`); the \`/aidlc\` session takes on those roles itself for most stages and hands work off via the \`task\` tool.`,
+
+    ["structure_extra"]: "",
+
+    ["sections_before_resumption"]: `## What's different on this harness
+
+This is the same AI-DLC core that ships to every harness: the same ordered steps, the same approval gates, and the same written record of what was decided, rendered onto opencode. On opencode:
+
+- Approval gates and questions render as **numbered prose options** (no structured-question widget); the questions FILE with \`[Answer]:\` tags remains the source of truth.
+- Hooks ride the **AIDLC adapter plugin** (\`.opencode/plugin/aidlc-opencode-adapter.ts\`): reviewer read-scope enforcement and the AIDLC bash-command boundary run before tools; audit and sensors cover write, edit, and apply_patch; stage-graph rebuilds, human-turn recording, and pre-compaction state validation run from the matching opencode moments.
+- The forwarding-loop enforcement (the Stop hook) rides \`session.idle\` and re-engages the loop by **injecting a nudge prompt** — advisory, not blocking; a chatting or pausing human is released by the hook's interactive cap.
+- The AI-DLC method (\`aidlc/spaces/<space>/memory/*.md\`) reaches ambient context via the \`instructions\` glob in the project \`opencode.json\` or \`opencode.jsonc\`; \`/aidlc space <name>\` re-points every present config without removing JSONC comments.
+- There is **no statusline** and **no welcome message**; use \`/aidlc --status\` and the progress lines at gates.
+- Construction swarm runs as **task-tool fan-out only** (\`AIDLC_USE_SWARM=1\` is a loud no-op).
+- Session-end audit events (\`SESSION_ENDED\`) are not emitted — opencode has no session-end hook moment; pre-compaction validation DOES fire (\`experimental.session.compacting\`).
+- **MCP servers**: none ship (configure your own under \`mcp:\` in \`opencode.json\` if needed).
+- A workflow's \`aidlc/\` workspace tree is harness-neutral: a project can move between harness installs (supported but untested — keep the trees in sync via the framework's packaging if you do this).
+
+The opencode-specific guide (install, what differs, verification) is https://awslabs.github.io/aidlc-workflows/guide/harnesses/opencode/.
+`,
+
+    ["sections_after_resumption"]: "",
+  },
+});
+
+export const OPENCODE_ONBOARDING_FILLS = openCodeOnboardingFills({ channel: "copy" });

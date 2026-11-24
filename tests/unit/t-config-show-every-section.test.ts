@@ -41,6 +41,7 @@ function run(tool: string, args: string[], cwd: string, machine: string): Run {
     cwd,
     env: {
       ...process.env,
+      BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
       HOME: join(machine, "home"),
       XDG_CONFIG_HOME: join(machine, "home", ".config"),
       AIDLC_INSTALL_ROOT: join(machine, "share", "aidlc"),
@@ -85,8 +86,8 @@ function installed(): { dir: string; machine: string } {
 }
 
 // Every file under the roots, with its bytes and modification time, so a
-// command that writes anything (or touches a file) shows up. Bun's own
-// transpile cache under the test HOME is the runtime's, not AI-DLC's.
+// command that writes anything (or touches a file) shows up. The command
+// child disables its optional runtime cache rather than excluding HOME paths.
 function snapshot(...roots: string[]): Map<string, string> {
   const seen = new Map<string, string>();
   const walk = (path: string): void => {
@@ -94,7 +95,7 @@ function snapshot(...roots: string[]): Map<string, string> {
     const stat = lstatSync(path);
     if (stat.isDirectory()) {
       for (const name of readdirSync(path)) {
-        if (name !== ".bun") walk(join(path, name));
+        walk(join(path, name));
       }
       return;
     }
@@ -106,6 +107,23 @@ function snapshot(...roots: string[]): Map<string, string> {
 }
 
 describe("t-config-show-every-section", () => {
+  test("the read-only snapshot still detects application writes in the project and machine HOME", () => {
+    const fixture = project("aidlc-tshowall-write-witness-");
+    const before = snapshot(fixture.dir, fixture.machine);
+    const result = run("-e", [
+      'import { join } from "node:path"; ' +
+      'await Bun.write("application-write.txt", "unexpected"); ' +
+      'await Bun.write(join(process.env.HOME, "Library", "Application Support", ' +
+      '"aidlc", "application-write.txt"), "unexpected");',
+    ], fixture.dir, fixture.machine);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const after = snapshot(fixture.dir, fixture.machine);
+    expect(after.has(join(fixture.dir, "application-write.txt"))).toBe(true);
+    expect(after.has(join(fixture.machine, "home", "Library", "Application Support",
+      "aidlc", "application-write.txt"))).toBe(true);
+    expect(after).not.toEqual(before);
+  });
+
   test("in a project with no install, every section answers and the command still succeeds, writing nothing", () => {
     const fixture = project("aidlc-tshowall-bare-");
     const before = snapshot(fixture.dir, fixture.machine);

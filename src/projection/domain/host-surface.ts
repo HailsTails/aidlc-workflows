@@ -1,0 +1,67 @@
+import type { PromptLines } from "./native-policy.ts";
+import type { DistributionChannel } from "./projected-file.ts";
+import type { FileContent } from "../../kernel/file-content.ts";
+import { accepted, refused, type Result } from "../../kernel/result.ts";
+import { sourcePath, type KernelRefusal, type SourcePath } from "../../kernel/values.ts";
+import type { DocumentExtractorSpec, HookActivation } from "../../../core/tools/aidlc-lib.ts";
+
+export type { DocumentExtractorSpec, HookActivation };
+
+export type AuthoredHostFile = {
+  readonly source: SourcePath;
+  readonly content: FileContent;
+};
+
+export type StatusLine =
+  | { readonly type: "command"; readonly command: string }
+  | { readonly items: readonly string[] };
+
+export type NewChatStep = {
+  readonly text: string;
+  readonly inHost?: { readonly env: readonly string[]; readonly text: string };
+};
+
+export type HostData = {
+  readonly productName: string;
+  readonly configNextStep: string;
+  readonly rulesFolder: string | null;
+  readonly runnerFrontmatterAdditions?: readonly string[];
+  readonly documentExtractors?: Readonly<Record<string, DocumentExtractorSpec>>;
+  /**
+   * Hook recovery instructions also replace a summary-evidence save-again refusal
+   * when no question waits (#3971). Declare only for a host whose own command hook
+   * records a heartbeat before the engine runs, including when checks are off.
+   */
+  readonly hookActivation?: HookActivation;
+  readonly newChatStep?: NewChatStep;
+  readonly directiveMaxBytes?: number;
+  readonly statusLine?: StatusLine;
+  readonly agentFinishRecorded?: { readonly env: readonly string[] };
+  readonly hostShell?: { readonly env: readonly string[] };
+  readonly pluginAgentFrontmatter?: Readonly<{ readonly copy: readonly string[]; readonly native: PromptLines }>;
+};
+
+export type AuthoredPlacement = {
+  readonly source: string;
+  readonly destination: string;
+  readonly sourceRole?: "host-adapter-script";
+
+  readonly prompt?: (request: { readonly content: FileContent;
+    readonly channel: DistributionChannel }) => PromptLines | null;
+};
+
+export const authoredSourcePaths = (raws: readonly string[]): Result<readonly SourcePath[], KernelRefusal> => {
+  const paths = raws.map(sourcePath);
+  const failed = paths.find((path) => !path.ok);
+  return failed && !failed.ok
+    ? refused(failed.refusal)
+    : accepted(paths.flatMap((path) => (path.ok ? [path.value] : [])));
+};
+
+export type HostPluginTarget = {
+  readonly format: string;
+  readonly manifestDir: string;
+  readonly marketplaceDir: string;
+  readonly catalogue: "written" | "none";
+  readonly installRoots: readonly string[];
+};
