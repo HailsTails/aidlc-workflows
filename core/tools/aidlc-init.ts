@@ -191,7 +191,11 @@ import {
 } from "./aidlc-utility.ts";
 import {
   aidlcInvocation,
+  BUN_LAUNCH_CONFIG,
+  bunLaunchAt,
+  bunLaunchFlags,
   compiledExecutable,
+  copyLaunchPrefix,
   discoverProjectHarnesses,
   isCompiledExecutable,
   projectedDispatcher,
@@ -2924,12 +2928,15 @@ function configInvocationFor(projectDir = process.cwd()): string {
   const harnessDir = ran === null
     ? configTargetHarnessDir ?? runtimeHarnessDir()
     : basename(dirname(dirname(ran)));
-  const own = `bun ${harnessDir}/tools/aidlc.ts`;
+  // A tool spelled from the project folder, or by its full path, with its tree's launch options.
+  const relativeIn = (root: string) =>
+    `${existsSync(join(root, harnessDir, "tools", BUN_LAUNCH_CONFIG)) ? copyLaunchPrefix(harnessDir) : "bun"} ${harnessDir}/tools/aidlc.ts`;
+  const full = (tool: string) => `${bunLaunchAt(dirname(tool))} ${quoteCommandArgument(tool)}`;
   const toolIn = (root: string) => join(root, harnessDir, "tools", "aidlc.ts");
   if (ran === null || sameFile(ran, toolIn(projectDir))) {
-    return ranFromProject(projectDir) ? own : `bun ${quoteCommandArgument(toolIn(projectDir))}`;
+    return ranFromProject(projectDir) ? relativeIn(projectDir) : full(toolIn(projectDir));
   }
-  return sameFile(ran, toolIn(process.cwd())) ? own : `bun ${quoteCommandArgument(ran)}`;
+  return sameFile(ran, toolIn(process.cwd())) ? relativeIn(process.cwd()) : full(ran);
 }
 
 // The copied tool that handed this config run over, if one did.
@@ -4748,6 +4755,38 @@ function entryIdentity(path: string): string {
   return `${stat.mode}:${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
 }
 
+// The release files keep Kiro in runtime/kiro-ide/ and Kiro CLI (V2) in
+// runtime/kiro/, while `--harness kiro` names Kiro. A .kiro holding Kiro CLI
+// (V2)'s files whose ownership record is Kiro's can neither be switched to Kiro
+// (the switch plans from a Kiro CLI (V2) record) nor refreshed as Kiro CLI
+// (V2), so config says where Kiro's files are instead of asking to switch. A
+// stamp and a record that disagree do not say how they came to, so the line
+// says what is there. With no record, the refusal below names the Kiro CLI (V2)
+// refresh that records one, after which the switch goes through.
+function kiroCopyRefusal(occupant: ProjectHarness, requested: string, run: "switch" | "refresh" = "switch"): SwitchRefusal | null {
+  if (occupant.distribution !== "kiro" || requested !== "kiro-ide" || occupant.harnessDir !== KIRO_SWITCH_DIR) return null;
+  let baseline: Baseline | null;
+  try {
+    baseline = readBaseline(join(occupant.root, "tools", "data", "aidlc-manifest.json"));
+  } catch {
+    return null;
+  }
+  if (!baseline || baselineShapeProblem(baseline) !== null ||
+    !baselineNamesHarness(baseline, { distribution: requested, harnessDir: occupant.harnessDir })) {
+    return null;
+  }
+  return new SwitchRefusal(
+    `cannot ${run === "switch" ? `switch ${occupant.harnessDir} to` : `refresh ${occupant.harnessDir} as`} Kiro: it holds Kiro CLI (V2)'s files, which the release files keep in runtime/kiro/, ` +
+      `while its ownership record (${occupant.harnessDir}/tools/data/aidlc-manifest.json) is Kiro's; nothing changed`,
+    {
+      kind: "text",
+      text: "run the whole copy block of \"Versioned manual-copy alternative\" in Running AI-DLC on Kiro " +
+        "(https://awslabs.github.io/aidlc-workflows/guide/harnesses/kiro/), not only its setup command: it removes Kiro CLI " +
+        "(V2)'s agent files, copies runtime/kiro-ide/ from the release files over the project, and runs config",
+    },
+  );
+}
+
 // Without a usable occupant baseline nothing says which of its files are
 // AI-DLC's, so the files only it ships would be left behind. The switch never
 // changes the baseline itself: every refusal here leaves the project as it is
@@ -4755,6 +4794,8 @@ function entryIdentity(path: string): string {
 // then the stock refresh of the installed row, which picks its source as any
 // refresh does.
 function assertSwitchBaseline(occupant: ProjectHarness, requested: string): void {
+  const copied = kiroCopyRefusal(occupant, requested);
+  if (copied) throw copied;
   const rel = `${occupant.harnessDir}/tools/data/aidlc-manifest.json`;
   const path = join(occupant.root, "tools", "data", "aidlc-manifest.json");
   const lead = `cannot switch ${occupant.harnessDir} from ${typedHarnessName(occupant.distribution)} to ${typedHarnessName(requested)}: installed ${typedHarnessName(occupant.distribution)}`;
@@ -6939,7 +6980,7 @@ export function runnerGenerator(
   }
   const tool = join(stagedHarness, "tools", "aidlc-runner-gen.ts");
   if (!existsSync(tool)) return null;
-  return { release, commands: [[process.execPath, tool, "write"], [process.execPath, tool, "scopes"]] };
+  return { release, commands: [[process.execPath, ...bunLaunchFlags(), tool, "write"], [process.execPath, ...bunLaunchFlags(), tool, "scopes"]] };
 }
 
 // What the pinned release's generator said when it could not write the runner
@@ -7710,7 +7751,7 @@ function kiroUpgradedNote(count: number, harnessDir: string, force: string): str
 }
 
 // When the release changes what such a file allows, config puts the release's
-// file back where Kiro upgrades it again by itself (kiroAutoUpgradeOn) and
+// file back where Kiro upgrades it again by itself (kiroAutoUpgradeSetting) and
 // Kiro's copy is its untouched upgrade of the file AI-DLC wrote
 // (kiroUpgradeOfOwnFile); otherwise it keeps Kiro's copy and says what that
 // leaves.
@@ -7782,18 +7823,21 @@ function modelsRunExplains(context: ModelsMutationContext): Set<string> {
 }
 
 // Whether Kiro puts an agent file back into its 3.0 format by itself at its
-// next 3.0 start: `chat.enableAutoAgentUpgrade` true in the person's own Kiro
-// settings, read and never written (kiro-cli 2.29.0: without it, Kiro asks
-// first or runs its default agent in the file's place). A project's
-// settings/cli.json would win, but a refresh stops on a change to AI-DLC's
-// copy and leaves one without the setting. Under the test runner only a
-// KIRO_HOME the test names is read, never the host's ~/.kiro.
-function kiroAutoUpgradeOn(env: NodeJS.ProcessEnv = process.env): boolean {
+// next 3.0 start: `chat.enableAutoAgentUpgrade` in the person's own Kiro
+// settings, read and never written; undefined when it is not set, which
+// kiro-cli 2.37 and later read as on (kiro-cli 2.29.0 asked first). A file
+// that does not parse reads as off. A project's settings/cli.json would win,
+// but a refresh stops on a change to AI-DLC's copy and leaves one without the
+// setting. Under the test runner only a KIRO_HOME the test names is read,
+// never the host's ~/.kiro.
+function kiroAutoUpgradeSetting(env: NodeJS.ProcessEnv = process.env): boolean | undefined {
   const home = kiroEnv(env).KIRO_HOME;
   if (!home && env.AIDLC_TEST_NAME !== undefined) return false;
+  const path = join(home || join(homedir(), ".kiro"), "settings", "cli.json");
+  if (!existsSync(path)) return undefined;
   try {
-    const path = join(home || join(homedir(), ".kiro"), "settings", "cli.json");
-    return JSON.parse(readFileSync(path, "utf-8"))?.["chat.enableAutoAgentUpgrade"] === true;
+    const value = JSON.parse(readFileSync(path, "utf-8"))?.["chat.enableAutoAgentUpgrade"];
+    return value === true || value === false ? value : undefined;
   } catch {
     return false;
   }
@@ -8800,7 +8844,7 @@ function runConfigChild(
   const commandArgs = isCompiledExecutable()
     ? ["config", ...typedArgs]
     : [fileURLToPath(import.meta.url), "config", ...typedArgs];
-  const result = spawnSync(process.execPath, commandArgs, {
+  const result = spawnSync(process.execPath, [...bunLaunchFlags(), ...commandArgs], {
     cwd,
     env,
     encoding: "utf-8",
@@ -10417,7 +10461,10 @@ function planManagedFiles(
           continue;
         }
         const known = [priorHash, ...(descriptor.legacyManagedFileHashes?.[rel] ?? [])];
-        if (!kiroAutoUpgradeOn() || priorHash === undefined || !kiroUpgradeOfOwnFile(projectDir, rel, known, true)) {
+        // A copy Kiro did not stamp is proved only by the fields Kiro kept, so it
+        // goes back only on an explicit true.
+        const setting = kiroAutoUpgradeSetting();
+        if (setting === false || priorHash === undefined || !kiroUpgradeOfOwnFile(projectDir, rel, known, setting === true)) {
           actions.push({ path: rel, action: "preserve", detail: KIRO_KEPT_CHANGED_DETAIL });
           continue;
         }
@@ -12776,10 +12823,11 @@ function treesLeftBehindLines(
   // and an older tool may not read its files. Its --harness names are that
   // release's.
   const writtenTool = join(projectDir, written.harnessDir, "tools", "aidlc.ts");
+  const writtenTools = dirname(writtenTool);
   const tool = source.copyChannel
-    ? `bun ${
-      quoteCommandArgument(ranFromProject(projectDir) ? `${written.harnessDir}/tools/aidlc.ts` : writtenTool)
-    }`
+    ? ranFromProject(projectDir)
+      ? `${existsSync(join(writtenTools, BUN_LAUNCH_CONFIG)) ? copyLaunchPrefix(written.harnessDir) : "bun"} ${written.harnessDir}/tools/aidlc.ts`
+      : `${bunLaunchAt(writtenTools)} ${quoteCommandArgument(writtenTool)}`
     : configInvocationFor(projectDir);
   const command = (args: string): string => `\`${tool} config ${args}${projectTarget(projectDir)}\``;
   return behind.map((tree) => {
@@ -13725,6 +13773,12 @@ export async function main(
   let releaseHold: (() => void) | null = null;
   const sourceNotes: string[] = [];
   try {
+    // A refresh that names no harness refreshes the one the project has, and
+    // its record names Kiro, so it gets the same refusal before the record check.
+    const unnamedCopy = !requestedHarness && !section && projectHarnesses.length === 1
+      ? kiroCopyRefusal(projectHarnesses[0], "kiro-ide", "refresh")
+      : null;
+    if (unnamedCopy) throw unnamedCopy;
     const existing = existingProject(projectDir, requestedHarness);
     // A switch that cannot proceed is refused before any release is fetched
     // for it; it runs again once the source is selected, just before planning.
@@ -13734,6 +13788,9 @@ export async function main(
       )
       : undefined;
     const dryRun = argv.includes("--dry-run");
+    // A switch that can never go through is not asked about.
+    const copied = switchOccupant && requestedHarness ? kiroCopyRefusal(switchOccupant, requestedHarness) : null;
+    if (copied) throw copied;
     // `--harness kiro` named Kiro CLI (V2) before it named Kiro, so on a Kiro
     // CLI (V2) project it may be an older script's refresh. A copied tool from
     // before these names hands its refresh over in ids, where `kiro` is still
@@ -14058,7 +14115,7 @@ export async function main(
       }
       const args = stripVerb([...input]);
       if (downloadCleanup && !args.includes("--download")) args.push("--download");
-      const handed = spawnSync(process.execPath, [newerTool, "config", ...args], {
+      const handed = spawnSync(process.execPath, [...bunLaunchFlags(), newerTool, "config", ...args], {
         cwd: process.cwd(),
         env: { ...process.env, AIDLC_CONFIG_HANDOFF: ranTool, AIDLC_PROJECT_DIR: projectDir },
         stdio: "inherit",

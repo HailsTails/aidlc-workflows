@@ -26,6 +26,7 @@ import {
   seededStateFile,
   seedStateFile,
 } from "../harness/fixtures.ts";
+import { withCopyLaunchOptions } from "../harness/copy-launch.ts";
 import {
   auditBlockField,
   getField,
@@ -426,7 +427,7 @@ describe("the agent's words stay where the line is not the person's request", ()
 describe("AI-DLC's first command carries none of the person's words", () => {
   const REQUEST = 'Fix the bug where formatPrice(0) returns an empty string instead of "$0.00"';
   const FILE = "aidlc/.aidlc-request-text/request.txt";
-  const RUN = "bun .claude/tools/aidlc-orchestrate.ts next";
+  const RUN = withCopyLaunchOptions("bun .claude/tools/aidlc-orchestrate.ts next");
   const NO_LINE_STEP = "AI-DLC has no copy of what the person typed in this chat. Write the words of their request, " +
     `exactly as they typed them, with your file tool to \`${FILE}\`, then run \`${RUN} --request-file ${FILE}\` and ` +
     "follow what it returns. Only their words go in the file: the plan, command word and flags they typed stay on " +
@@ -622,7 +623,7 @@ describe("AI-DLC's first command carries none of the person's words", () => {
       .replace(/^- \*\*State Version\*\*: .*$/m, "- **State Version**: 7");
     writeFileSync(path, older, "utf-8");
     typed("please look at the price formatting");
-    expect(dispatched(["--entry", "--status"]).message).toStartWith("Run `bun .claude/tools/aidlc.ts engine status`");
+    expect(dispatched(["--entry", "--status"]).message).toStartWith(`Run \`${withCopyLaunchOptions("bun .claude/tools/aidlc.ts engine status")}\``);
     expect(readFileSync(path, "utf-8")).toBe(older);
     expect(readAuditShardEvents(proj).filter((row) => row.event === "STATE_UPGRADED")).toHaveLength(0);
   });
@@ -807,24 +808,90 @@ describe("AI-DLC's first command carries none of the person's words", () => {
     });
   }
 
-  // A setting the team's locked strict keeps would be refused at creation on every answer, and the plan question would
-  // wait for the same answer again: the step's commands then carry none of the settings typed with the request, and
-  // the work starts at the team's strict.
+  // The team's locked strict outranks a lower setting typed with the request, never the request: the step's commands
+  // carry the settings typed with it, and the work starts at the team's strict with the others.
+  const teamLocksStrict = (): string => {
+    const team = join(proj, "aidlc", "spaces", "default", "memory", "team.md");
+    writeFileSync(team, readFileSync(team, "utf-8").replace("## Guard Policy\n", "## Guard Policy\n\nMode: strict\n"), "utf-8");
+    return team;
+  };
+  // The start of the team's line, whichever setting it names: its words are the setter's to pin.
+  const teamLine = (team: string): string => `Your team set Guard Policy to strict in ${team}`;
+  // How often a line is said across the steps the person and the agent read.
+  const timesSaid = (line: string, steps: unknown[]): number =>
+    steps.reduce<number>((count, step) => count + JSON.stringify(step).split(JSON.stringify(line).slice(1, -1)).length - 1, 0);
   for (const lowering of ["--guard-policy relaxed", "--plan-approval off"]) {
     test(`a plain reply while the plan question waits, the team's strict locked, ${lowering} typed: the work starts at the team's strict`, () => {
-      const team = join(proj, "aidlc", "spaces", "default", "memory", "team.md");
-      writeFileSync(team, readFileSync(team, "utf-8").replace("## Guard Policy\n", "## Guard Policy\n\nMode: strict\n"), "utf-8");
-      planQuestionOpen(`--depth comprehensive ${lowering} `);
+      const team = teamLocksStrict();
+      const asked = planQuestionOpen(`--depth comprehensive ${lowering} `);
       typed("Go ahead");
       const step = run(["--entry"]);
       const command = String(step.message).match(/run the command it gave for their choice: `[^`]*? next (--scope [^`]+)`/)?.[1];
       expect(command, String(step.message)).toBeDefined();
-      expect(command).not.toContain(lowering);
-      create(proj, run((command as string).split(" ")));
+      const go = run((command as string).split(" "));
+      create(proj, go);
       expect(recordField("Guard Policy")).toBe("strict (from team.md)");
       expect(recordField("Plan Approval")).toStartWith("on ");
+      expect(recordField("Depth")).toBe("Comprehensive");
+      expect(timesSaid(teamLine(team), [asked, step, go, run([]), run([])])).toBe(1);
     });
   }
+
+  // Every other answer that starts the work, with no work in hand and beside it, and a plan named with the request:
+  // the work starts at the team's strict, nothing is refused, and the team's line is said once.
+  describe("under a team's locked strict, a lower setting typed with a request", () => {
+    for (const lowering of ["--guard-policy relaxed", "--plan-approval off"]) {
+      for (const [where, ask] of [
+        ["with no work in hand", () => planQuestionOpen(`${lowering} `)],
+        ["beside work in hand", () => { openWork(); return newWorkPlanQuestion(`${lowering} `); }],
+      ] as const) {
+        const answers: Array<[string, (asked: PlanQuestion & { confirm_command?: string; compose_command?: string }) => Array<{ kind?: string; message?: string }>]> = [
+          ["the question's own go-ahead", (asked) => {
+            typed("Go ahead");
+            return [run(String(asked.confirm_command).replace(`${RUN} `, "").split(" "))];
+          }],
+          ["the plan's name typed as the reply", () => { typed("bugfix"); return [run(["--entry"])]; }],
+          ["a plain reply", () => {
+            typed("Go ahead");
+            const step = run(["--entry"]);
+            const command = String(step.message).match(/run the command it gave for their choice: `[^`]*? next (--scope [^`]+)`/)?.[1];
+            expect(command, String(step.message)).toBeDefined();
+            return [step, run((command as string).split(" "))];
+          }],
+          ["the tailored plan approved", (asked) => {
+            typed("Tailor a plan to this task");
+            const dispatch = run(String(asked.compose_command).replace(`${RUN} `, "").split(" "));
+            const approval = String(dispatch.message).match(/On approval, run `next (--scope <scopeName> --request [0-9a-f]{8})`/)?.[1];
+            expect(approval, String(dispatch.message)).toBeDefined();
+            laterSecond();
+            typed("Approve");
+            return [dispatch, run([...(approval as string).replace("<scopeName>", "bugfix").split(" "), ...lowering.split(" ")])];
+          }],
+        ];
+        // With no work in hand, the plain reply is the case above.
+        for (const [answer, answered] of answers.filter(([name]) => where === "beside work in hand" || name !== "a plain reply")) {
+          test(`the team's strict locked, ${lowering} typed with the request ${where}, ${answer}: the work starts at the team's strict`, () => {
+            const team = teamLocksStrict();
+            const asked = ask() as PlanQuestion & { confirm_command?: string; compose_command?: string };
+            const steps = answered(asked);
+            create(proj, steps[steps.length - 1]);
+            expect(recordField("Guard Policy")).toBe("strict (from team.md)");
+            expect(recordField("Plan Approval")).toStartWith("on ");
+            expect(timesSaid(teamLine(team), [asked, ...steps, run([]), run([])])).toBe(1);
+          });
+        }
+      }
+      test(`the team's strict locked, ${lowering} typed with a request that names its plan: the work starts at the team's strict`, () => {
+        const team = teamLocksStrict();
+        typed(`/aidlc --scope bugfix ${lowering} ${REQUEST}`);
+        const step = run(["--entry"]);
+        create(proj, step);
+        expect(recordField("Guard Policy")).toBe("strict (from team.md)");
+        expect(recordField("Plan Approval")).toStartWith("on ");
+        expect(timesSaid(teamLine(team), [step, run([]), run([])])).toBe(1);
+      });
+    }
+  });
 
   test("a plain reply while the routing question waits goes to that question, with its own commands", () => {
     routingQuestionOpen();
@@ -1250,7 +1317,7 @@ describe("AI-DLC's first command carries none of the person's words", () => {
   // the work in hand may pick the plan for that request or ask for the work to move: the agent gets one step that
   // reads which, with that question's own command for the plan and the switch, and the work keeps its plan until one
   // of them runs. A --scope typed on the person's own line, and one sent with no plan question on top, switch at once.
-  const SWITCH = "Run `bun .claude/tools/aidlc.ts engine scope change --scope express` to change scope";
+  const SWITCH = `Run \`${withCopyLaunchOptions("bun .claude/tools/aidlc.ts engine scope change --scope express")}\` to change scope`;
   const WORK = "Test widget feature for e-commerce platform";
   function readsWhich(ask: PlanQuestion): { kind: string; message: string } {
     return {
@@ -1445,7 +1512,7 @@ describe("AI-DLC's first command carries none of the person's words", () => {
     );
     writeFileSync(path, conflicted, "utf-8");
     typed("/aidlc --status");
-    expect(run(["--entry"]).message).toStartWith("Run `bun .claude/tools/aidlc.ts engine status`");
+    expect(run(["--entry"]).message).toStartWith(`Run \`${withCopyLaunchOptions("bun .claude/tools/aidlc.ts engine status")}\``);
     expect(readFileSync(path, "utf-8")).toBe(conflicted);
   });
 
@@ -1516,9 +1583,9 @@ describe("AI-DLC's first command carries none of the person's words", () => {
     );
     writeFileSync(path, conflicted, "utf-8");
     typed("/aidlc-bugfix --status");
-    expect(run(["--entry", "--scope", "bugfix"]).message).toStartWith("Run `bun .claude/tools/aidlc.ts engine status`");
+    expect(run(["--entry", "--scope", "bugfix"]).message).toStartWith(`Run \`${withCopyLaunchOptions("bun .claude/tools/aidlc.ts engine status")}\``);
     expect(readFileSync(path, "utf-8")).toBe(conflicted);
-    expect(run([]).message).not.toStartWith("Run `bun .claude/tools/aidlc.ts engine status`");
+    expect(run([]).message).not.toStartWith(`Run \`${withCopyLaunchOptions("bun .claude/tools/aidlc.ts engine status")}\``);
   });
 
   // Holds the plan step to one.
@@ -1662,7 +1729,7 @@ describe("On Codex, AI-DLC's first command reads the person's line from its own 
       if (line !== null) for (const proj of [entered, onTheCommand]) typed(proj, line);
       const step = next(entered, ["--entry"]);
       expect(String(JSON.parse(step).message)).toStartWith("AI-DLC has no copy of what the person typed in this chat. Write the words");
-      expect(step).toContain(`bun .codex/tools/aidlc-orchestrate.ts next --request-file ${FILE}`);
+      expect(step).toContain(`${withCopyLaunchOptions("bun .codex/tools/aidlc-orchestrate.ts next")} --request-file ${FILE}`);
       mkdirSync(join(entered, "aidlc", ".aidlc-request-text"), { recursive: true });
       writeFileSync(join(entered, ...FILE.split("/")), REQUEST, "utf-8");
       expect(same(next(entered, ["--request-file", FILE]))).toBe(same(next(onTheCommand, REQUEST.split(" "))));
@@ -1682,7 +1749,7 @@ describe("A Claude Code shortcut's first command carries none of the person's wo
   const [REQUEST, OTHER] = REQUESTS;
   const OTHER_CHAT = "01995000-7a11-7000-8000-0000000000d2";
   const FILE = "aidlc/.aidlc-request-text/request.txt";
-  const RUN = "bun .claude/tools/aidlc-orchestrate.ts next";
+  const RUN = withCopyLaunchOptions("bun .claude/tools/aidlc-orchestrate.ts next");
   const SHORTCUTS: Array<[string, string[]]> = [
     ["/aidlc-bugfix", ["--scope", "bugfix"]],
     ["/aidlc-express", ["--scope", "express"]],

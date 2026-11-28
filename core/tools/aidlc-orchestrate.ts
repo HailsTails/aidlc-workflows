@@ -681,6 +681,7 @@ import {
 } from "./aidlc-utility.ts";
 import { checkboxIsUnitProjection, ledgerStageActivity } from "./aidlc-doctor-bundle.ts";
 import {
+  bunLaunchFlags,
   aidlcDispatcherInvocation,
   aidlcEngineCommand,
   aidlcInvocation,
@@ -3372,7 +3373,7 @@ function toolCommand(toolFile: string, args: string[]): string[] {
     }
     throw new Error(`No compiled dispatcher route for ${toolFile} ${args.join(" ")}`);
   }
-  return [process.execPath, toolPath(toolFile), ...args];
+  return [process.execPath, ...bunLaunchFlags(), toolPath(toolFile), ...args];
 }
 
 // The result of spawning a sibling tool: its exit code plus captured streams.
@@ -4029,8 +4030,10 @@ function scopeConfirmAskDirective(
 // word is considered, not the first, so "Update README.md from docs/spec.pdf"
 // finds the spec. The note offers the step and leaves the judgement with the
 // person: the agent asks them before onboarding something they may have named
-// for another reason.
-const NAMED_DOCUMENT = /(?:^|[\s"'`(<])([\w.][\w./-]*\.(?:pdf|docx))(?=$|[\s"'`)>,;])/gi;
+// for another reason. A file name is letters and digits of any script
+// (docs/Вимоги.docx, docs/需求.pdf), including accents stored as combining
+// marks (\p{M}).
+const NAMED_DOCUMENT = /(?:^|[\s"'`(<])([\p{L}\p{N}_.][\p{L}\p{M}\p{N}_./-]*\.(?:pdf|docx))(?=$|[\s"'`)>,;])/giu;
 
 function onboardableDocument(raw: string, projectDir: string): string | null {
   for (const match of raw.matchAll(NAMED_DOCUMENT)) {
@@ -5657,7 +5660,13 @@ function teamShareOffer(
 // at this HEAD. Null when not due.
 function teamPublishOffer(projectDir: string, unit: string): AskDirective | null {
   if (publishedAtHead(projectDir)) return null;
-  const head = Bun.spawnSync({ cmd: ["git", "rev-parse", "HEAD"], cwd: projectDir, stdout: "pipe", stderr: "ignore" });
+  const head = Bun.spawnSync({
+    cmd: ["git", "rev-parse", "HEAD"],
+    cwd: projectDir,
+    env: process.env,
+    stdout: "pipe",
+    stderr: "ignore",
+  });
   const key = `${unit}-${head.exitCode === 0 ? new TextDecoder().decode(head.stdout).trim().slice(0, 12) : "none"}`;
   const mark = teamHandoverMarkName("publish", key);
   if (handoverOffered(projectDir, mark)) return null;
@@ -6213,6 +6222,7 @@ function localClaimCheckouts(
   const listed = Bun.spawnSync({
     cmd: ["git", "worktree", "list", "--porcelain"],
     cwd: projectDir,
+    env: process.env,
     stdout: "pipe",
     stderr: "ignore",
   });
@@ -7534,7 +7544,7 @@ export function nextArgsAreOnlyWords(args: string[]): boolean {
 // The plan a line names when it says nothing else ("/aidlc bugfix"), by the
 // same one reading; null for any other line. Unlike a reply, a token typed
 // beside the plan, a flag `next` does not take included, is more than the plan.
-export function nextArgsNameOnlyAPlan(args: string[]): string | null {
+function nextArgsNameOnlyAPlan(args: string[]): string | null {
   const parsed = parseNextFlags(args);
   return Object.keys(parsed).length === 1 && typeof parsed.positionalScope === "string"
     ? parsed.positionalScope
@@ -7546,9 +7556,9 @@ export function nextArgsNameOnlyAPlan(args: string[]): string | null {
 // whole text beside it): `next` reads that line from AI-DLC's own copy
 // (takePersonsOwnLine), so the agent runs `next` with nothing after it and
 // does not type tens of thousands of characters again, often past what one
-// command line can carry. The sentence is the one Kiro IDE's adapter (Kiro
-// IDE and Kiro CLI on its V3 engine) says for every such line, firstStepLine,
-// which a test holds to these words. "" for any other line: words that
+// command line can carry. It opens with the words of the Kiro adapters'
+// first-step lines (Kiro IDE and Kiro CLI on both engines), which name
+// `next --entry`; a test holds them to those words. "" for any other line: words that
 // are not words alone (nextArgsAreOnlyWords), or that hold a flag-shaped
 // token `next` does not take, which a bare `next` hands back for the agent to
 // send again behind `--`; a record with no whole copy; no chat, whose `next`
@@ -8143,10 +8153,20 @@ function createPrintDirective(
   if (flags.testStrategy) cmd.push(`--test-strategy ${flags.testStrategy}`);
   if (flags.projectType) cmd.push(`--project-type ${flags.projectType}`);
   if (flags.review) cmd.push(`--review ${flags.review}`);
-  // A lowered Guard Policy typed with routed new work rides to creation when it
-  // is the person's (routedGuardPolicyRides); otherwise the routed note says
-  // where it stands.
-  if (flags.changeControl && !(routedGuardPolicyNote && guardPolicyLowered(flags) && !routedGuardPolicyRides(flags, projectDir))) {
+  // A team's locked strict Guard Policy outranks a lowered Guard Policy or plan
+  // approval off typed with the request, never the request: neither goes on
+  // the command (creation refuses both under the lock), the work starts at the
+  // team's strict, and the team's line is said once. A check typed off rides,
+  // and creation keeps it on with its own line.
+  const team = teamKeepsLowered(projectDir, {
+    guardPolicy: guardPolicyLowered(flags),
+    fence: undefined,
+    planApproval: flags.ceremony?.plan_approval === "off",
+  });
+  // With no lock, a lowered Guard Policy typed with routed new work rides to
+  // creation when it is the person's (routedGuardPolicyRides); otherwise the
+  // routed note says where it stands.
+  if (flags.changeControl && !(guardPolicyLowered(flags) && (team !== null || (routedGuardPolicyNote && !routedGuardPolicyRides(flags, projectDir))))) {
     cmd.push(`--guard-policy ${flags.changeControl}`);
   }
   // A check typed with the work: creation takes it under the person-turn rule.
@@ -8154,6 +8174,7 @@ function createPrintDirective(
     if (flags.fences?.[fence]) cmd.push(`--guard.${fence} ${flags.fences[fence]}`);
   }
   for (const key of CEREMONY_KEYS) {
+    if (key === "plan_approval" && team !== null && flags.ceremony?.[key] === "off") continue;
     if (flags.ceremony?.[key]) cmd.push(`${CEREMONY_FLAGS[key]} ${flags.ceremony[key]}`);
   }
   if (flags.planChanges?.skip.length) cmd.push(`--skip ${flags.planChanges.skip.join(",")}`);
@@ -8203,6 +8224,7 @@ function createPrintDirective(
   for (const name of discoverSiblingRepos(projectDir, true)) {
     directive.narration += ` The folder "${name}" is not part of this work: its name ${repoNameProblem(name)}.`;
   }
+  if (team !== null) directive.narration += ` ${team}`;
   if (routedGuardPolicyNote) directive.narration += ` ${routedGuardPolicyNote}`;
   // Beside other work the chat still holds that work's conversation: the
   // person can start this one in a clean chat instead, said once, never as a
@@ -8419,15 +8441,15 @@ function routedGuardPolicyRides(flags: ParsedFlags, projectDir: string): boolean
 // New work picked on a routing question with a lowered Guard Policy: what the
 // person hears. Theirs, it is said once with where it landed; a value the new
 // work's plan already has is nothing new and goes unsaid. Under a team's strict
-// Guard Policy, the team's line. With no message of theirs in this chat it is
+// Guard Policy, nothing: the creation print says the team's line
+// (createPrintDirective). With no message of theirs in this chat it is
 // not tried on the new work: the person hears where it stands and is asked,
 // about the work the question was about, read from its own state (not whatever
 // the answer selects).
 function routedGuardPolicyNote(flags: ParsedFlags, projectDir: string, question: StoredQuestion): string {
   if (!guardPolicyLowered(flags)) return "";
   const value = flags.changeControl as string;
-  const team = teamKeepsTyped(flags, projectDir);
-  if (team !== null) return team;
+  if (teamKeepsTyped(flags, projectDir) !== null) return "";
   if (personAskedInThisChat(projectDir)) {
     // What the setting does comes with its name, as it does on the check line beside it.
     return flags.scope !== undefined && scopeGuardPolicyDefault(flags.scope) === value
@@ -11836,7 +11858,7 @@ function cutMessageStep(shape: ParsedFlags, message: StoredMessage, reply: boole
   );
 }
 
-// AI-DLC's first command (`next --entry`, step 1 of the Claude Code and Codex skills)
+// AI-DLC's first command (`next --entry`, step 1 of the Claude Code, Codex and Kiro skills)
 // carries none of the person's words: the bare `next` reads the words of their
 // typed line from the record (takePersonsOwnLine), and a line of tokens alone
 // runs as the command before this is asked (entryTokens). A shortcut's line
@@ -11868,6 +11890,26 @@ function entryLine(pd: string, selection: WorkflowSelection, unjoined: boolean):
   const unselected = !existsSync(engineStateFilePath(pd)) ? unselectedRecords(pd) : null;
   const waits = openRoutingQuestion(pd) !== null || openFrontQuestion(pd) !== null || (unselected?.selectable.length ?? 0) > 0;
   return waits ? [reply] : "step";
+}
+// The words of the message the human-turn hook named by id, when the agent
+// passes that id where a request's goes: they go on whole as one argument, as
+// the agent hands words to `next` and entryLine a plain message. An `/aidlc`
+// line gives its words as typed and never its flags, which its own command ran
+// once (a jump run again would redo the stage). Null for no such message, no
+// whole words, or a line naming a request (`main`'s, so one message is read).
+function namedMessageWords(pd: string, id: string): string | null {
+  const message = readMessage(pd, id);
+  if (message === null || message.words === null) return null;
+  const whole = wholeMessageText(pd, message);
+  // A box answer is marked cut for a long question too; the hook cuts its words only at MESSAGE_TEXT_MAX_CHARS.
+  const wordsCut = message.source === "picker" ? personsWordsText(message.words).length >= MESSAGE_TEXT_MAX_CHARS : whole === null;
+  if (message.cut === true && wordsCut) return null;
+  const typed = message.source === "prompt" ? typedEntryWords(personsWordsText(whole ?? message.text)) : null;
+  if (typed === null) return personsWordsText(whole ?? message.words).trim();
+  const own = parseNextFlags(splitKiroCommandArgs(typed));
+  const said = own.personWords ?? own.intent;
+  if (own.request !== undefined || said === undefined) return null;
+  return requestAsTyped(said, typed) ?? withTypedSpacing(said, typed);
 }
 // A plan's name alone, handed on by entryLine while one plan question waits,
 // is that question's answer: it runs as the command the question gave for that
@@ -12381,13 +12423,10 @@ function routeNext(agentArgs: string[], projectDir: string | undefined): void {
     const tool = `${aidlcToolInvocation("orchestrate")} next`;
     const open = openFront.question;
     // The commands named here carry the settings and the stage changes typed
-    // with the request, as the question's own do, from the request's stored copy.
-    // Under a team's locked strict (teamKeepsTyped), a lowered Guard Policy or
-    // plan approval off would be refused at creation and the question would
-    // wait for the same answer again, and a check typed off is kept on: then
-    // the commands carry none of the typed settings.
+    // with the request, as the question's own do, from the request's stored copy;
+    // what a team's locked strict keeps stays off at creation (createPrintDirective).
     const kept = openQuestionSettings(questionDir, open);
-    const settings = kept && teamKeepsTyped(kept, questionDir) === null ? carriedCreationFlags(kept) : "";
+    const settings = kept ? carriedCreationFlags(kept) : "";
     const stages = typedStageAnswers(open.proposedScope, kept?.planChanges, kept?.planName);
     const answer = !openFront.sole
       // More than one plan question is open on this work, so which one they are
@@ -12507,7 +12546,13 @@ function routeNext(agentArgs: string[], projectDir: string | undefined): void {
     const found = readQuestion(questionDir, flags.request);
     if (!found) {
       pruneQuestions();
-      emit(repeatedAnswerDirective(questionDir, startedRequestFor(questionDir, flags.request)) ?? errorDirective(QUESTION_UNAVAILABLE));
+      const repeated = repeatedAnswerDirective(questionDir, startedRequestFor(questionDir, flags.request));
+      const words = repeated === null ? namedMessageWords(questionDir, flags.request) : null;
+      if (words !== null) {
+        routeNext([words], projectDir);
+        return;
+      }
+      emit(repeated ?? errorDirective(QUESTION_UNAVAILABLE));
       return;
     }
     // A routing question that stopped an answer is answered once that answer's
@@ -18503,8 +18548,7 @@ function finishedUnitNotRedoneHere(
 // Unit's stages itself (claimedCheckoutReopens): back to one the Unit has
 // reached, for that Unit only, with the steps after it, as a solo walk reopens
 // one Unit's step (unitMajorReopen), so the redone work is the person's to
-// approve again. "route" when the walk is on that stage and the Unit has done
-// nothing there yet. Any other move waits until the Unit has landed.
+// approve again. Any other move waits until the Unit has landed.
 function claimedCheckoutMove(
   projectDir: string,
   stateContent: string,
@@ -18580,6 +18624,36 @@ function claimedCheckoutMove(
     const redo = picked ? unitMajorRedo(projectDir, scope, stateContent, cursorSlug, { unit: claimedUnit, stage: target }) : null;
     if (redo?.jump) return jumpStepPrint(redo.message, redo.jump);
     const at = unitStages.indexOf(target);
+    if (flags.change === true) {
+      const beat = teamUnitMajorWalkBeat(projectDir, scope, stateContent, target);
+      const matched = beat === null ? null : unitStepWorkOrPause(projectDir, scope, stateContent, beat, target, claimedUnit);
+      if (matched !== null && !(beat?.step.kind === "work" && beat.step.ledger.receipts.has(claimedUnit))) {
+        if (existsSync(unitParkedPath(projectDir))) return "route";
+        if (matched.owed !== null) {
+          const jump = [
+            "reopen", "--target", target, "--stages", unitStages.slice(at).join(","), "--units", claimedUnit,
+            "--scope", scope, "--via", "change",
+          ];
+          return jumpStepPrint(
+            `Run \`${jumpCommandText(jump)}\` to reopen "${target}" and the steps after it for unit "${claimedUnit}" only, ` +
+              `as the person's change, then tell the person in one line: "Making your change in ${name} for unit ${claimedUnit}." ` +
+              `and re-run \`next\` to continue. When "${target}" comes back for unit "${claimedUnit}", ` +
+              "make the change from their own words; they already said what to change, so do not ask whether to keep, " +
+              "change or redo its files.",
+            jump,
+          );
+        }
+        if (matched.step.kind === "paused") {
+          const resume = `${aidlcToolInvocation("state")} unit resume --stage ${shellArg(target)} --unit ${shellArg(claimedUnit)}`;
+          return {
+            kind: "print",
+            message: `Run \`${resume}\` to pick unit "${claimedUnit}" up where it stopped, ` +
+              `then tell the person in one line: "Picked unit ${claimedUnit} up at ${name}." and re-run \`next\` to continue.`,
+          };
+        }
+        return "route";
+      }
+    }
     // The walk keeps Current Stage on the step it routes the Unit to, until
     // every Unit's row is done and the record moves on past the Unit's stages
     // (to Build and Test, the work's stage). There the Unit's own walk says
@@ -18634,7 +18708,7 @@ function walkStepUnit(step: UnitJumpStep): string | null {
   return step.kind === "paused" ? step.checkpoint.unit : step.kind === "covered" ? null : step.unit;
 }
 
-function unitStepOwedOnlyReceipt(
+function unitStepOwesOnlyRecords(
   projectDir: string,
   scope: string,
   stateContent: string,
@@ -18642,24 +18716,34 @@ function unitStepOwedOnlyReceipt(
   stageSlug: string,
   unit: string,
 ): boolean {
-  const step = walk.step;
-  const paused = unitPausedOnStep(step, stageSlug, unit);
-  if (!paused && (step.kind !== "work" || step.stage.slug !== stageSlug || step.unit !== unit)) return false;
-  const target = walk.block.find((stage) => stage.slug === stageSlug);
-  if (target === undefined) return false;
-  const owed = unitReceiptOnlyStep(
-    projectDir, target, unit, walk.context.recordPrefix, walk.context.codekbCtx,
-    walk.context.kinds?.get(unit) ?? null, unitLedgerFor(projectDir, stageSlug), stateContent, scope, paused,
-  );
-  // Paused with its files all written, a Unit owes only its records (its review
-  // or its completion): picking it up would leave no work to make the person's
-  // change in, so that counts too.
-  return paused ? owed !== null : owed?.receipt === true;
+  const matched = unitStepWorkOrPause(projectDir, scope, stateContent, walk, stageSlug, unit);
+  return matched !== null && matched.owed !== null;
 }
 
 // The walk's step is that Unit's own pause on that stage.
 function unitPausedOnStep(step: UnitJumpStep, stageSlug: string, unit: string): boolean {
   return step.kind === "paused" && step.stage === stageSlug && step.checkpoint.unit === unit;
+}
+
+function unitStepWorkOrPause(
+  projectDir: string,
+  scope: string,
+  stateContent: string,
+  walk: { step: UnitJumpStep; block: GraphStage[]; context: UnitWorkContext },
+  stageSlug: string,
+  unit: string,
+): { step: Extract<UnitJumpStep, { kind: "work" | "paused" }>; owed: UnitRecordStep | null } | null {
+  const step = walk.step;
+  const paused = unitPausedOnStep(step, stageSlug, unit);
+  if (step.kind !== "paused" && step.kind !== "work") return null;
+  if (!paused && (step.kind !== "work" || step.stage.slug !== stageSlug || step.unit !== unit)) return null;
+  const target = walk.block.find((stage) => stage.slug === stageSlug);
+  if (target === undefined) return null;
+  const owed = unitReceiptOnlyStep(
+    projectDir, target, unit, walk.context.recordPrefix, walk.context.codekbCtx,
+    walk.context.kinds?.get(unit) ?? null, unitLedgerFor(projectDir, stageSlug), stateContent, scope, paused,
+  );
+  return { step, owed };
 }
 
 function unitStepChangeReopen(
@@ -18674,7 +18758,7 @@ function unitStepChangeReopen(
   const walk = unitJumpWalk(projectDir, scope, stateContent, true);
   if (
     walk === null ||
-    !(unitPausedOnStep(walk.step, stageSlug, unit) || unitStepOwedOnlyReceipt(projectDir, scope, stateContent, walk, stageSlug, unit))
+    !(unitPausedOnStep(walk.step, stageSlug, unit) || unitStepOwesOnlyRecords(projectDir, scope, stateContent, walk, stageSlug, unit))
   ) return null;
   const reopen = unitMajorReopen(projectDir, scope, stateContent, stageSlug, {
     stage: stageSlug, jumpUnit: unit, everyUnit: false, change: true,
@@ -18759,14 +18843,9 @@ function unitMajorReopen(
         message: `${outside.said} ${outside.nameOne} with \`${entrySkillInvocation()} --stage ${targetSlug} --unit <name>\`.`,
       };
     }
-    // The Unit in flight on the target itself: that is where the walk already is.
-    // Asked for by name with no change, it carries on there; only the person's
-    // change reopens it, once nothing but its completion is left (paused there,
-    // nothing but its records). Paused with work still to do, their change picks
-    // it up, and is made on the step as live.
     const onItsStep = named === inFlight && liveStage === targetSlug;
     const reopens = onItsStep && flags.change === true &&
-      unitStepOwedOnlyReceipt(projectDir, scope, stateContent, walk, targetSlug, named);
+      unitStepOwesOnlyRecords(projectDir, scope, stateContent, walk, targetSlug, named);
     const picksUp = onItsStep && flags.change === true && !reopens && unitPausedOnStep(step, targetSlug, named);
     if (onItsStep && !reopens && !picksUp) return "route";
     // A Unit set aside on the target is picked up where it stopped.
@@ -21498,6 +21577,27 @@ function practicesDraftPostureProblem(pd: string): string | null {
   return promotableTestingPosture(extractMarkdownSection(content, "## Testing Posture")).problem;
 }
 
+function practicesDraftRuleFormProblem(pd: string): string | null {
+  const prefix = engineRelativeRecordDir(pd);
+  if (prefix === null) return null;
+  let draft: string;
+  try {
+    draft = readFileSync(join(pd, prefix, "inception", "practices-discovery", "discovered-rules.md"), "utf-8");
+  } catch {
+    return null;
+  }
+  const { mandated, forbidden } = practicesRulesToAdd(draft, "");
+  const stray = [
+    ...mandated.filter((rule) => !/^ALWAYS\s+\S/.test(rule)).map((rule) => `"${rule}" under ## Mandated`),
+    ...forbidden.filter((rule) => !/^NEVER\s+\S/.test(rule)).map((rule) => `"${rule}" under ## Forbidden`),
+  ];
+  if (stray.length === 0) return null;
+  return (
+    `these list items are not rules: ${stray.join("; ")}. Each list item under ## Mandated is one rule starting ALWAYS, ` +
+    "each under ## Forbidden one starting NEVER, and a heading with no new rule holds only a plain None. line with no list marker."
+  );
+}
+
 // The rules Approve at Practices Discovery adds to the project's rules, said
 // with the gate from the reading practices-promote writes them from; said too
 // when it adds none, so a summary that counts rules the draft does not hold as
@@ -21562,6 +21662,7 @@ function checkStageCompletionEvidence(
   const pipelineEvidence = checkPipelineLinkEvidence(node, slug, pd, approval && retry ? { approval: retry } : {});
   if (!pipelineEvidence.ok) return pipelineEvidence;
 
+  const reportAgain = retry ?? `\`${gateReportCommand(slug, "awaiting-approval")}\` again`;
   if (slug === "practices-discovery") {
     const problem = practicesDraftPostureProblem(pd);
     if (problem !== null) {
@@ -21572,12 +21673,23 @@ function checkStageCompletionEvidence(
           "Once that line is fixed, Practices Discovery comes back for approval.",
       };
     }
+    // At the approved report the person has already answered the gate:
+    // refusing then would lose their Approve.
+    const ruleProblem = approval ? null : practicesDraftRuleFormProblem(pd);
+    if (ruleProblem !== null) {
+      return {
+        ok: false,
+        step: true,
+        message:
+          `Practices Discovery is not ready for approval yet. In discovered-rules.md: ${ruleProblem} ` +
+          `Fix those items, then run ${reportAgain}.`,
+      };
+    }
   }
 
   // Construction walks its Units from Units Generation's units block, so the
   // stage's gate never opens over a block the engine cannot read: the agent
   // writes it, then runs the same report again.
-  const reportAgain = retry ?? `\`${gateReportCommand(slug, "awaiting-approval")}\` again`;
   if (slug === "units-generation") {
     const dag = resolveBoltDag(pd);
     if (dag.state === "malformed") {
@@ -23883,12 +23995,14 @@ function handleTeamBoard(
     const top = Bun.spawnSync({
       cmd: ["git", "rev-parse", "--show-toplevel"],
       cwd: requestedProjectDir,
+      env: process.env,
       stdout: "pipe",
       stderr: "pipe",
     });
     const common = Bun.spawnSync({
       cmd: ["git", "rev-parse", "--git-common-dir"],
       cwd: requestedProjectDir,
+      env: process.env,
       stdout: "pipe",
       stderr: "pipe",
     });
